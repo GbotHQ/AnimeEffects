@@ -1464,8 +1464,21 @@ private:
     // because the first step frees the partner - and the gesture must keep
     // mirroring it on every later step. Alt clears it for the rest of the
     // gesture, so an Alt step leaves the partner where it was for good.
+
+    // True while the drag's OPPOSITE handle must follow: decided at the PRESS (the
+    // partner side's stored mode was DERIVED - Auto/AutoClamped - so the pair was
+    // symmetric by construction), because the first step frees the partner and its
+    // mode can no longer be read. Cleared for the rest of the gesture by Alt, so
+    // releasing Alt cannot re-link a pair the user broke.
     bool mDragPartnerMirrors;
-    cmnd::Gesture<HandleDragCommand> mGesture;
+
+    // The handle drag's live edit. It owns the one command the first move pushed
+    // and the announcement of every later step (TimeLineUtil::RewriteAnnounce):
+    // the rewrite and the TimeLineEvent that tells the timeline about it are ONE
+    // operation, so NO step can write the param without the timeline, the header
+    // chip and the graph hearing about it - and the whole drag stays ONE undo
+    // entry because the steps rewrite that command instead of pushing another.
+    TimeLineUtil::RewriteAnnounce mWrite;
     // The KEY MOVE's own gesture, over the one command that carries the whole
     // selection (see KeyMoveCommand). A separate Gesture from the handle drag's
     // because the kinds never coexist: each press clears the other, and the two

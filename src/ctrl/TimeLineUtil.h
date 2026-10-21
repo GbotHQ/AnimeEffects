@@ -5,6 +5,7 @@
 #include "util/Range.h"
 #include "cmnd/Stable.h"
 #include "cmnd/Listener.h"
+#include "cmnd/ScopedMacro.h"
 #include "core/Project.h"
 #include "core/TimeLine.h"
 #include "core/TimeLineEvent.h"
@@ -102,6 +103,120 @@ namespace TimeLineUtil {
 
     private:
         core::Project& mProject;
+        core::TimeLineEvent mEvent;
+    };
+
+    //-------------------------------------------------------------------------------------------------
+    // ONE LIVE EDIT'S LATER STEPS: the ONE path that rewrites the commands a
+    // gesture already pushed AND tells the timeline about the new values.
+    //
+    // A gesture that keeps ONE command and rewrites it per step (the graph's
+    // handle drag, the picker's live easing session, and any later gesture of the
+    // same shape) has two halves that must never separate:
+    //
+    //   * the REWRITE goes straight through the stack (Gesture::command() or
+    //     ModifiableAssign::modifyValue) and therefore fires no listener - the
+    //     first commit's Notifier already ran and will not run again;
+    //   * the ANNOUNCE is a core::TimeLineEvent naming every key the step changed,
+    //     sent with core::Project::onTimeLineModified.
+    //
+    // Writing the second by hand after the first is the duplication this class
+    // exists to delete. A bare modifyValue() followed by onTimeLineModified() is
+    // the old pattern: a step that rewrites without announcing leaves the
+    // timeline, the header chip and the graph stale until an unrelated event, so
+    // route every later step through RewriteAnnounce instead.
+    //
+    // Contract:
+    //   * begin() is the FIRST step. It opens ONE cmnd::ScopedMacro (one undo
+    //     entry), grabs ONE Notifier carrying aTargets' type and targets, and runs
+    //     the builder inside that macro. The builder pushes every command the
+    //     gesture will rewrite and returns the command the stack must keep
+    //     modifiable (the last one pushed). The notifier announces this step when
+    //     the macro closes; begin() never announces a second time.
+    //   * The TARGETS are established here, once: step() cannot add or drop one,
+    //     so every step of one gesture announces the same keys. Duplicates
+    //     collapse to one Target per (node, type, frame) - one notification per
+    //     key, however many components of it the gesture writes.
+    //   * step() runs the rewrite, then announces EXACTLY ONCE - and only when
+    //     the rewrite reports that it changed something (aRewrite returns bool).
+    //     It refuses (returns false, announces nothing) once the stack no longer
+    //     tops the command - an undo/redo or another edit - so the caller opens a
+    //     fresh edit with begin() instead of corrupting the history.
+    //   * end() closes the session. The commands stay on the stack holding their
+    //     last value, so the gesture remains ONE undo entry.
+    //
+    // Call begin() only for a step that will push something: a macro holding a
+    // notifier announces its commit even when the builder pushed no command.
+    class RewriteAnnounce {
+    public:
+        RewriteAnnounce(): mProject(nullptr), mStack(nullptr), mCommand(nullptr), mEvent() {}
+
+        template<typename tBuild>
+        bool begin(
+            core::Project& aProject, cmnd::Stack& aStack, const QString& aName,
+            const core::TimeLineEvent& aTargets, tBuild&& aBuild
+        ) {
+            end();
+            mProject = &aProject;
+            mStack = &aStack;
+            mEvent.setType(aTargets.type());
+            for (const core::TimeLineEvent::Target& target : aTargets.targets()) {
+                appendUniqueTarget(target);
+            }
+
+            cmnd::ScopedMacro macro(aStack, aName);
+            auto* notifier = new Notifier(aProject);
+            notifier->event().setType(mEvent.type());
+            notifier->event().targets() = mEvent.targets();
+            macro.grabListener(notifier);
+
+            mCommand = aBuild();
+            return mCommand != nullptr;
+        }
+
+        template<typename tRewrite>
+        bool step(tRewrite&& aRewrite) {
+            if (!continues()) {
+                return false; // an undo/redo/another edit: the caller must begin()
+            }
+            if (!aRewrite()) {
+                return false; // nothing rewritten, so nothing to announce
+            }
+            mProject->onTimeLineModified(mEvent, false);
+            return true;
+        }
+
+        // The stack still tops the command begin() pushed, so a step may rewrite it.
+        bool continues() const { return mCommand && mStack && mStack->isModifiable(mCommand); }
+
+        // The command begin() returned, in the gesture's own type.
+        cmnd::Base* command() const { return mCommand; }
+        template<typename tCommand>
+        tCommand* commandAs() const {
+            return static_cast<tCommand*>(mCommand);
+        }
+
+        void end() {
+            mProject = nullptr;
+            mStack = nullptr;
+            mCommand = nullptr;
+            mEvent = core::TimeLineEvent();
+        }
+
+    private:
+        void appendUniqueTarget(const core::TimeLineEvent::Target& aTarget) {
+            for (const core::TimeLineEvent::Target& pushed : mEvent.targets()) {
+                if (pushed.node == aTarget.node && pushed.pos.type() == aTarget.pos.type()
+                    && pushed.pos.index() == aTarget.pos.index()) {
+                    return;
+                }
+            }
+            mEvent.targets().push_back(aTarget);
+        }
+
+        core::Project* mProject;
+        cmnd::Stack* mStack;
+        cmnd::Base* mCommand;
         core::TimeLineEvent mEvent;
     };
 

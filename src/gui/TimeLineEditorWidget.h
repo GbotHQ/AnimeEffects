@@ -372,6 +372,10 @@ private:
     QVector<EasingEditTarget> mEasingEdit;
     QString mEasingEditName;
     bool mEasingEditOpen = false;
+    // The session's later steps: rewrites the commands above and announces the
+    // keys they changed as ONE operation (ctrl::TimeLineUtil::RewriteAnnounce).
+    // The session never calls onTimeLineModified by hand.
+    ctrl::TimeLineUtil::RewriteAnnounce mWrite;
 
     theme::TimeLine mTimelineTheme;
 };

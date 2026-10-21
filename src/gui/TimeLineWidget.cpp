@@ -7,6 +7,7 @@
 #include <cmath>
 #include "gui/TimeLineWidget.h"
 #include "gui/theme/Colors.h"
+#include "ctrl/graph/graph_ScrollBarGeometry.h"
 
 namespace gui {
 
@@ -76,14 +77,16 @@ protected:
         // sub-control here; the style's own hover tracking is not active
         // for a fully custom-painted bar).
         const bool hot = mDragging || underMouse();
-        constexpr int kPillThickness = 4;
-        constexpr int kPillRadius = 2;
-        const int y = (height() - kPillThickness) / 2;
-        const QRect pill(handle.x(), y, handle.width(), kPillThickness);
+        // The pill is the application's scroll bar's, from the one definition both
+        // gui::AppStyle's CC_ScrollBar and the graph panel's lanes paint: 4px centred
+        // in this bar's lane (the widget's own rect), radius-2, across the model's
+        // handle. Nothing about it is restated here.
+        const ctrl::graph::scrollBar::Pill pill =
+            ctrl::graph::scrollBar::pill(rect(), handle, Qt::Horizontal);
         painter.setRenderHint(QPainter::Antialiasing);
         painter.setPen(Qt::NoPen);
         painter.setBrush(hot ? theme::Colors::current().hover : theme::Colors::current().outline);
-        painter.drawRoundedRect(pill, kPillRadius, kPillRadius);
+        painter.drawRoundedRect(pill.rect, pill.radius, pill.radius);
     }
 
 private:

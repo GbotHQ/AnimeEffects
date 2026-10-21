@@ -324,7 +324,7 @@ namespace ctrl {
         mDragSegment(-1),
         mDragHandle(-1),
         mDragPartnerMirrors(false),
-        mGesture(aProject.commandStack()),
+        mWrite(),
         mKeyMoveGesture(aProject.commandStack()),
         mMarqueeOrigin(),
         mMarqueeCurrent(),
@@ -380,17 +380,13 @@ namespace ctrl {
         mProject = aProject;
 
         if (aProject) {
-            // mGesture holds its command stack by reference, so a different
-            // document needs a different stack and the reference cannot be
-            // reassigned. The gesture is inert at this point (endDrag() above),
+            // The key move's gesture holds the command stack by reference, so a
+            // different document needs a different stack and the reference cannot
+            // be reassigned. The gesture is inert at this point (endDrag() above),
             // so it is reconstructed in place - the only way to move it - and an
             // edit can never be pushed into a stack that no longer belongs to the
-            // document being edited.
-            mGesture.~Gesture();
-            ::new (static_cast<void*>(&mGesture))
-                cmnd::Gesture<HandleDragCommand>(aProject->commandStack());
-            // The key move's gesture holds the same stack by reference, so it is
-            // rebuilt for the same reason and at the same, inert moment.
+            // document being edited. The handle drag's live edit holds no such
+            // reference: endDrag() closed it, and begin() takes the new stack.
             mKeyMoveGesture.~Gesture();
             ::new (static_cast<void*>(&mKeyMoveGesture))
                 cmnd::Gesture<KeyMoveCommand>(aProject->commandStack());
@@ -874,7 +870,7 @@ namespace ctrl {
 
         if (aCursor.emitsLeftPressedEvent()) {
             // A press closes whatever edit was open. BOTH kinds, which is why
-            // this is endDrag() and not just mGesture.end(): a gesture still
+            // this is endDrag() and not just mWrite.end(): a gesture still
             // continuing would coalesce the next drag into the previous undo
             // step, and a key-move command left open would be rewritten by the
             // next drag - updateKeyMove asks isModifiable, and it would still be
@@ -2875,55 +2871,48 @@ namespace ctrl {
             }
         }
 
-        if (mGesture.continues()) {
-            // Rewrite the command this drag already pushed, so the whole drag
-            // stays ONE undo step - both halves of it. The opposite half is
-            // updated only on the steps that actually rewrote it (Alt leaves it
-            // where the last such step put it).
-            mGesture.command()->modifyValues(next, mirrorWritten ? &mirrorNext : nullptr);
-
-            // The rewrite goes straight through the stack, so the notification
-            // the first commit pushed has to be sent again here - the same event
-            // the timeline emits for a key whose value changed, for every key
-            // whose easing this step rewrote.
-            core::TimeLineEvent event;
-            event.setType(core::TimeLineEvent::Type_ChangeKeyValue);
-            event.pushTarget(*entry.node, entry.channel.type(), mDragKey->frame());
-            if (mirrorWritten) {
-                event.pushTarget(*entry.node, entry.channel.type(), mirrorFrame);
-            }
-            mProject->onTimeLineModified(event, false);
-        } else {
+        if (!mWrite.continues()) {
             // The drag's first commit (or its first after an undo/redo dropped
-            // the stack's modifiable link): the notifier and the assign are
-            // pushed inside ONE macro, so one notification and one command are
-            // one commit. The command owns the opposite param whenever the key
-            // HAS one, even if Alt keeps this step from writing it: the gesture
-            // is one command, and a later step may release Alt.
-            mGesture.begin(CmndName::tr("change a key easing"), [&](cmnd::ScopedMacro& aMacro) {
-                auto* notifier = new TimeLineUtil::Notifier(*mProject);
-                notifier->event().setType(core::TimeLineEvent::Type_ChangeKeyValue);
-                notifier->event().pushTarget(*entry.node, entry.channel.type(), mDragKey->frame());
-                if (mirrorWritten) {
-                    notifier->event().pushTarget(*entry.node, entry.channel.type(), mirrorFrame);
-                }
-                aMacro.grabListener(notifier);
+            // the stack's modifiable link): ONE macro pushes the notifier and the
+            // command, so the first move is one notification and one command. The
+            // targets are established HERE for the whole gesture: the mirror key
+            // is named whenever the command owns it (mirrorEasing), so a later
+            // step that writes it is announced even if Alt kept this step from
+            // writing it.
+            core::TimeLineEvent targets;
+            targets.setType(core::TimeLineEvent::Type_ChangeKeyValue);
+            targets.pushTarget(*entry.node, entry.channel.type(), mDragKey->frame());
+            if (mirrorEasing) {
+                targets.pushTarget(*entry.node, entry.channel.type(), mirrorFrame);
+            }
 
-                return new HandleDragCommand(
-                    easing, next, mirrorEasing, mirrorEasing ? &mirrorNext : nullptr
-                );
+            mWrite.begin(*mProject, mProject->commandStack(), CmndName::tr("change a key easing"), targets, [&] {
+                auto* command =
+                    new HandleDragCommand(easing, next, mirrorEasing, mirrorEasing ? &mirrorNext : nullptr);
+                mProject->commandStack().push(command);
+                return static_cast<cmnd::Base*>(command);
+            });
+        } else {
+            // Rewrite the command this drag already pushed, so the whole drag stays
+            // ONE undo step - both halves of it - and announce the keys it changed
+            // once. RewriteAnnounce owns both halves; the opposite half is updated
+            // only on the steps that actually rewrote it (Alt leaves it where the
+            // last such step put it).
+            mWrite.step([&] {
+                mWrite.commandAs<HandleDragCommand>()->modifyValues(next, mirrorWritten ? &mirrorNext : nullptr);
+                return true;
             });
         }
     }
 
     void GraphEditor::endDrag() {
         // Every command is already on the stack with its last value, so closing
-        // the edit is all a release has to do: Gesture::end() makes the next drag
-        // open a fresh command instead of coalescing into this one, and a gesture
-        // that never committed pushes nothing at all. BOTH gestures close: a
-        // press ends whatever was open before it starts its own, and the two
-        // kinds never coexist.
-        mGesture.end();
+        // the edit is all a release has to do: end() makes the next drag open a
+        // fresh command instead of coalescing into this one, and a gesture that
+        // never committed pushes nothing at all. BOTH edits close: a press ends
+        // whatever was open before it starts its own, and the two kinds never
+        // coexist.
+        mWrite.end();
         mKeyMoveGesture.end();
         mDragging = false;
         mKeyMoveArmed = false;

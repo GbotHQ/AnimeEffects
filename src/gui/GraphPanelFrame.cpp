@@ -35,6 +35,7 @@
 #include "ctrl/GraphEditor.h"
 #include "ctrl/graph/graph_Geometry.h"
 #include "ctrl/graph/graph_Scaler.h"
+#include "ctrl/graph/graph_ScrollBarGeometry.h"
 #include "ctrl/time/time_Renderer.h"
 #include "gl/EasyShaderProgram.h"
 #include "gl/Framebuffer.h"
@@ -2141,8 +2142,10 @@ void drawPanel(
     // numbers are.
     //
     // THE INK IS THE APPLICATION'S SCROLL BAR (src/gui/AppStyle.cpp's CC_ScrollBar):
-    // an INVISIBLE 12px trough and a kScrollBarPillThickness (4px), radius-2 pill
-    // centred in the lane across the slider's run (the model's hThumb/vThumb).
+    // an INVISIBLE 12px trough and a 4px, radius-2 pill centred in the lane across the
+    // slider's run (the model's hThumb/vThumb) - lane, thickness, centring and radius
+    // all come from ctrl/graph/graph_ScrollBarGeometry.h's pill(), the same function
+    // the style paints from.
     // theme::Colors::outline at rest and theme::Colors::hover while the pointer is on
     // that bar - or while that bar is being dragged, which the pointer alone cannot
     // say (a thumb drag pans by the pointer's delta, so the pointer can leave the
@@ -2177,24 +2180,17 @@ void drawPanel(
             // so the plot does not move when content appears.
             if (aTrack.isEmpty() || aThumb.isEmpty())
                 return;
-            // The pill: 4px centred in the lane, spanning the run. This is AppStyle's
-            // own arithmetic (its pill's cap axis follows the orientation), restated
-            // here because the lane and the run are the model's.
-            const int pillThickness = ctrl::graph::Scaler::kScrollBarPillThickness;
-            const bool horizontal = aBar == PanelBar::Horizontal;
-            const QRect pill = horizontal
-                ? QRect(
-                      aThumb.left(), aTrack.top() + (aTrack.height() - pillThickness) / 2, aThumb.width(),
-                      pillThickness
-                  )
-                : QRect(
-                      aTrack.left() + (aTrack.width() - pillThickness) / 2, aThumb.top(), pillThickness,
-                      aThumb.height()
-                  );
+            // The pill: 4px centred in the lane, spanning the run, from the SAME
+            // definition gui::AppStyle's CC_ScrollBar paints (see
+            // ctrl/graph/graph_ScrollBarGeometry.h) - this layer supplies only the
+            // model's lane and run rects and the orientation.
+            const ctrl::graph::scrollBar::Pill pill = ctrl::graph::scrollBar::pill(
+                aTrack, aThumb, aBar == PanelBar::Horizontal ? Qt::Horizontal : Qt::Vertical
+            );
             const bool hot = hoverBar == aBar || pressBar == aBar;
             aDrawList.AddRectFilled(
-                rectMin(pill), rectMax(pill), toImU32(hot ? colors.hover : colors.outline),
-                float(ctrl::graph::Scaler::kScrollBarPillRadius)
+                rectMin(pill.rect), rectMax(pill.rect), toImU32(hot ? colors.hover : colors.outline),
+                float(pill.radius)
             );
         };
         drawBar(aModel.hTrack, aModel.hThumb, PanelBar::Horizontal);

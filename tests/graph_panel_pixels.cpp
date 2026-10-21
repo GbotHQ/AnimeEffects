@@ -250,6 +250,7 @@ std::pair<core::TimeKey*, core::LayerMesh*> gui::ObjectTreeWidget::getAreaMeshIm
 #include <QOpenGLFunctions_4_0_Core>
 #include <QOpenGLVersionFunctionsFactory>
 #include <QOpenGLWidget>
+#include <QPair>
 #include <QPointF>
 #include <QRect>
 #include <QSize>
@@ -262,6 +263,7 @@ std::pair<core::TimeKey*, core::LayerMesh*> gui::ObjectTreeWidget::getAreaMeshIm
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <limits>
 #include <numeric>
 #include <string>
 #include <vector>
@@ -290,6 +292,9 @@ std::pair<core::TimeKey*, core::LayerMesh*> gui::ObjectTreeWidget::getAreaMeshIm
 #include "gui/theme/Colors.h"
 #include "gui/theme/Graph.h"
 #include "ctrl/graph/graph_Geometry.h"
+// The pill every bar assertion below measures against: the same header the panel's
+// drawing layer and AppStyle's CC_ScrollBar paint from.
+#include "ctrl/graph/graph_ScrollBarGeometry.h"
 // The selected key ring is ONE token for both views: its alpha and its offset live in
 // the timeline renderer's own header, and the marker assertions below read them.
 #include "ctrl/time/time_Renderer.h"
@@ -410,8 +415,9 @@ QRect valueLabelBox(int aTop) {
 const QRect kMarqueeRect(155, 62, 40, 30);
 
 // THE SCROLL BARS, as this file's synthetic model publishes them: the shipping layout
-// of ctrl::graph::Scaler::scrollBars - the app's 12px lane (Scaler::kScrollBarThickness)
-// FLUSH with the panel's bottom and right edges, exactly as the timeline's own bar is:
+// of ctrl::graph::Scaler::scrollBars - the app's 12px lane
+// (ctrl::graph::scrollBar::kLaneThickness) FLUSH with the panel's bottom and right
+// edges, exactly as the timeline's own bar is:
 // the horizontal lane is the panel's last 12 rows across its whole width, the vertical
 // one the panel's last 12 columns from the plot's first row to the row above the
 // horizontal lane (the corner is the horizontal bar's). A run is the visible window's
@@ -420,25 +426,25 @@ const QRect kMarqueeRect(155, 62, 40, 30);
 // is measured against exactly the four rects a model can carry. Both lanes are OUTSIDE
 // the plot (the plot's right/bottom inset IS the lane) and INSIDE the panel.
 const QRect kHScrollTrack(
-    kPanel.left(), kPanel.bottom() - ctrl::graph::Scaler::kScrollBarThickness + 1, kPanel.width(),
-    ctrl::graph::Scaler::kScrollBarThickness
+    kPanel.left(), kPanel.bottom() - ctrl::graph::scrollBar::kLaneThickness + 1, kPanel.width(),
+    ctrl::graph::scrollBar::kLaneThickness
 );
 const QRect kHScrollThumb(kHScrollTrack.left() + 60, kHScrollTrack.top(), 90, kHScrollTrack.height());
 const QRect kVScrollTrack(
-    kPanel.right() - ctrl::graph::Scaler::kScrollBarThickness + 1, kPlot.top(),
-    ctrl::graph::Scaler::kScrollBarThickness,
-    kPanel.bottom() - ctrl::graph::Scaler::kScrollBarThickness - kPlot.top() + 1
+    kPanel.right() - ctrl::graph::scrollBar::kLaneThickness + 1, kPlot.top(),
+    ctrl::graph::scrollBar::kLaneThickness,
+    kPanel.bottom() - ctrl::graph::scrollBar::kLaneThickness - kPlot.top() + 1
 );
 const QRect kVScrollThumb(kVScrollTrack.left(), kVScrollTrack.top() + 40, kVScrollTrack.width(), 70);
 
-// The PILL the drawing layer puts in a lane: AppStyle's 4px, and centred in the lane
-// across the run (the model's thumb rect). The tests measure the ink against this, so
-// the geometry the two files agree on is stated once here as well as in the renderer.
+// The PILL the drawing layer puts in a lane, from the ONE definition the drawing
+// layer itself paints from (ctrl/graph/graph_ScrollBarGeometry.h): AppStyle's 4px,
+// centred in the lane across the run (the model's thumb rect). The tests measure the
+// ink against this, so the geometry the style and the panel agree on is asked for
+// here rather than restated - if the panel's draw ever moved off it, the ink would
+// land outside this rect and the assertions below fail.
 QRect scrollPill(const QRect& aTrack, const QRect& aRun, bool aHorizontal) {
-    const int thickness = ctrl::graph::Scaler::kScrollBarPillThickness;
-    return aHorizontal
-        ? QRect(aRun.left(), aTrack.top() + (aTrack.height() - thickness) / 2, aRun.width(), thickness)
-        : QRect(aTrack.left() + (aTrack.width() - thickness) / 2, aRun.top(), thickness, aRun.height());
+    return ctrl::graph::scrollBar::pill(aTrack, aRun, aHorizontal ? Qt::Horizontal : Qt::Vertical).rect;
 }
 
 const core::TimeKeyType kTypeA = core::TimeKeyType_Move;
@@ -590,6 +596,27 @@ int toneCount(const QImage& aImage, const QRect& aRect, const QColor& aColour, i
         }
     }
     return count;
+}
+
+// The rows (aHorizontal false) or columns (true) of aProbe that carry the token
+// aColour ITSELF: the first and last such one, or (0,-1) when the probe carries none.
+// Used to pin the DRAWN pill's band to the shared rect's own edges: the probes that
+// call it cross the pill through its middle, where the fill is opaque, so the extent
+// measured is the pill's and not an antialiased fringe's.
+QPair<int, int> tokenSpan(const QImage& aImage, const QRect& aProbe, const QColor& aColour, bool aHorizontal) {
+    int lo = std::numeric_limits<int>::max();
+    int hi = std::numeric_limits<int>::min();
+    const QRect r = aProbe.intersected(aImage.rect());
+    for (int y = r.top(); y <= r.bottom(); ++y) {
+        for (int x = r.left(); x <= r.right(); ++x) {
+            if (colourDistance(pixelAt(aImage, x, y), aColour) != 0)
+                continue;
+            const int at = aHorizontal ? x : y;
+            lo = std::min(lo, at);
+            hi = std::max(hi, at);
+        }
+    }
+    return lo > hi ? QPair<int, int>(0, -1) : QPair<int, int>(lo, hi);
 }
 
 // How many pixel columns/rows separate two rects; 0 when they touch or overlap.
@@ -3241,8 +3268,8 @@ bool checkScrollBars(
     // The lane and the pill are the application's numbers, and the pill is centred in
     // the lane across the run.
     REQUIRE(
-        hTrack.height() == ctrl::graph::Scaler::kScrollBarThickness
-            && vTrack.width() == ctrl::graph::Scaler::kScrollBarThickness,
+        hTrack.height() == ctrl::graph::scrollBar::kLaneThickness
+            && vTrack.width() == ctrl::graph::scrollBar::kLaneThickness,
         "precondition: the lanes are not the app's 12px (%d x %d)", hTrack.height(), vTrack.width()
     );
     REQUIRE(
@@ -3286,28 +3313,52 @@ bool checkScrollBars(
         toneCount(aWithBars.image, QRect(hPill.center().x(), hTrack.top(), 1, hTrack.height()), colors.outline);
     const int vPillThickness =
         toneCount(aWithBars.image, QRect(vTrack.left(), vPill.center().y(), vTrack.width(), 1), colors.outline);
+    // ...AND WHERE THAT BAND IS. The same two probes cross the pill through its
+    // straight section, where the fill is opaque, so the token's extent along the
+    // thickness axis is the pill's own band: it must be exactly the shared
+    // geometry's top..bottom (horizontal) / left..right (vertical) on the LANE's
+    // axis - not merely four pixels somewhere in the lane. A pill centred one pixel
+    // off, or drawn from a different thickness/lane rule, fails here.
+    const QPair<int, int> hBand = tokenSpan(
+        aWithBars.image, QRect(hPill.center().x(), hTrack.top(), 1, hTrack.height()), colors.outline, false
+    );
+    const QPair<int, int> vBand = tokenSpan(
+        aWithBars.image, QRect(vTrack.left(), vPill.center().y(), vTrack.width(), 1), colors.outline, true
+    );
     const int hPillInk = toneCount(aWithBars.image, hPill, colors.outline);
     const int vPillInk = toneCount(aWithBars.image, vPill, colors.outline);
     std::printf(
         "MEASURED scroll_bars outline=%s hover=%s lane=%d  hTrack(%d,%d %dx%d) hPill(%d,%d %dx%d) ink=%d thick=%d"
-        "  vTrack(%d,%d %dx%d) vPill(%d,%d %dx%d) ink=%d thick=%d  (expected thickness %d)\n",
-        hex(colors.outline).c_str(), hex(colors.hover).c_str(), ctrl::graph::Scaler::kScrollBarThickness,
+        " band=%d..%d (shared %d..%d)  vTrack(%d,%d %dx%d) vPill(%d,%d %dx%d) ink=%d thick=%d band=%d..%d"
+        " (shared %d..%d)  (expected thickness %d)\n",
+        hex(colors.outline).c_str(), hex(colors.hover).c_str(), ctrl::graph::scrollBar::kLaneThickness,
         hTrack.left(), hTrack.top(), hTrack.width(), hTrack.height(), hPill.left(), hPill.top(), hPill.width(),
-        hPill.height(), hPillInk, hPillThickness, vTrack.left(), vTrack.top(), vTrack.width(), vTrack.height(),
-        vPill.left(), vPill.top(), vPill.width(), vPill.height(), vPillInk, vPillThickness,
-        ctrl::graph::Scaler::kScrollBarPillThickness
+        hPill.height(), hPillInk, hPillThickness, hBand.first, hBand.second, hPill.top(), hPill.bottom(),
+        vTrack.left(), vTrack.top(), vTrack.width(), vTrack.height(), vPill.left(), vPill.top(), vPill.width(),
+        vPill.height(), vPillInk, vPillThickness, vBand.first, vBand.second, vPill.left(), vPill.right(),
+        ctrl::graph::scrollBar::kPillThickness
     );
     REQUIRE(hPillInk > 0, "the horizontal pill painted no outline pixel: the pill is not where the model says");
     REQUIRE(vPillInk > 0, "the vertical pill painted no outline pixel");
     REQUIRE(
-        hPillThickness == ctrl::graph::Scaler::kScrollBarPillThickness,
+        hPillThickness == ctrl::graph::scrollBar::kPillThickness,
         "the horizontal pill is %dpx thick, not the app's %d", hPillThickness,
-        ctrl::graph::Scaler::kScrollBarPillThickness
+        ctrl::graph::scrollBar::kPillThickness
     );
     REQUIRE(
-        vPillThickness == ctrl::graph::Scaler::kScrollBarPillThickness,
+        vPillThickness == ctrl::graph::scrollBar::kPillThickness,
         "the vertical pill is %dpx thick, not the app's %d", vPillThickness,
-        ctrl::graph::Scaler::kScrollBarPillThickness
+        ctrl::graph::scrollBar::kPillThickness
+    );
+    REQUIRE(
+        hBand.first == hPill.top() && hBand.second == hPill.bottom(),
+        "the horizontal pill's band is rows %d..%d, not the shared rect's %d..%d", hBand.first, hBand.second,
+        hPill.top(), hPill.bottom()
+    );
+    REQUIRE(
+        vBand.first == vPill.left() && vBand.second == vPill.right(),
+        "the vertical pill's band is columns %d..%d, not the shared rect's %d..%d", vBand.first, vBand.second,
+        vPill.left(), vPill.right()
     );
 
     // THE TROUGH PAINTS NOTHING. Adding the four rects to the model may change pixels
@@ -3354,12 +3405,12 @@ bool checkScrollBars(
         hex(hHotPixel).c_str(), hex(vHotPixel).c_str(), hex(colors.hover).c_str()
     );
     REQUIRE(
-        hoveredHPill == ctrl::graph::Scaler::kScrollBarPillThickness,
+        hoveredHPill == ctrl::graph::scrollBar::kPillThickness,
         "a pointer on the horizontal bar did not turn the whole pill hover-coloured (%d px thick)",
         hoveredHPill
     );
     REQUIRE(
-        hoveredVPill == ctrl::graph::Scaler::kScrollBarPillThickness,
+        hoveredVPill == ctrl::graph::scrollBar::kPillThickness,
         "a pointer on the vertical bar did not turn the whole pill hover-coloured (%d px thick)",
         hoveredVPill
     );
@@ -3442,30 +3493,49 @@ bool checkFullLaneBars(
         toneCount(aWithBars.image, QRect(hPill.center().x(), hTrack.top(), 1, hTrack.height()), colors.outline);
     const int vThickness =
         toneCount(aWithBars.image, QRect(vTrack.left(), vPill.center().y(), vTrack.width(), 1), colors.outline);
+    // The band's POSITION as well as its thickness, off the same opaque cross-section
+    // (see checkScrollBars): a full-lane pill is the shared rect's, row for row.
+    const QPair<int, int> hBand = tokenSpan(
+        aWithBars.image, QRect(hPill.center().x(), hTrack.top(), 1, hTrack.height()), colors.outline, false
+    );
+    const QPair<int, int> vBand = tokenSpan(
+        aWithBars.image, QRect(vTrack.left(), vPill.center().y(), vTrack.width(), 1), colors.outline, true
+    );
     std::printf(
-        "MEASURED scroll_bars_zero_travel hPill(%d,%d %dx%d) ink=%d thick=%d  vPill(%d,%d %dx%d) ink=%d"
-        " thick=%d  (lanes %dx%d / %dx%d)\n",
-        hPill.left(), hPill.top(), hPill.width(), hPill.height(), hPillInk, hThickness, vPill.left(),
-        vPill.top(), vPill.width(), vPill.height(), vPillInk, vThickness, hTrack.width(), hTrack.height(),
-        vTrack.width(), vTrack.height()
+        "MEASURED scroll_bars_zero_travel hPill(%d,%d %dx%d) ink=%d thick=%d band=%d..%d (shared %d..%d)"
+        "  vPill(%d,%d %dx%d) ink=%d thick=%d band=%d..%d (shared %d..%d)  (lanes %dx%d / %dx%d)\n",
+        hPill.left(), hPill.top(), hPill.width(), hPill.height(), hPillInk, hThickness, hBand.first,
+        hBand.second, hPill.top(), hPill.bottom(), vPill.left(), vPill.top(), vPill.width(), vPill.height(),
+        vPillInk, vThickness, vBand.first, vBand.second, vPill.left(), vPill.right(), hTrack.width(),
+        hTrack.height(), vTrack.width(), vTrack.height()
     );
     REQUIRE(hPillInk > 0, "the zero-travel horizontal lane painted no pill");
     REQUIRE(vPillInk > 0, "the zero-travel VERTICAL lane painted no pill: the bar hid itself");
     REQUIRE(
-        hThickness == ctrl::graph::Scaler::kScrollBarPillThickness
-            && vThickness == ctrl::graph::Scaler::kScrollBarPillThickness,
+        hThickness == ctrl::graph::scrollBar::kPillThickness
+            && vThickness == ctrl::graph::scrollBar::kPillThickness,
         "a zero-travel pill is not the app's 4px (%d h / %d v)", hThickness, vThickness
+    );
+    REQUIRE(
+        hBand.first == hPill.top() && hBand.second == hPill.bottom(),
+        "the zero-travel horizontal pill's band is rows %d..%d, not the shared rect's %d..%d", hBand.first,
+        hBand.second, hPill.top(), hPill.bottom()
+    );
+    REQUIRE(
+        vBand.first == vPill.left() && vBand.second == vPill.right(),
+        "the zero-travel vertical pill's band is columns %d..%d, not the shared rect's %d..%d", vBand.first,
+        vBand.second, vPill.left(), vPill.right()
     );
     // FULL LENGTH: the fill covers the lane but for the ROUNDED CAPS at the two ends
     // (radius 2, i.e. a semicircle across the 4px bar) and their antialiased fringe, so
     // the allowance is two cap widths per end - and a partial run is far below it.
-    const int cap = ctrl::graph::Scaler::kScrollBarPillRadius;
+    const int cap = ctrl::graph::scrollBar::kPillRadius;
     REQUIRE(
-        hPillInk >= (hPill.width() - 4 * cap) * ctrl::graph::Scaler::kScrollBarPillThickness,
+        hPillInk >= (hPill.width() - 4 * cap) * ctrl::graph::scrollBar::kPillThickness,
         "the horizontal zero-travel pill covers only %d px of a %d px lane", hPillInk, hPill.width()
     );
     REQUIRE(
-        vPillInk >= (vPill.height() - 4 * cap) * ctrl::graph::Scaler::kScrollBarPillThickness,
+        vPillInk >= (vPill.height() - 4 * cap) * ctrl::graph::scrollBar::kPillThickness,
         "the vertical zero-travel pill covers only %d px of a %d px lane", vPillInk, vPill.height()
     );
 
@@ -3497,11 +3567,11 @@ bool checkFullLaneBars(
         hHot, vHot, restVWhileHHot, restHWhileVHot
     );
     REQUIRE(
-        hHot == ctrl::graph::Scaler::kScrollBarPillThickness,
+        hHot == ctrl::graph::scrollBar::kPillThickness,
         "a pointer on the full-length horizontal pill painted %d hover px", hHot
     );
     REQUIRE(
-        vHot == ctrl::graph::Scaler::kScrollBarPillThickness,
+        vHot == ctrl::graph::scrollBar::kPillThickness,
         "a pointer on the full-length vertical pill painted %d hover px", vHot
     );
     REQUIRE(

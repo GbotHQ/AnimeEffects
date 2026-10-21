@@ -97,7 +97,9 @@ struct PanelFocus {
 // for them): they are the application's scroll bar - an INVISIBLE 12px trough and a
 // 4px, radius-2 pill across the slider's run, in theme::Colors::outline at rest and
 // theme::Colors::hover while the pointer is on that bar or the bar is being dragged
-// (src/gui/AppStyle.cpp's CC_ScrollBar). THE RUN IS ALWAYS THE SLIDER: at zero travel
+// (src/gui/AppStyle.cpp's CC_ScrollBar; the geometry itself is
+// ctrl::graph::scrollBar::pill, in src/ctrl/graph/graph_ScrollBarGeometry.h, and both
+// painters call it). THE RUN IS ALWAYS THE SLIDER: at zero travel
 // BOTH lanes paint a pill across their WHOLE length (the model publishes the handle
 // over the union track in every state), exactly as the timeline's AlwaysOn horizontal
 // bar does; a full-length run simply cannot be grabbed. The timeline has no vertical

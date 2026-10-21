@@ -4,6 +4,7 @@
 #include <QRect>
 #include <QString>
 #include "core/Frame.h"
+#include "ctrl/graph/graph_ScrollBarGeometry.h"
 #include "ctrl/time/time_Scaler.h"
 
 namespace ctrl {
@@ -168,7 +169,9 @@ public:
     // axis' along the right) are the APPLICATION'S scroll bars, not a look of this
     // panel's own: src/gui/AppStyle.cpp's CC_ScrollBar draws a 12px lane whose
     // trough is INVISIBLE and a 4px, radius-2 pill across the slider's run
-    // (theme::Colors::outline at rest, theme::Colors::hover when hot). The timeline's
+    // (theme::Colors::outline at rest, theme::Colors::hover when hot) - both
+    // numbers from ctrl/graph/graph_ScrollBarGeometry.h, the one definition this
+    // panel paints from as well. The timeline's
     // own bar (gui::TimeLineWidget's TimelineScrollBar) is that style on a lane flush
     // with its page's bottom and right edges, with no gap and no outer margin - so
     // the panel's lanes are FLUSH the same way: the horizontal lane is the panel's
@@ -194,9 +197,15 @@ public:
     // page's last row is 494, its lane rows 483..494 and its pill rows 487..490 - the
     // panel's lane and pill rows are the same numbers, because the lanes are the same
     // rows of the same page.
-    static constexpr int kScrollBarThickness = 12;    // AppStyle.cpp's 12px invisible lane
-    static constexpr int kScrollBarPillThickness = 4; // AppStyle.cpp's kPillThickness
-    static constexpr int kScrollBarPillRadius = 2;    // AppStyle.cpp's kPillRadius
+    // These three are NOT this panel's numbers: they are the application scroll
+    // bar's, defined once in ctrl/graph/graph_ScrollBarGeometry.h, where gui::AppStyle's
+    // CC_ScrollBar reads them too. They are re-exported under the scaler's names
+    // because this class is where the panel's bar geometry is read from - and the
+    // pill that ink lands in is computed by that header's pill() from exactly
+    // these lane/run rects, never by a second copy of the arithmetic here.
+    static constexpr int kScrollBarThickness = scrollBar::kLaneThickness;
+    static constexpr int kScrollBarPillThickness = scrollBar::kPillThickness;
+    static constexpr int kScrollBarPillRadius = scrollBar::kPillRadius;
     static constexpr int kScrollBarReserve = kScrollBarThickness; // the plot's inset == the lane
 
     // One wheel notch over a LANE scrolls the window this many pixels times the
@@ -235,8 +244,11 @@ public:
     //     hTrack (flush with the panel's right edge).
     //   * hThumb/vThumb: the timeline's handle over that track (see above): the
     //     window's span edge-rounded over the UNION track. The drawing layer paints
-    //     a kScrollBarPillThickness pill centred in the lane across this run, and
-    //     nothing else: the trough is invisible.
+    //     the pill scrollBar::pill(hTrack, hThumb, Qt::Horizontal).rect /
+    //     scrollBar::pill(vTrack, vThumb, Qt::Vertical).rect paints - the
+    //     application's 4px, radius-2 pill centred in the lane across this run, the
+    //     same function AppStyle's CC_ScrollBar paints from - and nothing else: the
+    //     trough is invisible.
     //
     // THE TWO LANES ARE BOTH ALWAYSON IN THIS PANEL (the timeline has no vertical
     // bar of its own; see the second bullet):

@@ -97,18 +97,27 @@
 //     label, against the project range and against an active play window) and the
 //     play window's overlay geometry (band, both stems, both arms, and the one
 //     centred merged pill of a window narrower than its labels)
+//  17 the SCROLL BAR'S PILL is one geometry: ctrl::graph::scrollBar::pill's table
+//     of (lane, run, orientation) cases, the pill gui::AppStyle's CC_ScrollBar
+//     PAINTS for them (read off a transparent QImage), and the pill the panel's
+//     published lane/run rects produce - the same function both painters use
 // plus a read-only probe: building a model must not move the editor's scaler,
 // its targets, the project's dirty flag or the document's keys.
 //
 // Headless: QApplication (translations + the font database the label metrics
-// need), no widgets, no GL, no .anie fixture.
+// need), no widgets shown, no GL, no .anie fixture.
 #include <QApplication>
+#include <QCommonStyle>
 #include <QFont>
 #include <QFontMetrics>
+#include <QImage>
+#include <QPainter>
 #include <QPointF>
 #include <QRectF>
+#include <QScrollBar>
 #include <QString>
 #include <QStringList>
+#include <QStyleOptionSlider>
 #include <QVector2D>
 #include <algorithm>
 #include <cmath>
@@ -137,6 +146,11 @@
 #include "ctrl/graph/graph_Curve.h"
 #include "ctrl/graph/graph_Geometry.h"
 #include "ctrl/graph/graph_Scaler.h"
+// Section 17 paints the app's own scroll bar: gui::AppStyle's CC_ScrollBar is what
+// draws the timeline's bar and the panel's lanes, and AppStyle.cpp is compiled into
+// this target (see tests/CMakeLists.txt) so the measurement is of the real painter.
+#include "ctrl/graph/graph_ScrollBarGeometry.h"
+#include "gui/AppStyle.h"
 // The timeline's own key marker (ctrl::keyRadius = 3.0 * ctrl::radiiFactor), the
 // constant the panel's key dot is derived from - block [13] pins the two
 // together instead of trusting a comment. Header-only: the constants are
@@ -348,6 +362,77 @@ bool polylineYAt(const gui::PanelCurve& aCurve, double aX, double& aOutY, double
     }
     aOutDistance = best;
     return found;
+}
+
+// ---------------------------------------------------------------------------
+// THE SCROLL BAR'S PILL (section 17): the case table, the app style's paint, and
+// the pixel reads that hold one to the other.
+// ---------------------------------------------------------------------------
+
+// One row of the geometry table: the rects both painters hand in, and the pill BY
+// HAND - written out as the lane's offset from its own leading edge, the run's offset
+// and its length - never re-derived from ctrl::graph::scrollBar::pill(), or the table
+// would agree with any bug the function has.
+struct PillCase {
+    const char* what;
+    QRect lane;
+    QRect run;
+    Qt::Orientation orientation;
+    QRect expected;
+};
+
+// A first..last range along ONE axis; empty when nothing matched.
+struct Span {
+    int lo = 0;
+    int hi = -1;
+    bool isEmpty() const { return lo > hi; }
+};
+
+// The extent of the pixels of aProbe that satisfy aPredicate, along the axis
+// aHorizontal selects (columns when true, rows when false). Every probe below is one
+// pixel wide across the other axis, so this reports ONE measured span.
+template <typename Predicate>
+Span pixelSpan(const QImage& aImage, const QRect& aProbe, bool aHorizontal, Predicate aPredicate) {
+    Span span;
+    span.lo = std::numeric_limits<int>::max();
+    span.hi = std::numeric_limits<int>::min();
+    const QRect probe = aProbe.intersected(aImage.rect());
+    for (int y = probe.top(); y <= probe.bottom(); ++y) {
+        for (int x = probe.left(); x <= probe.right(); ++x) {
+            if (!aPredicate(x, y))
+                continue;
+            const int at = aHorizontal ? x : y;
+            span.lo = std::min(span.lo, at);
+            span.hi = std::max(span.hi, at);
+        }
+    }
+    return span.isEmpty() ? Span{} : span;
+}
+
+// gui::AppStyle's CC_ScrollBar painted into a TRANSPARENT image the size of the lane:
+// the app's own scroll-bar painter with nothing behind it, so every inked pixel is the
+// pill. aLane must start at (0,0) - the image's origin is the measurement's origin.
+// aOutSlider receives the style's own SC_ScrollBarSlider rect, i.e. the run AppStyle
+// itself paints the pill across, so the expectation below and the paint cannot be
+// about two different runs.
+QImage paintAppScrollBar(gui::AppStyle& aStyle, QScrollBar& aBar, const QRect& aLane, QRect& aOutSlider) {
+    QStyleOptionSlider opt;
+    opt.initFrom(&aBar);
+    opt.rect = aLane;
+    opt.orientation = aBar.orientation();
+    opt.minimum = aBar.minimum();
+    opt.maximum = aBar.maximum();
+    opt.pageStep = aBar.pageStep();
+    opt.sliderPosition = aBar.sliderPosition();
+    opt.sliderValue = aBar.sliderPosition();
+    aOutSlider = aStyle.subControlRect(QStyle::CC_ScrollBar, &opt, QStyle::SC_ScrollBarSlider, &aBar);
+
+    QImage image(aLane.size(), QImage::Format_ARGB32_Premultiplied);
+    image.fill(Qt::transparent);
+    QPainter painter(&image);
+    aStyle.drawComplexControl(QStyle::CC_ScrollBar, &opt, &painter, &aBar);
+    painter.end();
+    return image;
 }
 
 } // namespace
@@ -3883,6 +3968,213 @@ int main(int argc, char** argv) {
         CHECK(soloActed);
         CHECK(soloPair);
         CHECK(soloUndone);
+    }
+
+    // -------------------------------------------------------------------------
+    // 17. THE SCROLL BAR'S PILL IS ONE GEOMETRY, and both painters paint it.
+    //
+    // The application's scroll bar is gui::AppStyle's CC_ScrollBar (the timeline's
+    // bar, and the ink the graph panel's two lanes copy) and the panel paints
+    // scrollBar::pill(track, thumb, axis) (src/gui/GraphPanelFrame.cpp). Both read
+    // the lane, the pill and its centring from
+    // src/ctrl/graph/graph_ScrollBarGeometry.h, and this section holds each of them
+    // to a measurement of that one function:
+    //   * the geometry TABLE - (lane, run, orientation) -> pill, written out by
+    //     hand, with the cases integer division and a non-zero origin make
+    //     interesting (an odd lane, an offset lane, a zero-travel full run);
+    //   * AppStyle PAINTED - a real QScrollBar through the real style into a
+    //     transparent QImage, then the pill read off the pixels: its band's exact
+    //     rows/columns, its span, no ink outside the rect, and the OPAQUE token
+    //     held back by exactly the radius at each cap;
+    //   * the panel's PUBLISHED lane/run rects, through the same function - its
+    //     drawn pixels are measured in tests/graph_panel_pixels.cpp.
+    {
+        using ctrl::graph::scrollBar::kLaneThickness;
+        using ctrl::graph::scrollBar::kPillRadius;
+        using ctrl::graph::scrollBar::kPillThickness;
+        using ctrl::graph::scrollBar::Pill;
+        using ctrl::graph::scrollBar::pill;
+
+        const PillCase cases[] = {
+            // The panel's horizontal lane at 800x600 with a run 60px in:
+            // 588 + (12 - 4) / 2 = 592.
+            { "panel horizontal", QRect(0, 588, 800, 12), QRect(60, 588, 90, 12), Qt::Horizontal,
+              QRect(60, 592, 90, 4) },
+            // The panel's vertical lane, a 70px run 40px down: 788 + (12 - 4) / 2 = 792.
+            { "panel vertical", QRect(788, 26, 12, 562), QRect(788, 66, 12, 70), Qt::Vertical,
+              QRect(792, 66, 4, 70) },
+            // A ZERO-TRAVEL lane: the run IS the lane, and the pill spans it whole.
+            { "full lane", QRect(20, 0, 12, 200), QRect(20, 0, 12, 200), Qt::Vertical,
+              QRect(24, 0, 4, 200) },
+            // An ODD lane: the 9px difference is floored to 4, so the extra pixel
+            // stays on the TRAILING side (4px before the pill, 5px after it).
+            { "odd lane vertical", QRect(5, 0, 13, 100), QRect(5, 10, 13, 60), Qt::Vertical,
+              QRect(9, 10, 4, 60) },
+            { "odd lane horizontal", QRect(0, 7, 300, 13), QRect(11, 7, 100, 13), Qt::Horizontal,
+              QRect(11, 11, 100, 4) },
+            // A lane whose ORIGIN is not (0,0): both painters are given widget rects,
+            // and the pill must follow the lane it was handed, not the image origin.
+            { "offset lane horizontal", QRect(30, 90, 120, 12), QRect(40, 90, 50, 12), Qt::Horizontal,
+              QRect(40, 94, 50, 4) },
+        };
+        for (const PillCase& c : cases) {
+            const Pill got = pill(c.lane, c.run, c.orientation);
+            const bool vertical = c.orientation == Qt::Vertical;
+            const int capExtent = vertical ? got.rect.width() : got.rect.height();
+            const int runSpan = vertical ? c.run.height() : c.run.width();
+            std::printf(
+                "[17] pill %s: lane(%d,%d %dx%d) run(%d,%d %dx%d) %s -> (%d,%d %dx%d) r%d  by hand"
+                " (%d,%d %dx%d), cap axis %dpx, run span %dpx\n",
+                c.what, c.lane.left(), c.lane.top(), c.lane.width(), c.lane.height(), c.run.left(),
+                c.run.top(), c.run.width(), c.run.height(), vertical ? "vertical" : "horizontal",
+                got.rect.left(), got.rect.top(), got.rect.width(), got.rect.height(), got.radius,
+                c.expected.left(), c.expected.top(), c.expected.width(), c.expected.height(), capExtent,
+                runSpan
+            );
+            CHECK(got.rect == c.expected);
+            CHECK(capExtent == kPillThickness);
+            CHECK(got.radius == kPillRadius);
+            CHECK((vertical ? got.rect.height() : got.rect.width()) == runSpan);
+            CHECK(c.lane.contains(got.rect));
+        }
+
+        // --- AppStyle, PAINTED ---
+        // A QCommonStyle base: the proxy needs one, and nothing here asks the base to
+        // paint - only AppStyle's own CC_ScrollBar branch runs.
+        // QProxyStyle TAKES OWNERSHIP of the base style it is handed and deletes it,
+        // so the base must outlive nothing and the stack must not own it: a stack
+        // QCommonStyle here was freed twice (measured: "double free or corruption
+        // (out)" in AppStyle::~AppStyle, via QObject::~QObject deleting children).
+        QCommonStyle* baseStyle = new QCommonStyle;
+        gui::AppStyle appStyle(baseStyle);
+        QScrollBar bar;
+        const theme::Colors& colors = theme::Colors::current();
+        struct PaintCase {
+            const char* what;
+            QSize lane;
+            int maximum;
+            int pageStep;
+            int value;
+        };
+        const PaintCase paintCases[] = {
+            { "horizontal", QSize(200, kLaneThickness), 100, 30, 10 },
+            { "vertical", QSize(kLaneThickness, 200), 100, 30, 10 },
+            { "horizontal zero travel", QSize(200, kLaneThickness), 100, 100, 0 },
+            { "vertical window at the end", QSize(kLaneThickness, 200), 100, 25, 75 },
+        };
+        for (const PaintCase& pc : paintCases) {
+            const Qt::Orientation orientation =
+                pc.lane.height() > pc.lane.width() ? Qt::Vertical : Qt::Horizontal;
+            const bool horizontal = orientation == Qt::Horizontal;
+            bar.setOrientation(orientation);
+            bar.resize(pc.lane);
+            bar.setRange(0, pc.maximum);
+            bar.setPageStep(pc.pageStep);
+            bar.setValue(pc.value);
+
+            const QRect lane(QPoint(0, 0), pc.lane);
+            QRect slider;
+            const QImage image = paintAppScrollBar(appStyle, bar, lane, slider);
+            const Pill expected = pill(lane, slider, orientation);
+            const QRect rect = expected.rect;
+
+            // No ink anywhere but inside the shared rect...
+            int inked = 0;
+            int outside = 0;
+            for (int y = 0; y < image.height(); ++y) {
+                for (int x = 0; x < image.width(); ++x) {
+                    if (qAlpha(image.pixel(x, y)) == 0)
+                        continue;
+                    ++inked;
+                    if (!rect.contains(x, y))
+                        ++outside;
+                }
+            }
+            // ...the band and the span, read through the pill's MIDDLE (its straight
+            // section, where coverage is full, so the extent is unambiguous)...
+            const QRect alongProbe = horizontal ? QRect(rect.left(), rect.center().y(), rect.width(), 1)
+                                                : QRect(rect.center().x(), rect.top(), 1, rect.height());
+            const QRect bandProbe = horizontal ? QRect(rect.center().x(), rect.top(), 1, rect.height())
+                                               : QRect(rect.left(), rect.center().y(), rect.width(), 1);
+            const auto inkedAt = [&image](int x, int y) { return qAlpha(image.pixel(x, y)) > 0; };
+            const Span along = pixelSpan(image, alongProbe, horizontal, inkedAt);
+            const Span band = pixelSpan(image, bandProbe, !horizontal, inkedAt);
+            // ...and the CAPS: the opaque token stops one radius short at each end of
+            // the run (a square-capped rect would run to the rect's edges, and a
+            // different rounding would stop somewhere else).
+            const auto tokenAt = [&image, &colors](int x, int y) {
+                const QRgb p = image.pixel(x, y);
+                return qAlpha(p) == 255 && std::abs(qRed(p) - colors.outline.red()) <= 1
+                    && std::abs(qGreen(p) - colors.outline.green()) <= 1
+                    && std::abs(qBlue(p) - colors.outline.blue()) <= 1;
+            };
+            const Span tokenAlong = pixelSpan(image, alongProbe, horizontal, tokenAt);
+
+            const int alongLo = horizontal ? rect.left() : rect.top();
+            const int alongHi = horizontal ? rect.right() : rect.bottom();
+            const int bandLo = horizontal ? rect.top() : rect.left();
+            const int bandHi = horizontal ? rect.bottom() : rect.right();
+            std::printf(
+                "[17] appstyle %s: lane(%d,%d %dx%d) slider(%d,%d %dx%d) -> pill(%d,%d %dx%d) r%d  inked=%d"
+                " outside=%d  span=%d..%d band=%d..%d token=%d..%d  (expected span %d..%d, band %d..%d,"
+                " token %d..%d)\n",
+                pc.what, lane.left(), lane.top(), lane.width(), lane.height(), slider.left(), slider.top(),
+                slider.width(), slider.height(), rect.left(), rect.top(), rect.width(), rect.height(),
+                expected.radius, inked, outside, along.lo, along.hi, band.lo, band.hi, tokenAlong.lo,
+                tokenAlong.hi, alongLo, alongHi, bandLo, bandHi, alongLo + kPillRadius, alongHi - kPillRadius
+            );
+            CHECK(inked > 0);
+            CHECK(outside == 0);
+            CHECK(expected.radius == kPillRadius);
+            CHECK((horizontal ? rect.height() : rect.width()) == kPillThickness);
+            CHECK(along.lo == alongLo && along.hi == alongHi);
+            CHECK(band.lo == bandLo && band.hi == bandHi);
+            // The EXACT token run stops one pixel short of the radius at each cap: the
+            // cap's last pixel is an antialiased blend, not the token, so the run of
+            // exact-token pixels is [lo + radius - 1, hi - radius + 1] (measured on all
+            // four cases: 27..64 for a pill 26..65 at radius 2). The full SPAN above is
+            // still asserted exactly - the ink reaches the pill's own edges.
+            CHECK(tokenAlong.lo >= alongLo + kPillRadius - 1 && tokenAlong.lo <= alongLo + kPillRadius);
+            CHECK(tokenAlong.hi <= alongHi - kPillRadius + 1 && tokenAlong.hi >= alongHi - kPillRadius);
+        }
+
+        // --- THE PANEL'S PUBLISHED RECTS ---
+        // The model publishes Scaler::scrollBars' lanes and runs (hTrack/hThumb,
+        // vTrack/vThumb) and the drawing layer paints scrollBar::pill of them. What the
+        // model can be held to here is the geometry: the app's 4px band, centred in a
+        // 12px lane, spanning its run and inside it - at the shipping panel size and at
+        // a short one.
+        const QSize panelSizes[] = { QSize(800, 600), QSize(320, 200) };
+        for (const QSize panelSize : panelSizes) {
+            ctrl::graph::Scaler panelScale;
+            panelScale.setRect(QRect(QPoint(0, 0), panelSize));
+            const ctrl::graph::Scaler::ScrollBars bars = panelScale.scrollBars(0.0, 100.0, -10.0f, 10.0f);
+            const Pill hPill = pill(bars.hTrack, bars.hThumb, Qt::Horizontal);
+            const Pill vPill = pill(bars.vTrack, bars.vThumb, Qt::Vertical);
+            std::printf(
+                "[17] published panel %dx%d: hTrack(%d,%d %dx%d) hThumb(%d,%d %dx%d) -> hPill(%d,%d %dx%d)"
+                "  vTrack(%d,%d %dx%d) vThumb(%d,%d %dx%d) -> vPill(%d,%d %dx%d)\n", panelSize.width(),
+                panelSize.height(), bars.hTrack.left(), bars.hTrack.top(), bars.hTrack.width(),
+                bars.hTrack.height(), bars.hThumb.left(), bars.hThumb.top(), bars.hThumb.width(),
+                bars.hThumb.height(), hPill.rect.left(), hPill.rect.top(), hPill.rect.width(),
+                hPill.rect.height(), bars.vTrack.left(), bars.vTrack.top(), bars.vTrack.width(),
+                bars.vTrack.height(), bars.vThumb.left(), bars.vThumb.top(), bars.vThumb.width(),
+                bars.vThumb.height(), vPill.rect.left(), vPill.rect.top(), vPill.rect.width(),
+                vPill.rect.height()
+            );
+            CHECK(!bars.hTrack.isEmpty() && !bars.vTrack.isEmpty());
+            CHECK(bars.hTrack.height() == kLaneThickness && bars.vTrack.width() == kLaneThickness);
+            CHECK(hPill.rect.height() == kPillThickness && vPill.rect.width() == kPillThickness);
+            CHECK(hPill.radius == kPillRadius && vPill.radius == kPillRadius);
+            // Centred in the lane: the even (12px) lane's pill shares its centre row /
+            // column with the lane.
+            CHECK(hPill.rect.center().y() == bars.hTrack.center().y());
+            CHECK(vPill.rect.center().x() == bars.vTrack.center().x());
+            // Spanning the run exactly, and inside the lane.
+            CHECK(hPill.rect.left() == bars.hThumb.left() && hPill.rect.right() == bars.hThumb.right());
+            CHECK(vPill.rect.top() == bars.vThumb.top() && vPill.rect.bottom() == bars.vThumb.bottom());
+            CHECK(bars.hTrack.contains(hPill.rect) && bars.vTrack.contains(vPill.rect));
+        }
     }
 
     // -------------------------------------------------------------------------

@@ -1124,8 +1124,14 @@ add_executable(graph_panel_model graph_panel_model.cpp
     ../src/gui/theme/Graph.cpp
     # The model now reaches the timeline renderer's theme through the shared easing
     # rewrite path; theme::TimeLine is a leaf, so it is linked rather than stubbed.
-    ../src/gui/theme/TimeLine.cpp)
-target_include_directories(graph_panel_model PRIVATE ..)
+    ../src/gui/theme/TimeLine.cpp
+    # Section 17 of the test paints the APPLICATION'S scroll bar: gui::AppStyle's
+    # CC_ScrollBar into a transparent QImage, so the pill the style draws is measured
+    # against the same ctrl::graph::scrollBar::pill the panel's lanes draw from.
+    # AppStyle.cpp names theme::iconDir() for the tree branch caret, hence Icons.cpp.
+    ../src/gui/AppStyle.cpp
+    ../src/gui/theme/Icons.cpp)
+target_include_directories(graph_panel_model PRIVATE .. ../src/gui)
 target_compile_definitions(graph_panel_model PRIVATE
     AE_MAJOR_VERSION=1
     AE_MINOR_VERSION=7

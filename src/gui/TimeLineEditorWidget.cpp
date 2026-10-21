@@ -10,7 +10,6 @@
 #include "core/BlurKey.h"
 #include "core/TimeFormat.h"
 #include "cmnd/BasicCommands.h"
-#include "cmnd/ScopedMacro.h"
 #include "ctrl/CmndName.h"
 #include "ctrl/TimeLineUtil.h"
 #include "ctrl/graph/graph_Curve.h"
@@ -250,6 +249,9 @@ TimeLineEditorWidget::TimeLineEditorWidget(ViaPoint& aViaPoint, QWidget* aParent
 }
 
 void TimeLineEditorWidget::setProject(core::Project* aProject) {
+    // A session names params and a command stack that belong to the old document;
+    // dropping its handles here keeps a step after the swap from rewriting them.
+    endEasingEdit();
     if (mProject) {
         mProject->onTimeLineModified.disconnect(mTimeLineSlot);
         mProject->onTreeRestructured.disconnect(mTreeRestructSlot);
@@ -978,37 +980,18 @@ bool TimeLineEditorWidget::stepEasingEdit(const util::Easing::Param& aDraft) {
     // the history, so close the session and let this step open a fresh edit - the
     // app's "later commit opens a new edit" rule for a drag that outlived its
     // command.
-    if (!mEasingEdit.isEmpty() && mEasingEdit.first().command
-        && !mProject->commandStack().isModifiable(mEasingEdit.last().command)) {
+    if (!mEasingEdit.isEmpty() && mEasingEdit.first().command && !mWrite.continues()) {
         const QString name = mEasingEditName;
         endEasingEdit();
         beginEasingEdit(name);
     }
 
     const bool firstStep = mEasingEdit.isEmpty() || !mEasingEdit.first().command;
-    const auto targetsOf = [this](core::TimeLineEvent& aEvent) {
-        // ONE notification per KEY: the components of one key are one change to its
-        // timeline (the same shape ctrl::TimeLineEditor::pushEasingWrites builds).
-        for (const EasingEditTarget& edit : mEasingEdit) {
-            if (!edit.node)
-                continue;
-            bool named = false;
-            for (const core::TimeLineEvent::Target& pushed : aEvent.targets()) {
-                if (pushed.node == edit.node && pushed.pos.type() == edit.type
-                    && pushed.pos.index() == edit.frame.get()) {
-                    named = true;
-                    break;
-                }
-            }
-            if (!named)
-                aEvent.pushTarget(*edit.node, edit.type, edit.frame.get());
-        }
-    };
 
     if (firstStep) {
         bool changes = false;
         for (const EasingEditTarget& edit : mEasingEdit) {
-            if (edit.param && *edit.param != aDraft) {
+            if (edit.param && edit.node && *edit.param != aDraft) {
                 changes = true;
                 break;
             }
@@ -1016,46 +999,50 @@ bool TimeLineEditorWidget::stepEasingEdit(const util::Easing::Param& aDraft) {
         if (!changes)
             return false; // a press that has not moved: record nothing
 
-        cmnd::ScopedMacro macro(mProject->commandStack(), mEasingEditName);
-        auto* notifier = new ctrl::TimeLineUtil::Notifier(*mProject);
-        notifier->event().setType(core::TimeLineEvent::Type_ChangeKeyValue);
-        targetsOf(notifier->event());
-        macro.grabListener(notifier);
+        // ONE notification per KEY: the components of one key are one change to
+        // its timeline. These targets are established for the WHOLE session by
+        // RewriteAnnounce.begin() - later steps announce them and cannot change
+        // them.
+        core::TimeLineEvent targets;
+        targets.setType(core::TimeLineEvent::Type_ChangeKeyValue);
+        for (const EasingEditTarget& edit : mEasingEdit) {
+            if (edit.node)
+                targets.pushTarget(*edit.node, edit.type, edit.frame.get());
+        }
 
         // Every param gets a command: the ones this step leaves alone start at the
         // value they already hold, so a later step can still rewrite them into the
         // SAME command. A command reads its undo value when it first runs, so the
-        // pre-gesture state is what undo restores.
-        for (EasingEditTarget& edit : mEasingEdit) {
-            if (!edit.param || !edit.node)
-                continue;
-            const util::Easing::Param next = (*edit.param == aDraft) ? *edit.param : aDraft;
-            auto* command = new cmnd::ModifiableAssign<util::Easing::Param>(edit.param, next);
-            mProject->commandStack().push(command);
-            edit.command = command;
-        }
+        // pre-gesture state is what undo restores. RewriteAnnounce opens the one
+        // macro, grabs the one notifier and announces this first step.
+        mWrite.begin(*mProject, mProject->commandStack(), mEasingEditName, targets, [this, &aDraft] {
+            cmnd::Base* marker = nullptr;
+            for (EasingEditTarget& edit : mEasingEdit) {
+                if (!edit.param || !edit.node)
+                    continue;
+                const util::Easing::Param next = (*edit.param == aDraft) ? *edit.param : aDraft;
+                auto* command = new cmnd::ModifiableAssign<util::Easing::Param>(edit.param, next);
+                mProject->commandStack().push(command);
+                edit.command = command;
+                marker = command;
+            }
+            return marker;
+        });
         return true; // the macro's own notifier announced this first step
     }
 
-    // REWRITE the one command with this step's value. The write goes straight
-    // through the stack, so the keys are announced again here - nothing else would
-    // tell the timeline, the chip and the graph (the graph's handle drag
-    // re-announces its rewritten command for the same reason).
-    bool changes = false;
-    for (EasingEditTarget& edit : mEasingEdit) {
-        if (!edit.command || !edit.param || *edit.param == aDraft)
-            continue;
-        edit.command->modifyValue(aDraft);
-        changes = true;
-    }
-    if (!changes)
-        return false;
-
-    core::TimeLineEvent event;
-    event.setType(core::TimeLineEvent::Type_ChangeKeyValue);
-    targetsOf(event);
-    mProject->onTimeLineModified(event, false);
-    return true;
+    // REWRITE the commands with this step's value and announce the keys they
+    // changed - RewriteAnnounce owns both halves, in that order and exactly once.
+    return mWrite.step([this, &aDraft] {
+        bool changes = false;
+        for (EasingEditTarget& edit : mEasingEdit) {
+            if (!edit.command || !edit.param || *edit.param == aDraft)
+                continue;
+            edit.command->modifyValue(aDraft);
+            changes = true;
+        }
+        return changes;
+    });
 }
 
 void TimeLineEditorWidget::endEasingEdit() {
@@ -1064,6 +1051,7 @@ void TimeLineEditorWidget::endEasingEdit() {
     mEasingEdit.clear();
     mEasingEditName.clear();
     mEasingEditOpen = false;
+    mWrite.end();
 }
 
 bool targetsAreSeparated(QList<core::TimeLineEvent::Target> &targets){

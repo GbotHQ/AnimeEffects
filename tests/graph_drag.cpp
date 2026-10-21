@@ -892,13 +892,19 @@ int main(int argc, char** argv) {
     CHECK(editor.scale().valueMax() >= 90.0f);
 
     // Every change the graph announces, so "a press that commits nothing" is
-    // observable from outside the editor too and not only through the stack.
+    // observable from outside the editor too and not only through the stack. The
+    // last event's targets are kept: a step of a rewritten edit must announce the
+    // keys it changed, exactly once (TimeLineUtil::RewriteAnnounce's contract).
     int changeEvents = 0;
-    project.onTimeLineModified.connect([&changeEvents](core::TimeLineEvent& aEvent, bool aUndo) {
-        if (!aUndo && aEvent.type() == core::TimeLineEvent::Type_ChangeKeyValue) {
-            ++changeEvents;
+    QVector<core::TimeLineEvent::Target> lastChangeTargets;
+    project.onTimeLineModified.connect(
+        [&changeEvents, &lastChangeTargets](core::TimeLineEvent& aEvent, bool aUndo) {
+            if (!aUndo && aEvent.type() == core::TimeLineEvent::Type_ChangeKeyValue) {
+                ++changeEvents;
+                lastChangeTargets = aEvent.targets();
+            }
         }
-    });
+    );
 
     cmnd::Stack& stack = project.commandStack();
 
@@ -1808,18 +1814,38 @@ int main(int argc, char** argv) {
     const QPoint step2 = grab + QPoint(8, -8);
     const QPoint step3 = grab + QPoint(12, -12); // right and up: a higher value
 
+    // Each move is a REWRITE of the command the first one pushed, and each rewrite
+    // announces itself exactly once, naming the key it changed. The count is what
+    // catches a rewrite that forgot the announcement (the stale-chip defect) and an
+    // announcement that fires twice per step.
+    int announced = changeEvents;
     CHECK(sendMove(editor, camera, drag, step1));
     CHECK(editor.ownsCursor(camera, drag));
     CHECK(editor.ownsCursor(camera, outside));
     CHECK(key0->data().easing(0) != kAuthored); // the FIRST move is what commits
+    CHECK(changeEvents == announced + 1);       // one announcement for this step
+    CHECK(lastChangeTargets.size() == 1);        // ...naming one key
+    CHECK(lastChangeTargets[0].node == &node);
+    CHECK(lastChangeTargets[0].pos.type() == core::TimeKeyType_Rotate);
+    CHECK(lastChangeTargets[0].pos.index() == 0);
 
+    announced = changeEvents;
     CHECK(sendMove(editor, camera, drag, step2));
     CHECK(editor.ownsCursor(camera, drag));
     CHECK(editor.ownsCursor(camera, outside));
+    CHECK(changeEvents == announced + 1); // one announcement, not one per command
+    CHECK(lastChangeTargets.size() == 1);
+    CHECK(lastChangeTargets[0].node == &node);
+    CHECK(lastChangeTargets[0].pos.index() == 0);
 
+    announced = changeEvents;
     CHECK(sendMove(editor, camera, drag, step3));
     CHECK(editor.ownsCursor(camera, drag));
     CHECK(editor.ownsCursor(camera, outside));
+    CHECK(changeEvents == announced + 1);
+    CHECK(lastChangeTargets.size() == 1);
+    CHECK(lastChangeTargets[0].node == &node);
+    CHECK(lastChangeTargets[0].pos.index() == 0);
 
     CHECK(key1->data().easing(0) == kOtherKeyEasing); // the other key's param is untouched
     CHECK(sendRelease(editor, camera, drag, step3));
@@ -6408,6 +6434,122 @@ int main(int argc, char** argv) {
         }
 
         editor.setTargets({}); // drop the target before its owner dies
+    }
+
+    // --- 28: RewriteAnnounce IS THE ONE LIVE-WRITE PATH. A gesture that keeps one
+    // command and rewrites it per step must announce each rewritten step exactly
+    // once, with the targets the FIRST step's notifier established - a later step
+    // cannot add, drop or repeat a target. The graph's handle drag above is one
+    // such gesture; this drives the helper itself, on the smallest possible
+    // commands, so a third caller has a contract to copy instead of a comment to
+    // imitate: a bare modifyValue() followed by onTimeLineModified() is exactly
+    // the duplication the helper deletes.
+    {
+        project.commandStack().clear();
+
+        core::TestNode writeNode;
+        core::RotateKey* w0 = new core::RotateKey();
+        w0->setRotate(0.0f);
+        setup.push(writeNode.timeLine()->createPusher(core::TimeKeyType_Rotate, 0, w0));
+        core::RotateKey* w1 = new core::RotateKey();
+        w1->setRotate(10.0f);
+        setup.push(writeNode.timeLine()->createPusher(core::TimeKeyType_Rotate, 24, w1));
+
+        // What the gesture edits. This section is about the write/announce
+        // pairing, not about what a command writes.
+        util::Easing::Param values[2] = { w0->data().easing(0), w1->data().easing(0) };
+
+        int announcements = 0;
+        QVector<core::TimeLineEvent::Target> targets;
+        const auto writeSlot = project.onTimeLineModified.connect(
+            [&announcements, &targets](core::TimeLineEvent& aEvent, bool aUndo) {
+                if (aUndo || aEvent.type() != core::TimeLineEvent::Type_ChangeKeyValue)
+                    return;
+                ++announcements;
+                targets = aEvent.targets();
+            }
+        );
+
+        // begin(): ONE macro, ONE notifier, and the targets it establishes. The
+        // duplicate entry collapses: the components of one key are one change to
+        // its timeline.
+        core::TimeLineEvent written;
+        written.setType(core::TimeLineEvent::Type_ChangeKeyValue);
+        written.pushTarget(writeNode, core::TimeKeyType_Rotate, 0);
+        written.pushTarget(writeNode, core::TimeKeyType_Rotate, 24);
+        written.pushTarget(writeNode, core::TimeKeyType_Rotate, 0);
+
+        cmnd::ModifiableAssign<util::Easing::Param>* c0 = nullptr;
+        cmnd::ModifiableAssign<util::Easing::Param>* c1 = nullptr;
+        ctrl::TimeLineUtil::RewriteAnnounce write;
+        CHECK(!write.continues()); // no step has been committed yet
+        CHECK(write.begin(project, project.commandStack(), QStringLiteral("test easing write"), written, [&] {
+            c0 = new cmnd::ModifiableAssign<util::Easing::Param>(&values[0], values[0]);
+            project.commandStack().push(c0);
+            c1 = new cmnd::ModifiableAssign<util::Easing::Param>(&values[1], values[1]);
+            project.commandStack().push(c1);
+            return static_cast<cmnd::Base*>(c1);
+        }));
+        CHECK(c0 && c1);
+        CHECK(write.command() == c1); // the last pushed command is the stack's modifiable one
+        CHECK(write.commandAs<cmnd::ModifiableAssign<util::Easing::Param>>() == c1);
+        CHECK(write.continues());
+        CHECK(announcements == 1);  // the first step: the macro's notifier, once
+        CHECK(targets.size() == 2); // and the duplicate collapsed
+        CHECK(targets[0].node == &writeNode && targets[0].pos.index() == 0);
+        CHECK(targets[1].node == &writeNode && targets[1].pos.index() == 24);
+
+        // A step rewrites and announces EXACTLY once, with those same targets.
+        CHECK(write.step([&] {
+            util::Easing::Param next = values[0];
+            next.weight = 0.25f;
+            c0->modifyValue(next);
+            c1->modifyValue(next);
+            return true;
+        }));
+        CHECK(announcements == 2);
+        CHECK(targets.size() == 2);
+        CHECK(targets[0].pos.index() == 0 && targets[1].pos.index() == 24);
+        CHECK(values[0].weight == 0.25f && values[1].weight == 0.25f);
+
+        // A step that rewrote nothing announces nothing.
+        CHECK(!write.step([&] { return false; }));
+        CHECK(announcements == 2);
+
+        // ONE undo entry for the whole gesture: every rewrite went into the
+        // commands the first step pushed, so an undo restores the pre-gesture
+        // values and a second undo finds nothing.
+        bool undoneWrite = false;
+        CHECK(!project.commandStack().undo(&undoneWrite).isEmpty());
+        CHECK(undoneWrite);
+        CHECK(values[0] == w0->data().easing(0)); // the authored values are back
+        CHECK(values[1] == w1->data().easing(0));
+        CHECK(!write.continues()); // the undo dropped the modifiable link
+
+        // A stale step refuses AND announces nothing; the caller begins a new edit.
+        CHECK(!write.step([&] { return true; }));
+        CHECK(announcements == 2);
+
+        core::TimeLineEvent second;
+        second.setType(core::TimeLineEvent::Type_ChangeKeyValue);
+        second.pushTarget(writeNode, core::TimeKeyType_Rotate, 24);
+        CHECK(write.begin(project, project.commandStack(), QStringLiteral("test easing write"), second, [&] {
+            c1 = new cmnd::ModifiableAssign<util::Easing::Param>(&values[1], values[1]);
+            project.commandStack().push(c1);
+            return static_cast<cmnd::Base*>(c1);
+        }));
+        CHECK(announcements == 3); // a NEW session announces its own first step once
+        CHECK(targets.size() == 1 && targets[0].pos.index() == 24);
+
+        write.end();
+        CHECK(!write.continues());
+        project.onTimeLineModified.disconnect(writeSlot);
+
+        std::printf(
+            "[28] RewriteAnnounce: first step announced once with its (deduplicated) targets, every "
+            "rewritten step announced exactly once with the same targets, a no-op step announced "
+            "nothing, one undo restored the whole gesture, and a step after the undo refused\n"
+        );
     }
 
     std::printf(
