@@ -805,22 +805,24 @@ public:
     // image channel rather than recording a change nothing can see.
     bool setSelectedKeysEasing(util::Easing::Type aType);
 
-    // THE AUTO PRESET APPLIES TO SEGMENTS, not to the selected keys alone.
+    // THE AUTO PRESET APPLIES TO THE SEGMENT AFTER THE SELECTED KEY.
     // Automatic handles are per-side MODES, not an easing type, and a tangent
-    // PAIR belongs to a segment: a key's OUTGOING side is the start tangent of the
-    // segment leaving it, its INCOMING side the end tangent of the segment
-    // arriving at it. So applying Auto to key K writes, in ONE undo step:
-    //   * K's own two sides (Type_Custom + kAutoPresetHandleMode on both);
-    //   * the PREVIOUS key's outgoing side AND TYPE - that param IS the arriving
-    //     segment's curve, so without the type change the incoming side would be
-    //     inert and the segment only half-automatic;
-    //   * the NEXT key's incoming side (its type is left alone: it shapes the
+    // PAIR belongs to one segment: its curve is the FROM key's param, its start
+    // tangent that key's OUTGOING side and its end tangent the TO key's INCOMING
+    // side. So applying Auto to key K makes exactly K -> next automatic and
+    // writes, in ONE undo step:
+    //   * K's own param: Type_Custom + kAutoPresetHandleMode on its OUTGOING
+    //     side (the type is required - a segment's curve is its FROM key's param,
+    //     so on any other type the outgoing mode would be inert);
+    //   * the NEXT key's INCOMING side (its type is left alone: it shapes the
     //     segment after it, which this action does not own).
-    // Both adjacent segments are therefore fully automatic, which is what the
-    // drawing publishes and what playback evaluates. A multi-key selection applies
-    // the same rule to every selected key, and a param two neighbours both name is
-    // written once. Only the type and the two modes are the preset's - range,
-    // weight and the stored cubic ride along untouched.
+    // The segment ARRIVING at K is deliberately untouched: neither the previous
+    // key's param nor K's INCOMING side is written. A LAST key has no segment
+    // leaving it, so the action is a no-op for it (not even the type is written).
+    // A multi-key selection applies the same rule to every selected key, and a
+    // param two neighbours both name is written once. Only the type and the two
+    // modes are the preset's - range, weight and the stored cubic ride along
+    // untouched.
     // The picker's Auto tile and the header's quick-easing Auto button write the
     // same rule through the timeline editor
     // (ctrl::TimeLineEditor::assignSelectionAutoHandles), so the surfaces cannot
@@ -884,8 +886,9 @@ public:
     void clearFocus();
 
     // The document's current frame, for views that draw the playhead. -1 when no
-    // project is set (core frame numbers start at 1, so -1 cannot be a real
-    // frame).
+    // project is set. That sentinel is NOT a frame bound: a project's frames may
+    // be negative (a range can start before 0), so a caller that must tell "frame
+    // -1" from "no project" asks hasProject().
     core::Frame currentFrame() const;
 
     // THE FRAME-NUMBER FORMAT: the setting the timeline's editor reads
@@ -983,6 +986,12 @@ public:
     // currentTimeInfo), owned by the timeline widget, so the host hands this editor
     // the timeline's own setter. With no delegate the band is not claimed at all -
     // nothing here invents a second frame authority.
+    //
+    // THE FRAME IS WHATEVER THE POINTER IS OVER, INCLUDING NEGATIVE FRAMES: the
+    // mapping (graph::Scaler::frameAt) is the unbounded inverse of the pixel
+    // mapping, exactly as ctrl::time::Scaler::frame is for the timeline's own
+    // ruler, and the setter it reaches (ctrl::TimeLineEditor::setFrame) clamps
+    // nothing. A project may start before 0, so the band must reach there too.
     using FrameSeekFunc = std::function<void(core::Frame aFrame)>;
     void setFrameSeekDelegate(FrameSeekFunc aSeek) { mSeekFrame = std::move(aSeek); }
 
@@ -1002,6 +1011,11 @@ public:
     void clearFrameAxis();
     // True while a timeline owns the frame axis.
     bool hasTimelineFrameAxis() const { return mFrameWindowShared; }
+
+    // Whether a document is attached. The frame numbers are the document's, and
+    // negative frames are legal (a key may sit before 0), so currentFrame()'s
+    // sentinel alone cannot tell "frame -1" from "no project" - this can.
+    bool hasProject() const { return mProject != nullptr; }
 
     // The project's own rule for the frames OUTSIDE the keys (see graph::Curve::setLoop): a looping
     // project continues the easing from the last key back to the first, wrapped by the range's span.
@@ -1204,6 +1218,15 @@ private:
     // content (shownValueExtent), so the two cannot drift.
     static bool valueExtentOf(const QVector<Entry>& aItems, float& aLo, float& aHi);
 
+    // The nearest target under aPos. Every key inside kKeyHitRadius and every
+    // handle inside kHandleHitRadius is a candidate; the winner is the smallest
+    // distance NORMALIZED by that candidate's own radius (distance / radius,
+    // because the two rings differ), and a KEY wins an exact tie. A handle is
+    // therefore never privileged: it takes a press only when it is relatively
+    // nearer than every key under the pointer. The comparison itself is
+    // graph::pickTarget (ctrl/graph/graph_Geometry.h), the ONE rule the drawing
+    // layer's hover highlight and the host's hover-repaint scheduling ask too (via
+    // gui::panelPickAt), so the ink and the press cannot name different targets.
     Hit hitTest(const QVector<Entry>& aItems, const graph::Scaler& aScale, const QPoint& aPos) const;
 
     // The entry whose curve band holds aPos, or -1 when none does. The band is

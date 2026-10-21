@@ -62,13 +62,14 @@
 //     x IS the third/two thirds of the segment's span and whose dot is the same
 //     mapping (ctrl::graph::handlePointAt). A segment's curve is its FROM key's
 //     param, so an analytic segment publishes nothing at all (a derived incoming
-//     mode on the TO key is inert there). The Auto preset applies to SEGMENTS:
-//     applying it to a key writes the previous key's outgoing side and type, the
-//     key's two sides and the next key's incoming side, so BOTH adjacent
-//     segments publish two ghosts - all in one undo step. The flags are gated
-//     against EVALUATION, not trusted: for every side of a Custom segment the
-//     stored control point is perturbed and the segment is re-evaluated, and a
-//     derived side must ignore it while a stored side moves.
+//     mode on the TO key is inert there). The Auto preset applies to the segment
+//     AFTER the key: applying it to a key writes that key's type and outgoing
+//     side plus the next key's incoming side, leaving the previous key's param
+//     byte-identical and the arriving segment with no ghost - all in one undo
+//     step. The flags are gated against EVALUATION, not trusted: for every side
+//     of a Custom segment the stored control point is perturbed and the segment
+//     is re-evaluated, and a derived side must ignore it while a stored side
+//     moves.
 //  11 the ruler band as a section ABOVE the plot (its own reserved rows, the
 //     numbers inside it, the playhead crossing from its pill column into the
 //     plot), the occluded top that can only hide it, and the live marquee
@@ -1704,6 +1705,56 @@ int main(int argc, char** argv) {
         }
         std::printf("[7] frame labels under the pill=%d\n", underPill);
         CHECK(underPill == 0);
+
+        // A NEGATIVE FRAME IS A REAL FRAME, not the no-project sentinel. A
+        // project's range may start before 0 and the ruler seek reaches there
+        // exactly as the timeline's own does, so the model must place the
+        // playhead at the pointer's negative frame - its gate is "a project is
+        // attached", never the frame's sign.
+        //
+        // AN EDITOR OF ITS OWN, as the 1-digit-label fixture below does: this
+        // window is deliberately biased to the negative side, and the shared
+        // `editor` is the fixture every other block in this file measures through.
+        // Pushing a shared window into it (and then clearing it) would leave its
+        // ladder-seeded axis different from the test's `scale` oracle, so the
+        // window never touches `editor` at all.
+        {
+            ctrl::GraphEditor negativeEditor(project, logger);
+            negativeEditor.scale().setRect(panel);
+            negativeEditor.setTargets({ &nodeA, &nodeB });
+            negativeEditor.setFrameWindow(-12.0, 12.0); // a window that really spans frames before 0
+
+            animator.setFrame(core::Frame(-3));
+            ctrl::graph::Scaler negativeScale = negativeEditor.scale();
+            const gui::GraphPanelModel negative =
+                gui::buildGraphPanelModel(negativeEditor, viewport, palette);
+            const core::TimeFormat negativeFormat(negativeEditor.frameRange(), negativeEditor.fps());
+            const QString negativeText = negativeFormat.frameToString(-3, negativeEditor.timeFormatType());
+            const int negativeX = negativeScale.pixelX(core::Frame(-3));
+            std::printf("[7] negative frame: currentFrame()=%d  scale.pixelX(-3)=%d  playheadX=%d  "
+                        "playheadText=\"%s\"  pill=%dx%d\n",
+                        negativeEditor.currentFrame().get(), negativeX, negative.playheadX,
+                        qUtf8Printable(negative.playheadText), negative.playheadPill.width(),
+                        negative.playheadPill.height());
+            CHECK(negativeEditor.currentFrame().get() == -3);
+            CHECK(negative.playheadX == negativeX);
+            CHECK(negative.playheadX > 0); // inside the panel: this is a PLACED playhead
+            CHECK(negative.playheadText == negativeText);
+            CHECK(!negative.playheadText.isEmpty());
+            CHECK(!negative.playheadPill.isEmpty());
+            CHECK(negative.playheadLineTop >= negative.rulerBand.top());
+
+            // ...and it MOVES with the frame, the seek's whole contract: a
+            // further-left frame is placed further left, still outside the
+            // sentinel's reach.
+            animator.setFrame(core::Frame(-8));
+            const gui::GraphPanelModel further =
+                gui::buildGraphPanelModel(negativeEditor, viewport, palette);
+            CHECK(further.playheadX == negativeScale.pixelX(core::Frame(-8)));
+            CHECK(further.playheadX < negative.playheadX);
+
+            animator.setFrame(core::Frame(37)); // the document's frame is shared state
+        }
 
         // No project: no frame to place, no pill, no text.
         editor.setProject(nullptr);
@@ -3396,22 +3447,20 @@ int main(int argc, char** argv) {
     }
 
     // -------------------------------------------------------------------------
-    // THE AUTO PRESET APPLIES TO SEGMENTS.
+    // THE AUTO PRESET APPLIES TO THE SEGMENT AFTER THE SELECTED KEY.
     //
-    // A tangent PAIR belongs to a segment, so a key's OUTGOING side is the start
-    // tangent of the segment leaving it and its INCOMING side the end tangent of
-    // the segment arriving at it. Applying Auto to the MIDDLE key of a three-key
-    // channel therefore writes THREE params in ONE undo step:
-    //   * the first key's outgoing side AND TYPE (its param IS the arriving
-    //     segment's curve; without the type change the mode would be inert),
-    //   * the middle key's both sides,
-    //   * the last key's incoming side (its type is left alone: it shapes the
+    // A tangent PAIR belongs to one segment, so a key's OUTGOING side is the
+    // start tangent of the segment leaving it and the TO key's INCOMING side its
+    // end tangent. Applying Auto to the MIDDLE key of a three-key channel
+    // therefore writes TWO params in ONE undo step:
+    //   * the middle key's own TYPE (Custom, so its outgoing mode is consulted)
+    //     and its OUTGOING side;
+    //   * the last key's INCOMING side (its type is left alone: it shapes the
     //     segment after it, which the action does not own).
-    // Both adjacent segments are then fully automatic - which is what the model
-    // publishes (two ghosts on each) and what playback evaluates. The previous
-    // defect is the two halves stated by the user: only the selected key was
-    // written, so the arriving segment stayed half-automatic, while the drawing
-    // marked a side as automatic that no curve derived.
+    // The PREVIOUS key's param is BYTE-IDENTICAL afterwards, and the middle key's
+    // INCOMING side is untouched: both belong to the segment ARRIVING at the
+    // middle key, which this action does not touch. So the segment AFTER the key
+    // derives both sides and the segment BEFORE it derives neither.
     {
         editor.setTargets({ &nodeC });
         editor.clearFocus(); // no-focus ink: every row publishes its pairs
@@ -3428,37 +3477,41 @@ int main(int argc, char** argv) {
         const util::Easing::Param first = moveC0->data().easing(0);
         const util::Easing::Param middle = moveC1->data().easing(0);
         const util::Easing::Param last = moveC2->data().easing(0);
-        const bool preset = middle.type == util::Easing::Type_Custom
-            && middle.handleIn == util::Easing::kAutoPresetHandleMode
+        // The SELECTED key: type Custom and the OUTGOING side automatic. Its
+        // incoming side belongs to the arriving segment and is left exactly as it
+        // was, as are the stored cubic, range and weight.
+        const bool ownOutgoing = middle.type == util::Easing::Type_Custom
             && middle.handleOut == util::Easing::kAutoPresetHandleMode
-            && middle.handleIn != util::Easing::HandleMode_Auto
-            && middle.handleOut != util::Easing::HandleMode_Auto;
-        // The ARRIVING segment's start tangent: the first key becomes a Custom
-        // curve whose outgoing side is automatic. Its incoming side and stored
-        // cubic are not the preset's.
-        const bool prevOutgoing = first.type == util::Easing::Type_Custom
-            && first.handleOut == util::Easing::kAutoPresetHandleMode
-            && first.handleIn == firstBefore.handleIn
-            && first.cubicBezier == firstBefore.cubicBezier
-            && first.range == firstBefore.range;
+            && middle.handleOut != util::Easing::HandleMode_Auto
+            && middle.handleIn == middleBefore.handleIn
+            && middle.cubicBezier == middleBefore.cubicBezier
+            && middle.range == middleBefore.range
+            && middle.weight == middleBefore.weight;
+        // THE PREVIOUS KEY: not a single byte of its param moves.
+        const bool prevUntouched = first == firstBefore;
         // The LEAVING segment's end tangent: the last key's incoming side only.
         const bool nextIncoming = last.handleIn == util::Easing::kAutoPresetHandleMode
+            && last.handleIn != util::Easing::HandleMode_Auto
             && last.type == lastBefore.type
             && last.handleOut == lastBefore.handleOut
-            && last.cubicBezier == lastBefore.cubicBezier;
+            && last.cubicBezier == lastBefore.cubicBezier
+            && last.range == lastBefore.range
+            && last.weight == lastBefore.weight;
 
         const gui::GraphPanelModel autoModel = gui::buildGraphPanelModel(editor, viewport, palette);
         ctrl::graph::Scaler oracle = editor.scale();
         oracle.setRect(ctrl::GraphEditor::panelRect(viewport));
         ctrl::graph::Curve source(*nodeC.timeLine(), ctrl::graph::Channel(core::TimeKeyType_Move, 0));
-        const ctrl::graph::Curve::Segment firstSeg = source.segment(0);  // C0 -> C1
-        const ctrl::graph::Curve::Segment secondSeg = source.segment(1); // C1 -> C2
-        // The semantics, stated directly: BOTH sides of BOTH adjacent segments
-        // derive (the arriving segment's start tangent is C0's outgoing side).
-        const bool automatic = ctrl::graph::Curve::derivesHandle(firstSeg, 0)
-            && ctrl::graph::Curve::derivesHandle(firstSeg, 1)
-            && ctrl::graph::Curve::derivesHandle(secondSeg, 0)
+        const ctrl::graph::Curve::Segment firstSeg = source.segment(0);  // C0 -> C1, BEFORE the key
+        const ctrl::graph::Curve::Segment secondSeg = source.segment(1); // C1 -> C2, AFTER the key
+        // The semantics, stated directly: BOTH sides of the segment AFTER the key
+        // derive (its curve is the middle key's Custom param and its end tangent
+        // the last key's incoming mode), and NEITHER side of the segment BEFORE it
+        // does (that curve is still the first key's analytic param).
+        const bool afterAutomatic = ctrl::graph::Curve::derivesHandle(secondSeg, 0)
             && ctrl::graph::Curve::derivesHandle(secondSeg, 1);
+        const bool beforePlain = !ctrl::graph::Curve::derivesHandle(firstSeg, 0)
+            && !ctrl::graph::Curve::derivesHandle(firstSeg, 1);
 
         const gui::PanelCurve* curve = nullptr;
         for (const gui::PanelCurve& candidate : autoModel.curves) {
@@ -3470,41 +3523,41 @@ int main(int argc, char** argv) {
         }
 
         QStringList kinds;
-        bool bothSegmentsGhosted = curve != nullptr && curve->handles.size() == 4;
-        bool dotsOk = curve != nullptr && curve->handles.size() == 4;
-        QPointF firstPair[2];
+        // ONLY the segment after the key is Custom, so only ITS two sides are
+        // published - as ghosts (the arriving segment's param is analytic and
+        // exposes no tangent at all, which is why its pair is not published).
         QPointF secondPair[2];
-        const bool pairs = source.effectiveHandles(firstSeg, firstPair)
-            && source.effectiveHandles(secondSeg, secondPair);
+        const bool secondPairKnown = source.effectiveHandles(secondSeg, secondPair);
+        bool oneSegmentGhosted = curve != nullptr && curve->handles.size() == 2 && secondPairKnown;
+        bool dotsOk = curve != nullptr && curve->handles.size() == 2;
         if (curve) {
             for (const gui::PanelHandle& h : curve->handles) {
                 kinds << QStringLiteral("%1:%2:%3").arg(h.segment).arg(h.index)
                              .arg(h.ghost ? QStringLiteral("ghost") : QStringLiteral("stored"));
-                bothSegmentsGhosted = bothSegmentsGhosted && h.ghost;
-                if (h.segment == 0)
-                    dotsOk = dotsOk && h.dot == ctrl::graph::handlePointAt(oracle, firstSeg, firstPair[h.index]);
+                oneSegmentGhosted = oneSegmentGhosted && h.ghost && h.segment == 1;
                 if (h.segment == 1)
                     dotsOk = dotsOk && h.dot == ctrl::graph::handlePointAt(oracle, secondSeg, secondPair[h.index]);
             }
         }
-        const bool ok = acted && preset && prevOutgoing && nextIncoming && automatic && pairs
-            && bothSegmentsGhosted && dotsOk;
-        std::printf("[10d] Auto middle key: selected=%d acted=%d  own pair=AutoClamped:%d  "
-                    "prev outgoing=%d  next incoming=%d  both segments automatic=%d  handles=[%s]  "
-                    "both segments ghosted=%d  dots=%d -> %s\n",
-                    int(selected), int(acted), int(preset), int(prevOutgoing), int(nextIncoming),
-                    int(automatic), qUtf8Printable(kinds.join(QLatin1Char(','))),
-                    int(bothSegmentsGhosted), int(dotsOk), ok ? "OK" : "FAIL");
+        const bool ok = acted && ownOutgoing && prevUntouched && nextIncoming && afterAutomatic
+            && beforePlain && oneSegmentGhosted && dotsOk;
+        std::printf("[10d] Auto middle key: selected=%d acted=%d  own outgoing=AutoClamped:%d  "
+                    "prev untouched=%d  next incoming=%d  after segment automatic=%d  "
+                    "before segment plain=%d  handles=[%s]  one segment ghosted=%d  dots=%d -> %s\n",
+                    int(selected), int(acted), int(ownOutgoing), int(prevUntouched), int(nextIncoming),
+                    int(afterAutomatic), int(beforePlain), qUtf8Printable(kinds.join(QLatin1Char(','))),
+                    int(oneSegmentGhosted), int(dotsOk), ok ? "OK" : "FAIL");
         CHECK(ok);
 
-        // ONE UNDO, THREE PARAMS. The batch is one macro: a single undo must put
-        // every param back (an action that pushed one command per key would only
-        // revert the last write).
+        // ONE UNDO, THE WHOLE WRITE SET. The batch is one macro: a single undo
+        // must put every param back (an action that pushed one command per param
+        // would only revert the last write).
         project.commandStack().undo();
         const bool undone = moveC0->data().easing(0) == firstBefore
             && moveC1->data().easing(0) == middleBefore
             && moveC2->data().easing(0) == lastBefore;
-        std::printf("[10d] one undo restores all three params=%d\n", int(undone));
+        std::printf("[10d] one undo restores the written params (and leaves the untouched one equal)=%d\n",
+                    int(undone));
         CHECK(undone);
 
         // Leave the editor as the blocks around this one expect it (nodeC is a
@@ -3685,7 +3738,9 @@ int main(int argc, char** argv) {
     // The quick easings and the picker's Auto tile commit through
     // ctrl::TimeLineEditor::assignSelectionAutoHandles, not through the graph
     // panel's action, so the rule must live in the shared appendAutoPresetWrites.
-    // One key selected on a three-key channel: three params, one undo.
+    // One key selected on a three-key channel: the segment AFTER it - its own
+    // type and outgoing side plus the next key's incoming side, two params, one
+    // undo - and the previous key's param is byte-identical.
     {
         core::TestNode nodeE;
         nodeE.setName(QStringLiteral("E"));
@@ -3712,30 +3767,31 @@ int main(int argc, char** argv) {
         const bool acted = timeline.assignSelectionAutoHandles();
 
         const bool wrote = acted
-            && eKeys[0]->data().easing(0).type == util::Easing::Type_Custom
-            && eKeys[0]->data().easing(0).handleOut == util::Easing::kAutoPresetHandleMode
+            && eKeys[0]->data().easing(0) == eFirstBefore // previous key: byte-identical
             && eKeys[1]->data().easing(0).type == util::Easing::Type_Custom
-            && eKeys[1]->data().easing(0).handleIn == util::Easing::kAutoPresetHandleMode
             && eKeys[1]->data().easing(0).handleOut == util::Easing::kAutoPresetHandleMode
+            && eKeys[1]->data().easing(0).handleIn == eMiddleBefore.handleIn // arriving side untouched
             && eKeys[2]->data().easing(0).handleIn == util::Easing::kAutoPresetHandleMode
-            && eKeys[2]->data().easing(0).type == eLastBefore.type;
+            && eKeys[2]->data().easing(0).type == eLastBefore.type // its own curve is not ours
+            && eKeys[2]->data().easing(0).handleOut == eLastBefore.handleOut;
 
         project.commandStack().undo();
         const bool undone = eKeys[0]->data().easing(0) == eFirstBefore
             && eKeys[1]->data().easing(0) == eMiddleBefore
             && eKeys[2]->data().easing(0) == eLastBefore;
 
-        std::printf("[10f] timeline Auto on one key: acted=%d  three params written=%d  one undo restores all=%d\n",
+        std::printf("[10f] timeline Auto on one key: acted=%d  two params written=%d  "
+                    "one undo restores all=%d\n",
                     int(acted), int(wrote), int(undone));
         CHECK(acted);
         CHECK(wrote);
         CHECK(undone);
 
-        // TWO ADJACENT SELECTED KEYS: the shared key is named by both its own
-        // entry and the neighbour rule, and the merged write must keep BOTH sides
-        // automatic (a second, unmerged write would replace the param with one
-        // that only forces its outgoing side, silently dropping the incoming
-        // mode). One undo still restores everything.
+        // TWO ADJACENT SELECTED KEYS: each writes the segment after ITSELF, so
+        // the shared middle key is named by its own entry (type + outgoing) and
+        // by the first key's (incoming) - the merged write keeps BOTH of its
+        // sides automatic, and the first key's incoming side is still untouched
+        // (it belongs to the segment arriving at it). One undo restores all.
         core::TimeLineEvent adjacent;
         adjacent.setType(core::TimeLineEvent::Type_PushKey);
         adjacent.pushTarget(nodeE, core::TimeKeyType_Rotate, 0);
@@ -3743,11 +3799,13 @@ int main(int argc, char** argv) {
         timeline.selectCreatedKeys(adjacent);
         const bool actedBoth = timeline.assignSelectionAutoHandles();
         const bool sharedKept = actedBoth
-            && eKeys[0]->data().easing(0).handleIn == util::Easing::kAutoPresetHandleMode
+            && eKeys[0]->data().easing(0).type == util::Easing::Type_Custom
             && eKeys[0]->data().easing(0).handleOut == util::Easing::kAutoPresetHandleMode
+            && eKeys[0]->data().easing(0).handleIn == eFirstBefore.handleIn
             && eKeys[1]->data().easing(0).handleIn == util::Easing::kAutoPresetHandleMode
             && eKeys[1]->data().easing(0).handleOut == util::Easing::kAutoPresetHandleMode
-            && eKeys[2]->data().easing(0).handleIn == util::Easing::kAutoPresetHandleMode;
+            && eKeys[2]->data().easing(0).handleIn == util::Easing::kAutoPresetHandleMode
+            && eKeys[2]->data().easing(0).type == eLastBefore.type;
         project.commandStack().undo();
         const bool bothUndone = eKeys[0]->data().easing(0) == eFirstBefore
             && eKeys[1]->data().easing(0) == eMiddleBefore
@@ -3758,6 +3816,22 @@ int main(int argc, char** argv) {
         CHECK(actedBoth);
         CHECK(sharedKept);
         CHECK(bothUndone);
+
+        // A LAST KEY HAS NO SEGMENT AFTER IT, so the preset is a NO-OP there:
+        // nothing is written - not even the type - and no history entry appears
+        // for a segment that does not exist. (The params are the undone ones.)
+        core::TimeLineEvent lastOnly;
+        lastOnly.setType(core::TimeLineEvent::Type_PushKey);
+        lastOnly.pushTarget(nodeE, core::TimeKeyType_Rotate, 20);
+        timeline.selectCreatedKeys(lastOnly);
+        const bool actedLast = timeline.assignSelectionAutoHandles();
+        const bool lastUntouched = eKeys[0]->data().easing(0) == eFirstBefore
+            && eKeys[1]->data().easing(0) == eMiddleBefore
+            && eKeys[2]->data().easing(0) == eLastBefore;
+        std::printf("[10f] timeline Auto on the LAST key: acted=%d (no-op)  all params untouched=%d\n",
+                    int(actedLast), int(lastUntouched));
+        CHECK(!actedLast);
+        CHECK(lastUntouched);
     }
 
     // -------------------------------------------------------------------------

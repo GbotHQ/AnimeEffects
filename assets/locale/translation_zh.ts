@@ -767,6 +767,12 @@
         <translation>删除帧</translation>
     </message>
     <message>
+        <location filename="../../src/ctrl/TimeLineEditor.cpp" line="1169"/>
+        <location filename="../../src/ctrl/GraphEditor.cpp" line="3031"/>
+        <source>Make the segment after the key automatic</source>
+        <translation>将关键帧之后的区段设为自动</translation>
+    </message>
+    <message>
         <location filename="../../src/ctrl/TimeLineUtil.cpp" line="290"/>
         <source>Update default movement key</source>
         <translation>更新默认移动帧</translation>
@@ -1045,32 +1051,33 @@
         <translation>更改动画设置</translation>
     </message>
     <message>
-        <location filename="../../src/ctrl/GraphEditor.cpp" line="1059"/>
+        <location filename="../../src/ctrl/GraphEditor.cpp" line="1063"/>
         <source>align handles</source>
         <translation>对齐控制柄</translation>
     </message>
     <message>
-        <location filename="../../src/ctrl/GraphEditor.cpp" line="2407"/>
+        <location filename="../../src/ctrl/GraphEditor.cpp" line="2429"/>
         <source>move a key</source>
         <translation>移动关键帧</translation>
     </message>
     <message>
-        <location filename="../../src/ctrl/GraphEditor.cpp" line="2683"/>
+        <location filename="../../src/ctrl/GraphEditor.cpp" line="2705"/>
         <source>change a key easing</source>
         <translation>更改关键帧缓和</translation>
     </message>
     <message>
-        <location filename="../../src/ctrl/GraphEditor.cpp" line="2924"/>
+        <location filename="../../src/ctrl/GraphEditor.cpp" line="2946"/>
         <source>remove a key</source>
         <translation>删除关键帧</translation>
     </message>
     <message>
-        <location filename="../../src/ctrl/GraphEditor.cpp" line="3063"/>
+        <location filename="../../src/ctrl/GraphEditor.cpp" line="3113"/>
         <source>change key easing</source>
         <translation>更改关键帧缓和</translation>
     </message>
     <message>
-        <location filename="../../src/ctrl/TimeLineEditor.cpp" line="1148"/>
+        <location filename="../../src/gui/TimeLineEditorWidget.cpp" line="1481"/>
+        <location filename="../../src/ctrl/TimeLineEditor.cpp" line="1132"/>
         <source>Change key(s) easing</source>
         <translation>更改关键帧缓和</translation>
     </message>
@@ -2686,22 +2693,22 @@ The %2 encoder could not be opened either (%3).</source>
         </translation>
     </message>
     <message>
-        <location filename="../../src/gui/GraphPanelModel.cpp" line="819"/>
+        <location filename="../../src/gui/GraphPanelModel.cpp" line="803"/>
         <source>No keys on the selected layers</source>
         <translation>所选图层上没有关键帧</translation>
     </message>
     <message>
-        <location filename="../../src/gui/GraphPanelModel.cpp" line="820"/>
+        <location filename="../../src/gui/GraphPanelModel.cpp" line="804"/>
         <source>Select a layer to show its curves</source>
         <translation>选择一个图层以显示其曲线</translation>
     </message>
     <message>
-        <location filename="../../src/gui/GraphPanelModel.cpp" line="823"/>
+        <location filename="../../src/gui/GraphPanelModel.cpp" line="807"/>
         <source>All channels of the selected layers are hidden</source>
         <translation>所选图层的所有通道均已隐藏</translation>
     </message>
     <message>
-        <location filename="../../src/gui/GraphPanelModel.cpp" line="966"/>
+        <location filename="../../src/gui/GraphPanelModel.cpp" line="951"/>
         <source>No room for the graph in this viewport</source>
         <translation>此视口放不下曲线图</translation>
     </message>
@@ -3175,12 +3182,12 @@ The %2 encoder could not be opened either (%3).</source>
         <translation>色相</translation>
     </message>
     <message>
-        <location filename="../../src/ctrl/GraphEditor.cpp" line="2272"/>
+        <location filename="../../src/ctrl/GraphEditor.cpp" line="2294"/>
         <source>The animation graph stopped moving: the dragged key changed.</source>
         <translation>动画曲线图已停止移动：被拖动的关键帧已改变。</translation>
     </message>
     <message>
-        <location filename="../../src/ctrl/GraphEditor.cpp" line="2446"/>
+        <location filename="../../src/ctrl/GraphEditor.cpp" line="2468"/>
         <source>The animation graph stopped editing: the dragged key changed.</source>
         <translation>动画曲线图已停止编辑：被拖动的关键帧已改变。</translation>
     </message>
@@ -4449,7 +4456,7 @@ Check FFmpeg palette generation 🗸</source>
 <context>
     <name>gui::GraphPanelFrame</name>
     <message numerus="yes">
-        <location filename="../../src/gui/GraphPanelFrame.cpp" line="2366"/>
+        <location filename="../../src/gui/GraphPanelFrame.cpp" line="2428"/>
         <source>%1, %n key(s) selected</source>
         <translation>
             <numerusform>%1，已选择 %n 个关键帧</numerusform>
@@ -4467,19 +4474,19 @@ Check FFmpeg palette generation 🗸</source>
         <translation type="vanished">已隐藏</translation>
     </message>
     <message numerus="yes">
-        <location filename="../../src/gui/GraphPanelFrame.cpp" line="2356"/>
+        <location filename="../../src/gui/GraphPanelFrame.cpp" line="2418"/>
         <source>%n channel(s) shown</source>
         <translation>
             <numerusform>%n 个通道已显示</numerusform>
         </translation>
     </message>
     <message>
-        <location filename="../../src/gui/GraphPanelFrame.cpp" line="2374"/>
+        <location filename="../../src/gui/GraphPanelFrame.cpp" line="2436"/>
         <source>%1, focused: %2</source>
         <translation>%1，聚焦：%2</translation>
     </message>
     <message>
-        <location filename="../../src/gui/GraphPanelFrame.cpp" line="2405"/>
+        <location filename="../../src/gui/GraphPanelFrame.cpp" line="2467"/>
         <source>%1, selected key: %2</source>
         <translation>%1，选中的关键帧：%2</translation>
     </message>
@@ -4498,22 +4505,22 @@ Check FFmpeg palette generation 🗸</source>
         <translation type="vanished">显示通道列表</translation>
     </message>
     <message>
-        <location filename="../../src/gui/GraphPanelFrame.cpp" line="2436"/>
+        <location filename="../../src/gui/GraphPanelFrame.cpp" line="2498"/>
         <source>Fit graph</source>
         <translation>适配曲线图</translation>
     </message>
     <message>
-        <location filename="../../src/gui/GraphPanelFrame.cpp" line="2437"/>
+        <location filename="../../src/gui/GraphPanelFrame.cpp" line="2499"/>
         <source>double-click the plot</source>
         <translation>双击绘图区</translation>
     </message>
     <message>
-        <location filename="../../src/gui/GraphPanelFrame.cpp" line="2453"/>
+        <location filename="../../src/gui/GraphPanelFrame.cpp" line="2515"/>
         <source>Key menu</source>
         <translation>关键帧菜单</translation>
     </message>
     <message>
-        <location filename="../../src/gui/GraphPanelFrame.cpp" line="2454"/>
+        <location filename="../../src/gui/GraphPanelFrame.cpp" line="2516"/>
         <source>right-click the key</source>
         <translation>右键点击关键帧</translation>
     </message>
@@ -5855,22 +5862,22 @@ The log is available below.</source>
 <context>
     <name>gui::TimeLineEditorWidget</name>
     <message>
-        <location filename="../../src/gui/TimeLineEditorWidget.cpp" line="186"/>
+        <location filename="../../src/gui/TimeLineEditorWidget.cpp" line="188"/>
         <source>Copy key</source>
         <translation>复制键</translation>
     </message>
     <message>
-        <location filename="../../src/gui/TimeLineEditorWidget.cpp" line="189"/>
+        <location filename="../../src/gui/TimeLineEditorWidget.cpp" line="191"/>
         <source>Paste key</source>
         <translation>粘贴键</translation>
     </message>
     <message>
-        <location filename="../../src/gui/TimeLineEditorWidget.cpp" line="192"/>
+        <location filename="../../src/gui/TimeLineEditorWidget.cpp" line="194"/>
         <source>Delete key</source>
         <translation>删除键</translation>
     </message>
     <message>
-        <location filename="../../src/gui/TimeLineEditorWidget.cpp" line="195"/>
+        <location filename="../../src/gui/TimeLineEditorWidget.cpp" line="197"/>
         <source>Copy key to clipboard</source>
         <translation>将帧复制到剪贴板</translation>
     </message>
@@ -5943,12 +5950,12 @@ The log is available below.</source>
         <translation type="vanished">全部</translation>
     </message>
     <message>
-        <location filename="../../src/gui/TimeLineEditorWidget.cpp" line="200"/>
+        <location filename="../../src/gui/TimeLineEditorWidget.cpp" line="202"/>
         <source>Select spacing between keys</source>
         <translation>选择关键帧之间的间隔</translation>
     </message>
     <message>
-        <location filename="../../src/gui/TimeLineEditorWidget.cpp" line="542"/>
+        <location filename="../../src/gui/TimeLineEditorWidget.cpp" line="544"/>
         <source>Clear playback window</source>
         <translation>清除播放窗口</translation>
     </message>
@@ -5957,12 +5964,12 @@ The log is available below.</source>
         <translation type="vanished">更改关键帧缓和...</translation>
     </message>
     <message>
-        <location filename="../../src/gui/TimeLineEditorWidget.cpp" line="876"/>
+        <location filename="../../src/gui/TimeLineEditorWidget.cpp" line="878"/>
         <source>Operation Error</source>
         <translation>操作错误</translation>
     </message>
     <message>
-        <location filename="../../src/gui/TimeLineEditorWidget.cpp" line="876"/>
+        <location filename="../../src/gui/TimeLineEditorWidget.cpp" line="878"/>
         <source>Failed to paste keys. 
 (If you want to paste across objects copy the key to the clipboard and right-click and paste to the node instead)</source>
         <translation>粘贴关键帧失败。
@@ -5973,37 +5980,37 @@ The log is available below.</source>
         <translation type="vanished">粘贴关键帧失败。</translation>
     </message>
     <message>
-        <location filename="../../src/gui/TimeLineEditorWidget.cpp" line="994"/>
+        <location filename="../../src/gui/TimeLineEditorWidget.cpp" line="1131"/>
         <source>A minimum of two keys in different frames are needed.</source>
         <translation>至少需要两个位于不同帧的关键帧。</translation>
     </message>
     <message>
-        <location filename="../../src/gui/TimeLineEditorWidget.cpp" line="995"/>
+        <location filename="../../src/gui/TimeLineEditorWidget.cpp" line="1132"/>
         <source>Not enough targets</source>
         <translation>目标不足</translation>
     </message>
     <message>
-        <location filename="../../src/gui/TimeLineEditorWidget.cpp" line="1030"/>
+        <location filename="../../src/gui/TimeLineEditorWidget.cpp" line="1167"/>
         <source>Key spacing</source>
         <translation>关键帧间隔</translation>
     </message>
     <message>
-        <location filename="../../src/gui/TimeLineEditorWidget.cpp" line="1032"/>
+        <location filename="../../src/gui/TimeLineEditorWidget.cpp" line="1169"/>
         <source>Number of frames the selected keys should be spaced by:</source>
         <translation>选定关键帧之间应间隔的帧数：</translation>
     </message>
     <message>
-        <location filename="../../src/gui/TimeLineEditorWidget.cpp" line="1081"/>
+        <location filename="../../src/gui/TimeLineEditorWidget.cpp" line="1218"/>
         <source>Key conflict detected for key type </source>
         <translation>检测到关键帧类型冲突。</translation>
     </message>
     <message>
-        <location filename="../../src/gui/TimeLineEditorWidget.cpp" line="1082"/>
+        <location filename="../../src/gui/TimeLineEditorWidget.cpp" line="1219"/>
         <source> in node </source>
         <translation>在节点中</translation>
     </message>
     <message>
-        <location filename="../../src/gui/TimeLineEditorWidget.cpp" line="1082"/>
+        <location filename="../../src/gui/TimeLineEditorWidget.cpp" line="1219"/>
         <source> at frame </source>
         <translation>帧中</translation>
     </message>
@@ -6016,17 +6023,17 @@ The log is available below.</source>
         <translation type="vanished">超出了项目的最大帧范围，忽略将关键帧移动到该帧的尝试。</translation>
     </message>
     <message>
-        <location filename="../../src/gui/TimeLineEditorWidget.cpp" line="1084"/>
+        <location filename="../../src/gui/TimeLineEditorWidget.cpp" line="1221"/>
         <source>Move error</source>
         <translation>移动错误</translation>
     </message>
     <message>
-        <location filename="../../src/gui/TimeLineEditorWidget.cpp" line="1085"/>
+        <location filename="../../src/gui/TimeLineEditorWidget.cpp" line="1222"/>
         <source>Unable to move </source>
         <translation>无法移动</translation>
     </message>
     <message>
-        <location filename="../../src/gui/TimeLineEditorWidget.cpp" line="1085"/>
+        <location filename="../../src/gui/TimeLineEditorWidget.cpp" line="1222"/>
         <source> key(s), due to the following reasons: </source>
         <translation>由于以下原因，无法移动关键帧：</translation>
     </message>
@@ -6034,52 +6041,67 @@ The log is available below.</source>
 <context>
     <name>gui::TimeLineHeader</name>
     <message>
-        <location filename="../../src/gui/TimeLineHeader.cpp" line="310"/>
+        <location filename="../../src/gui/TimeLineHeader.cpp" line="311"/>
         <source>Timeline</source>
         <translation>时间轴</translation>
     </message>
     <message>
-        <location filename="../../src/gui/TimeLineHeader.cpp" line="311"/>
+        <location filename="../../src/gui/TimeLineHeader.cpp" line="312"/>
         <source>Graph</source>
         <translation>曲线图</translation>
     </message>
     <message>
-        <location filename="../../src/gui/TimeLineHeader.cpp" line="385"/>
+        <location filename="../../src/gui/TimeLineHeader.cpp" line="391"/>
+        <source>Make the segment after each selected key automatic</source>
+        <translation>将每个选中关键帧之后的区段设为自动</translation>
+    </message>
+    <message>
+        <location filename="../../src/gui/TimeLineHeader.cpp" line="392"/>
+        <source>%1 (%2)</source>
+        <translation>%1（%2）</translation>
+    </message>
+    <message>
+        <location filename="../../src/gui/TimeLineHeader.cpp" line="393"/>
+        <source>%1 - %2 handles</source>
+        <translation>%1 - %2 控制柄</translation>
+    </message>
+    <message>
+        <location filename="../../src/gui/TimeLineHeader.cpp" line="396"/>
         <source>Set the selected keys&apos; easing to %1</source>
         <translation>将所选关键帧的缓动设为 %1</translation>
     </message>
     <message>
-        <location filename="../../src/gui/TimeLineHeader.cpp" line="430"/>
+        <location filename="../../src/gui/TimeLineHeader.cpp" line="442"/>
         <source>Which channels are drawn</source>
         <translation>显示的通道</translation>
     </message>
     <message>
-        <location filename="../../src/gui/TimeLineHeader.cpp" line="465"/>
+        <location filename="../../src/gui/TimeLineHeader.cpp" line="477"/>
         <source>Zoom out</source>
         <translation>缩小</translation>
     </message>
     <message>
-        <location filename="../../src/gui/TimeLineHeader.cpp" line="467"/>
+        <location filename="../../src/gui/TimeLineHeader.cpp" line="479"/>
         <source>Zoom in</source>
         <translation>放大</translation>
     </message>
     <message>
-        <location filename="../../src/gui/TimeLineHeader.cpp" line="473"/>
+        <location filename="../../src/gui/TimeLineHeader.cpp" line="485"/>
         <source>Fit the frame range</source>
         <translation>适配帧范围</translation>
     </message>
     <message numerus="yes">
-        <location filename="../../src/gui/TimeLineHeader.cpp" line="440"/>
-        <location filename="../../src/gui/TimeLineHeader.cpp" line="758"/>
-        <location filename="../../src/gui/TimeLineHeader.cpp" line="760"/>
+        <location filename="../../src/gui/TimeLineHeader.cpp" line="452"/>
+        <location filename="../../src/gui/TimeLineHeader.cpp" line="770"/>
+        <location filename="../../src/gui/TimeLineHeader.cpp" line="772"/>
         <source>%n channel(s)</source>
         <translation>
             <numerusform>%n 个通道</numerusform>
         </translation>
     </message>
     <message>
-        <location filename="../../src/gui/TimeLineHeader.cpp" line="441"/>
-        <location filename="../../src/gui/TimeLineHeader.cpp" line="762"/>
+        <location filename="../../src/gui/TimeLineHeader.cpp" line="453"/>
+        <location filename="../../src/gui/TimeLineHeader.cpp" line="774"/>
         <source>%1 of %2</source>
         <translation>%2 中的 %1</translation>
     </message>
@@ -6323,32 +6345,47 @@ The log is available below.</source>
         <translation type="vanished">缓动</translation>
     </message>
     <message>
-        <location filename="../../src/gui/prop/EasingPickWidget.cpp" line="694"/>
+        <location filename="../../src/gui/prop/EasingPickWidget.cpp" line="704"/>
         <source>Close</source>
         <translation>关闭</translation>
     </message>
     <message>
-        <location filename="../../src/gui/prop/EasingPickWidget.cpp" line="855"/>
+        <location filename="../../src/gui/prop/EasingPickWidget.cpp" line="872"/>
+        <source>Make the segment after the selected key automatic</source>
+        <translation>将选中关键帧之后的区段设为自动</translation>
+    </message>
+    <message>
+        <location filename="../../src/gui/prop/EasingPickWidget.cpp" line="873"/>
+        <source>%1 (%2)</source>
+        <translation>%1（%2）</translation>
+    </message>
+    <message>
+        <location filename="../../src/gui/prop/EasingPickWidget.cpp" line="874"/>
+        <source>%1 - %2 handles</source>
+        <translation>%1 - %2 控制柄</translation>
+    </message>
+    <message>
+        <location filename="../../src/gui/prop/EasingPickWidget.cpp" line="877"/>
         <source>Set the easing to %1</source>
         <translation>将缓动设为 %1</translation>
     </message>
     <message>
-        <location filename="../../src/gui/prop/EasingPickWidget.cpp" line="996"/>
+        <location filename="../../src/gui/prop/EasingPickWidget.cpp" line="1026"/>
         <source>In</source>
         <translation>入</translation>
     </message>
     <message>
-        <location filename="../../src/gui/prop/EasingPickWidget.cpp" line="997"/>
+        <location filename="../../src/gui/prop/EasingPickWidget.cpp" line="1027"/>
         <source>Out</source>
         <translation>出</translation>
     </message>
     <message>
-        <location filename="../../src/gui/prop/EasingPickWidget.cpp" line="1041"/>
+        <location filename="../../src/gui/prop/EasingPickWidget.cpp" line="1071"/>
         <source>Copy</source>
         <translation>复制</translation>
     </message>
     <message>
-        <location filename="../../src/gui/prop/EasingPickWidget.cpp" line="1044"/>
+        <location filename="../../src/gui/prop/EasingPickWidget.cpp" line="1074"/>
         <source>Paste</source>
         <translation>粘贴</translation>
     </message>

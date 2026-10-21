@@ -708,8 +708,9 @@ void buildCurves(
         // `to` key's derived incoming mode is inert, because playback/drawing never
         // calls controlPoint for that segment - so publishing it would claim a
         // tangent no curve derives (the defect that showed an "automatic" handle on
-        // a side whose curve was still Linear). The Auto preset now makes the whole
-        // adjacent segment Custom, so a real automatic side always passes this gate.
+        // a side whose curve was still Linear). The Auto preset makes the whole
+        // segment AFTER a selected key Custom, so a real automatic side always
+        // passes this gate.
         //
         // Published whether or not the pair lies inside the plot: the drawing layer
         // clips, and a handle off the plot's edge is still one the user can grab.
@@ -914,16 +915,17 @@ namespace gui {
         model.vThumb = bars.vThumb;
 
         // The playhead belongs to the document, not to the geometry, so it is
-        // read before the plot's own guards: a currentFrame() below 0 is "no
-        // project", and there is no playhead to place (core frame numbers start
-        // at 1, so a negative frame is never a real one).
+        // read before the plot's own guards. NEGATIVE FRAMES ARE REAL FRAMES: a
+        // project may start before 0, and the ruler seek reaches there like the
+        // timeline's own, so the gate is "is a project attached", never the frame's
+        // sign (currentFrame()'s -1 is only its no-project sentinel).
         //
         // Its NUMBER is written here, by the same formatter the ruler labels use and
         // with the same setting the timeline reads, so the pill and the label it
         // replaces name the frame identically.
         const core::TimeFormat format(aEditor.frameRange(), aEditor.fps());
         const core::Frame playhead = aEditor.currentFrame();
-        if (playhead.get() >= 0) {
+        if (aEditor.hasProject()) {
             model.playheadX = scale.pixelX(playhead);
             model.playheadText = format.frameToString(playhead.get(), aEditor.timeFormatType());
         }

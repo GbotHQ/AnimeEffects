@@ -1475,6 +1475,65 @@ int main(int argc, char** argv) {
             band.x(), band.y(), band.width(), band.height(), plot.y(), plot.top(), int(seeks.size()),
             seeks.value(0), seeks.last(), pressX, releaseX
         );
+
+        // NEGATIVE FRAMES ARE FRAMES TOO. A project's range may start before 0 (a
+        // key's frame marker is INT_MIN precisely because it can), and the
+        // timeline's own ruler reaches there: its seek is
+        // ctrl::TimeLineEditor::setFrame -> time::Current::setFrame, which has no
+        // range clamp on the playhead. The graph's band is that same ruler, so a
+        // press LEFT of frame 0 must hand the pointer's own negative frame to the
+        // same setter, and dragging further left must keep going - the frame must
+        // never stop at 0.
+        {
+            // The editor's band spans the PANEL (rulerBandRect), while the block's
+            // local `band` is the PLOT's columns: the fitted window puts the few
+            // frames below 0 over the VALUE COLUMN's columns, so the panel-based
+            // rect is the one a negative seek can be pressed in.
+            const QRect panelBand(panel.left(), band.top(), panel.width(), band.height());
+            const int frameZeroX = bandScale.pixelX(core::Frame(0));
+            const int xMinus1 = bandScale.pixelX(core::Frame(-1));
+            const int xMinus2 = bandScale.pixelX(core::Frame(-2));
+            std::printf(
+                "[B] negative frames: band starts at x=%d, frame 0 at x=%d, frame -1 at x=%d, frame -2 at x=%d\n",
+                panelBand.left(), frameZeroX, xMinus1, xMinus2
+            );
+            // The band really has columns left of frame 0 in this fitted window,
+            // and the pointer there maps to the negative frames it names.
+            CHECK(panelBand.left() < xMinus1);
+            CHECK(xMinus1 < frameZeroX);
+            CHECK(xMinus2 < xMinus1);
+            CHECK(panelBand.contains(QPoint(xMinus2, band.center().y())));
+            CHECK(bandScale.frameAt(xMinus1).get() < 0);
+            CHECK(bandScale.frameAt(xMinus2).get() < bandScale.frameAt(xMinus1).get());
+
+            // THE TIMELINE'S OWN SETTER, not a recorder: exactly the route
+            // MainDisplayWidget hands the band (mTimeLine->setFrame), on a range
+            // that spans the negative side.
+            ctrl::TimeLineEditor seekEditor;
+            seekEditor.setFrameRange(util::Range(-60, 60));
+            editor.setFrameSeekDelegate(
+                [&seekEditor](core::Frame aFrame) { seekEditor.setFrame(aFrame); }
+            );
+            core::AbstractCursor negative;
+            CHECK(sendPress(editor, camera, negative, QPoint(xMinus1, band.center().y())));
+            const int pressFrame = seekEditor.currentFrame().get();
+            CHECK(pressFrame == bandScale.frameAt(xMinus1).get());
+            CHECK(pressFrame < 0); // the press left of 0 landed below it
+            CHECK(editor.ownsCursor(camera, negative));
+            CHECK(sendMove(editor, camera, negative, QPoint(xMinus2, band.center().y())));
+            const int dragFrame = seekEditor.currentFrame().get();
+            CHECK(dragFrame == bandScale.frameAt(xMinus2).get());
+            CHECK(dragFrame < pressFrame); // further left
+            CHECK(editor.ownsCursor(camera, negative));
+            CHECK(sendRelease(editor, camera, negative, QPoint(xMinus2, band.center().y())));
+            CHECK(seekEditor.currentFrame().get() == dragFrame); // the release's own frame
+            CHECK(!editor.ownsCursor(camera, negative));
+            std::printf(
+                "[B] negative seek: press x=%d -> frame %d, drag x=%d -> frame %d  (the timeline's own "
+                "setter kept the negative frame; no clamp at 0)\n",
+                xMinus1, pressFrame, xMinus2, dragFrame
+            );
+        }
     }
 
     // --- 0a-iii: THE BAND'S SHIFT GESTURE IS THE TIMELINE'S PLAYBACK WINDOW.
@@ -2027,6 +2086,158 @@ int main(int argc, char** argv) {
         core::AbstractCursor beyondCur;
         sendMove(editor, camera, beyondCur, beyond);
         CHECK(!editor.ownsCursor(camera, beyondCur));
+    }
+
+    // --- 11b: A KEY AND A HANDLE ARE RESOLVED BY DISTANCE, NOT BY KIND. The two
+    // grab rings overlap (kKeyHitRadius 10, kHandleHitRadius 12), and the
+    // hit-test compares `distance / radius` and lets the smaller win, with a KEY
+    // winning an exact tie. The old rule tested handles first, so a handle could
+    // take a press whose key centre was nearer - the reported defect.
+    //
+    // The geometry is pinned to make every distance an exact integer: the frame
+    // window maps frame 0 to pixel 0 at 1 px/frame (applyFrameWindow), and the
+    // value window puts value 0 on an integral row. Both keys sit at value 0, so
+    // the key centres and the stored handle dot share one row - and the handle
+    // is authored 11px right of the first key (x1 = 11/64 of a 64-frame span,
+    // both exact in binary), which is inside both rings. The three press points
+    // and their NORMALIZED distances (`d / radius`) are therefore:
+    //
+    //   +3px from the key: key 3/10 = 0.30, handle 8/12 = 0.6667 -> KEY
+    //   +8px from the key: key 8/10 = 0.80, handle 3/12 = 0.25   -> HANDLE
+    //   +5px from the key: key 5/10 = 0.50, handle 6/12 = 0.50   -> KEY (tie)
+    //
+    // plus the two BOUNDARIES: 10px left of the key (key 10/10 = 1.0, the handle
+    // 21px away and outside its ring) and 12px right of the handle (handle
+    // 12/12 = 1.0, the key 23px away and outside its ring).
+    {
+        core::TestNode distanceNode;
+        core::RotateKey* d0 = new core::RotateKey();
+        d0->setRotate(0.0f);
+        util::Easing::Param d0Easing = customEasing();
+        d0Easing.cubicBezier.x1 = 11.0f / 64.0f; // exactly 11px at 1 px/frame
+        d0Easing.cubicBezier.y1 = 0.0f;
+        d0Easing.cubicBezier.x2 = 0.9f; // the incoming dot stays far from every probe
+        d0Easing.cubicBezier.y2 = 0.5f;
+        d0->data().easing(0) = d0Easing;
+        setup.push(distanceNode.timeLine()->createPusher(core::TimeKeyType_Rotate, 100, d0));
+
+        core::RotateKey* d1 = new core::RotateKey();
+        d1->setRotate(0.0f); // the same VALUE, so key and handle share one row
+        setup.push(distanceNode.timeLine()->createPusher(core::TimeKeyType_Rotate, 164, d1));
+
+        editor.setTargets({ &distanceNode });
+        editor.clearSelection();
+
+        // One cursor pass first: it writes the panel rect the scale is pinned to
+        // and settles the shown-curve basis, so the mapping set below is not
+        // re-fitted by the next pass.
+        core::AbstractCursor settle;
+        sendMove(editor, camera, settle, QPoint(5, 5));
+
+        Scaler& scale = editor.scale();
+        // 1 px per frame, frame 0 at pixel 0 (applyFrameWindow spans the window
+        // across the panel), and a value window symmetric about 0 whose span is
+        // twice the plot height, so value 0 lands on the row at plotTop + h/2 -
+        // an integer row for the 800x600 panel this file uses.
+        CHECK(scale.applyFrameWindow(0.0, 800.0));
+        CHECK(scale.framePpf() == 1.0);
+        CHECK(scale.pixelXOfFrame(100.0) == 100.0);
+        CHECK(scale.plotRect().height() % 2 == 0);
+        const float plotHeight = static_cast<float>(scale.plotRect().height());
+        scale.setValueWindow(-plotHeight, plotHeight);
+        CHECK(scale.pixelYOfValue(0.0f) == scale.plotRect().top() + scale.plotRect().height() / 2.0);
+
+        const Curve distanceCurve(*distanceNode.timeLine(), Channel(core::TimeKeyType_Rotate, 0));
+        CHECK(distanceCurve.segmentCount() == 1);
+        const Curve::Segment distanceSeg = distanceCurve.segment(0);
+
+        const QPointF keyCentre = QRectF(ctrl::graph::keyRect(scale, core::Frame(100), 0.0f)).center();
+        const QPointF handleDot =
+            ctrl::graph::handlePointAt(scale, distanceSeg, Curve::handle(distanceSeg, 0));
+        CHECK(keyCentre == QPointF(100.0, scale.pixelYOfValue(0.0f)));
+        CHECK(handleDot == keyCentre + QPointF(11.0, 0.0));
+        // The second (incoming) dot is clear of every probe below, so each press
+        // names exactly the key/handle pair the case is about: the furthest probe
+        // is 12px right of the handle dot.
+        const QPointF otherDot =
+            ctrl::graph::handlePointAt(scale, distanceSeg, Curve::handle(distanceSeg, 1));
+        CHECK(std::fabs(otherDot.x() - keyCentre.x())
+              > 11.0 + double(ctrl::graph::kHandleHitRadius));
+
+        const int row = int(keyCentre.y());
+        const int keyX = int(keyCentre.x());
+
+        // One press+release, from a CLEARED selection: a key press selects the
+        // key it hit; a handle press selects nothing and starts no marquee (the
+        // only other plot press), which is what tells the two drags apart without
+        // reaching into the editor: both arm mDragging, so ownership cannot.
+        struct Pick {
+            bool took;
+            bool marquee;
+            bool selected;
+            int frame;
+        };
+        const auto pressAt = [&](const QPoint& aPos) {
+            Pick pick{ false, false, false, -1 };
+            editor.clearSelection();
+            core::AbstractCursor cur;
+            pick.took = sendPress(editor, camera, cur, aPos);
+            pick.marquee = editor.hasMarquee();
+            core::TimeLineEvent sel;
+            pick.selected = editor.retrieveSelection(sel) && sel.targets().size() == 1;
+            if (pick.selected)
+                pick.frame = sel.targets()[0].pos.index();
+            sendRelease(editor, camera, cur, aPos);
+            return pick;
+        };
+
+        // (a) NEARER THE KEY, but inside the handle's ring: the key takes it.
+        const Pick nearKey = pressAt(QPoint(keyX + 3, row));
+        CHECK(nearKey.took);
+        CHECK(!nearKey.marquee);
+        CHECK(nearKey.selected);
+        CHECK(nearKey.frame == 100);
+
+        // (b) NEARER THE HANDLE: the handle takes it - no key selection and no
+        // marquee, so the press was the handle drag.
+        const Pick nearHandle = pressAt(QPoint(keyX + 8, row));
+        CHECK(nearHandle.took);
+        CHECK(!nearHandle.marquee);
+        CHECK(!nearHandle.selected);
+
+        // (c) THE TIE (0.5 == 0.5): the key wins it.
+        const Pick tie = pressAt(QPoint(keyX + 5, row));
+        CHECK(tie.took);
+        CHECK(!tie.marquee);
+        CHECK(tie.selected);
+        CHECK(tie.frame == 100);
+
+        // (d) THE KEY BOUNDARY: exactly kKeyHitRadius from the centre, with the
+        // handle outside its own ring on that side, still hits the key.
+        const Pick keyBoundary = pressAt(QPoint(keyX - ctrl::graph::kKeyHitRadius, row));
+        CHECK(keyBoundary.took);
+        CHECK(!keyBoundary.marquee);
+        CHECK(keyBoundary.selected);
+        CHECK(keyBoundary.frame == 100);
+
+        // (e) THE HANDLE BOUNDARY: exactly kHandleHitRadius from the dot, with the
+        // key outside its ring on that side, still hits the handle.
+        const Pick handleBoundary =
+            pressAt(QPoint(keyX + 11 + ctrl::graph::kHandleHitRadius, row));
+        CHECK(handleBoundary.took);
+        CHECK(!handleBoundary.marquee);
+        CHECK(!handleBoundary.selected);
+
+        std::printf(
+            "graph_drag 11b: normalized distances - near key 3/10=0.30 vs handle 8/12=0.667 (KEY), "
+            "near handle 8/10=0.80 vs 3/12=0.25 (HANDLE), tie 5/10=6/12=0.50 (KEY); boundaries "
+            "10/10 and 12/12 both hit\n"
+        );
+
+        // Hand the axis back to the fit before the node goes: the mapping above
+        // is this section's, not the next one's.
+        editor.scale().clearFrameWindow();
+        editor.setTargets({}); // drop the target before its owner dies
     }
 
     // --- 12: the degenerate value window. A channel whose keys are ALL at the

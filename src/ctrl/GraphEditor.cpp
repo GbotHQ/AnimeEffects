@@ -1804,13 +1804,18 @@ namespace ctrl {
     //-------------------------------------------------------------------------------------------------
     GraphEditor::Hit
     GraphEditor::hitTest(const QVector<Entry>& aItems, const graph::Scaler& aScale, const QPoint& aPos) const {
-        Hit hit;
+        Hit handleHit;
+        Hit keyHit;
         const QPointF pos(aPos);
 
-        // Handles first, nearest wins. A handle sits within its key's
-        // neighbourhood and its drag edits the easing instead of the key, so it
-        // is the more specific target of the two.
-        double bestHandle = graph::kHandleHitRadius;
+        // ONE DISTANCE RULE FOR BOTH KINDS, AND IT IS graph::pickTarget's. Each pass
+        // below only finds the NEAREST candidate of its own class, in pixels; which
+        // class the point names - and with it whether a candidate exists at all - is
+        // the shared comparison in ctrl/graph/graph_Geometry.h. The hover ink and the
+        // hover-repaint scheduling ask the same function about the same model, so a
+        // highlight cannot light a handle this press would not take (or the other way
+        // round), which is what two independent scans used to do.
+        double bestHandle = std::numeric_limits<double>::infinity();
         for (int i = 0; i < aItems.size(); ++i) {
             const graph::Curve& curve = aItems[i].curve;
             const int segments = curve.segmentCount();
@@ -1855,25 +1860,21 @@ namespace ctrl {
                 for (int h = 0; h < 2; ++h) {
                     const QPointF normalized = pair[h];
                     const double distance = pixelDistance(graph::handlePointAt(aScale, segment, normalized), pos);
-                    if (distance <= bestHandle) {
+                    if (distance <= bestHandle) { // ties keep the last candidate, as before
                         bestHandle = distance;
-                        hit.hitCurve = true;
-                        hit.hitHandle = true;
-                        hit.item = i;
-                        hit.segment = s;
-                        hit.handle = h;
+                        handleHit.hitCurve = true;
+                        handleHit.hitHandle = true;
+                        handleHit.item = i;
+                        handleHit.segment = s;
+                        handleHit.handle = h;
                     }
                 }
             }
         }
-        if (hit.hitHandle)
-            return hit;
 
-        // Then the keys, nearest wins. The rect comes from graph::keyRect, so a
-        // click lands on the key as it is drawn. The comparison is `<=`: a press
-        // EXACTLY on the hit radius still hits, which is the boundary the test
-        // pins (changing it to `<` would make the outermost ring dead).
-        double bestKey = graph::kKeyHitRadius;
+        // Then the keys, by the same nearest-per-class rule. The rect comes from
+        // graph::keyRect, so a click lands on the key as it is drawn.
+        double bestKey = std::numeric_limits<double>::infinity();
         for (int i = 0; i < aItems.size(); ++i) {
             const graph::Curve& curve = aItems[i].curve;
             for (const core::TimeKey* key : curve.keys()) {
@@ -1882,17 +1883,29 @@ namespace ctrl {
                 const double distance = pixelDistance(QRectF(rect).center(), pos);
                 if (distance <= bestKey) {
                     bestKey = distance;
-                    hit.hitCurve = true;
-                    hit.hitHandle = false;
-                    hit.item = i;
-                    hit.segment = -1;
-                    hit.handle = -1;
-                    hit.keyFrame = frame;
+                    keyHit.hitCurve = true;
+                    keyHit.hitHandle = false;
+                    keyHit.item = i;
+                    keyHit.segment = -1;
+                    keyHit.handle = -1;
+                    keyHit.keyFrame = frame;
                 }
             }
         }
 
-        return hit;
+        // WHICH CLASS THE POINT NAMES is graph::pickTarget's answer - the same call
+        // the hover ink and the hover repaint make. The exact tie belongs to the KEY
+        // (see the function): a press on a key's centre therefore always selects the
+        // key, however close a handle's dot sits.
+        switch (graph::pickTarget(bestKey, bestHandle)) {
+        case graph::PickKind::Key:
+            return keyHit;
+        case graph::PickKind::Handle:
+            return handleHit;
+        case graph::PickKind::None:
+            break;
+        }
+        return Hit();
     }
 
     //-------------------------------------------------------------------------------------------------
@@ -2969,19 +2982,19 @@ namespace ctrl {
         if (!mProject)
             return false;
 
-        // AUTOMATIC HANDLES APPLY TO SEGMENTS (see ctrl::TimeLineEditor's
-        // assignSelectionAutoHandles for the rule and its reasoning). A tangent
-        // pair belongs to the segment, so a key's outgoing side is the start
-        // tangent of the segment leaving it and its incoming side the end tangent
-        // of the segment arriving at it. Writing only the selected keys left the
-        // segment ARRIVING at each of them half-automatic and published a ghost no
-        // curve derived - the two halves of one defect.
+        // AUTOMATIC HANDLES APPLY TO THE SEGMENT AFTER THE KEY (see
+        // ctrl::TimeLineEditor's assignSelectionAutoHandles for the rule and its
+        // reasoning). A tangent pair belongs to one segment: that segment's curve
+        // is the FROM key's param, its start tangent that key's OUTGOING side and
+        // its end tangent the TO key's INCOMING side.
         //
-        // appendAutoPresetWrites therefore contributes, per selected key: the
-        // previous key's outgoing side AND type (its param IS the arriving
-        // segment's curve), the key's both sides, and the next key's incoming side.
-        // The preset is still the CLAMPED pair (kAutoPresetHandleMode), never the
-        // retired Type_Auto.
+        // appendAutoPresetWrites therefore contributes, per selected key: its own
+        // type and OUTGOING side (the curve and start tangent of the segment
+        // leaving it) plus the next key's INCOMING side (that segment's end
+        // tangent). The previous key is never written, and neither is this key's
+        // incoming side - they shape the segment ARRIVING here. A last key has no
+        // segment leaving it and writes nothing. The preset is still the CLAMPED
+        // pair (kAutoPresetHandleMode), never the retired Type_Auto.
         QVector<TimeLineEditor::EasingWrite> writes;
         for (const time::Selection::Item& item : mSelection->items()) {
             core::TimeLineEvent::Target target = item.target;
@@ -3015,7 +3028,7 @@ namespace ctrl {
         // ONE macro and ONE undo step for every param the preset touches, including
         // the neighbour sides of a multi-key selection (deduplicated by param).
         return TimeLineEditor::pushEasingWrites(
-            *mProject, writes, CmndName::tr("Make segments automatic"));
+            *mProject, writes, CmndName::tr("Make the segment after the key automatic"));
     }
 
     bool GraphEditor::assignSelectedKeysEasing(
@@ -3129,9 +3142,9 @@ namespace ctrl {
 
     //-------------------------------------------------------------------------------------------------
     core::Frame GraphEditor::currentFrame() const {
-        // The playhead's frame, for views that draw it. A missing project has no
-        // frame; -1 is outside the real range (frames start at 1), so it reads as
-        // "nothing" without inventing a second type.
+        // The playhead's frame, for views that draw it. -1 is this method's "no
+        // project" sentinel - a project's frames may be NEGATIVE, so callers that
+        // must tell the two apart ask hasProject(); the graph panel's model does.
         return mProject ? mProject->currentTimeInfo().frame : core::Frame(-1);
     }
 

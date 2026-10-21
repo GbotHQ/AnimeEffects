@@ -141,12 +141,12 @@ private:
     void onEasingChipClicked();
     // The four quick easings, in the bar's own vocabulary: one click writes that
     // easing to every key the timeline's live selection names. Three are a TYPE;
-    // the fourth is the AUTO PRESET, which makes the SEGMENTS around each selected
+    // the fourth is the AUTO PRESET, which makes the SEGMENT AFTER each selected
     // key automatic (automatic handles are per-side modes now, not a type): the
-    // previous key's outgoing side, the key's own two sides and the next key's
-    // incoming side, so both adjacent segments are fully automatic. The write
-    // goes through the application's own selection action (see the definition), in
-    // one undo step.
+    // key's own type and outgoing side plus the next key's incoming side. The
+    // arriving segment is left alone, and a last key (no segment after it) writes
+    // nothing. The write goes through the application's own selection action (see
+    // the definition), in one undo step.
     void onQuickEasingClicked(util::Easing::Type aType, bool aAutoPreset);
     void refreshQuickEasings();
     // Attaches the state the quick easings read: the one picker lives in the timeline's

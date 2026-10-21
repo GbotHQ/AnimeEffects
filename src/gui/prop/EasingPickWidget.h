@@ -122,19 +122,26 @@ util::Easing::AutoContext autoPreviewContext();
 // carries a stable objectName).
 //
 // Live-apply model: every edit is committed to the model (no Apply button).
-// Two signals separate the concerns:
-//   changed(p)  — the draft changed (fires on every user edit, including each
-//                 tick of a continuous drag). The owner uses this to update
-//                 any live/derived view (the chip that opens the menu). It
-//                 does NOT commit to the model.
-//   applied(p)  — an edit is committed to the model (one undo step). A
-//                 DISCRETE edit (tile / seg / custom / mode combo / typed
-//                 bezier / paste) fires it IMMEDIATELY, while the popup is
-//                 still open, so the document and every live view update at
-//                 once. A continuous DRAG (blend slider, bezier handle) is
-//                 still coalesced: it fires once on close, which keeps one
-//                 undo step per drag instead of one per tick.
-//   dismissed() — the user asked to dismiss the popup (the close ✕).
+// The signals separate the concerns:
+//   changed(p)     — the draft changed (fires on every user edit, including each
+//                    step of a continuous drag). The owner uses this to update
+//                    any live/derived view (the chip that opens the menu). It
+//                    does NOT commit to the model.
+//   liveEditStarted()/liveEdited(p)/liveEditEnded()
+//                  — ONE CONTINUOUS SESSION whose steps are applied to the model
+//                    as they happen: the bezier handle drag (every pointer move)
+//                    and a spinbox's typing/clicks (each keystroke is a step of
+//                    the same gesture). Begun on the first step, one liveEdited
+//                    per step, ended when the POPUP closes. The owner keeps ONE
+//                    rewriteable command open across the session, so the document,
+//                    the graph and every view update per step while the whole
+//                    session is a single undo entry (the blend slider's
+//                    close-time commit is the same one-entry-per-open rule).
+//   applied(p)     — a DISCRETE edit is committed to the model (one undo step):
+//                    tile / seg / custom / mode combo / paste, and the close-time
+//                    commit of a gesture the picker does not stream (the blend
+//                    slider, whose ticks stay a draft until close).
+//   dismissed()    — the user asked to dismiss the popup (the close ✕).
 //
 // The widget owns its sub-widgets; the geometry harness names each part with
 // the mock's selector (e.g. "seg", "seg-r-0", "tile-0", "trow", "pipeline",
@@ -188,9 +195,10 @@ public:
     // per-side choice in the mode combos.
     //
     // This is the DRAFT only: it names the pair the preset stores. The ACTION
-    // applies to SEGMENTS, so the picking widget's commit routes these modes to
-    // the selection-level Auto action, which also writes the neighbour sides that
-    // make both adjacent segments fully automatic (see
+    // applies to the ONE SEGMENT AFTER EACH SELECTED KEY, so the picking widget's
+    // commit routes these modes to the selection-level Auto action, which writes
+    // the key's type and outgoing side plus the next key's incoming side and
+    // leaves the arriving segment alone (see
     // ctrl::TimeLineEditor::assignSelectionAutoHandles).
     void setAutoHandlesPreset();
     // One side's handle mode (Blender's five). aIncoming selects the TO key's
@@ -241,12 +249,27 @@ public:
                  const util::Easing::AutoContext& aAutoContext);
 
 signals:
-    // Live draft change (fires on every user edit, including each tick of a
-    // continuous drag, and on session undo/redo). The owner uses it to update
+    // Live draft change (fires on every user edit, including each step of a
+    // continuous gesture, and on session undo/redo). The owner uses it to update
     // derived/display views (the chip) live; it does not commit to the model.
     void changed(util::Easing::Param aParam);
-    // Commit to the model as ONE undo step. Fires once when the popup closes
-    // (dismiss ✕ or an outside click), only if the draft changed since open.
+    // A CONTINUOUS SESSION began whose steps are streamed to the model: a bezier
+    // handle drag (at the press) or a spinbox's first change. The owner opens ONE
+    // rewriteable command here - see TimeLineEditorWidget::beginEasingEdit - and
+    // keeps it open until liveEditEnded, so every step lands in the document at
+    // once while the whole session stays one undo entry.
+    void liveEditStarted();
+    // One step of that session, the draft already holding it. The owner rewrites
+    // the open command; nothing new is pushed, so this is NOT a second undo step.
+    void liveEdited(util::Easing::Param aParam);
+    // The session ended - the popup went away (one entry per open, the same rule
+    // the blend slider's close-time commit follows). The owner closes its command.
+    // Idempotent.
+    void liveEditEnded();
+    // Commit to the model as ONE undo step. A discrete edit (tile / seg / custom /
+    // mode combo / paste) fires it at once; the blend slider's ticks stay a draft
+    // and fire it once on close. A streamed gesture (liveEditStarted/…) never
+    // fires it: its command already holds the final value.
     void applied(util::Easing::Param aParam);
     void dismissed();
     // The popup went away - the ✕, an outside click or Escape - after any commit
@@ -286,6 +309,21 @@ private:
     void animStep();
     void refit();
     void onBezierSpin(int aIndex, double aValue);
+    // One pointer move of a tangent-handle drag: the editor already wrote the new
+    // curve into the draft, so free the dragged side if it was derived, report the
+    // step live and stream it to the owner's session. The press opens the session;
+    // the popup's close ends it (a release only closes the gesture's own history).
+    void onBezierDragStep();
+    // Open/close the streamed session (signals + the popup's draft history). The
+    // model's ONE command is the owner's (liveEditStarted/liveEditEnded); these
+    // also fold the popup's own draft history into one entry per gesture, so a
+    // typed number is not one entry per digit. endLiveEdit runs when the popup
+    // goes away, which is when the owner's command is closed.
+    void beginLiveEdit();
+    void endLiveEdit();
+    // The header/mode combos, re-read from the draft without the heavy refresh()
+    // (no height re-fit, no preview restart): a live drag frees a side per step.
+    void refreshHandleModes();
     // A control point was edited (a spin, a paste or a canvas drag): FREE the side
     // it belongs to if that side was DERIVED. x1/y1 is this param's handleOut (the
     // FROM key's outgoing side); x2/y2 is its handleIn (the TO key's arriving one).
@@ -298,9 +336,11 @@ private:
     bool freeEditedSides(const util::Easing::CubicBezier& aBefore);
     void applyAppearance();
 
-    // A discrete edit is committed to the model NOW (emit applied once). A drag
-    // does not call this; its final draft is committed by hideEvent, so one drag
-    // is one undo step.
+    // A discrete edit is committed to the model NOW (emit applied once). A
+    // STREAMED gesture (bezier handle drag, typed spin) does not call this: its
+    // steps already wrote the model through the owner's open command, so close has
+    // nothing left to commit. The blend slider is the one drag that does not
+    // stream; its final draft is committed by hideEvent, one undo step per drag.
     void commitDiscrete();
 
     // Session undo/redo helpers. Each user gesture (a discrete click, or one
@@ -324,6 +364,11 @@ private:
     QVector<util::Easing::Param> mRedo; // session states to re-do forward to
     util::Easing::Param mGestureStart;  // draft snapshot at drag start
     bool mGestureActive = false;        // a continuous drag is in progress
+    // A streamed gesture is open (liveEditStarted emitted, liveEditEnded not yet).
+    // Separate from mGestureActive: the blend slider is a gesture the popup does
+    // NOT stream (its ticks stay a draft until close), so only the bezier drag and
+    // the spin boxes set this.
+    bool mLiveEditActive = false;
     // The bezier panel is shown for a Custom draft - EXCEPT while that draft is
     // exactly the Auto preset, which is a CATALOG state (its tile must stay
     // visible and checked). This flag is an explicit "I clicked Custom", so a user

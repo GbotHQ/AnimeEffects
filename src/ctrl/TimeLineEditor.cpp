@@ -1136,10 +1136,11 @@ bool TimeLineEditor::assignSelectionAutoHandles() {
     if (!mProject)
         return false;
 
-    // The Auto preset writes SEGMENTS (see the header): every selected key
-    // contributes its own two sides and the two neighbour sides that complete its
-    // adjacent segments. appendAutoPresetWrites merges a param named twice, so a
-    // multi-key selection writes each param once.
+    // The Auto preset writes the SEGMENT LEAVING each selected key (see the
+    // header): that segment's curve is the key's own param and its two tangents
+    // are the key's OUTGOING side and the NEXT key's INCOMING side. Nothing
+    // before the key is written. appendAutoPresetWrites merges a param named
+    // twice, so a multi-key selection writes each param once.
     QVector<EasingWrite> writes;
     for (const time::Selection::Item& item : mSelection.items()) {
         core::TimeLineEvent::Target target = item.target;
@@ -1162,41 +1163,36 @@ bool TimeLineEditor::assignSelectionAutoHandles() {
                                    core::Frame(key->frame()), writes);
         }
     }
-    // The action's name is the SEMANTIC, not the type: it makes the segments
-    // around each selected key automatic (the history entry says so too).
-    return pushEasingWrites(*mProject, writes, CmndName::tr("Make segments automatic"));
+    // The action's name is the SEMANTIC, not the type: it makes the segment
+    // LEAVING each selected key automatic (the history entry says so too).
+    return pushEasingWrites(
+        *mProject, writes, CmndName::tr("Make the segment after the key automatic"));
 }
 
 void TimeLineEditor::appendAutoPresetWrites(core::TimeLine& aLine, core::ObjectNode& aNode,
                                             const core::TimeKeyType aType, const int aComponent,
                                             const core::Frame aFrame,
                                             QVector<EasingWrite>& aOut) {
-    // The tail of the write set is the key's neighbours in ITS OWN map: the
-    // segment ARRIVING at this key starts at the previous key, and the one LEAVING
-    // it ends at the next key. Same type, same component - one curve per component,
-    // so the neighbour's mode for the SAME component is the one that shapes the
-    // segment.
+    // The only neighbour that matters is the NEXT key in ITS OWN map: this key's
+    // segment LEAVING it ends there. The PREVIOUS key is never read - the
+    // segment arriving at this key is not the one this action owns. Same type,
+    // same component - one curve per component, so the neighbour's mode for the
+    // SAME component is the one that shapes the segment.
     const core::TimeLine::MapType& map = aLine.map(aType);
     auto self = map.constFind(aFrame.get());
     if (self == map.constEnd() || !self.value())
         return;
 
-    core::TimeKey* prev = nullptr;
     core::TimeKey* next = nullptr;
-    if (self != map.constBegin()) {
-        auto before = self;
-        --before;
-        prev = before.value();
-    }
     auto after = self;
     ++after;
     if (after != map.constEnd())
         next = after.value();
 
     // The forced fields: aType makes the segment's curve a Custom one (without it
-    // the OUTGOING mode on the previous key would be inert), aIn/aOut are the two
-    // automatic sides. A param already in aOut is MERGED, so an entry is never
-    // written twice and two selected neighbours agree rather than append twice.
+    // this key's OUTGOING mode would be inert), aIn/aOut are the two automatic
+    // sides. A param already in aOut is MERGED, so an entry is never written
+    // twice and two selected neighbours agree rather than append twice.
     const auto write = [&aOut, &aNode, &aType, aComponent](
                            core::TimeKey* aKey, const bool aForceType, const bool aForceIn,
                            const bool aForceOut) {
@@ -1233,14 +1229,19 @@ void TimeLineEditor::appendAutoPresetWrites(core::TimeLine& aLine, core::ObjectN
         aOut.append(entry);
     };
 
-    // prev -> this: the previous key's OUTGOING side is this segment's start
-    // tangent, and the segment's curve is that key's param.
-    write(prev, true, false, true);
-    // this: both of its own sides (the end tangent of prev -> this, the start
-    // tangent of this -> next).
-    write(self.value(), true, true, true);
-    // this -> next: the next key's INCOMING side is the end tangent. Its type is
-    // not touched - it shapes the NEXT segment.
+    // A LAST key has no segment leaving it, so the action has nothing to shape:
+    // it is a NO-OP - not even the type is written, because that, with no next
+    // key, would preconfigure a segment that does not exist.
+    if (!next)
+        return;
+
+    // this -> next: the segment's curve IS this key's param, so its TYPE is
+    // forced Custom and its OUTGOING side becomes the automatic start tangent.
+    // This key's INCOMING side is left alone: it is the end tangent of the
+    // segment ARRIVING here, which belongs to the previous key's segment.
+    write(self.value(), true, false, true);
+    // ...and the next key's INCOMING side is the segment's automatic end
+    // tangent. Its type is not touched - that param shapes the segment AFTER it.
     write(next, false, true, false);
 }
 

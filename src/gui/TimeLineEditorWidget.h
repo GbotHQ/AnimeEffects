@@ -14,6 +14,10 @@
 
 class QMenu;
 
+// The live easing edit's command (cmnd/BasicCommands.h): declared, not included,
+// so this header does not pull the command templates into every timeline user.
+namespace cmnd { template<typename tTarget, typename tValue> class ModifiableAssign; }
+
 namespace gui {
 
 namespace prop { class EasingItem; } // the header's easing control (prop_Items.h)
@@ -140,13 +144,38 @@ public:
     // refuses it - the quick easings must not. FALSE when nothing was written
     // (no selection, only bone/mesh keys, or an edit that changes nothing).
     //
-    // THE AUTO PRESET IS NOT A TYPE EDIT: it makes the SEGMENTS around each
-    // selected key automatic (the previous key's outgoing side, the key's two
-    // sides, the next key's incoming side - see
-    // ctrl::TimeLineEditor::assignSelectionAutoHandles), which is one undo step
-    // per batch and can write more than one param per selected key.
+    // THE AUTO PRESET IS NOT A TYPE EDIT: it makes the segment AFTER each selected
+    // key automatic - that key's type and outgoing side plus the next key's
+    // incoming side (see ctrl::TimeLineEditor::assignSelectionAutoHandles). It is
+    // one undo step per batch and can write up to two params per selected key; the
+    // previous key's param and the key's own incoming side are NOT touched (they
+    // belong to the segment arriving at the key), and a last key - no segment
+    // leaves it - is a no-op.
     bool applyEasingToSelection(util::Easing::Type aType);
     bool applyAutoHandlesToSelection();
+    // LIVE EASING EDIT — the seam a CONTINUOUS easing gesture uses (the picker's
+    // bezier handle drag and a typed spin value today; the animation graph's
+    // handle drags are the same shape).
+    //
+    // begin() resolves the LIVE SELECTION's easing params - every component a
+    // whole-key entry names, only the named component of a marker entry, Pose/FFD
+    // their one shared param - and arms a session. step() writes aDraft to EVERY
+    // param through ONE rewriteable command, pushed on the first step that actually
+    // changes something (a press that never moves records nothing); every later
+    // step rewrites that command and re-announces the keys, so the document and
+    // every view update per step while the whole gesture stays ONE undo entry.
+    // end() closes the session; a gesture that was never stepped leaves no history.
+    //
+    // This is the app's ordinary drag rule: keep the command you pushed and rewrite
+    // it while the stack still allows (cmnd::ModifiableAssign). An undo/redo drops
+    // that link; the next step then opens a fresh command instead of corrupting the
+    // history. The seam takes a SELECTION and a draft, not a picker state, so the
+    // graph's own gestures are the same shape; the session spans the picker's open,
+    // which is what makes one popup one entry (the blend slider's close-time commit
+    // follows the same rule).
+    bool beginEasingEdit(const QString& aName);
+    bool stepEasingEdit(const util::Easing::Param& aDraft);
+    void endEasingEdit();
     // The MoveCanvas key (space by default) is held: the ruler lets a
     // left-press propagate to the timeline's pan instead of seeking.
     void setPanKeyHeld(bool aHeld) {
@@ -293,6 +322,21 @@ private:
     core::TimeLineEvent mCopyTargets;
     QPoint mPastePos;
     bool mOnPasting;
+
+    // ONE live easing edit (see beginEasingEdit): the params the selection named
+    // when it began, each with the rewriteable command the session pushed for it
+    // (null until the first step that changed something), plus the frame of the
+    // key each param belongs to - the notification is per KEY.
+    struct EasingEditTarget {
+        util::Easing::Param* param = nullptr;
+        core::ObjectNode* node = nullptr;
+        core::TimeKeyType type = core::TimeKeyType_TERM;
+        core::Frame frame{0};
+        cmnd::ModifiableAssign<util::Easing::Param, util::Easing::Param>* command = nullptr;
+    };
+    QVector<EasingEditTarget> mEasingEdit;
+    QString mEasingEditName;
+    bool mEasingEditOpen = false;
 
     theme::TimeLine mTimelineTheme;
 };

@@ -6,11 +6,13 @@
 #include <algorithm>
 #include "core/TimeKeyExpans.h"
 #include "core/KeyEasing.h"
+#include "core/KeyEasingAccess.h"
 #include "core/BlurKey.h"
 #include "core/TimeFormat.h"
 #include "cmnd/BasicCommands.h"
 #include "cmnd/ScopedMacro.h"
 #include "ctrl/CmndName.h"
+#include "ctrl/TimeLineUtil.h"
 #include "ctrl/graph/graph_Curve.h"
 #include "gui/TimeLineEditorWidget.h"
 #include "gui/MouseSetting.h"
@@ -900,15 +902,156 @@ bool TimeLineEditorWidget::applyEasingToSelection(const util::Easing::Type aType
 }
 
 bool TimeLineEditorWidget::applyAutoHandlesToSelection() {
-    // The Auto PRESET makes the SEGMENTS around each selected key automatic (see
-    // ctrl::TimeLineEditor::assignSelectionAutoHandles): the key's two sides plus
-    // the neighbour side that completes each adjacent segment, in ONE undo step.
-    // The preset is the CLAMPED pair (kAutoPresetHandleMode), never the retired
-    // Auto type; unclamped Auto is a deliberate per-side pick in the picker's mode
-    // combo.
+    // The Auto PRESET makes the segment AFTER each selected key automatic (see
+    // ctrl::TimeLineEditor::assignSelectionAutoHandles): that key's type and
+    // outgoing side plus the next key's incoming side, in ONE undo step. The
+    // previous key's param and the key's own incoming side are NOT written - they
+    // shape the segment arriving at the key - and a last key, with no segment
+    // leaving it, is a no-op. The preset is the CLAMPED pair
+    // (kAutoPresetHandleMode), never the retired Auto type; unclamped Auto is a
+    // deliberate per-side pick in the picker's mode combo.
     if (!mEditor)
         return false;
     return mEditor->assignSelectionAutoHandles();
+}
+
+//-------------------------------------------------------------------------------------------------
+bool TimeLineEditorWidget::beginEasingEdit(const QString& aName) {
+    // ONE session at a time: a new gesture owns a new command.
+    endEasingEdit();
+    if (!mEditor || !mProject)
+        return false;
+
+    mEasingEditName = aName;
+    mEasingEditOpen = true;
+
+    // THE SELECTION -> PARAM MAP, the same rule assignSelectionEasing applies: a
+    // whole-key entry (every timeline gesture) names every component the type
+    // stores, a marker entry (the graph's selection) only its component, Pose/FFD
+    // answer their one shared param and Bone/Mesh none. The key is re-resolved from
+    // the document, so a stale selection entry contributes nothing.
+    for (const ctrl::time::Selection::Item& item : mEditor->selection().items()) {
+        core::TimeLineEvent::Target target = item.target;
+        core::TimeKeyPos pos = target.pos;
+        core::TimeKey* key = pos.key();
+        if (!key || !target.node)
+            continue;
+        const int stored = core::easingStorageCount(pos.type());
+        const bool wholeKey = (item.component == ctrl::time::Selection::kKeyLevel);
+        if (!wholeKey && (item.component < 0 || stored <= item.component))
+            continue;
+        for (int component = 0; component < stored; ++component) {
+            if (!wholeKey && component != item.component)
+                continue;
+            util::Easing::Param* param = core::keyEasingOf(*key, pos.type(), component);
+            if (!param)
+                continue;
+            EasingEditTarget edit;
+            edit.param = param;
+            edit.node = target.node;
+            edit.type = pos.type();
+            edit.frame = core::Frame(key->frame());
+            mEasingEdit.append(edit);
+        }
+    }
+    return !mEasingEdit.isEmpty();
+}
+
+bool TimeLineEditorWidget::stepEasingEdit(const util::Easing::Param& aDraft) {
+    if (!mEasingEditOpen || !mEditor || !mProject)
+        return false;
+
+    // The stack no longer tops the command this session pushed (an undo/redo, or
+    // another gesture's edit took the modifiable link): rewriting it would corrupt
+    // the history, so close the session and let this step open a fresh edit - the
+    // app's "later commit opens a new edit" rule for a drag that outlived its
+    // command.
+    if (!mEasingEdit.isEmpty() && mEasingEdit.first().command
+        && !mProject->commandStack().isModifiable(mEasingEdit.last().command)) {
+        const QString name = mEasingEditName;
+        endEasingEdit();
+        beginEasingEdit(name);
+    }
+
+    const bool firstStep = mEasingEdit.isEmpty() || !mEasingEdit.first().command;
+    const auto targetsOf = [this](core::TimeLineEvent& aEvent) {
+        // ONE notification per KEY: the components of one key are one change to its
+        // timeline (the same shape ctrl::TimeLineEditor::pushEasingWrites builds).
+        for (const EasingEditTarget& edit : mEasingEdit) {
+            if (!edit.node)
+                continue;
+            bool named = false;
+            for (const core::TimeLineEvent::Target& pushed : aEvent.targets()) {
+                if (pushed.node == edit.node && pushed.pos.type() == edit.type
+                    && pushed.pos.index() == edit.frame.get()) {
+                    named = true;
+                    break;
+                }
+            }
+            if (!named)
+                aEvent.pushTarget(*edit.node, edit.type, edit.frame.get());
+        }
+    };
+
+    if (firstStep) {
+        bool changes = false;
+        for (const EasingEditTarget& edit : mEasingEdit) {
+            if (edit.param && *edit.param != aDraft) {
+                changes = true;
+                break;
+            }
+        }
+        if (!changes)
+            return false; // a press that has not moved: record nothing
+
+        cmnd::ScopedMacro macro(mProject->commandStack(), mEasingEditName);
+        auto* notifier = new ctrl::TimeLineUtil::Notifier(*mProject);
+        notifier->event().setType(core::TimeLineEvent::Type_ChangeKeyValue);
+        targetsOf(notifier->event());
+        macro.grabListener(notifier);
+
+        // Every param gets a command: the ones this step leaves alone start at the
+        // value they already hold, so a later step can still rewrite them into the
+        // SAME command. A command reads its undo value when it first runs, so the
+        // pre-gesture state is what undo restores.
+        for (EasingEditTarget& edit : mEasingEdit) {
+            if (!edit.param || !edit.node)
+                continue;
+            const util::Easing::Param next = (*edit.param == aDraft) ? *edit.param : aDraft;
+            auto* command = new cmnd::ModifiableAssign<util::Easing::Param>(edit.param, next);
+            mProject->commandStack().push(command);
+            edit.command = command;
+        }
+        return true; // the macro's own notifier announced this first step
+    }
+
+    // REWRITE the one command with this step's value. The write goes straight
+    // through the stack, so the keys are announced again here - nothing else would
+    // tell the timeline, the chip and the graph (the graph's handle drag
+    // re-announces its rewritten command for the same reason).
+    bool changes = false;
+    for (EasingEditTarget& edit : mEasingEdit) {
+        if (!edit.command || !edit.param || *edit.param == aDraft)
+            continue;
+        edit.command->modifyValue(aDraft);
+        changes = true;
+    }
+    if (!changes)
+        return false;
+
+    core::TimeLineEvent event;
+    event.setType(core::TimeLineEvent::Type_ChangeKeyValue);
+    targetsOf(event);
+    mProject->onTimeLineModified(event, false);
+    return true;
+}
+
+void TimeLineEditorWidget::endEasingEdit() {
+    // The commands stay on the stack holding their last value; this drops only this
+    // session's handle to them, so the next gesture opens a command of its own.
+    mEasingEdit.clear();
+    mEasingEditName.clear();
+    mEasingEditOpen = false;
 }
 
 bool targetsAreSeparated(QList<core::TimeLineEvent::Target> &targets){
@@ -1294,9 +1437,13 @@ void TimeLineEditorWidget::pushEasingChipState() {
 void TimeLineEditorWidget::setEasingItemHost(prop::EasingItem* aHost) {
     if (mEasingHost) {
         // The host is going away (or being replaced): its callbacks capture this
-        // widget, so they must not outlive it.
+        // widget, so they must not outlive it. A session it left open also goes.
         mEasingHost->onEasingApplied = nullptr;
+        mEasingHost->onEasingLiveBegin = nullptr;
+        mEasingHost->onEasingLiveStep = nullptr;
+        mEasingHost->onEasingLiveEnd = nullptr;
         mEasingHost->onPickerClosed = nullptr;
+        endEasingEdit();
     }
     mEasingHost = aHost;
     if (!mEasingHost) {
@@ -1308,11 +1455,11 @@ void TimeLineEditorWidget::setEasingItemHost(prop::EasingItem* aHost) {
 
     // The one commit path: the control hands every edit the picker commits here,
     // and this widget writes the keys the open named. The AUTO PRESET is not a
-    // per-key type edit: it makes the segments around each selected key automatic
-    // (the key's two sides plus the neighbour side that completes each adjacent
-    // segment), so it takes the segment route. The predicate is the same one the
-    // picker's tile uses to show itself checked, so a manually-built mode pair
-    // that equals the preset behaves like the preset.
+    // per-key type edit: it makes the segment AFTER each selected key automatic
+    // (that key's type and outgoing side plus the next key's incoming side), so it
+    // takes the segment route. The predicate is the same one the picker's tile
+    // uses to show itself checked, so a manually-built mode pair that equals the
+    // preset behaves like the preset.
     mEasingHost->onEasingApplied = [this](util::Easing::Param aEasing) {
         if (!mEditor)
             return;
@@ -1325,11 +1472,26 @@ void TimeLineEditorWidget::setEasingItemHost(prop::EasingItem* aHost) {
         }
         mEditor->assignSelectionEasing([aEasing](const util::Easing::Param&) { return aEasing; });
     };
+    // A CONTINUOUS gesture the picker streams (bezier handle drag, typed spin):
+    // one rewriteable command over the selection, rewritten per step, closed when
+    // the gesture ends - so the document and the graph follow the pointer while the
+    // whole gesture is ONE undo entry. The popup's close ends it too (its hide
+    // closes the session before the popup goes away).
+    mEasingHost->onEasingLiveBegin = [this] {
+        beginEasingEdit(CmndName::tr("Change key(s) easing"));
+    };
+    mEasingHost->onEasingLiveStep = [this](util::Easing::Param aStep) {
+        stepEasingEdit(aStep);
+    };
+    mEasingHost->onEasingLiveEnd = [this] {
+        endEasingEdit();
+    };
     // The popover is gone, so a right-click's temporary selection ends with it:
     // those keys were lent for the open, and the open is over. Clearing the
     // selection is itself a change, so it announces the chip's new state by the
     // same route every other change takes.
     mEasingHost->onPickerClosed = [this]() {
+        endEasingEdit(); // a gesture the close interrupted owns no open session
         mEditor->endTemporarySelection();
         this->update(); // repaints, which re-reads the selection for the chip
     };

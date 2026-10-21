@@ -57,9 +57,9 @@ constexpr double kVMIN = -0.35, kVMAX = 1.35;
 // head is the three non-curve entries - Linear, Floor, Round - plus the AUTO
 // PRESET, which is not a type any more: it draws a Custom curve with BOTH sides
 // Auto (Blender's automatic handles) and clicking it writes those modes. The
-// ACTION is segment-level: automatic handles apply to the two segments around
-// each selected key, so the host that owns the keys also writes the neighbour
-// side that completes each segment (see
+// ACTION is segment-level: automatic handles apply to the ONE segment AFTER each
+// selected key, so the host that owns the keys writes that key's type and
+// outgoing side plus the next key's incoming side (see
 // ctrl::TimeLineEditor::assignSelectionAutoHandles). The hairline separator
 // closes that head; the analytic family then follows in the table's order. The
 // type entries are asserted equal to the display table's non-Custom entries
@@ -563,19 +563,25 @@ EasingPickWidget::EasingPickWidget(const util::Easing::Param& aInitial, QWidget*
     mAnimTimer->setInterval(16); // ~60fps
     connect(mAnimTimer, &QTimer::timeout, this, &EasingPickWidget::animStep);
 
-    // Session undo/redo (per-step inside the popup). A discrete edit commits
-    // immediately (commitDiscrete); a continuous gesture commits once, in
-    // hideEvent, so one drag is one undo step. The popup records its own draft
-    // history; continuous gestures (blend slider / bezier handle) are coalesced
-    // into one history entry so undo steps back a whole drag, not each tick.
-    // The blend slider's
-    // gesture start/stop arrive through BlendControl callbacks (onPressed /
-    // onReleased) wired in buildBlend.
+    // Session undo/redo (per-step inside the popup). A discrete edit records one
+    // entry as it happens; a continuous gesture (blend slider, bezier handle, one
+    // typed spin value) records ONE entry when it finishes, so undo steps back a
+    // whole gesture, not each tick. The blend slider's gesture start/stop arrive
+    // through BlendControl callbacks (onPressed / onReleased) wired in buildBlend.
     // The bezier editor mutates the draft while a tangent handle is dragged;
     // beginGesture snapshots the pre-drag curve, endGesture folds the drag into
-    // one history entry.
+    // one history entry. Every pointer move reports its step (curveDragged), so
+    // the model and every view follow the handle live - through ONE owner-held
+    // command (liveEditStarted/liveEditEnded), which is what keeps the whole
+    // drag a single undo entry in the DOCUMENT's history too.
+    // The session spans the POPUP, not the gesture: the owner's one command stays
+    // open until the popup closes (the rule the blend slider's close-time commit
+    // already follows), so two drags in one open are still one undo entry. Ending
+    // it at a release would make every drag its own entry.
     if (mBezierEditor) {
         connect(mBezierEditor, &BezierCurveEditor::dragStarted, this, &EasingPickWidget::beginGesture);
+        connect(mBezierEditor, &BezierCurveEditor::dragStarted, this, &EasingPickWidget::beginLiveEdit);
+        connect(mBezierEditor, &BezierCurveEditor::curveDragged, this, &EasingPickWidget::onBezierDragStep);
         connect(mBezierEditor, &BezierCurveEditor::editingFinished, this, &EasingPickWidget::endGesture);
     }
 
@@ -856,14 +862,14 @@ QToolButton* EasingPickWidget::makeTileAt(int aIndex, util::Easing::Type aType, 
     // no text, so this is also its accessible text.
     //
     // THE PRESET'S NAME SAYS WHAT THE CLICK DOES, not only the pair it stores:
-    // automatic handles apply to SEGMENTS (a tangent pair belongs to a segment),
-    // so the action makes both segments around each selected key automatic - the
-    // previous key's outgoing side, the key's two sides and the next key's
-    // incoming side, in ONE undo step. A screen-reader user gets the same words
-    // the tooltip shows.
+    // automatic handles apply to one SEGMENT (a tangent pair belongs to a
+    // segment), so the action makes the segment AFTER each selected key automatic
+    // - that key's type and outgoing side plus the next key's incoming side, in
+    // ONE undo step; a last key has no segment and writes nothing. A
+    // screen-reader user gets the same words the tooltip shows.
     const QString tileLabel = util::Easing::getParamName(glyph);
     if (def.autoPreset) {
-        const QString action = tr("Make both adjacent segments automatic");
+        const QString action = tr("Make the segment after the selected key automatic");
         tile->setAccessibleName(tr("%1 (%2)").arg(action, tileLabel));
         tile->setToolTip(tr("%1 - %2 handles").arg(action, tileLabel));
     } else {
@@ -983,6 +989,13 @@ QWidget* EasingPickWidget::buildBezierPanel() {
         mBezierSpins.append(s);
         QDoubleSpinBox::connect(s, QOverload<double>::of(&QDoubleSpinBox::valueChanged),
                                 this, [this, i](double v) { onBezierSpin(i, v); });
+        // A typed number is ONE gesture: every keystroke/step streams a step into
+        // the owner's open command (see onBezierSpin), and finishing the edit folds
+        // the popup's own draft history into one entry - so a five-digit entry
+        // cannot leave five undo entries. The command itself stays open until the
+        // popup closes, like every other streamed gesture's.
+        QDoubleSpinBox::connect(s, &QAbstractSpinBox::editingFinished,
+                                this, [this] { endGesture(); });
     }
     l->addLayout(spins);
 
@@ -1078,7 +1091,8 @@ QWidget* EasingPickWidget::buildBezierPanel() {
         if (mDraft == old) return;
         // A pasted control point is a STORED value: any side it changed and that
         // derived its point must read it from now on (the drag's own rule).
-        freeEditedSides(old.cubicBezier);
+        if (freeEditedSides(old.cubicBezier))
+            refreshTiles(); // a freed side may stop the draft reading as the preset
         pushState(old); // paste is a discrete edit
         renderBezier();
         emit changed(mDraft);
@@ -1118,21 +1132,70 @@ bool EasingPickWidget::freeEditedSides(const util::Easing::CubicBezier& aBefore)
 
 void EasingPickWidget::onBezierSpin(int aIndex, double aValue) {
     const util::Easing::Param old = mDraft;
+    // The first keystroke/step of this spin is the START of a gesture: snapshot
+    // before mutating, so the popup's own undo folds the whole entry into one
+    // step (endGesture runs on editing-finished) and the streamed session is
+    // joined once, not once per digit. A gesture is per EDIT; the streamed session
+    // spans the popup, so it is a different flag.
+    const bool firstStep = !mGestureActive;
+    if (firstStep) beginGesture();
     util::Easing::CubicBezier& b = mDraft.cubicBezier;
     if (aIndex == 0) b.x1 = (float)aValue;
     else if (aIndex == 1) b.y1 = (float)aValue;
     else if (aIndex == 2) b.x2 = (float)aValue;
     else b.y2 = (float)aValue;
-    if (mDraft == old) return;
+    if (mDraft == old) {
+        // A keystroke that did not produce a new value (an intermediate "-" or a
+        // repeated digit) must not count as the gesture's first step.
+        if (firstStep) { mGestureActive = false; }
+        return;
+    }
     // The typed side becomes stored if it was derived; the other side is untouched.
-    freeEditedSides(old.cubicBezier);
-    pushState(old); // typed bezier value is a discrete edit
+    if (freeEditedSides(old.cubicBezier)) {
+        // A freed side stops the draft reading as the Auto preset, so the catalog
+        // tile that was checked must be unchecked now (it is the state the popup
+        // reopens the catalog on).
+        refreshHandleModes();
+        refreshTiles();
+    }
     // Sync the handle points from the new bezier so the paint event's
-    // write-back keeps it (otherwise it reverts to a stale control point), and
-    // re-read the mode combos when a side was freed.
-    renderBezier();
+    // write-back keeps it (otherwise it reverts to a stale control point).
+    if (mBezierEditor) { mBezierEditor->syncFromBezier(); mBezierEditor->update(); }
     emit changed(mDraft);
-    commitDiscrete(); // typed value is a discrete edit
+    mApplied = mDraft;   // the owner's session writes the model on this step
+    beginLiveEdit();     // opens the owner's ONE command on the first step
+    emit liveEdited(mDraft);
+}
+
+void EasingPickWidget::onBezierDragStep() {
+    // The editor has already written the moved control point into the draft
+    // (BezierCurveEditor::mouseMoveEvent -> commitPoints). One pointer move is
+    // one STEP: report it and let the owner rewrite its open command, so the
+    // document, the graph and every view follow the handle NOW - not on release,
+    // and not on close. The side the drag stored is freed here (not at release)
+    // for the same reason: the derived side would otherwise ignore the write.
+    if (freeEditedSides(mGestureStart.cubicBezier)) {
+        refreshHandleModes(); // title + mode combos say "Free" while dragging
+        refreshTiles();       // …and the Auto tile stops reading as current
+    }
+    emit changed(mDraft);
+    mApplied = mDraft; // the model holds this step; close must not re-commit it
+    beginLiveEdit();   // defensive: the press opened it already
+    emit liveEdited(mDraft);
+}
+
+void EasingPickWidget::beginLiveEdit() {
+    if (mLiveEditActive) return;
+    mLiveEditActive = true;
+    emit liveEditStarted();
+}
+
+void EasingPickWidget::endLiveEdit() {
+    if (!mLiveEditActive) return;
+    mLiveEditActive = false;
+    // The owner closes its command here (the popup's close is the one undo entry
+    // for the session); the popup's own draft history was folded by endGesture.
+    emit liveEditEnded();
 }
 
 // ---- interactions ----------------------------------------------------------
@@ -1205,10 +1268,11 @@ void EasingPickWidget::setAutoHandlesPreset() {
         // Already the preset: the popover must SHOW the catalog with the tile
         // checked (a draft reached here from the bezier panel by the combos would
         // otherwise stay on the bezier panel). The ACTION is still committed: the
-        // preset makes the SEGMENTS around the keys automatic, so a key that is
-        // already the pair may still have a half-automatic neighbour (exactly what
-        // an edit made before the segment rule existed leaves behind). The host
-        // writes nothing when the whole rule is already satisfied.
+        // preset makes the segment AFTER each selected key automatic, so a key
+        // that is already the pair may still have a neighbour whose incoming side
+        // is not automatic (exactly what an edit made before the segment rule
+        // existed leaves behind). The host writes nothing when the whole rule is
+        // already satisfied.
         refresh();
         emit applied(mDraft);
         return;
@@ -1240,7 +1304,10 @@ void EasingPickWidget::setHandleMode(bool aIncoming, util::Easing::HandleMode aM
 void EasingPickWidget::setValue(const util::Easing::Param& aParam) {
     // Programmatic load (a new key's easing, or the open measurement dance):
     // reset the draft, the committed baseline, and the session history as one
-    // clean slate so nothing is emitted or committed.
+    // clean slate so nothing is emitted or committed. A streamed session also
+    // ends here: a loaded draft is not a step of the edit it replaced, so the
+    // owner must close that command rather than rewrite it with this value.
+    endLiveEdit();
     mDraft = aParam;
     mApplied = aParam;
     mUndo.clear();
@@ -1262,13 +1329,14 @@ void EasingPickWidget::setAutoContext(const util::Easing::AutoContext& aContext)
 
 // ---- commit ---------------------------------------------------------------
 void EasingPickWidget::commitDiscrete() {
-    // A DISCRETE edit (tile / segment / custom / mode combo / typed bezier /
-    // paste) is a finished change: commit it to the model now, so the keys and
-    // every view that reads them update while the popup is still open. A
-    // continuous drag does NOT come through here; it keeps the one-undo-on-close
-    // rule (hideEvent commits the final draft once). mApplied is the baseline, so
-    // an edit that wrote nothing (or a second commit of the same draft) emits
-    // nothing and close cannot re-commit it.
+    // A DISCRETE edit (tile / segment / custom / mode combo / paste) is a finished
+    // change: commit it to the model now, so the keys and every view that reads
+    // them update while the popup is still open. A STREAMED gesture (bezier drag /
+    // typed spin) does not come through here - its steps already wrote the model
+    // through the owner's open command - and the blend slider keeps the
+    // one-undo-on-close rule (hideEvent commits its final draft once). mApplied is
+    // the baseline, so an edit that wrote nothing (or a second commit of the same
+    // draft) emits nothing and close cannot re-commit it.
     if (mDraft == mApplied)
         return;
     mApplied = mDraft;
@@ -1282,7 +1350,8 @@ void EasingPickWidget::pushState(const util::Easing::Param& aState) {
 }
 
 void EasingPickWidget::beginGesture() {
-    // Snapshot the pre-drag draft so endGesture can coalesce the whole drag.
+    // Snapshot the pre-gesture draft so endGesture can fold the whole gesture into
+    // ONE history entry: a handle drag, a blend drag, or one typed spin value.
     // Do not record yet: a press-without-move must not leave a history entry.
     mGestureStart = mDraft;
     mGestureActive = true;
@@ -1293,8 +1362,10 @@ void EasingPickWidget::endGesture() {
     mGestureActive = false;
     // A bezier drag wrote stored control points: free whichever side it moved if
     // that side derived its point (the canvas drag's own rule; see the header).
+    // The streamed steps already freed it; this is the same rule at the finish, so
+    // a gesture whose only step was the last one cannot leave it derived.
     const bool freed = freeEditedSides(mGestureStart.cubicBezier);
-    if (mDraft != mGestureStart) pushState(mGestureStart); // one entry per drag
+    if (mDraft != mGestureStart) pushState(mGestureStart); // one entry per gesture
     if (freed)
         refresh(); // the mode combos and panel must show the freed side
     emit changed(mDraft); // ensure derived views see the final draft
@@ -1306,6 +1377,12 @@ void EasingPickWidget::undo() {
     mDraft = mUndo.takeLast();
     refresh();
     emit changed(mDraft);
+    // During a streamed session the model must follow the popup's own history step
+    // too; it is a step of the SAME command, so no extra undo entry appears.
+    if (mLiveEditActive) {
+        mApplied = mDraft;
+        emit liveEdited(mDraft);
+    }
 }
 
 void EasingPickWidget::redo() {
@@ -1314,6 +1391,10 @@ void EasingPickWidget::redo() {
     mDraft = mRedo.takeLast();
     refresh();
     emit changed(mDraft);
+    if (mLiveEditActive) {
+        mApplied = mDraft;
+        emit liveEdited(mDraft);
+    }
 }
 
 // ---- render -----------------------------------------------------------------
@@ -1403,14 +1484,14 @@ void EasingPickWidget::updateBlend() {
     mBlendVal->setText(QString::number(qRound(mDraft.weight * 100)) + "%");
 }
 
-void EasingPickWidget::renderBezier() {
-    // The editor is authoritative: paintEvent reads the draft bezier, clamps
-    // it, and writes the values back to bezier + the spins. Sync the handle
-    // points first so a programmatic bezier change (spin/paste/setValue) is
-    // not reverted by the paint event's write-back.
-    if (mBezierEditor) { mBezierEditor->syncFromBezier(); mBezierEditor->update(); }
-    // The two mode combos show the draft's own sides; a programmatic change
-    // (the Auto preset, a paste, setValue) must move them without re-emitting.
+void EasingPickWidget::refreshHandleModes() {
+    // The header names the Param the same way the chip and every tile do (one
+    // vocabulary; a Custom curve by its handle pair, never "Custom").
+    if (mTitle)
+        mTitle->setText(util::Easing::getParamName(mDraft));
+    // The two mode combos show the draft's own sides; a programmatic change (the
+    // Auto preset, a paste, setValue, a drag freeing a derived side) must move
+    // them without re-emitting.
     if (mHandleIn) {
         const QSignalBlocker block(mHandleIn);
         mHandleIn->setCurrentIndex(int(mDraft.handleIn));
@@ -1419,6 +1500,15 @@ void EasingPickWidget::renderBezier() {
         const QSignalBlocker block(mHandleOut);
         mHandleOut->setCurrentIndex(int(mDraft.handleOut));
     }
+}
+
+void EasingPickWidget::renderBezier() {
+    // The editor is authoritative: paintEvent reads the draft bezier, clamps
+    // it, and writes the values back to bezier + the spins. Sync the handle
+    // points first so a programmatic bezier change (spin/paste/setValue) is
+    // not reverted by the paint event's write-back.
+    if (mBezierEditor) { mBezierEditor->syncFromBezier(); mBezierEditor->update(); }
+    refreshHandleModes();
 }
 
 void EasingPickWidget::resizeEvent(QResizeEvent* aEvent) {
@@ -1523,11 +1613,19 @@ void EasingPickWidget::hideEvent(QHideEvent* aEvent) {
     // (openPopover re-establishes it at the end of the dance).
     mHasAnchor = false;
 
+    // A streamed session (a handle drag / a typed spin) closes here: the popup's
+    // close is the ONE undo entry for the session, the same close-time rule the
+    // blend slider follows, so the owner's open command ends now. Its steps
+    // already wrote the model, so the commit below has nothing left to do for it.
+    // An interrupted gesture's own draft-history entry is folded here too.
+    endLiveEdit();
+    if (mGestureActive) endGesture();
+
     // Apply-on-close, for the DRAG remnant: discrete edits already committed as
-    // they happened (commitDiscrete), so this normally writes only the final
-    // value of a blend-slider or bezier drag - one undo step for the whole
-    // gesture. Only commit if the draft actually moved. hideEvent fires for both
-    // the ✕ and an outside-click dismiss of the popup.
+    // they happened (commitDiscrete), and a streamed gesture applied every step,
+    // so this normally writes only the final value of a blend-slider drag - one
+    // undo step for the whole gesture. Only commit if the draft actually moved.
+    // hideEvent fires for both the ✕ and an outside-click dismiss of the popup.
     if (mDraft != mApplied) {
         mApplied = mDraft;
         emit applied(mDraft);

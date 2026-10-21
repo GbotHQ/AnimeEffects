@@ -11,6 +11,7 @@
 #include <QtOpenGL/QtOpenGL>
 
 #include "core/TimeKeyType.h"
+#include "ctrl/graph/graph_Geometry.h"
 #include "gui/GraphPanelModel.h"
 
 // The shared frame API's return type. Forward-declared rather than pulled in through
@@ -104,8 +105,8 @@ struct PanelFocus {
 // bar never hides - see panelBarAt for the hover identity the two lanes share. It
 // keeps no state - which is what lets the overlay call it per frame and a headless
 // pixel gate call it once. It reads no font off the current context (the draw list
-// carries its own), but the marker hover (gui::panelKeyAt), the handle highlight and
-// the hovered-curve chip DO read
+// carries its own), but the target pick (gui::panelPickAt, the key or tangent handle
+// the pointer lights), the handle highlight and the hovered-curve chip DO read
 // ImGui::GetIO().MousePos, so a caller must own a context: the overlay's frame and
 // the headless pixel gate both do.
 //
@@ -604,13 +605,55 @@ bool panelSelectedKeyDot(const GraphPanelModel& aModel, const core::TimeLineEven
 //
 // False when no key is that close, which is a right-click's whole answer: the panel's
 // right button has one action (the easing picker on the key under the pointer) and opens
-// nothing when there is no key. It is the one right-click hit test and the one marker
-// HOVER test (drawPanel brightens the marker it names), so the key a right-click grabs
-// and the marker the pointer lights are the same key.
+// nothing when there is no key. It is the one right-click hit test. The HOVER is not it:
+// the pointer lights either a key or a tangent handle, and which one it names is the
+// shared pick gui::panelPickAt makes for the drawing layer and the host alike (see
+// PanelPick below), because a right-click may name a key where a plain press at the
+// same point selects a relatively nearer handle.
 bool panelKeyAt(
     const GraphPanelModel& aModel, const QPoint& aPos, core::ObjectNode*& aNode,
     ctrl::graph::Channel& aChannel, core::Frame& aFrame
 );
+
+// WHAT THE POINTER'S POSITION NAMES ON THE PANEL - one answer, one rule, for the
+// hover ink (drawPanel) and the hover-repaint scheduling
+// (gui::GraphPanelWidget::updateHoverRepaint).
+//
+// This is the panel-level half of ctrl::graph::pickTarget: it finds the NEAREST key
+// (over every curve the model publishes, PanelCurve::keyDots) and the NEAREST
+// published handle (PanelCurve::handles - and the model publishes exactly the handles
+// the drawing layer inks), then lets pickTarget() decide which class the point names.
+// The press decides the same question from the same geometry through the same
+// function (ctrl::GraphEditor::hitTest), so the marker or handle the pointer lights is
+// exactly the target a press at that point selects. That is the whole point: the two
+// used to be independent scans - the drawing layer found the nearest handle within its
+// own ring and lit a key whenever any key was inside ITS ring, without comparing the
+// two - so the ink could light a handle a press would never take.
+//
+// The tie-break inside each class is the one this file always used: the LAST
+// candidate at the same distance wins (`<=`).
+//
+// A HANDLE THE DRAWING LAYER DOES NOT INK is not in the model, so it is not a hover
+// candidate here: with a focus set, only that channel's row publishes handles (the
+// vertex-budget rule drawPanel states). A press there still GRABS the handle - the
+// editor's hit-test scans the document, not the picture - and a handle press focuses
+// that channel, so the handle is published, drawn and highlighted from the next frame
+// on. Keys are published for every curve, so they are always candidates.
+struct PanelPick {
+    ctrl::graph::PickKind kind = ctrl::graph::PickKind::None;
+    // The key, as the timeline's own triple - set when kind == Key. A curve whose
+    // node is null is not hoverable (there is no layer to name), exactly as
+    // gui::panelKeyAt answers it.
+    core::ObjectNode* node = nullptr;
+    ctrl::graph::Channel channel;
+    core::Frame frame;
+    // The handle, as indices into aModel.curves and that curve's `handles` - set
+    // when kind == Handle, -1 otherwise.
+    int curve = -1;
+    int handle = -1;
+};
+
+PanelPick panelPickAt(const GraphPanelModel& aModel, const QPoint& aPos);
 
 // WHAT IS LEFT IN THIS FILE, and why it is a file at all.
 //

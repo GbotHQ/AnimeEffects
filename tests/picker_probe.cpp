@@ -1,7 +1,7 @@
 // picker_probe.cpp — exercise the EasingPickWidget's interactive behaviors
-// (mode switch, slider drag-outside, knob clip, bezier spin input) and print
-// the results. Compiled directly against the widget sources like the layout
-// gate, so it links only util + Qt Widgets.
+// (mode switch, slider drag-outside, knob clip, bezier spin input, the per-step
+// bezier-handle drag stream) and print the results. Compiled directly against the
+// widget sources like the layout gate, so it links only util + Qt Widgets.
 #include <QApplication>
 #include <QWidget>
 #include <QSlider>
@@ -14,6 +14,7 @@
 #include <QRandomGenerator>
 #include <QDebug>
 #include <QTemporaryDir>
+#include <cmath>
 #include <cstdio>
 #include "gui/prop/EasingPickWidget.h"
 #include "gui/prop/bezierCurveEditor.h"
@@ -376,12 +377,12 @@ int main(int argc, char** argv) {
             }
             const util::Easing::Param presetValue = w.value();
             // The tile is glyph-only, so its accessible text is the ACTION it
-            // performs: automatic handles apply to SEGMENTS, so it says both
-            // adjacent segments are made automatic, and still names the pair it
-            // writes ("Auto Clamped").
+            // performs: automatic handles apply to ONE SEGMENT, so it says the
+            // segment AFTER the selected key is made automatic, and still names
+            // the pair it writes ("Auto Clamped").
             const QString accessible = autoTile->accessibleName();
             checkedOnlyAuto = checkedOnlyAuto && accessible.contains(presetName)
-                && accessible.contains(QLatin1String("segments automatic"))
+                && accessible.contains(QLatin1String("segment after the selected key"))
                 && presetName == util::Easing::getHandleModeName(util::Easing::kAutoPresetHandleMode)
                 && presetName != QLatin1String("Custom")
                 // THE PRESET IS THE CLAMPED PAIR, not the unclamped mode that used
@@ -741,6 +742,148 @@ int main(int argc, char** argv) {
                 title ? qPrintable(title->text()) : "<none>", int(autoName),
                 titlePreset ? qPrintable(titlePreset->text()) : "<none>", int(presetName),
                 verdict(autoName && presetName));
+    }
+
+    // ---- #17 A BEZIER HANDLE DRAG REPORTS AND APPLIES EVERY STEP ----
+    // The complaint was "in Custom, changing the bezier handles only updates once
+    // I close the easing menu": the canvas wrote the draft on every move but told
+    // nobody, so the chip/document/graph waited for hideEvent. A drag now streams
+    // each pointer move (liveEdited, with changed alongside) while the owner keeps
+    // ONE command open across the gesture - so no `applied` fires per step and the
+    // close cannot commit a second time.
+    {
+        util::Easing::Param draft;
+        draft.type = util::Easing::Type_Custom;
+        draft.handleIn = util::Easing::HandleMode_Aligned;
+        draft.handleOut = util::Easing::HandleMode_Aligned;
+
+        EasingPickWidget p{draft};
+        p.setValue(draft);
+        p.show();
+        p.setCustom(); // Custom non-preset already routes there; force the layout
+        app.processEvents();
+        int started = 0, steps = 0, ended = 0, changedFires = 0, appliedFires = 0;
+        float stepX = -99.0f;
+        QObject::connect(&p, &EasingPickWidget::liveEditStarted, [&] { ++started; });
+        QObject::connect(&p, &EasingPickWidget::liveEdited,
+                         [&](util::Easing::Param aParam) { ++steps; stepX = aParam.cubicBezier.x1; });
+        QObject::connect(&p, &EasingPickWidget::liveEditEnded, [&] { ++ended; });
+        QObject::connect(&p, &EasingPickWidget::changed,
+                         [&](util::Easing::Param) { ++changedFires; });
+        QObject::connect(&p, &EasingPickWidget::applied,
+                         [&](util::Easing::Param) { ++appliedFires; });
+
+        auto* stage = p.findChild<BezierCurveEditor*>("bezier-stage");
+        bool ok = stage && stage->width() > 0 && stage->height() > 0;
+        bool openedAtPress = false, firstStep = false, secondStep = false;
+        bool closedAtRelease = false, draftFollowed = false, nothingReApplied = false;
+        if (ok) {
+            stage->syncFromBezier();
+            stage->update();
+            app.processEvents();
+            const QPoint from(stage->m_points[BezierCurveEditor::ControlPoint1].toPoint());
+            const QPoint mid(from.x() + 6, from.y() - 8);
+            const QPoint end(from.x() + 12, from.y() - 18);
+            QMouseEvent press(QEvent::MouseButtonPress, from, stage->mapToGlobal(from),
+                              Qt::LeftButton, Qt::LeftButton, Qt::NoModifier);
+            QApplication::sendEvent(stage, &press);
+            openedAtPress = started == 1 && steps == 0 && changedFires == 0;
+
+            QMouseEvent move1(QEvent::MouseMove, mid, stage->mapToGlobal(mid),
+                              Qt::NoButton, Qt::LeftButton, Qt::NoModifier);
+            QApplication::sendEvent(stage, &move1);
+            firstStep = steps == 1 && changedFires >= 1 && appliedFires == 0 && started == 1;
+
+            QMouseEvent move2(QEvent::MouseMove, end, stage->mapToGlobal(end),
+                              Qt::NoButton, Qt::LeftButton, Qt::NoModifier);
+            QApplication::sendEvent(stage, &move2);
+            secondStep = steps == 2 && appliedFires == 0;
+            // The draft the owner was handed IS the draft the widget holds - the
+            // model is written per step, not deferred to the release/close.
+            draftFollowed = std::fabs(double(stepX - p.value().cubicBezier.x1)) < 1e-6;
+
+            QMouseEvent release(QEvent::MouseButtonRelease, end, stage->mapToGlobal(end),
+                                Qt::LeftButton, Qt::NoButton, Qt::NoModifier);
+            QApplication::sendEvent(stage, &release);
+            // The session stays OPEN across the gesture (it spans the popup), so the
+            // release closes the gesture, not the command.
+            closedAtRelease = ended == 0 && steps == 2 && appliedFires == 0;
+
+            p.hide();
+            app.processEvents();
+            // Every step was already written by the open command, which closes with
+            // the popup: one undo entry, and no `applied` re-commit on the way out.
+            nothingReApplied = ended == 1 && appliedFires == 0;
+        }
+        ok = ok && openedAtPress && firstStep && secondStep && draftFollowed
+            && closedAtRelease && nothingReApplied;
+        fprintf(stderr,
+                "#17 bezier drag: opens at press=%d, step1 live=%d, step2 live=%d, "
+                "draft followed=%d, session open after release=%d, closed once on hide=%d -> %s\n",
+                int(openedAtPress), int(firstStep), int(secondStep), int(draftFollowed),
+                int(closedAtRelease), int(nothingReApplied), verdict(ok));
+    }
+
+    // ---- #18 ONE TYPED SPIN VALUE IS ONE GESTURE (AND ONE UNDO ENTRY) ----
+    // A spin's valueChanged fires per keystroke/step. Streaming each one is what
+    // makes the graph follow the typing; beginning/ending ONE gesture around the
+    // edit is what stops five digits leaving five undo entries.
+    {
+        util::Easing::Param draft;
+        draft.type = util::Easing::Type_Custom;
+        draft.handleIn = util::Easing::HandleMode_Aligned;
+        draft.handleOut = util::Easing::HandleMode_Aligned;
+        draft.cubicBezier = { 0.25f, 0.1f, 0.75f, 0.9f };
+
+        EasingPickWidget p{draft};
+        p.setValue(draft);
+        p.resize(300, p.maxContentHeight());
+        p.show();
+        app.processEvents();
+        QDoubleSpinBox* x1 = p.findChild<QDoubleSpinBox*>("bezier-x1");
+        int started = 0, steps = 0, ended = 0, appliedFires = 0;
+        QObject::connect(&p, &EasingPickWidget::liveEditStarted, [&] { ++started; });
+        QObject::connect(&p, &EasingPickWidget::liveEdited,
+                         [&](util::Easing::Param) { ++steps; });
+        QObject::connect(&p, &EasingPickWidget::liveEditEnded, [&] { ++ended; });
+        QObject::connect(&p, &EasingPickWidget::applied,
+                         [&](util::Easing::Param) { ++appliedFires; });
+
+        bool ok = x1 != nullptr;
+        bool beganOnce = false, bothSteps = false, finishedOnce = false, oneUndo = false;
+        if (ok) {
+            // The editor is authoritative: once the panel has painted, the draft's
+            // curve is the one the canvas clamped. Read that as the pre-typing
+            // value, so the test never depends on the size the panel was built at.
+            const float before = p.value().cubicBezier.x1;
+            // Two keystrokes of ONE typed value: the gesture opens on the first,
+            // the second is a step of the same gesture (no new session).
+            x1->setValue(0.31);
+            app.processEvents();
+            beganOnce = started == 1 && steps == 1 && appliedFires == 0;
+            x1->setValue(0.37);
+            app.processEvents();
+            bothSteps = started == 1 && steps == 2 && appliedFires == 0;
+
+            // Finishing the edit folds the popup's own history into ONE entry, so a
+            // single undo returns to the pre-typing value. The streamed command
+            // stays open across the popup (closed by the hide below), so no
+            // `applied` fires at either point.
+            QMetaObject::invokeMethod(x1, "editingFinished");
+            app.processEvents();
+            finishedOnce = ended == 0 && appliedFires == 0;
+            p.undo();
+            app.processEvents();
+            oneUndo = std::fabs(double(p.value().cubicBezier.x1 - before)) < 1e-4;
+            p.hide();
+            app.processEvents();
+            finishedOnce = finishedOnce && ended == 1 && appliedFires == 0;
+        }
+        ok = ok && beganOnce && bothSteps && finishedOnce && oneUndo;
+        fprintf(stderr,
+                "#18 typed spin: one gesture opened=%d, both steps streamed=%d, "
+                "editing-finished closes=%d, one undo restores the pre-typing value=%d -> %s\n",
+                int(beganOnce), int(bothSteps), int(finishedOnce), int(oneUndo), verdict(ok));
     }
 
     fprintf(stderr, "picker_probe: %d mismatch%s\n", gMismatches, gMismatches == 1 ? "" : "es");

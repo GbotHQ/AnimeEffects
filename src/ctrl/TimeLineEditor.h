@@ -309,26 +309,26 @@ public:
     bool assignSelectionEasing(
         const std::function<util::Easing::Param(const util::Easing::Param&)>& aNext);
 
-    // THE AUTO PRESET APPLIES TO SEGMENTS, NOT KEYS.
+    // THE AUTO PRESET APPLIES TO THE SEGMENT AFTER THE SELECTED KEY.
     //
     // A tangent PAIR belongs to a segment, and a segment's curve is the FROM
-    // key's param: a key's OUTGOING side is the start tangent of the segment
-    // leaving it, its INCOMING side the end tangent of the segment arriving at
-    // it. Writing only the selected key's two modes therefore left the segment
-    // ARRIVING at it half-automatic (its FROM key was still an analytic or
-    // stored curve, so the incoming mode was never consulted), and the drawing
-    // published an "automatic" side that no drawn curve derived - the two halves
-    // of one defect. Applying Auto to a key makes BOTH adjacent segments fully
-    // automatic:
-    //   * the PREVIOUS key's outgoing side - the start tangent of prev -> K - and
-    //     its TYPE, because that segment's curve IS the previous key's param;
-    //   * K's BOTH sides;
-    //   * the NEXT key's incoming side - the end tangent of K -> next. That
-    //     key's type is left alone: it shapes the segment AFTER next, which this
-    //     action does not own.
-    // So a single-key Auto writes up to three params, in ONE macro and therefore
-    // ONE undo step. appendAutoPresetWrites merges a param named twice (two
-    // selected neighbours), so the multi-key case writes every param once.
+    // key's param: the FROM key's OUTGOING side is the start tangent and the TO
+    // key's INCOMING side the end tangent. So applying Auto to key K makes
+    // exactly the segment K -> next automatic, and writes:
+    //   * K's own param: its TYPE (Custom, because the OUTGOING mode is only
+    //     consulted on a Custom curve - without it the mode is inert) and its
+    //     OUTGOING side;
+    //   * the NEXT key's INCOMING side. That key's type is left alone: it shapes
+    //     the segment AFTER next, which this action does not own.
+    // The segment ARRIVING at K (prev -> K) is NOT touched: its curve is the
+    // previous key's param, so neither that param nor K's INCOMING side - the
+    // end tangent of that segment - is written.
+    // A LAST key has no segment leaving it and therefore writes NOTHING AT ALL
+    // (not even its type): with no next key the preset would preconfigure a
+    // segment that does not exist. So a single-key Auto writes two params, in
+    // ONE macro and therefore ONE undo step. appendAutoPresetWrites merges a
+    // param named twice (two selected neighbours), so the multi-key case writes
+    // every param once.
     bool assignSelectionAutoHandles();
 
     // ONE param write produced by a selection-level easing action: the key's own
@@ -342,11 +342,11 @@ public:
         core::Frame frame{0};
     };
     // Appends the Auto preset's writes for ONE key and ONE easing component: the
-    // up-to-three params described on assignSelectionAutoHandles. An entry that
-    // is already present is MERGED, never appended twice, so a param two selected
-    // keys both name is written once with the union of the forced sides. Only the
-    // type and the two handle modes are the preset's; the stored cubic, range and
-    // weight ride along untouched.
+    // two params described on assignSelectionAutoHandles (none for the last key).
+    // An entry that is already present is MERGED, never appended twice, so a
+    // param two selected keys both name is written once with the union of the
+    // forced sides. Only the type and the two handle modes are the preset's; the
+    // stored cubic, range and weight ride along untouched.
     static void appendAutoPresetWrites(core::TimeLine& aLine, core::ObjectNode& aNode,
                                        core::TimeKeyType aType, int aComponent,
                                        core::Frame aFrame, QVector<EasingWrite>& aOut);

@@ -110,6 +110,10 @@ void BezierCurveEditor::mouseMoveEvent(QMouseEvent *event)
         // Editing restarts the preview from the new curve; hover alone must
         // not freeze it (mouse tracking fires move events without buttons).
         *progress = 0;
+        // …and the owner learns about this STEP now, so the document, the graph
+        // and every view can follow the handle instead of waiting for the release
+        // (and for the popup to close).
+        emit curveDragged();
     }
     update();
 }

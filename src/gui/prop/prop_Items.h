@@ -236,6 +236,14 @@ namespace prop {
         // (the timeline surface, which knows the keys the open acts on) is the
         // only writer: the control itself never touches the document.
         std::function<void(util::Easing::Param)> onEasingApplied;
+        // A CONTINUOUS gesture the picker STREAMS (a bezier handle drag, a typed
+        // spin value): the host opens ONE rewriteable command on the begin, applies
+        // each step through it (so the document/graph follow the pointer), and
+        // closes it on the end - one undo entry for the whole gesture. The control
+        // still owns no model; these are the picker's live signals forwarded.
+        std::function<void()> onEasingLiveBegin;
+        std::function<void(util::Easing::Param)> onEasingLiveStep;
+        std::function<void()> onEasingLiveEnd;
         // The popover went away (its close button, an outside click, Escape). The
         // host uses this to end a right-click's temporary selection.
         std::function<void()> onPickerClosed;

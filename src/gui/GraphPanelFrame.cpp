@@ -4,6 +4,7 @@
 #include <cfloat>
 #include <cmath>
 #include <cstring>
+#include <limits>
 #include <memory>
 #include <vector>
 
@@ -1719,19 +1720,17 @@ void drawPanel(
     const float dotRadius = float(ctrl::graph::kKeyDotRadius);
     const float ringRadius = dotRadius + kKeyRingOffsetPx;
     const QColor highlightInk = aTheme.axisText();
-    // THE HOVER, by the ONE shared hit test: gui::panelKeyAt answers with the
-    // (node, channel, frame) triple the panel names a key by - the same rule (and the
-    // same kKeyHitRadius) both hosts open the key menu with - and it reads the model's
-    // own keyDots/keyFrames, so the marker the pointer finds and the marker this pass
-    // inks are the same key by construction. Under the pointer AND not selected, the
-    // three conditions the mock's `hov` line states.
-    core::ObjectNode* hoverNode = nullptr;
-    ctrl::graph::Channel hoverChannel;
-    core::Frame hoverFrame;
+    // THE HOVER, BY THE ONE SHARED PICK: gui::panelPickAt answers which CLASS of
+    // target the pointer names - key or tangent handle - with the same rule a press
+    // obeys (ctrl::graph::pickTarget), and names the key as the timeline's
+    // (node, channel, frame) triple. A key is lit only when the point actually
+    // selects the key, so a handle nearer to the pointer takes the highlight and this
+    // pass leaves the marker alone, exactly as a press there would drag the handle.
+    // Under the pointer AND not selected, the three conditions the mock's `hov` line
+    // states.
     const ImVec2 pointer = ImGui::GetIO().MousePos;
-    const bool hovered = panelKeyAt(
-        aModel, QPoint(int(pointer.x), int(pointer.y)), hoverNode, hoverChannel, hoverFrame
-    );
+    const PanelPick pick = panelPickAt(aModel, QPoint(int(pointer.x), int(pointer.y)));
+    const bool hovered = pick.kind == ctrl::graph::PickKind::Key;
     for (const PanelCurve& curve : aModel.curves) {
         // The markers follow their own curve's emphasis (curveStrength): a channel
         // that owns a selected marker, or a selected sibling of one, draws its dots at
@@ -1755,8 +1754,8 @@ void drawPanel(
             const bool selected = k < curve.keySelected.size() && curve.keySelected.at(k);
             const bool sibling = k < curve.keySiblingSelected.size() && curve.keySiblingSelected.at(k);
             const bool hoveredHere = hovered && !selected && k < curve.keyFrames.size()
-                && curve.node == hoverNode && curve.channel == hoverChannel
-                && curve.keyFrames.at(k) == hoverFrame;
+                && curve.node == pick.node && curve.channel == pick.channel
+                && curve.keyFrames.at(k) == pick.frame;
             const ImVec2 centre(float(dot.x()), float(dot.y()));
             aDrawList.AddCircleFilled(
                 centre, dotRadius,
@@ -1789,14 +1788,15 @@ void drawPanel(
     }
 
     // The Custom tangent handles, from the model's geometry: a stem from each
-    // handle's base to its dot, then the dot itself. The dot NEAREST the pointer,
-    // within ctrl::graph::kHandleHitRadius, takes the HUE-DERIVED hover ink (the
-    // handle's reduced-chroma hue lifted toward axisText) - the same distance and
-    // the same `<=` the editor's hit-test grabs through, so the highlight names
-    // exactly the handle a grab would take; the structural accent stays the
-    // playhead's and the marquee's. The handles are inside the plot clip (pushed
-    // above, now starting below the ruler), so a stem that leaves the plot is cut at
-    // the edge rather than painting over the panel's chrome.
+    // handle's base to its dot, then the dot itself. THE HANDLE THE SHARED PICK NAMES
+    // - gui::panelPickAt, over the same candidates a press measures - takes the
+    // HUE-DERIVED hover ink (the handle's reduced-chroma hue lifted toward axisText);
+    // the structural accent stays the playhead's and the marquee's. It is one
+    // decision with the marker pass above, so the pointer can never light a handle
+    // while a press at that point would select the key (which is what the old
+    // independent nearest-handle scan did). The handles are inside the plot clip
+    // (pushed above, now starting below the ruler), so a stem that leaves the plot is
+    // cut at the edge rather than painting over the panel's chrome.
     //
     // THEY ARE DRAWN FOR THE FOCUSED CHANNEL, and that is a COST decision with a
     // measured number behind it (the application-level performance diagnosis, on this
@@ -1817,27 +1817,9 @@ void drawPanel(
     // gate's own passes, which hand drawPanel an invalid focus, keep measuring the
     // full geometry).
     {
-        const ImVec2 mouse = ImGui::GetIO().MousePos;
         const auto drawsHandles = [&aFocus](const PanelCurve& aCurve) {
             return !aFocus.valid || (aFocus.node == aCurve.node && aFocus.channel == aCurve.channel);
         };
-        int nearestCurve = -1;
-        int nearestHandle = -1;
-        double nearestDistance = double(ctrl::graph::kHandleHitRadius);
-        for (int c = 0; c < aModel.curves.size(); ++c) {
-            const PanelCurve& curve = aModel.curves.at(c);
-            if (!drawsHandles(curve))
-                continue;
-            for (int h = 0; h < curve.handles.size(); ++h) {
-                const QPointF& dot = curve.handles.at(h).dot;
-                const double distance = std::hypot(double(mouse.x) - dot.x(), double(mouse.y) - dot.y());
-                if (distance <= nearestDistance) { // `<=`, like the editor's own pick
-                    nearestDistance = distance;
-                    nearestCurve = c;
-                    nearestHandle = h;
-                }
-            }
-        }
 
         const ImU32 handleSurface = toImU32(aTheme.handleFill());
         for (int c = 0; c < aModel.curves.size(); ++c) {
@@ -1860,7 +1842,8 @@ void drawPanel(
             const ImU32 handleHover = toImU32(hoverInk);
             for (int h = 0; h < curve.handles.size(); ++h) {
                 const PanelHandle& handle = curve.handles.at(h);
-                const bool highlighted = c == nearestCurve && h == nearestHandle;
+                const bool highlighted =
+                    pick.kind == ctrl::graph::PickKind::Handle && c == pick.curve && h == pick.handle;
                 const ImVec2 base(float(handle.base.x()), float(handle.base.y()));
                 const ImVec2 dot(float(handle.dot.x()), float(handle.dot.y()));
                 // BOTH KINDS READ THE HANDLE'S REDUCED HUE: a stored pair's stem and
@@ -2322,6 +2305,70 @@ bool panelKeyAt(
         }
     }
     return aNode != nullptr;
+}
+
+PanelPick panelPickAt(const GraphPanelModel& aModel, const QPoint& aPos) {
+    // ONE SCAN PER CLASS, ONE COMPARISON BETWEEN THEM. The candidates are the same
+    // ones the press measures - keyDots for a key's centre, handles for a handle's
+    // dot - and the decision is ctrl::graph::pickTarget's, so the hover cannot light
+    // a handle the press would not take (or a key, when a handle is relatively
+    // nearer).
+    double keyDistance = std::numeric_limits<double>::infinity();
+    core::ObjectNode* keyNode = nullptr;
+    ctrl::graph::Channel keyChannel;
+    core::Frame keyFrame;
+
+    for (const PanelCurve& curve : aModel.curves) {
+        // The same gate gui::panelKeyAt applies: keyFrames is published beside
+        // keyDots and a curve with no layer cannot name a key. (A key whose rect was
+        // clipped away publishes no dot, so it is not a candidate at all.)
+        if (!curve.node || curve.keyFrames.size() != curve.keyDots.size())
+            continue;
+        for (int i = 0; i < curve.keyDots.size(); ++i) {
+            const QPointF& dot = curve.keyDots.at(i);
+            const double distance = std::hypot(double(aPos.x()) - dot.x(), double(aPos.y()) - dot.y());
+            if (distance <= keyDistance) { // `<=`: the last key at the same distance wins
+                keyDistance = distance;
+                keyNode = curve.node;
+                keyChannel = curve.channel;
+                keyFrame = curve.keyFrames.at(i);
+            }
+        }
+    }
+
+    double handleDistance = std::numeric_limits<double>::infinity();
+    int handleCurve = -1;
+    int handleIndex = -1;
+    for (int c = 0; c < aModel.curves.size(); ++c) {
+        const PanelCurve& curve = aModel.curves.at(c);
+        for (int h = 0; h < curve.handles.size(); ++h) {
+            const QPointF& dot = curve.handles.at(h).dot;
+            const double distance = std::hypot(double(aPos.x()) - dot.x(), double(aPos.y()) - dot.y());
+            if (distance <= handleDistance) { // `<=`, like the drawing layer's own scan
+                handleDistance = distance;
+                handleCurve = c;
+                handleIndex = h;
+            }
+        }
+    }
+
+    PanelPick pick;
+    switch (ctrl::graph::pickTarget(keyDistance, handleDistance)) {
+    case ctrl::graph::PickKind::Key:
+        pick.kind = ctrl::graph::PickKind::Key;
+        pick.node = keyNode;
+        pick.channel = keyChannel;
+        pick.frame = keyFrame;
+        break;
+    case ctrl::graph::PickKind::Handle:
+        pick.kind = ctrl::graph::PickKind::Handle;
+        pick.curve = handleCurve;
+        pick.handle = handleIndex;
+        break;
+    case ctrl::graph::PickKind::None:
+        break;
+    }
+    return pick;
 }
 
 namespace {

@@ -58,7 +58,7 @@ const int kQuickEaseGap = 2;
 // one the picker's Auto tile uses - gui::prop::autoPreviewContext() (defined in
 // EasingPickWidget.cpp) - so the two images cannot be two different curves. A
 // quick easing is a catalog image of the easing (for the Auto preset, of the
-// automatic pair it applies to the segments around each selected key), not a
+// automatic pair it applies to the segment after each selected key), not a
 // preview of the selected keys (whose neighbours differ per selection): with the
 // real, empty context Auto's derived handles collapse to the identity and the
 // button would read as Linear. The canonical pair makes the REAL derivation shape
@@ -332,7 +332,7 @@ TimeLineHeader::TimeLineHeader(GUIResources& aResources, PlayBackWidget* aTransp
 
     // THE FOUR QUICK EASINGS, TO THE LEFT OF THE CHIP: the picker's four common
     // tiles as one click each, on the same selection the chip names. They are a
-    // SHORTCUT (three set the type; the Auto preset makes the segments around each
+    // SHORTCUT (three set the type; the Auto preset makes the segment after each
     // selected key automatic), and the range and the blend stay the key's own,
     // exactly as the picker's tiles leave them - and they read back which of the
     // four the selection agrees on. Added to the row BEFORE the chip's slot, so the
@@ -382,14 +382,13 @@ TimeLineHeader::TimeLineHeader(GUIResources& aResources, PlayBackWidget* aTransp
         const QString name = util::Easing::getParamName(quickParam);
         // A glyph-only control has no text for assistive technology to read, so
         // the easing's name IS its accessible text; the tooltip keeps naming the
-        // action for the pointer. THE AUTO PRESET'S ACTION IS SEGMENTS, not a
-        // pair on one key: it makes both segments around every selected key
-        // automatic (the previous key's outgoing side, the key's two sides, the
-        // next key's incoming side - see
+        // action for the pointer. THE AUTO PRESET'S ACTION IS THE SEGMENT AFTER
+        // THE KEY, not a pair on one key: it makes that segment automatic (the
+        // key's type and outgoing side, the next key's incoming side - see
         // ctrl::TimeLineEditor::assignSelectionAutoHandles), so both its
         // accessible text and its tooltip say that.
         if (quick.autoPreset) {
-            const QString action = tr("Make both segments around the selected keys automatic");
+            const QString action = tr("Make the segment after each selected key automatic");
             button->setAccessibleName(tr("%1 (%2)").arg(action, name));
             button->setToolTip(tr("%1 - %2 handles").arg(action, name));
         } else {

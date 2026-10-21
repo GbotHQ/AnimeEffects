@@ -654,10 +654,13 @@ enum class GraphPanelHost {
 //   label used to say).
 //
 // PLAYHEAD
-//   playheadX == Scaler::pixelX(aEditor.currentFrame()), or -1 when the editor
-//   reports no frame (currentFrame() < 0, i.e. no project is set). It is read
-//   even when the plot is empty, because a playhead is a property of the
-//   document and not of the geometry.
+//   playheadX == Scaler::pixelX(aEditor.currentFrame()) whenever a project is
+//   attached, or -1 when there is none (GraphEditor::hasProject). NEGATIVE
+//   FRAMES ARE REAL: a project may start before 0 and the seek reaches them, so
+//   the frame's sign never decides whether a playhead is placed - only whether
+//   it is on screen (a pixel LEFT of the panel is negative and the drawing layer
+//   skips it). It is read even when the plot is empty, because a playhead is a
+//   property of the document and not of the geometry.
 //   playheadText is that frame written with the ruler's own formatter; playheadPill
 //   is the 14px rounded pill the timeline's TimeCursor draws about the column (null
 //   when there is no frame or no band), and playheadLineTop is the row the playhead's
@@ -825,7 +828,8 @@ struct GraphPanelModel {
     // THE PLAYHEAD'S PILL: the frame number, written with the SAME formatter the ruler
     // numbers use (core::TimeFormat::frameToString(currentFrame, timeFormatType())) -
     // published as the string so the drawing layer writes the very characters the
-    // suppression geometry was measured from. Empty when currentFrame() < 0.
+    // suppression geometry was measured from. Empty when no project is attached (a
+    // negative frame is a real frame and gets a number like any other).
     QString playheadText;
     // The 14px, 3px-radius pill gui::TimeCursor draws about the playhead's column, at
     // the band's number row (frameRuler::kPillTop). EMPTY when there is no frame or no

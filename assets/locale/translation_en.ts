@@ -32,7 +32,7 @@
 <context>
     <name>gui::GraphPanelFrame</name>
     <message numerus="yes">
-        <location filename="../../src/gui/GraphPanelFrame.cpp" line="2366"/>
+        <location filename="../../src/gui/GraphPanelFrame.cpp" line="2428"/>
         <source>%1, %n key(s) selected</source>
         <translation>
             <numerusform>%1, %n key selected</numerusform>
@@ -43,7 +43,7 @@
 <context>
     <name>gui::ImGuiOverlay</name>
     <message numerus="yes">
-        <location filename="../../src/gui/GraphPanelFrame.cpp" line="2356"/>
+        <location filename="../../src/gui/GraphPanelFrame.cpp" line="2418"/>
         <source>%n channel(s) shown</source>
         <translation>
             <numerusform>1 channel shown</numerusform>
@@ -61,9 +61,9 @@
 <context>
     <name>gui::TimeLineHeader</name>
     <message numerus="yes">
-        <location filename="../../src/gui/TimeLineHeader.cpp" line="440"/>
-        <location filename="../../src/gui/TimeLineHeader.cpp" line="758"/>
-        <location filename="../../src/gui/TimeLineHeader.cpp" line="760"/>
+        <location filename="../../src/gui/TimeLineHeader.cpp" line="452"/>
+        <location filename="../../src/gui/TimeLineHeader.cpp" line="770"/>
+        <location filename="../../src/gui/TimeLineHeader.cpp" line="772"/>
         <source>%n channel(s)</source>
         <translation>
             <numerusform>%n channel</numerusform>

@@ -17,11 +17,14 @@ std::pair<core::TimeKey*, core::LayerMesh*> gui::ObjectTreeWidget::getAreaMeshIm
 // drives the SHIPPING drawing path - a real ImGui frame, the real GL3 backend,
 // the real framebuffer - and reads the pixels back with glReadPixels.
 //
-// WHAT IS DRIVEN. Not the application: no ctrl::GraphEditor, no document, no
-// widget paint event. A SYNTHETIC gui::GraphPanelModel is built by hand from the
-// model's own coordinates, and gui::drawPanel is handed it inside one ImGui
-// frame. drawPanel is a pure function of (model, palette, focus), so the pixels
-// it leaves in the framebuffer are the panel's pixels.
+// WHAT IS DRIVEN. Not the application: no widget paint event. A SYNTHETIC
+// gui::GraphPanelModel is built by hand from the model's own coordinates, and
+// gui::drawPanel is handed it inside one ImGui frame. drawPanel is a pure function of
+// (model, palette, focus), so the pixels it leaves in the framebuffer are the panel's
+// pixels. THE ONE EXCEPTION is the hover-vs-press assertion (checkHoverMatchesPress):
+// it builds a REAL ctrl::GraphEditor over a real TimeLine, presses it, and asks
+// gui::panelPickAt about the model that editor publishes - no GL needed, so it runs
+// before the context is taken and pins the ink and the press to one answer.
 //
 // WHAT IT PINS, and why each assertion is a regression gate:
 //   1 no grid, no background. A rect inside the plot that holds none of the
@@ -299,6 +302,24 @@ std::pair<core::TimeKey*, core::LayerMesh*> gui::ObjectTreeWidget::getAreaMeshIm
 // tests/overlay_engine_primitives.cpp uses and the target needs no gui library.
 #include "gui/AudioPlaybackWidget.h"
 bool AudioPlaybackWidget::deserialize(const QJsonObject&, std::vector<audioConfig>*) { return false; }
+
+// THE HOVER-VS-PRESS ASSERTION drives a REAL ctrl::GraphEditor (see
+// checkHoverMatchesPress below): the press half has to be the shipping hit-test, not a
+// restatement of it, and the hover half is gui::panelPickAt on the model that editor
+// builds. QMouseEvent is only the press/release the cursor consumes.
+#include <QMouseEvent>
+#include "cmnd/Stack.h"
+#include "core/AbstractCursor.h"
+#include "core/Animator.h"
+#include "core/CameraInfo.h"
+#include "core/ObjectNode.h"
+#include "core/Project.h"
+#include "core/RotateKey.h"
+#include "core/TimeKeyType.h"
+#include "core/TimeLine.h"
+#include "ctrl/GraphEditor.h"
+#include "ctrl/UILogger.h"
+#include "util/Easing.h"
 
 // The overlay hands its key menu to the WIDGET it lives in
 // (gui::MainDisplayWidget::showGraphKeyMenu), and its CHANNEL list to the same widget
@@ -6280,6 +6301,251 @@ bool checkHairlinePlacement(
     return true;
 }
 
+// ---- THE HOVER NAMES EXACTLY WHAT A PRESS SELECTS ---------------------------------
+//
+// The drawing layer's hover ink (gui::drawPanel) and the host's hover-repaint rule
+// (gui::GraphPanelWidget::updateHoverRepaint) both ask gui::panelPickAt, and that
+// query settles key-versus-handle with ctrl::graph::pickTarget - the same function
+// ctrl::GraphEditor::hitTest presses with. This block drives BOTH real paths over one
+// geometry: a real editor over a real TimeLine for the press, and the model that
+// editor builds for the hover. The geometry is tests/graph_drag.cpp's section 11b:
+// frame 0 at pixel 0, 1 px/frame, the first key's centre at x=100 and the STORED
+// outgoing handle 11px to its right on the same row, so the two grab rings overlap
+// and the probes are
+//
+//   +3px from the key: key 3/10 = 0.30, handle 8/12 = 0.667 -> KEY
+//   +8px from the key: key 8/10 = 0.80, handle 3/12 = 0.25  -> HANDLE
+//   +5px from the key: key 5/10 = 0.50, handle 6/12 = 0.50  -> KEY (exact tie)
+//
+// and the hovered element must equal the pressed element at each one.
+
+class HoverAnimator: public core::Animator {
+    core::Frame mFrame;
+
+public:
+    core::Frame currentFrame() const override { return mFrame; }
+    void stop() override {}
+    void suspend() override {}
+    void resume() override {}
+    bool isSuspended() const override { return false; }
+};
+
+// A layer that owns a real TimeLine and nothing else (ObjectNode::timeLine() is
+// virtual and null by default), exactly the fixture graph_drag's hit-test sections use.
+class HoverNode: public core::ObjectNode {
+    core::TimeLine mTimeLine;
+
+public:
+    core::ObjectType type() const override { return core::ObjectType_Layer; }
+    void setName(const QString&) override {}
+    const QString& name() const override {
+        static QString s;
+        return s;
+    }
+    float initialDepth() const override { return 0; }
+    void setVisibility(bool) override {}
+    bool isVisible() const override { return true; }
+    void setSlimDown(bool) override {}
+    bool isSlimmedDown() const override { return false; }
+    bool canHoldChild() const override { return false; }
+    void setInitialRect(const QRect&) override {}
+    QRect initialRect() const override { return QRect(); }
+    bool serialize(core::Serializer&) const override { return true; }
+    bool deserialize(core::Deserializer&) override { return true; }
+    core::TimeLine* timeLine() override { return &mTimeLine; }
+    const core::TimeLine* timeLine() const override { return &mTimeLine; }
+};
+
+class HoverLogger: public ctrl::UILogger {
+public:
+    void pushLog(const QString&, ctrl::UILogType) override {}
+};
+
+// The press/release pair, delivered the way ctrl::Driver delivers them: the cursor
+// consumes the QMouseEvent and the editor is handed that cursor.
+bool hoverPress(
+    ctrl::GraphEditor& aEditor, const core::CameraInfo& aCamera, core::AbstractCursor& aCursor,
+    const QPoint& aPos
+) {
+    aEditor.setModifiers(Qt::NoModifier);
+    QMouseEvent event(QEvent::MouseButtonPress, aPos, aPos, aPos, Qt::LeftButton, Qt::LeftButton, Qt::NoModifier);
+    if (!aCursor.setMousePress(&event, aCamera))
+        return false;
+    return aEditor.updateCursor(aCamera, aCursor);
+}
+
+bool hoverRelease(
+    ctrl::GraphEditor& aEditor, const core::CameraInfo& aCamera, core::AbstractCursor& aCursor, const QPoint& aPos
+) {
+    aEditor.setModifiers(Qt::NoModifier);
+    QMouseEvent event(QEvent::MouseButtonRelease, aPos, aPos, aPos, Qt::LeftButton, Qt::NoButton, Qt::NoModifier);
+    if (!aCursor.setMouseRelease(&event, aCamera))
+        return false;
+    return aEditor.updateCursor(aCamera, aCursor);
+}
+
+bool checkHoverMatchesPress() {
+    HoverAnimator animator;
+    core::Project project("graph_panel_pixels.anie", animator, nullptr);
+    cmnd::Stack setup;
+
+    HoverNode node;
+    core::RotateKey* first = new core::RotateKey();
+    first->setRotate(0.0f);
+    util::Easing::Param easing;
+    easing.type = util::Easing::Type_Custom;
+    easing.cubicBezier.x1 = 11.0f / 64.0f; // exactly 11px at 1 px/frame
+    easing.cubicBezier.y1 = 0.0f;
+    easing.cubicBezier.x2 = 0.9f; // the incoming dot stays clear of every probe
+    easing.cubicBezier.y2 = 0.5f;
+    first->data().easing(0) = easing;
+    setup.push(node.timeLine()->createPusher(core::TimeKeyType_Rotate, 100, first));
+
+    core::RotateKey* second = new core::RotateKey();
+    second->setRotate(0.0f); // the same value: key centres and the handle share one row
+    setup.push(node.timeLine()->createPusher(core::TimeKeyType_Rotate, 164, second));
+
+    core::CameraInfo camera;
+    camera.setScreenSize(QSize(800, 600));
+    HoverLogger logger;
+    ctrl::GraphEditor editor(project, logger);
+    editor.setTargets({ &node });
+    editor.clearSelection();
+
+    // One cursor pass writes the panel rect the scale is pinned to and settles the
+    // drawn-curve basis, so the window set below survives the presses.
+    core::AbstractCursor settle;
+    QMouseEvent settleEvent(
+        QEvent::MouseMove, QPoint(5, 5), QPoint(5, 5), QPoint(5, 5), Qt::NoButton, Qt::NoButton, Qt::NoModifier
+    );
+    settle.setMouseMove(&settleEvent, camera);
+    editor.updateCursor(camera, settle);
+
+    ctrl::graph::Scaler& scale = editor.scale();
+    REQUIRE(scale.applyFrameWindow(0.0, 800.0), "the hover geometry could not set its frame window");
+    REQUIRE(scale.framePpf() == 1.0, "precondition: 1 px/frame (ppf=%.6f)", scale.framePpf());
+    REQUIRE(scale.pixelXOfFrame(100.0) == 100.0, "precondition: the key is not at x=100");
+    REQUIRE(scale.plotRect().height() % 2 == 0, "precondition: the plot has no integral middle row");
+    const float plotHeight = static_cast<float>(scale.plotRect().height());
+    scale.setValueWindow(-plotHeight, plotHeight);
+    REQUIRE(
+        scale.pixelYOfValue(0.0f) == scale.plotRect().top() + scale.plotRect().height() / 2.0,
+        "precondition: value 0 did not land on an integral row"
+    );
+
+    const ctrl::graph::Curve curve(*node.timeLine(), ctrl::graph::Channel(core::TimeKeyType_Rotate, 0));
+    REQUIRE(curve.segmentCount() == 1, "precondition: the fixture has %d segments", curve.segmentCount());
+    const ctrl::graph::Curve::Segment segment = curve.segment(0);
+    const QPointF keyCentre = QRectF(ctrl::graph::keyRect(scale, core::Frame(100), 0.0f)).center();
+    const QPointF handleDot = ctrl::graph::handlePointAt(scale, segment, ctrl::graph::Curve::handle(segment, 0));
+    REQUIRE(keyCentre == QPointF(100.0, scale.pixelYOfValue(0.0f)), "precondition: the key centre is not x=100");
+    REQUIRE(handleDot == keyCentre + QPointF(11.0, 0.0),
+            "precondition: the stored handle is not 11px right of the key");
+
+    const int row = int(keyCentre.y());
+    const int keyX = int(keyCentre.x());
+
+    // THE PRESS: one press+release from a cleared selection, classified by what the
+    // editor observably did - a key press selects the key it hit, a handle press
+    // selects nothing and starts no marquee (GraphEditor's two remaining plot
+    // gestures, which is how graph_drag's section 11b tells them apart too).
+    struct Pressed {
+        bool took;
+        bool marquee;
+        bool selected;
+        int frame;
+    };
+    const auto pressAt = [&](const QPoint& aPos) {
+        Pressed pressed{ false, false, false, -1 };
+        editor.clearSelection();
+        core::AbstractCursor cursor;
+        pressed.took = hoverPress(editor, camera, cursor, aPos);
+        pressed.marquee = editor.hasMarquee();
+        core::TimeLineEvent selection;
+        pressed.selected = editor.retrieveSelection(selection) && selection.targets().size() == 1;
+        if (pressed.selected)
+            pressed.frame = selection.targets()[0].pos.index();
+        hoverRelease(editor, camera, cursor, aPos);
+        return pressed;
+    };
+
+    const Pressed nearKey = pressAt(QPoint(keyX + 3, row));
+    const Pressed nearHandle = pressAt(QPoint(keyX + 8, row));
+    const Pressed tie = pressAt(QPoint(keyX + 5, row));
+    REQUIRE(nearKey.took && nearKey.selected && !nearKey.marquee && nearKey.frame == 100,
+            "the +3px press did not select the key (selected=%d frame=%d)", nearKey.selected, nearKey.frame);
+    REQUIRE(nearHandle.took && !nearHandle.selected && !nearHandle.marquee,
+            "the +8px press was not the handle drag (selected=%d marquee=%d)",
+            nearHandle.selected, nearHandle.marquee);
+    REQUIRE(tie.took && tie.selected && !tie.marquee && tie.frame == 100,
+            "the +5px tie did not select the key (selected=%d frame=%d)", tie.selected, tie.frame);
+
+    // THE HOVER SOURCE: the model the editor builds for this viewport, at the same
+    // panel rect (buildGraphPanelModel re-rects a COPY of the editor's scaler to
+    // GraphEditor::panelRect(viewport), which is this editor's own rect). The
+    // published dots must be the geometry the presses used, or the comparison below
+    // would be about two different pictures.
+    const gui::GraphPanelModel model =
+        gui::buildGraphPanelModel(editor, QSize(800, 600), theme::Graph::from(theme::Colors::current()));
+    REQUIRE(model.curves.size() == 1, "precondition: the model published %d curves", int(model.curves.size()));
+    const gui::PanelCurve& published = model.curves.at(0);
+    REQUIRE(published.keyDots.size() == 2, "precondition: the model published %d key dots", int(published.keyDots.size()));
+    REQUIRE(published.keyDots.at(0) == keyCentre, "the model's key dot is not the press geometry");
+    REQUIRE(published.handles.size() == 2, "precondition: the model published %d handles", int(published.handles.size()));
+    REQUIRE(published.handles.at(0).dot == handleDot, "the model's handle dot is not the press geometry");
+
+    struct Probe {
+        const char* name;
+        QPoint at;
+        double keyDistance;
+        double handleDistance;
+        Pressed pressed;
+        const char* expected;
+    };
+    const Probe probes[] = {
+        { "+3px", QPoint(keyX + 3, row), 3.0, 8.0, nearKey, "key" },
+        { "+8px", QPoint(keyX + 8, row), 8.0, 3.0, nearHandle, "handle" },
+        { "+5px", QPoint(keyX + 5, row), 5.0, 6.0, tie, "key" },
+    };
+
+    std::printf(
+        "graph_panel_pixels hover: key centre x=%d, stored handle x=%d, row=%d\n", keyX, int(handleDot.x()), row
+    );
+    std::printf("  probe  at       key d/score    handle d/score    pressed hovered equal\n");
+    for (const Probe& probe : probes) {
+        const gui::PanelPick pick = gui::panelPickAt(model, probe.at);
+        const char* hovered = pick.kind == ctrl::graph::PickKind::Key
+                              ? "key"
+                              : pick.kind == ctrl::graph::PickKind::Handle ? "handle" : "none";
+        const char* pressed = !probe.pressed.took ? "none"
+                              : probe.pressed.selected ? "key"
+                              : probe.pressed.marquee ? "none" : "handle";
+        const bool equal = std::strcmp(pressed, hovered) == 0;
+        std::printf(
+            "  %-5s (%d,%3d)  %4.1f / %.3f      %4.1f / %.3f        %-6s  %-6s  %s\n", probe.name, probe.at.x(),
+            probe.at.y(), probe.keyDistance, probe.keyDistance / double(ctrl::graph::kKeyHitRadius),
+            probe.handleDistance, probe.handleDistance / double(ctrl::graph::kHandleHitRadius), pressed, hovered,
+            equal ? "yes" : "NO"
+        );
+        REQUIRE(equal, "the %s probe: a press selects %s but the hover ink names %s", probe.name, pressed, hovered);
+        REQUIRE(std::strcmp(hovered, probe.expected) == 0, "the %s probe hovered %s, not %s", probe.name, hovered,
+                probe.expected);
+        if (pick.kind == ctrl::graph::PickKind::Key) {
+            REQUIRE(pick.node == &node && pick.frame == core::Frame(100),
+                    "the %s probe named the wrong key (node=%p frame=%d)", probe.name, (void*)pick.node,
+                    pick.frame.get());
+        } else if (pick.kind == ctrl::graph::PickKind::Handle) {
+            REQUIRE(pick.curve == 0 && pick.handle == 0, "the %s probe named the wrong handle (%d,%d)", probe.name,
+                    pick.curve, pick.handle);
+        }
+    }
+
+    // The axis goes back before the node does (GraphEditor holds raw target pointers).
+    editor.scale().clearFrameWindow();
+    editor.setTargets({});
+    return true;
+}
+
 } // namespace
 
 XCAssertHandler* gXCAssertHandler = &gAssertHandler;
@@ -6287,6 +6553,13 @@ XCErrorHandler* gXCErrorHandler = &gErrorHandler;
 
 int main(int argc, char** argv) {
     QApplication app(argc, argv);
+
+    // THE HOVER MUST NAME WHAT A PRESS SELECTS (see checkHoverMatchesPress): a real
+    // editor's press and the model's pick at the three overlapping-ring probes. It
+    // needs no GL - a document, a scaler and the model - so it runs before the
+    // context is taken, and a failure stops the gate here.
+    if (!checkHoverMatchesPress())
+        return 1;
 
     // A live core-profile context, exactly as tests/overlay_engine_primitives.cpp
     // and roundtrip_main.cpp take one. The format has to be the default before the

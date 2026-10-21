@@ -496,6 +496,21 @@ namespace prop {
                              if (this->onEasingApplied)
                                  this->onEasingApplied(aNext);
                          });
+        // A streamed gesture (bezier drag / typed spin): forwarded to the host,
+        // which holds the ONE command open across it. The control stays a view.
+        mPicker->connect(mPicker, &EasingPickWidget::liveEditStarted, [this] {
+            if (this->onEasingLiveBegin)
+                this->onEasingLiveBegin();
+        });
+        mPicker->connect(mPicker, &EasingPickWidget::liveEdited,
+                         [this](util::Easing::Param aStep) {
+                             if (this->onEasingLiveStep)
+                                 this->onEasingLiveStep(aStep);
+                         });
+        mPicker->connect(mPicker, &EasingPickWidget::liveEditEnded, [this] {
+            if (this->onEasingLiveEnd)
+                this->onEasingLiveEnd();
+        });
         mPicker->connect(mPicker, &EasingPickWidget::dismissed, [this] {
             this->mPicker->hide();
         });
@@ -537,9 +552,11 @@ namespace prop {
 
     void EasingItem::onDraftChanged(const util::Easing::Param& aDraft) {
         // Live: the picker edits every key it was opened for, so the chip shows
-        // the draft for all of them while the edit is in flight. The model is
-        // written once, on close (see EasingPickWidget), and the truth arrives
-        // back as the host's next setSelection - so nothing is cached here.
+        // the draft for all of them while the edit is in flight. A streamed gesture
+        // (bezier drag / typed spin) is already writing the model per step, and a
+        // discrete edit writes it as it lands; the truth arrives back as the host's
+        // next setSelection - so nothing is cached here, and the draft only covers
+        // the popup's own rendering until then.
         mChip->setDraft(aDraft);
     }
 

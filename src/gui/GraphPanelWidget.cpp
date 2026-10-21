@@ -20,7 +20,7 @@
 #include "core/TimeLineEvent.h"
 #include "ctrl/Driver.h"
 #include "ctrl/GraphEditor.h"
-#include "ctrl/graph/graph_Geometry.h" // kHandleHitRadius: the hover rule updateHoverRepaint shares with drawPanel
+#include "ctrl/graph/graph_Geometry.h" // PickKind: the shared pick the hover repaint compares
 #include "gl/Util.h"
 #include "gui/GUIResources.h"
 #include "gui/ImGuiA11y.h"
@@ -29,7 +29,6 @@
 #include "gui/MouseSetting.h"
 #include "gui/theme/Colors.h"
 #include "gui/theme/Graph.h" // the palette channelRows() builds the panel's model with
-#include <cmath>
 
 namespace gui {
 
@@ -767,16 +766,14 @@ QVector<PanelChannelRow> GraphPanelWidget::channelRows() const {
 void GraphPanelWidget::updateHoverRepaint() {
     // THE BOUNDED RULE: repaint when the target under the pointer CHANGES, and not on a
     // move that keeps the same one. The panel's pointer-driven ink is three marks
-    // (drawPanel reads io.MousePos, which this host feeds from mPointer): the key marker
-    // the pointer lights - gui::panelKeyAt, the same hit test the right-click uses - the
-    // tangent handle nearest the pointer, under the SAME rule drawPanel highlights
-    // with: the nearest STORED/derived handle dot within ctrl::graph::kHandleHitRadius,
-    // over the curves whose handles are drawn (the focused channel's, or every curve's
-    // while nothing is focused) - and the scroll-bar lane whose pill takes
-    // theme::Colors::hover while the pointer is on it (gui::panelBarAt, the same answer
-    // drawPanel paints from). Everything else the panel draws is the document's or a
-    // gesture's and has its own repaint; a move over empty space changes none of the
-    // three and therefore paints nothing.
+    // (drawPanel reads io.MousePos, which this host feeds from mPointer): the marker or
+    // tangent handle the pointer lights - gui::panelPickAt, the same query and the same
+    // ctrl::graph::pickTarget comparison drawPanel inks and GraphEditor::hitTest
+    // presses with, so the key and the handle are ONE answer and never both - and the
+    // scroll-bar lane whose pill takes theme::Colors::hover while the pointer is on it
+    // (gui::panelBarAt, the same answer drawPanel paints from). Everything else the
+    // panel draws is the document's or a gesture's and has its own repaint; a move over
+    // empty space changes none of the three and therefore paints nothing.
     HoverTarget now;
 
     // The bar identity is read off the published frame's own tracks, so it needs no
@@ -789,34 +786,22 @@ void GraphPanelWidget::updateHoverRepaint() {
 
     ctrl::GraphEditor* editor = graphEditor();
     if (editor && mFrame.editor) {
-        core::ObjectNode* node = nullptr;
-        ctrl::graph::Channel channel;
-        core::Frame frame;
-        if (panelKeyAt(mFrame.model, mPointer, node, channel, frame)) {
+        // ONE PICK FOR BOTH MARKS, and it is the drawing layer's own: gui::panelPickAt
+        // answers which class of target the pointer names - the key OR the tangent
+        // handle a press at this point selects - through ctrl::graph::pickTarget, the
+        // comparison GraphEditor::hitTest presses with. The widget therefore schedules
+        // a repaint for exactly the target drawPanel would ink; it no longer scans the
+        // handles itself and then asks for the nearest key, which is the disagreement
+        // that let the ink light a handle a press would not take.
+        const PanelPick pick = panelPickAt(mFrame.model, mPointer);
+        if (pick.kind == ctrl::graph::PickKind::Key) {
             now.key = true;
-            now.keyNode = node;
-            now.keyChannel = channel;
-            now.keyFrame = frame.get();
-        }
-
-        const bool focused = editor->hasFocus();
-        const core::ObjectNode* focusNode = focused ? editor->focusedNode() : nullptr;
-        const ctrl::graph::Channel focusChannel = editor->focusedChannel();
-        double nearest = double(ctrl::graph::kHandleHitRadius); // `<=`, like drawPanel's own pick
-        for (int c = 0; c < mFrame.model.curves.size(); ++c) {
-            const PanelCurve& curve = mFrame.model.curves.at(c);
-            if (focused && !(curve.node == focusNode && curve.channel == focusChannel))
-                continue; // a handle that is not drawn cannot be hovered
-            for (int h = 0; h < curve.handles.size(); ++h) {
-                const QPointF& dot = curve.handles.at(h).dot;
-                const double distance =
-                    std::hypot(double(mPointer.x()) - dot.x(), double(mPointer.y()) - dot.y());
-                if (distance <= nearest) {
-                    nearest = distance;
-                    now.handleCurve = c;
-                    now.handle = h;
-                }
-            }
+            now.keyNode = pick.node;
+            now.keyChannel = pick.channel;
+            now.keyFrame = pick.frame.get();
+        } else if (pick.kind == ctrl::graph::PickKind::Handle) {
+            now.handleCurve = pick.curve;
+            now.handle = pick.handle;
         }
     }
 

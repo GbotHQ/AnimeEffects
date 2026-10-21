@@ -222,11 +222,12 @@ private:
     bool openKeyMenuAt(const QPoint& aPos);
     // THE HOVER REPAINT RULE (see updateHoverRepaint): one repaint whenever the target
     // under the pointer CHANGES, and none for a move that keeps the same target. The
-    // three things the panel draws from the pointer's position alone are the marker the
-    // pointer lights (gui::panelKeyAt), the tangent handle it highlights (the nearest
-    // stored handle within ctrl::graph::kHandleHitRadius), and the scroll-bar LANE
-    // under it (gui::panelBarAt - its pill turns theme::Colors::hover), so those three
-    // are what this compares.
+    // two plot marks the panel draws from the pointer's position alone are ONE answer -
+    // gui::panelPickAt, the same query drawPanel inks and ctrl::graph::pickTarget is
+    // the comparison a press obeys, so the marker and the tangent handle are never lit
+    // together and the ink names exactly what a press would select - plus the
+    // scroll-bar LANE under the pointer (gui::panelBarAt - its pill turns
+    // theme::Colors::hover), so those are what this compares.
     void updateHoverRepaint();
     // The viewport widget the application's menus live in (see the class comment):
     // MainDisplayWidget owns the channel list, and it is the handle on the timeline
@@ -279,13 +280,14 @@ private:
     // on. It is a VALUE, so the hover repaint rule is one compare - "did the target
     // change?" - rather than a repaint per move (see updateHoverRepaint).
     struct HoverTarget {
-        // The key under the pointer (gui::panelKeyAt), false when none is that close.
+        // The key the shared pick names (gui::panelPickAt), false when the point
+        // selects a handle or nothing.
         bool key = false;
         core::ObjectNode* keyNode = nullptr;
         ctrl::graph::Channel keyChannel;
         int keyFrame = 0;
-        // The nearest drawn handle, as (curve index into the model, handle index), -1
-        // when none is within ctrl::graph::kHandleHitRadius.
+        // The handle the same pick names, as (curve index into the model, handle
+        // index), -1 when the point selects a key or nothing.
         int handleCurve = -1;
         int handle = -1;
         // The scroll-bar lane under the pointer (gui::panelBarAt): the drawing layer

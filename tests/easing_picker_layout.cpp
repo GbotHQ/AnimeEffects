@@ -213,13 +213,13 @@ int main(int argc, char** argv) {
             const QString shown = util::Easing::getParamName(w.value());
             QLabel* title = w.findChild<QLabel*>(QStringLiteral("popover-title"));
             // The glyph-only tile's accessible text is the ACTION (automatic
-            // handles apply to segments) plus the pair it writes; the picker's
-            // TITLE still names only the parameter.
+            // handles apply to the segment after the key) plus the pair it
+            // writes; the picker's TITLE still names only the parameter.
             const QString accessible = autoTile->accessibleName();
             checkedOnlyAuto = checkedOnlyAuto
                 && shown == util::Easing::getHandleModeName(util::Easing::kAutoPresetHandleMode)
                 && accessible.contains(shown)
-                && accessible.contains(QLatin1String("segments automatic"))
+                && accessible.contains(QLatin1String("segment after the selected key"))
                 && title && title->text() == shown;
             fprintf(stderr, "Auto preset: checked only tile-3=%d, name='%s', title='%s' -> %s\n",
                     int(checkedOnlyAuto), qPrintable(shown),
