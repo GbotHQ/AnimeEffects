@@ -112,12 +112,12 @@
 //     type the key already has all push NOTHING.
 //
 // The WHEEL is pinned in section 0b (and its delegation in section 23). Over the
-// PLOT it ZOOMS and never scrolls: plain zooms BOTH axes about the cursor, Shift
-// zooms the FRAME axis alone (the frame-only zoom the 2026-10-19 remap had moved to
-// Ctrl+Shift), Ctrl zooms the VALUE axis alone, and Ctrl+Shift zooms BOTH - so every
-// form moves at least one axis and no notch over the plot scrolls anything. Section
-// 0b-iii pins the COUNT (four Shift notches = four x1.1 steps of the frame rate,
-// with the value window bit-identical) and the Ctrl+Shift notch's change on both
+// PLOT, one table for the whole dock: plain zooms BOTH axes about the cursor, Shift
+// SCROLLS the FRAME axis (the timeline's own Shift+wheel - 50px a notch, wheel up =
+// earlier frames, delegated through scrollFramesBy while a timeline owns the axis so
+// both views move one window), Ctrl zooms the VALUE axis alone, and Ctrl+Shift zooms
+// BOTH. Section 0b-iii pins the COUNT (four Shift notches move the frame origin
+// 4 x 50px with BOTH scales bit-identical) and the Ctrl+Shift notch's change on both
 // axes with both anchors held. Over a scroll bar's LANE a notch is that bar's own
 // QScrollBar wheel - `wheelScrollLines()` x kScrollBarStepPixels (3 x 24 = 72px) per
 // notch TOWARD the lane's start (wheel up = earlier frames, higher values), partial
@@ -636,20 +636,17 @@ int main(int argc, char** argv) {
     CHECK(editor.scale().valueMax() == 5.0f);
 
     // The wheel's path too, since that is where a user really moves the window.
-    // THE RESTORED TABLE. The 2026-10-19 round briefly made Shift a two-axis
-    // SCROLL; the wheel is a ZOOM on every modifier form again - moving a window
-    // without changing its scale is the SCROLL BARS' job (section 0d below) - and
-    // the four forms are:
+    // THE TABLE, one mapping for the whole dock. Shift is the TIMELINE's frame-axis
+    // SCROLL (its Shift+wheel), so the four forms are:
     //   * plain         -> zoom BOTH axes about the cursor;
-    //   * Shift         -> zoom the FRAME axis ALONE (what Ctrl+Shift used to be);
-    //   * Ctrl          -> zoom the VALUE axis ALONE (unchanged);
+    //   * Shift         -> SCROLL the FRAME axis, 50px a notch, wheel up = earlier;
+    //   * Ctrl          -> zoom the VALUE axis ALONE;
     //   * Ctrl + Shift  -> zoom BOTH axes, exactly as plain does.
-    // Every form zooms at least one axis, so NO NOTCH SCROLLS ANYTHING and none is
-    // consumed by a case that moved nothing - the two things that were wrong with
-    // the round this rewrites. Each form is asserted on the MAPPING the two axes
-    // produce (pixels between two frames; the value span; the anchored frame and
-    // the value under the cursor), because a move that changed the stored numbers
-    // without moving the pixels would prove nothing.
+    // Each form is asserted on the MAPPING the two axes produce (pixels between two
+    // frames; the value span; the anchored frame and the value under the cursor),
+    // because a move that changed the stored numbers without moving the pixels would
+    // prove nothing. The Shift SCROLL's rate is asserted separately: a scroll leaves
+    // the scale alone and moves the origin by the timeline's own 50px.
     const QPoint kWheelPoint = panel.center();
     const int beforeFrameSpan = editor.scale().pixelX(core::Frame(24)) - editor.scale().pixelX(core::Frame(0));
     const float beforeValueSpan = editor.scale().valueMax() - editor.scale().valueMin();
@@ -669,22 +666,24 @@ int main(int argc, char** argv) {
     CHECK(afterFrameSpan > beforeFrameSpan);   // the FRAME axis zoomed in...
     CHECK(afterValueSpan < beforeValueSpan);   // ...and so did the VALUE axis
 
-    // SHIFT ZOOMS THE FRAME AXIS ALONE - it is the frame-only zoom the round before
-    // last had, where Ctrl+Shift now is. The VALUE window must come back
-    // BIT-identical (a notch that also touched it would not be "alone"), the frame
-    // axis must be a ZOOM (its pixels-per-frame changes and it holds the frame under
-    // the cursor) and not the SCROLL this test used to pin: a scroll leaves the rate
-    // alone and moves the origin, which `ppf` and the anchor together can tell apart.
+    // SHIFT SCROLLS THE FRAME AXIS - the timeline's own gesture, with no timeline
+    // attached here, so the panel's own axis moves it. One wheel-toward notch is
+    // -50px of content origin (the timeline's wheel reports +50px for a wheel-away
+    // notch: viewTrans.x() += delta > 0 ? 50 : -50, and the content origin moving
+    // right shows earlier frames). The RATE must not change - a scroll, not a zoom -
+    // and the value window must come back bit-identical.
     const double beforeShiftPpf = editor.scale().framePpf();
     const int beforeShiftSpan = editor.scale().pixelX(core::Frame(24)) - editor.scale().pixelX(core::Frame(0));
+    const double beforeShiftOrigin = editor.scale().pixelXOfFrame(0.0);
     const float beforeShiftMin = editor.scale().valueMin();
     const float beforeShiftMax = editor.scale().valueMax();
     const double beforeShiftValueY = editor.scale().pixelYOfValue(0.5f);
-    const double shiftAnchorFrame = editor.scale().frameAtPixel(kWheelPoint.x());
     CHECK(editor.updateWheel(camera, kWheelPoint, -120, Qt::ShiftModifier, false));
-    CHECK(editor.scale().framePpf() > beforeShiftPpf); // the frame axis ZOOMED (a notch in)...
-    CHECK(editor.scale().pixelX(core::Frame(24)) - editor.scale().pixelX(core::Frame(0)) > beforeShiftSpan);
-    CHECK(std::fabs(editor.scale().frameAtPixel(kWheelPoint.x()) - shiftAnchorFrame) < 1e-9); // ...about the cursor
+    CHECK(editor.scale().framePpf() == beforeShiftPpf); // a SCROLL: the rate did not move...
+    CHECK(
+        std::fabs((editor.scale().pixelXOfFrame(0.0) - beforeShiftOrigin) + 50.0) < 1e-9
+    ); // ...the frame origin moved by exactly one timeline notch
+    CHECK(editor.scale().pixelX(core::Frame(24)) - editor.scale().pixelX(core::Frame(0)) == beforeShiftSpan);
     CHECK(editor.scale().valueMin() == beforeShiftMin); // and the value window is bit-identical
     CHECK(editor.scale().valueMax() == beforeShiftMax);
     CHECK(editor.scale().pixelYOfValue(0.5f) == beforeShiftValueY); // so the value CONTENT did not move either
@@ -730,14 +729,14 @@ int main(int argc, char** argv) {
     CHECK(editor.scale().valueMax() - editor.scale().valueMin() > beforeOutValueSpan);
 
     std::printf(
-        "[W] wheel (RESTORED: zoom only, no notch scrolls): plain -> frame px(0..24) %d -> %d and value span "
-        "%.4f -> %.4f (BOTH axes); Shift -> frame-only zoom px(0..24) %d -> %d, ppf %.6f -> %.6f, value span "
-        "%.4f bit-identical; Ctrl+Shift -> both axes, px(0..24) %d -> %d and value span shrinking from %.4f; "
-        "Ctrl -> value-only, px(0..24) %d unchanged at %d, value span %.4f -> %.4f\n",
-        beforeFrameSpan, afterFrameSpan, beforeValueSpan, afterValueSpan, beforeShiftSpan, afterShiftSpan,
-        beforeShiftPpf, editor.scale().framePpf(), beforeShiftMax - beforeShiftMin, beforeCtrlShiftSpan,
-        afterCtrlShiftSpan, beforeCtrlShiftMax - beforeCtrlShiftMin, beforeCtrlSpan, beforeCtrlSpan,
-        beforeCtrlValueSpan, afterCtrlValueSpan
+        "[W] wheel (one dock mapping): plain -> frame px(0..24) %d -> %d and value span "
+        "%.4f -> %.4f (BOTH axes); Shift -> FRAME SCROLL of 50px (ppf unchanged %.6f, px(0..24) %d -> %d), "
+        "value span %.4f bit-identical; Ctrl+Shift -> both axes, px(0..24) %d -> %d and value span shrinking "
+        "from %.4f; Ctrl -> value-only, px(0..24) %d unchanged at %d, value span %.4f -> %.4f\n",
+        beforeFrameSpan, afterFrameSpan, beforeValueSpan, afterValueSpan, beforeShiftPpf, beforeShiftSpan,
+        afterShiftSpan, beforeShiftMax - beforeShiftMin, beforeCtrlShiftSpan, afterCtrlShiftSpan,
+        beforeCtrlShiftMax - beforeCtrlShiftMin, beforeCtrlSpan, beforeCtrlSpan, beforeCtrlValueSpan,
+        afterCtrlValueSpan
     );
 
     // The window the wheel left, against the cursor pass that follows: nothing is
@@ -813,19 +812,19 @@ int main(int argc, char** argv) {
         editor.fitAll();
     }
 
-    // --- 0b-iii: A COUNT OF SHIFT NOTCHES IS A COUNT OF FRAME-AXIS ZOOMS, AND
+    // --- 0b-iii: A COUNT OF SHIFT NOTCHES IS A COUNT OF FRAME-AXIS SCROLLS, AND
     // Ctrl+SHIFT MOVES BOTH AXES IN PLACE. The single-notch forms above pin the
     // direction and the axis split; these pin the ARITHMETIC at a count (four) and
     // measure the frame axis through its MAPPING - pixelXOfFrame() and framePpf() -
     // not through the rounded pixel between two frames, so a rate change cannot hide
     // inside the span. Everything is asserted THROUGH GraphEditor::updateWheel, the
     // one place a notch becomes a window move:
-    //   * Shift: every one of the four notches is consumed; the frame axis' RATE
-    //     moves (x1.1 a notch, whichever rung the ladder lands on) and holds the
-    //     frame under the cursor, while the value window comes back BIT-identical -
-    //     so four Shift notches move four times the frame axis and not one pixel of
-    //     anything else. A SCROLL would have left the rate alone: this is the
-    //     assertion the 2026-10-19 remap would fail.
+    //   * Shift: every one of the four notches is consumed; the frame axis' ORIGIN
+    //     moves by four times the timeline's 50px (wheel-toward notches go toward
+    //     LATER frames) while its RATE is bit-identical, and the value window comes
+    //     back BIT-identical too - so four Shift notches move the frame window and
+    //     not one pixel of either scale. A ZOOM would have moved the rate: that is
+    //     the assertion the old frame-zoom table would fail.
     //   * Ctrl+Shift: one notch (a notch IN) raises the frame rate, moves the value
     //     axis' span too (both axes is the whole point of the combination), and holds
     //     the anchored frame and the anchored value.
@@ -839,41 +838,44 @@ int main(int argc, char** argv) {
         const float valueSpan0 = valueMax0 - valueMin0;
         const double valueY0 = scale.pixelYOfValue(0.5f);
         const double anchorX = static_cast<double>(kWheelPoint.x());
-        const double anchorFrame0 = scale.frameAtPixel(anchorX);
         bool taken = true;
         for (int i = 0; i < kNotches; ++i)
             taken = editor.updateWheel(camera, kWheelPoint, -120, Qt::ShiftModifier, false) && taken;
         CHECK(taken); // a Shift notch over the panel is consumed
-        // x1.1 a notch, measured as a RATIO: the ladder computes 1.1^index with pow(),
-        // so four rungs up is 1.1^4 of the rate and not necessarily the product of
-        // four multiplications bit for bit.
-        CHECK(std::fabs(scale.framePpf() / framePpf0 - 1.4641) < 1e-9);
-        CHECK(scale.pixelXOfFrame(0.0) != frameX0);            // the frame content moved (a zoom does)...
-        CHECK(std::fabs(scale.frameAtPixel(anchorX) - anchorFrame0) < 1e-9); // ...holding the anchored frame
+        // A SCROLL, not a zoom: the RATE is bit-identical and the origin moved by
+        // exactly one timeline notch (50px, toward LATER frames for a wheel-toward
+        // notch) per notch - so four notches are four times as far, not a ladder rung.
+        CHECK(scale.framePpf() == framePpf0);
+        CHECK(std::fabs((scale.pixelXOfFrame(0.0) - frameX0) + kNotches * 50.0) < 1e-9);
+        CHECK(scale.pixelXOfFrame(0.0) != frameX0); // the window really moved
         CHECK(scale.valueMin() == valueMin0); // Shift moves the VALUE axis not at all: bit for bit...
         CHECK(scale.valueMax() == valueMax0);
         CHECK(scale.valueMax() - scale.valueMin() == valueSpan0); // ...so its span is the same float too
         CHECK(scale.pixelYOfValue(0.5f) == valueY0);           // and the value content did not move either
+        const double shiftOriginX = scale.pixelXOfFrame(0.0); // the scroll's result, before the zoom below
 
         // CTRL+SHIFT: BOTH axes. The frame axis' rate rises and the value axis' span
         // shrinks (a notch in is a zoom in on both), with each axis keeping the point
-        // under the cursor - the two halves of one notch, not a pan of either.
+        // under the cursor - the two halves of one notch, not a pan of either. (The
+        // frame anchor is captured AFTER the shift scroll above moved the window.)
         const double bothPpf0 = scale.framePpf();
         const float bothMin0 = scale.valueMin();
         const float bothMax0 = scale.valueMax();
+        const double bothAnchorFrame = scale.frameAtPixel(anchorX);
         const double bothAnchorValue = scale.valueAtPixel(kWheelPoint.y());
         CHECK(editor.updateWheel(camera, kWheelPoint, -120, Qt::ControlModifier | Qt::ShiftModifier, false));
         CHECK(scale.framePpf() > bothPpf0); // the frame axis zoomed
         CHECK(scale.valueMax() - scale.valueMin() < bothMax0 - bothMin0); // and the value axis did too
         CHECK(scale.valueMin() != bothMin0 || scale.valueMax() != bothMax0);
-        CHECK(std::fabs(scale.frameAtPixel(anchorX) - anchorFrame0) < 1e-9); // the frame anchor held
+        CHECK(std::fabs(scale.frameAtPixel(anchorX) - bothAnchorFrame) < 1e-9); // the frame anchor held
         CHECK(std::fabs(scale.valueAtPixel(kWheelPoint.y()) - bothAnchorValue) < 1e-4); // and the value anchor
 
         std::printf(
-            "[W] wheel steps: %d Shift notches -> ppf %.6f -> %.6f (x1.1 each) with the value span %.4f "
-            "BIT-IDENTICAL; Ctrl+Shift -> ppf %.6f (up) and value span %.4f -> %.4f (down), both anchors held\n",
-            kNotches, framePpf0, scale.framePpf(), valueSpan0, bothPpf0, bothMax0 - bothMin0,
-            scale.valueMax() - scale.valueMin()
+            "[W] wheel steps: %d Shift notches -> frame window %+.1f px (50 each) at ppf %.6f BIT-IDENTICAL "
+            "and value span %.4f BIT-IDENTICAL; Ctrl+Shift -> ppf %.6f (up) and value span %.4f -> %.4f "
+            "(down), both anchors held\n",
+            kNotches, shiftOriginX - frameX0, framePpf0, valueSpan0, bothPpf0,
+            bothMax0 - bothMin0, scale.valueMax() - scale.valueMin()
         );
 
         // Both axes back on the shown keys for the sections below.
@@ -901,7 +903,8 @@ int main(int argc, char** argv) {
     cmnd::Stack& stack = project.commandStack();
 
     // --- 0d: THE SCROLL BARS. The two bars are the panel's way of moving a WINDOW
-    // without changing its scale (the wheel zooms, they scroll): the horizontal one
+    // without changing its scale (the wheel zooms unless Shift asks for the timeline's
+    // own frame scroll; the bars are the pointer's way): the horizontal one
     // along the panel's bottom edge scrolls the FRAME axis - its content is the
     // project's frame range - and the vertical one along its right edge scrolls the
     // VALUE axis, whose content is the shown curves' key extent (shownValueExtent, the
@@ -3800,35 +3803,51 @@ int main(int argc, char** argv) {
             }
         );
 
-        // SHIFT IS THE FRAME-AXIS-ONLY ZOOM (it is what Ctrl+Shift was in the
-        // 2026-10-19 remap, which made Shift a SCROLL and is undone here). The notch
-        // has to reach the timeline's zoomFramesAbout through the ZOOM delegate - in
-        // the unit both views share, the frame under the panel's cursor, SUB-PIXEL so
-        // the timeline can put it back under the cursor instead of rounding it - and
-        // the SCROLL delegate must NOT hear it: a scroll here is a window move with no
-        // rate change, which is the one thing this notch is not.
-        const double anchorFrameAtCursor = editor.scale().frameAtPixel(sharedPlot.center().x());
+        // SHIFT IS THE TIMELINE'S FRAME SCROLL. The dock's two panes share the frame
+        // axis, so this notch must do what TimeLineWidget::wheelEvent's Shift branch
+        // does: move the window 50px toward EARLIER frames (wheel up), with no rate
+        // change. While the timeline owns the axis the move goes to the SCROLL
+        // delegate in FRAMES - the one unit both views share - and the ZOOM delegate
+        // must NOT hear it. One wheel-up notch is -50px of content origin, so the
+        // delegated frame delta is -50/framePpf.
+        const int scrollCallsBeforeShift = scrollCalls;
+        const double scrolledBeforeShift = scrolledFrames;
+        const double ppfBeforeShift = editor.scale().framePpf();
+        const double originBeforeShift = editor.scale().pixelXOfFrame(0.0);
         const float beforeShiftSeamMin = editor.scale().valueMin();
         const float beforeShiftSeamMax = editor.scale().valueMax();
-        CHECK(editor.updateWheel(camera, sharedPlot.center(), -120, Qt::ShiftModifier, false));
-        CHECK(zoomCalls == 1);
-        CHECK(scrollCalls == 0); // the SCROLL delegate did not hear it
-        CHECK(zoomedDelta == -120);
-        CHECK(std::fabs(zoomedAnchor - anchorFrameAtCursor) < 1e-9);
-        CHECK(zoomedAnchor != std::floor(zoomedAnchor)); // a real sub-pixel anchor, not a coincidence
-        CHECK(editor.scale().valueMin() == beforeShiftSeamMin); // the frame-only zoom moved no value
+        CHECK(editor.updateWheel(camera, sharedPlot.center(), 120, Qt::ShiftModifier, false));
+        CHECK(zoomCalls == 0);                          // a scroll, not a zoom
+        CHECK(scrollCalls == scrollCallsBeforeShift + 1); // the timeline's SCROLL delegate heard it
+        const double shiftFrames = scrolledFrames - scrolledBeforeShift;
+        CHECK(std::fabs(shiftFrames + 50.0 / ppfBeforeShift) < 1e-9); // the timeline's own 50px, earlier
+        CHECK(editor.scale().framePpf() == ppfBeforeShift); // the panel wrote no scale...
+        CHECK(editor.scale().pixelXOfFrame(0.0) == originBeforeShift); // ...and no origin (the timeline owns them)
+        CHECK(editor.scale().valueMin() == beforeShiftSeamMin); // and moved no value
         CHECK(editor.scale().valueMax() == beforeShiftSeamMax);
-        CHECK(std::abs(leftEdgeFrame() - windowLeftFrame) <= 1.0); // the panel's X stayed put
 
-        // Ctrl+Shift is the OTHER half of the same table: BOTH axes, so it reaches the
+        // THE WINDOW THE TIMELINE PUSHES BACK after applying that delta: applying
+        // scrollFramesBy's frames to the shared window moves every frame's pixel by
+        // exactly the timeline's 50px (content right, earlier frames) and changes
+        // NEITHER axis' scale - which is the whole contract of this notch.
+        editor.setFrameWindow(pushedLo + shiftFrames, pushedHi + shiftFrames);
+        CHECK(std::fabs((editor.scale().pixelXOfFrame(0.0) - originBeforeShift) - 50.0) < 1e-9);
+        CHECK(std::fabs(editor.scale().framePpf() - ppfBeforeShift) < 1e-9); // no frame scale change
+        CHECK(editor.scale().valueMin() == beforeShiftSeamMin); // no value scale change either
+        CHECK(editor.scale().valueMax() == beforeShiftSeamMax);
+        CHECK(std::fabs((leftEdgeFrame() - windowLeftFrame) + 50.0 / ppfBeforeShift) < 1e-9); // earlier frames
+        editor.setFrameWindow(pushedLo, pushedHi); // back to the window the section measures against
+        CHECK(std::fabs(editor.scale().framePpf() - sharedPpf) < 1e-9);
+
+        // Ctrl+Shift is the OTHER half of the table: BOTH axes, so it reaches the
         // ZOOM delegate like plain does and moves the value axis as well - and the
-        // scroll delegate still hears nothing, because neither form scrolls.
+        // scroll delegate still hears nothing, because this form does not scroll.
         const int scrollCallsBeforeCtrlShift = scrollCalls;
         const double anchorFrameAtCtrlShift = editor.scale().frameAtPixel(sharedPlot.center().x());
         const float beforeCtrlShiftSeamMin = editor.scale().valueMin();
         const float beforeCtrlShiftSeamMax = editor.scale().valueMax();
         CHECK(editor.updateWheel(camera, sharedPlot.center(), -120, Qt::ControlModifier | Qt::ShiftModifier, false));
-        CHECK(zoomCalls == 2);
+        CHECK(zoomCalls == 1);
         CHECK(zoomedDelta == -120);
         CHECK(std::fabs(zoomedAnchor - anchorFrameAtCtrlShift) < 1e-9);
         CHECK(scrollCalls == scrollCallsBeforeCtrlShift); // the scroll delegate did not hear it
@@ -3840,7 +3859,7 @@ int main(int argc, char** argv) {
         // panel's own and really moves.
         const float beforeSeamValueSpan = editor.scale().valueMax() - editor.scale().valueMin();
         CHECK(editor.updateWheel(camera, sharedPlot.center(), -120, Qt::NoModifier, false));
-        CHECK(zoomCalls == 3);
+        CHECK(zoomCalls == 2);
         CHECK(zoomedDelta == -120);
         CHECK(scrollCalls == scrollCallsBeforeCtrlShift); // a zoom is not a scroll
         CHECK(editor.scale().valueMax() - editor.scale().valueMin() < beforeSeamValueSpan);
@@ -3848,30 +3867,34 @@ int main(int argc, char** argv) {
 
         // Ctrl = the value axis alone: neither frame delegate hears it.
         CHECK(editor.updateWheel(camera, sharedPlot.center(), -120, Qt::ControlModifier, false));
-        CHECK(zoomCalls == 3); // (the count after the plain notch above: Ctrl adds nothing)
+        CHECK(zoomCalls == 2); // (the count after the plain notch above: Ctrl adds nothing)
         CHECK(scrollCalls == scrollCallsBeforeCtrlShift);
         CHECK(std::abs(leftEdgeFrame() - windowLeftFrame) <= 1.0);
 
-        // ...and the INVERTED setting is applied BEFORE the delegation, so the
-        // timeline is handed a notch in the panel's own sense and the panel's two
-        // axes keep moving together: with the setting on, the same wheel-away notch
-        // that arrived as -120 above arrives as +120 here - still a ZOOM, on the frame
-        // axis alone, and still nothing for the scroll delegate. (The timeline's own
-        // invert setting is its own wheel's; that is the gesture
-        // gui::TimeLineEditorWidget::updateWheel drives, not this one.)
+        // ...and the INVERTED setting is applied BEFORE the delegation of a ZOOM, so
+        // the timeline is handed a notch in the panel's own sense and the panel's two
+        // axes keep moving together. The Shift SCROLL is deliberately NOT inverted:
+        // the timeline's own Shift branch takes the raw notch, so with the setting on
+        // the same wheel-toward event still scrolls toward LATER frames and still
+        // reaches only the SCROLL delegate.
         const int scrollCallsBeforeInvert = scrollCalls;
+        const int zoomCallsBeforeInvert = zoomCalls;
+        const double scrolledBeforeInvert = scrolledFrames;
+        const double invertPpf = editor.scale().framePpf();
         const float beforeInvertMin = editor.scale().valueMin();
         const float beforeInvertMax = editor.scale().valueMax();
         CHECK(editor.updateWheel(camera, sharedPlot.center(), -120, Qt::ShiftModifier, true));
-        CHECK(zoomCalls == 4);
-        CHECK(zoomedDelta == 120); // the delegated notch, in the panel's own sense
-        CHECK(scrollCalls == scrollCallsBeforeInvert); // still not a scroll
-        CHECK(editor.scale().valueMin() == beforeInvertMin); // and still the frame axis ALONE
+        CHECK(zoomCalls == zoomCallsBeforeInvert); // not a zoom, inverted or not
+        CHECK(scrollCalls == scrollCallsBeforeInvert + 1);
+        // Notch -120 is wheel-down: toward LATER frames, so the delegate receives
+        // +50 content px (positive notch = wheel up = earlier, i.e. -50).
+        CHECK(std::fabs((scrolledFrames - scrolledBeforeInvert) - 50.0 / invertPpf) < 1e-9);
+        CHECK(editor.scale().valueMin() == beforeInvertMin);
         CHECK(editor.scale().valueMax() == beforeInvertMax);
         CHECK(std::abs(leftEdgeFrame() - windowLeftFrame) <= 1.0);
         const float beforeInvertSpan = editor.scale().valueMax() - editor.scale().valueMin();
         CHECK(editor.updateWheel(camera, sharedPlot.center(), -120, Qt::NoModifier, true));
-        CHECK(zoomCalls == 5);
+        CHECK(zoomCalls == zoomCallsBeforeInvert + 1);
         CHECK(zoomedDelta == 120); // the plain wheel's frame half too
         // The value half moves the way the canvas moves on that same notch with the
         // setting on: a notch TOWARD the user is the zoom OUT when the wheel is
@@ -3892,7 +3915,7 @@ int main(int argc, char** argv) {
         CHECK(sendMiddlePress(editor, camera, seamPanCur, seamPanStart));
         CHECK(sendMiddleMove(editor, camera, seamPanCur, seamPanStart + seamPanDelta));
         CHECK(sendMiddleRelease(editor, camera, seamPanCur, seamPanStart + seamPanDelta));
-        CHECK(zoomCalls == 5); // a pan is not a zoom
+        CHECK(zoomCalls == 3); // a pan is not a zoom
         CHECK(std::fabs((scrolledFrames - scrolledBeforePan) + 40.0 / static_cast<double>(sharedPpf)) < 1e-9);
         CHECK(std::abs(leftEdgeFrame() - windowLeftFrame) <= 1.0); // the panel's X still did not move
         const float afterSeamPanSpan = editor.scale().valueMax() - editor.scale().valueMin();
@@ -3928,7 +3951,7 @@ int main(int argc, char** argv) {
         // press anchored - the same one TimeLineWidget::beginScrollbarDrag uses).
         CHECK(std::fabs((scrolledFrames - scrolledBeforeBar) - 30.0 * seamBars.hContentPerPixel) < 1e-9);
         CHECK(editor.scale().pixelXOfFrame(0.0) == seamOriginBeforeBar); // and the panel's own X was not written
-        CHECK(zoomCalls == 5); // a scroll bar is not a wheel
+        CHECK(zoomCalls == 3); // a scroll bar is not a wheel
         CHECK(std::abs(leftEdgeFrame() - windowLeftFrame) <= 1.0);
 
         // THE SAME BAR AT ZERO TRAVEL. The pushed window covers the project's whole
@@ -3972,7 +3995,7 @@ int main(int argc, char** argv) {
             CHECK(std::fabs((scrolledFrames - scrolledBeforeFull) - 30.0 * fullSeamBars.hContentPerPixel) < 1e-9);
             const double fullDragFrames = scrolledFrames - scrolledBeforeFull;
             CHECK(editor.scale().pixelXOfFrame(0.0) == fullOriginBefore); // the panel's own X was not written
-            CHECK(zoomCalls == 5); // a bar is not a wheel
+            CHECK(zoomCalls == 3); // a bar is not a wheel
 
             // ...and a notch over the full run scrolls it (the timeline's eventFilter
             // Wheel branch never asks for travel): 3 lines x 24px of content px, which
@@ -4001,9 +4024,10 @@ int main(int argc, char** argv) {
             "[T] timeline seam: the panel writes the timeline's own selection (1 key selected in the panel "
             "is 1 in the timeline, focused), a pushed window of %.2f..%.2f maps across the panel at "
             "%.3f px/frame "
-            "(panel %dx%d, plot %dx%d) and survives a cursor pass, a target-set change and fitAll; a Shift notch and a "
-            "Ctrl+Shift notch both reach the frame ZOOM delegate (the frame axis alone, then both axes) and "
-            "NEVER the scroll one, a 40px middle-drag pan and a 30px scroll-bar thumb drag reach the SCROLL "
+            "(panel %dx%d, plot %dx%d) and survives a cursor pass, a target-set change and fitAll; a Shift "
+            "notch reaches the SCROLL delegate with -50/framePpf frames (the timeline's own 50px, wheel up = "
+            "earlier frames) and never the zoom one, while a Ctrl+Shift notch reaches the ZOOM delegate (both "
+            "axes); a 40px middle-drag pan and a 30px scroll-bar thumb drag reach the SCROLL "
             "delegate with -40/framePpf (the pan moves the content right, i.e. earlier frames) and "
             "30 * content-per-lane-pixel frames (the pill drag advances the window 1:1) - all leaving the panel's "
             "own X exactly "
@@ -4025,33 +4049,34 @@ int main(int argc, char** argv) {
         CHECK(editor.scale().frameAtPixel(static_cast<double>(ownPlot.right())) >= 6.0);
         const double ownPpfBefore = editor.scale().frameScale().pixelsPerFrame();
         const int ownSpanBefore = editor.scale().pixelX(core::Frame(24)) - editor.scale().pixelX(core::Frame(0));
-        // SHIFT IS THE FRAME-AXIS-ONLY ZOOM here too (it was the SCROLL for one
-        // round): with no timeline the panel's OWN frame axis zooms and its value axis
-        // does not move a bit. A notch AWAY (+120) is the zoom OUT, so the panel's own
-        // rung drops - and a SCROLL would have left it alone and moved the offset with
-        // no anchor, which the anchored frame below rules out.
-        const double ownAnchorFrame = editor.scale().frameAtPixel(ownPlot.center().x());
+        // SHIFT IS THE TIMELINE'S FRAME SCROLL here too: with no timeline the panel's
+        // OWN frame axis moves by the same 50px per notch (a wheel-away notch shows
+        // EARLIER frames, so the content origin moves right) and its value axis does
+        // not move a bit. The RATE must not change: this is a scroll, not the
+        // frame-only zoom the table used to give Shift.
+        const double ownOriginBefore = editor.scale().pixelXOfFrame(0.0);
         const float ownValueMinBefore = editor.scale().valueMin();
         const float ownValueMaxBefore = editor.scale().valueMax();
         CHECK(editor.updateWheel(camera, ownPlot.center(), 120, Qt::ShiftModifier, false));
-        CHECK(editor.scale().frameScale().pixelsPerFrame() < ownPpfBefore); // the rate moved (zoom OUT)...
-        CHECK(editor.scale().pixelX(core::Frame(24)) - editor.scale().pixelX(core::Frame(0)) < ownSpanBefore);
-        CHECK(std::fabs(editor.scale().frameAtPixel(ownPlot.center().x()) - ownAnchorFrame) < 1e-9); // ...anchored
+        CHECK(editor.scale().frameScale().pixelsPerFrame() == ownPpfBefore); // no rate change...
+        CHECK(std::fabs((editor.scale().pixelXOfFrame(0.0) - ownOriginBefore) - 50.0) < 1e-9); // ...50px, earlier
+        CHECK(editor.scale().pixelX(core::Frame(24)) - editor.scale().pixelX(core::Frame(0)) == ownSpanBefore);
         CHECK(editor.scale().valueMin() == ownValueMinBefore); // and the value axis did not move at all
         CHECK(editor.scale().valueMax() == ownValueMaxBefore);
-        CHECK(zoomCalls == 5);   // the ZOOM delegate heard nothing: this axis is the panel's own
-        CHECK(scrollCalls == 4); // and the scroll delegate did not either (pan, bar drag, full drag, full notch)
+        CHECK(zoomCalls == 3);   // the ZOOM delegate heard nothing: this axis is the panel's own
+        CHECK(scrollCalls == 6); // ...and clearFrameAxis dropped the scroll delegate too
 
         // CTRL+SHIFT: BOTH axes on the panel's own axis too. The frame rate drops
         // further, the value window grows with it (both halves of one notch), the
         // anchored frame stays under the cursor, and no delegate hears either half.
         const float ownValueSpanBefore = editor.scale().valueMax() - editor.scale().valueMin();
+        const double ownAnchorFrame = editor.scale().frameAtPixel(ownPlot.center().x());
         CHECK(editor.updateWheel(camera, ownPlot.center(), 120, Qt::ControlModifier | Qt::ShiftModifier, false));
         CHECK(editor.scale().frameScale().pixelsPerFrame() < ownPpfBefore); // the panel's OWN frame axis moved
         CHECK(editor.scale().valueMax() - editor.scale().valueMin() > ownValueSpanBefore); // and its value axis did
         CHECK(std::fabs(editor.scale().frameAtPixel(ownPlot.center().x()) - ownAnchorFrame) < 1e-9);
-        CHECK(zoomCalls == 5);   // still no delegate: the panel owns this axis
-        CHECK(scrollCalls == 4);
+        CHECK(zoomCalls == 3);   // still no delegate: the panel owns this axis
+        CHECK(scrollCalls == 6);
 
         // The shared end must go before the timeline it points at does: a dangling
         // selection source is the one thing this seam can get catastrophically wrong.
@@ -6411,11 +6436,12 @@ int main(int argc, char** argv) {
         "out of the gesture bit-identical, all inside ONE command, and the drag starts on ANY of the "
         "selected keys - a plain press on one of them keeps the selection, so the whole selection "
         "moves and the set follows the keys to their new frames; the focus moves NO window (a click "
-        "does not zoom); the wheel ZOOMS only - both axes plain, the frame axis alone under Shift, the value "
-        "axis alone under Ctrl, both under Ctrl+Shift, so no notch ever scrolls and none is dead - and its "
+        "does not zoom); the wheel follows ONE table for the dock - both axes plain, the FRAME axis SCROLLED "
+        "under Shift by the timeline's own 50px a notch (delegated through its own scroll so both views move "
+        "one window), the value axis alone under Ctrl, both under Ctrl+Shift - and the ZOOMS' "
         "DIRECTION is the caller's invert setting - the one the canvas takes - applied to both axes before "
         "the frame half is delegated, so the canvas, the timeline and the panel never zoom against each "
-        "other; the "
+        "other (the Shift scroll deliberately follows the raw notch, as the timeline's does); the "
         "three key edits are one undo step each through the timeline's own route: a Ctrl-press on the "
         "band inserts the key the curve already passes through (no sampled value moves at that "
         "frame), a press on a key plus a 2-axis drag moves its frame AND its value (Shift pins the "

@@ -44,6 +44,14 @@ namespace {
 constexpr double kValueZoomPerNotch = 1.1;
 constexpr double kWheelNotch = 120.0;
 
+// The TIMELINE's own Shift+wheel scroll (TimeLineWidget::wheelEvent): 50 content
+// pixels per notch, wheel up toward EARLIER frames. The graph's Shift branch moves
+// the frame window the same distance in the same direction, so the two panes of
+// one dock - the timeline and the plot above it - cannot disagree about the frame
+// axis; while a timeline owns that axis the move is delegated through
+// scrollFramesBy so both views keep moving one window.
+constexpr int kFrameWheelScrollPixels = 50;
+
 // How many points a segment is walked through when the value axis is fitted.
 // The fit cannot read the key values alone: a Custom easing's cubic bezier (and
 // Back/Elastic) reaches values beyond BOTH of the keys it sits between, and a
@@ -978,9 +986,10 @@ namespace ctrl {
                     // overwritten by the stored chord position (its mode becomes
                     // Aligned, which makes that stored position the truth).
                     const Entry& entry = entries[hit.item];
-                    core::TimeLine* line = entry.line ? entry.line->timeLine() : nullptr;
+                    // The entry's own line: the map its curve draws.
+                    core::TimeLine* line = entry.line;
                     const core::TimeKeyType type = entry.channel.type();
-                    core::TimeKey* key = line ? line->timeKey(type, hit.keyFrame.get()) : nullptr;
+                    core::TimeKey* key = line->timeKey(type, hit.keyFrame.get());
 
                     int outIndex = -1;
                     int inIndex = -1;
@@ -996,7 +1005,7 @@ namespace ctrl {
                     // key's param holds the clicked key's INCOMING handle.
                     util::Easing::Param* outParam = key ? graph::Curve::easingOf(*key, type, entry.channel.component()) : nullptr;
                     core::TimeKey* prevKey =
-                        (line && inIndex >= 0)
+                        (inIndex >= 0)
                         ? line->timeKey(type, entry.curve.segment(inIndex).from->frame())
                         : nullptr;
                     util::Easing::Param* inParam =
@@ -1324,19 +1333,27 @@ namespace ctrl {
 
         // THE MAPPING, axis by axis (see updateWheel's declaration for the table):
         //   * plain          - zoom BOTH axes about the cursor;
-        //   * Shift          - zoom the FRAME axis alone (horizontal);
+        //   * Shift          - SCROLL the FRAME axis, the timeline's own 50px per
+        //                      notch toward EARLIER frames (wheel up);
         //   * Ctrl           - zoom the VALUE axis alone (vertical);
         //   * Ctrl + Shift   - zoom BOTH axes, exactly as plain does.
-        // EVERY combination zooms at least one axis, so no notch is ever consumed by
-        // a case that moved nothing - the two modifiers name the two axes, and both
-        // of them name both. NOTHING HERE SCROLLS: the window is moved by the scroll
-        // bars and the middle drag (see the SCROLL BARS note in the header), and the
-        // wheel's Shift branch is the frame ZOOM it had before the 2026-10-19 round
-        // briefly made it a scroll.
+        // Shift is the timeline's gesture, not a zoom of this panel's: the dock's
+        // two views share the frame axis, and over the timeline's plot Shift+wheel
+        // scrolls it (TimeLineWidget::wheelEvent). The same notch over the graph
+        // must do the same thing in the same direction, through the same shared
+        // window (see mScrollFrames below); a frame-only zoom here would make one
+        // dock answer one gesture two ways. Ctrl alone and Ctrl+Shift keep their
+        // zooms - the value axis is the panel's own and the frame zoom it drives
+        // while a timeline owns the axis is delegated too. NOTHING ELSE SCROLLS:
+        // without Shift the window still moves through the scroll bars and the
+        // middle drag (see the SCROLL BARS note in the header).
         //
         // DIRECTION: a notch Qt reports as positive zooms OUT at 1.1 of scale, the
         // canvas mover's and the timeline scaler's own sense (see aInvertScaling for
-        // the user's own).
+        // the user's own). The SCROLL branch is NOT inverted by that setting: the
+        // timeline's Shift scroll does not read it either (TimeLineWidget::
+        // wheelEvent's Shift branch takes the raw angle delta), and one dock's two
+        // panes must scroll the same way whatever the zoom preference is.
         const int delta = aInvertScaling ? -aWheelDelta : aWheelDelta;
         if (delta == 0)
             // a pixel-only wheel event with no angle delta: no notch to act on
@@ -1344,8 +1361,28 @@ namespace ctrl {
             return true;
         const bool shift = aModifiers.testFlag(Qt::ShiftModifier);
         const bool ctrl = aModifiers.testFlag(Qt::ControlModifier);
-        // Which axes this notch zooms: Shift alone narrows it to the frame axis,
-        // Ctrl alone to the value axis, and both modifiers (like neither) move both.
+
+        // SHIFT ALONE: the timeline's frame-axis scroll. 50 content pixels per notch,
+        // wheel up = earlier frames, exactly as TimeLineWidget::wheelEvent's Shift
+        // branch moves its view transform. While a timeline owns the axis the move
+        // goes through the delegate in FRAMES (scrollFramesBy takes frames and
+        // converts them at its own rate, so the distance survives a zoom); the
+        // panel's mapping rate is the same rate, which is what makes the delegated
+        // delta exactly the timeline's 50 pixels. With no timeline the panel owns
+        // the axis, and panFrame moves its content origin the same way.
+        if (shift && !ctrl) {
+            // The CONTENT-PIXEL step is positive for wheel up, exactly as the
+            // timeline's Shift branch adds +50 to its view transform, and
+            // panFramesByPixels is the one place the pixel-to-frame sign lives: it
+            // moves the content right (earlier frames) on a positive delta, through
+            // the delegate while the timeline owns the axis and by panFrame otherwise.
+            panFramesByPixels(mScale, aWheelDelta > 0 ? kFrameWheelScrollPixels : -kFrameWheelScrollPixels);
+            return true;
+        }
+
+        // Which axes this notch zooms: Shift alone (handled above) narrows it to the
+        // frame axis, Ctrl alone to the value axis, and both modifiers (like
+        // neither) move both.
         const bool zoomFrame = shift || !ctrl;
         const bool zoomValue = ctrl || !shift;
 
@@ -1662,7 +1699,8 @@ namespace ctrl {
         // its own, and the shared quantity is the window (see the header). The sign
         // is the drag's: moving right moves the content right, which shows EARLIER
         // frames, so the frame delta is the negative of the pixel delta. The
-        // middle-button pan is its only caller.
+        // middle-button pan and the wheel's Shift notch (the timeline's own 50px
+        // scroll) are its callers.
         if (mFrameWindowShared) {
             if (mScrollFrames)
                 mScrollFrames(-static_cast<double>(aPixelDelta) / aScale.framePpf());
@@ -1867,7 +1905,11 @@ namespace ctrl {
 
                     Entry entry{};
                     entry.node = node;
-                    entry.line = node; // the layer that owns the key map
+                    // The entry's own line: the very TimeLine handed to
+                    // curveFor() below, so the map every read of `line` edits is
+                    // the one this curve was built from. A read that means the
+                    // node's timeline says entry.node->timeLine() instead.
+                    entry.line = timeLine;
                     entry.channel = channel;
                     entry.curve = curveFor(*timeLine, channel);
                     items.append(entry);
@@ -2051,9 +2093,9 @@ namespace ctrl {
             return false; // not on any shown curve: nothing to insert into
 
         const Entry& entry = entries[item];
-        core::TimeLine* line = entry.line ? entry.line->timeLine() : nullptr;
-        if (!line)
-            return false; // a folder, or a node kind that holds no keys
+        // The entry's own line (the map the insert reads and writes); the event
+        // it pushes names the node, which is why pushSeededKey takes both.
+        core::TimeLine* line = entry.line;
 
         const core::Frame frame = scale.frameAt(aPos.x());
 
@@ -2065,7 +2107,7 @@ namespace ctrl {
         if (line->hasTimeKey(entry.channel.type(), frame.get()))
             return false;
 
-        if (!pushSeededKey(*line, *entry.line, entry.channel, frame))
+        if (!pushSeededKey(*line, *entry.node, entry.channel, frame))
             return false;
 
         // The inserted key is the panel's current key now: the press landed on its
@@ -2235,11 +2277,11 @@ namespace ctrl {
         if (!mModifiers.testFlag(Qt::AltModifier)
             && 0 <= partnerSegment && partnerSegment < entry.curve.segmentCount()) {
             // The partner's mode is stored on the key that OWNS this handle: the
-            // segment's `from` key for handle 0, its `to` key for handle 1.
-            core::TimeLine* line = entry.line ? entry.line->timeLine() : nullptr;
+            // segment's `from` key for handle 0, its `to` key for handle 1. The
+            // owner key lives in the entry's own line, the map its curve draws.
+            core::TimeLine* line = entry.line;
             core::TimeKey* ownerKey =
-                line ? line->timeKey(entry.channel.type(), (grabbedSecond ? segment.to : segment.from)->frame())
-                     : nullptr;
+                line->timeKey(entry.channel.type(), (grabbedSecond ? segment.to : segment.from)->frame());
             util::Easing::Param* ownerParam =
                 ownerKey
                 ? graph::Curve::easingOf(*ownerKey, entry.channel.type(), entry.channel.component())
@@ -2276,12 +2318,13 @@ namespace ctrl {
             return;
 
         const Entry& entry = aItems[aHit.item];
-        core::TimeLine* line = entry.line ? entry.line->timeLine() : nullptr;
-        const core::TimeKey* key = line ? line->timeKey(entry.channel.type(), aHit.keyFrame.get()) : nullptr;
+        // The key lives in the entry's own line; the node is what the events name.
+        core::TimeLine* line = entry.line;
+        const core::TimeKey* key = line->timeKey(entry.channel.type(), aHit.keyFrame.get());
         if (!key)
             return; // the key the hit-test named is gone already: nothing to hold
 
-        // The key the press hit, in the timeline's own currency - the layer that
+        // The key the press hit, in the timeline's own currency - the line that
         // owns the map, the node the event will name, the key type and the frame
         // the key is at. Held as those four things rather than as aHit.item, so
         // the move follows the key it grabbed and not the position of an entry
@@ -2297,7 +2340,7 @@ namespace ctrl {
         mDragSegment = -1;
         mDragHandle = -1;
         mDragPartnerMirrors = false;
-        mMoveLine = entry.line;
+        mMoveLine = line;
         mMoveNode = entry.node;
         mMoveType = entry.channel.type();
         mMoveFrame = aHit.keyFrame;
@@ -2377,7 +2420,10 @@ namespace ctrl {
         if (!mProject || !mDragging || !mKeyMoveArmed)
             return false;
 
-        core::TimeLine* line = mMoveLine ? mMoveLine->timeLine() : nullptr;
+        // The line the press armed: held as the TimeLine itself, so this step
+        // reads the map the pressed entry's curve was built from. The node is
+        // separate because the events name it (and it is what owns the line).
+        core::TimeLine* line = mMoveLine;
         if (!line || !mMoveNode) {
             endDrag();
             return false;
@@ -2579,8 +2625,10 @@ namespace ctrl {
             return;
         }
 
-        core::TimeLine* line = entry.line ? entry.line->timeLine() : nullptr;
-        core::TimeKey* key = line ? line->timeKey(entry.channel.type(), mDragKey->frame()) : nullptr;
+        // The key the drag edits lives in the entry's own line, the map its curve
+        // draws.
+        core::TimeLine* line = entry.line;
+        core::TimeKey* key = line->timeKey(entry.channel.type(), mDragKey->frame());
         util::Easing::Param* easing =
             key ? graph::Curve::easingOf(*key, entry.channel.type(), entry.channel.component()) : nullptr;
         if (!easing)
@@ -2688,8 +2736,7 @@ namespace ctrl {
         // `to` for handle 1.
         util::Easing::Param* ownerEasing = nullptr;
         if (draggedIsSecond) {
-            core::TimeKey* ownerKey =
-                line ? line->timeKey(entry.channel.type(), segment.to->frame()) : nullptr;
+            core::TimeKey* ownerKey = line->timeKey(entry.channel.type(), segment.to->frame());
             ownerEasing =
                 ownerKey ? graph::Curve::easingOf(*ownerKey, entry.channel.type(), entry.channel.component()) : nullptr;
         } else {
@@ -2739,8 +2786,7 @@ namespace ctrl {
             mirrorFrame = segment.to->frame();
         } else if (hasPartnerSegment) {
             const graph::Curve::Segment neighbour = entry.curve.segment(neighbourIndex);
-            core::TimeKey* neighbourKey =
-                line ? line->timeKey(entry.channel.type(), neighbour.from->frame()) : nullptr;
+            core::TimeKey* neighbourKey = line->timeKey(entry.channel.type(), neighbour.from->frame());
             mirrorEasing =
                 neighbourKey
                 ? graph::Curve::easingOf(*neighbourKey, entry.channel.type(), entry.channel.component())

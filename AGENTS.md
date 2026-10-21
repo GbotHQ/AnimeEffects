@@ -1947,6 +1947,20 @@ moved the frame zoom to Ctrl+Shift; the user's verdict was that the per-axis zoo
 the scroll the wrong answer. The table is: plain = zoom both about the cursor, Shift = FRAME zoom, Ctrl =
 VALUE zoom, Ctrl+Shift = both. Every combination zooms at least one axis; none scrolls.
 
+**Superseded for Shift (2026-10-21): the dock's frame axis has ONE wheel mapping.** The table above
+treated the graph as a surface of its own, but the timeline's plot sits in the same dock over the same
+frame axis: over it `TimeLineWidget::wheelEvent` scrolls 50px a notch on Shift and zooms on plain, while
+the graph zoomed the frame axis on Shift. Shift now SCROLLS the frame axis in the graph exactly as it
+does there - 50 content pixels a notch, wheel up toward earlier frames - and is delegated through
+`scrollFramesBy` while a timeline owns the window, so both panes move one window; plain still zooms both
+axes about the cursor, Ctrl the value axis, Ctrl+Shift both. The scroll is deliberately not inverted by
+the zoom-direction setting (the timeline's Shift branch takes the raw notch). Remaining, deliberate
+differences: Ctrl over the timeline's plot zooms its only axis while over the graph it moves the panel's
+own value axis, Ctrl+Shift there scrolls (Shift wins) while here it zooms both, and over the timeline's
+bar Shift/Ctrl page by `pageStep` while the graph's lane wheel always uses `wheelScrollLines x 24px`
+(the graph also banks partial deltas across events; the timeline's bar treats any nonzero delta as a
+whole step).
+
 **What was actually missing: scroll bars.** `ctrl::graph::Scaler::scrollBars(frameContentLo/Hi,
 valueContentLo/Hi)` owns the geometry (`kScrollBarThickness` 8, `kScrollBarGap` 2,
 `kScrollBarReserve` 10, `kScrollBarMinThumb` 16) and BOTH sides read it - the model publishes

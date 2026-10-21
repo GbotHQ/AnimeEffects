@@ -258,39 +258,46 @@ public:
     bool ownsCursor(const core::CameraInfo& aCamera, const core::AbstractCursor& aCursor) const;
     bool updateCursor(const core::CameraInfo& aCamera, const core::AbstractCursor& aCursor);
 
-    // Wheel over the panel: ZOOM, one or both axes. Returns true when the graph
-    // took the event, so the viewport does not also zoom the canvas.
+    // Wheel over the panel: ZOOM, or SCROLL the frame axis under Shift. Returns
+    // true when the graph took the event, so the viewport does not also zoom the
+    // canvas.
     //
     // THE MAPPING, axis by axis:
     //   * plain         - zoom BOTH axes about the cursor by the same notch factor,
     //                     so the point under the pointer stays under it;
-    //   * Shift         - zoom the FRAME axis alone (horizontal), about the
-    //                     cursor's column;
+    //   * Shift         - SCROLL the FRAME axis (horizontal): 50 content pixels per
+    //                     notch, wheel up toward EARLIER frames - the timeline's
+    //                     own Shift+wheel (TimeLineWidget::wheelEvent). While a
+    //                     timeline owns the frame axis the notch is delegated
+    //                     through scrollFramesBy, so the two views move ONE window;
     //   * Ctrl          - zoom the VALUE axis alone (vertical), about the cursor's
     //                     row;
     //   * Ctrl + Shift  - zoom BOTH axes, exactly as plain does: the two
     //                     modifiers name the two axes, so both of them name both.
-    // Every combination therefore zooms at least one axis, and no notch is ever
-    // consumed by a case that moved nothing. THE ONE EXCEPTION IS A LANE: a notch over
-    // a scroll bar WITH TRAVEL scrolls that bar (Qt's QScrollBar wheel - wheelScrollLines
-    // single steps, accumulated - in the bar's own direction) and consumes the notch, so
-    // the wheel over a bar NEVER zooms. Over the plot itself nothing scrolls: moving a
-    // window without changing its scale is the scroll bars' job (and the middle drag's),
-    // so a notch in the plot can be neither a scroll nor a dead key. The wheel's Shift
-    // branch is the frame-axis ZOOM it had before the 2026-10-19 round briefly made
-    // it a scroll, and the timeline's own wheel (Shift = scroll, plain = zoom) is
-    // untouched by this: it is that widget's gesture, not this editor's.
+    // The dock's two panes therefore agree about the frame axis: Shift scrolls it
+    // in the timeline and in the graph alike, in the same direction and by the same
+    // distance. Ctrl+Shift keeps the frame ZOOM (with the value axis) because the
+    // zoom is the panel's own gesture and its frame half is delegated too.
+    // THE ONE EXCEPTION IS A LANE: a notch over a scroll bar WITH TRAVEL scrolls that
+    // bar (Qt's QScrollBar wheel - wheelScrollLines single steps, accumulated - in the
+    // bar's own direction) and consumes the notch, so the wheel over a bar NEVER
+    // scrolls the plot or zooms. Over the plot the wheel's only scroll is the Shift
+    // one; the bars and the middle drag are the other ways to move a window without
+    // changing its scale.
     //
     // The zooms use the canvas mover's and the timeline scaler's own per-notch
     // factor (1.1 per notch) and their default direction (a positive notch zooms
     // OUT), so one wheel motion does the same thing over the panel and over the
     // viewport.
     //
-    // aInvertScaling is the user's zoom direction, and it inverts EVERY branch here
-    // - before the frame half is delegated - so one notch cannot move the two axes
-    // against each other. It is gui::MouseSetting::invertMainViewScaling: the panel
-    // takes its wheel from the main view (hiding it gives the wheel back to the
-    // canvas), so it takes that view's setting.
+    // aInvertScaling is the user's zoom direction, and it inverts every ZOOM branch
+    // here - before the frame half is delegated - so one notch cannot move the two
+    // axes against each other. It is gui::MouseSetting::invertTimeLineScaling: the
+    // graph page covers the timeline's body, so gui::GraphPanelWidget hands over the
+    // same setting the timeline's own wheel reads, and one wheel over that body
+    // cannot turn it two ways. It does NOT invert the Shift scroll: the timeline's
+    // own Shift scroll takes the raw notch, so inverting it here would put the two
+    // panes of the dock back in disagreement.
     //
     // The FRAME half of a zoom is the TIMELINE's while a timeline owns the frame
     // axis (see setFrameWindow): the notch goes to the timeline through its
@@ -731,8 +738,8 @@ public:
     //     nothing, so a press that never moves leaves the history untouched;
     //   * an undo mid-drag drops the command's modifiable link, so the next move
     //     opens a fresh commit from the frames and values the keys are at then;
-    //   * the PRESSED key is held in the timeline's currency (the layer that owns
-    //     the map, the node the event names, the type and the frame it is at
+    //   * the PRESSED key is held in the timeline's currency (the entry's own
+    //     line, the node the event names, the type and the frame it is at
     //     now), not as an index into a rebuilt entry list, so the move follows
     //     the key the press hit; if that key is gone (an undo or another view
     //     removed it) the gesture stops and says so, like the handle drag's
@@ -1010,8 +1017,9 @@ public:
     //
     // X is the TIMELINE's while the panel is a second view of one: the gui pushes the
     // frames the timeline is showing (setFrameWindow) and every horizontal gesture -
-    // the wheel's and the horizontal scroll bar's frame half, of every modifier form,
-    // and the pan's horizontal half - goes back to the timeline through the delegates
+    // the wheel's frame half (the Shift SCROLL and the frame ZOOM that plain and
+    // Ctrl+Shift carry), the horizontal scroll bar's frame half, and the pan's
+    // horizontal half - goes back to the timeline through the delegates
     // below. The panel's own X is written by setFrameWindow and by nothing else (see
     // fitFrameAxis, updateWheel, updatePan, the SCROLL BARS note).
     //
@@ -1028,12 +1036,12 @@ public:
     // that arrive before the viewport is laid out (the plot has no width to map into
     // yet). Called from the draw path, where the geometry is known.
     void syncFrameWindowFor(const QSize& aViewportSize);
-    // The two horizontal gestures, in the units each side owns: a scroll (the pan,
-    // the vertical scroll bar's value half being this panel's own, and the HORIZONTAL
-    // scroll bar's thumb drag and lane page) by aFrameDelta FRAMES - so 50 px of
-    // pointer travel is 50 / framePpf() frames - and a wheel notch about
-    // aAnchorFrame, the frame under the panel's cursor (fractional, so the timeline
-    // can anchor on it exactly).
+    // The two horizontal gestures, in the units each side owns: a scroll (the wheel's
+    // Shift notch - the timeline's 50 px - the pan, and the HORIZONTAL scroll bar's
+    // thumb drag and lane page; the vertical bar's value half is this panel's own) by
+    // aFrameDelta FRAMES - so 50 px is 50 / framePpf() frames - and a wheel ZOOM
+    // notch about aAnchorFrame, the frame under the panel's cursor (fractional, so
+    // the timeline can anchor on it exactly).
     using FrameScrollFunc = std::function<void(double aFrameDelta)>;
     using FrameZoomFunc = std::function<void(int aWheelDelta, double aAnchorFrame)>;
     void setFrameGestureDelegates(FrameScrollFunc aScrollFrames, FrameZoomFunc aZoomFrames);
@@ -1125,10 +1133,23 @@ private:
         core::Frame keyFrame; // the key hit when it is a key, not a handle
     };
     // What the graph draws: one curve per visible channel of one target, with
-    // the target and channel the hit-test and the edit path need.
+    // the target, that channel's own line and the channel itself - what the
+    // hit-test and the edit path need.
     struct Entry {
+        // The target the channel is drawn for: the node whose visibility test
+        // admitted the channel, and the node every TimeLineEvent these edits
+        // emit names.
         core::ObjectNode* node;
-        core::ObjectNode* line; // the layer that owns the key map (== node for now)
+        // The entry's OWN line: the very TimeLine its curve was built from, i.e.
+        // the map this channel reads and writes. It is taken once, by
+        // buildEntries, and never re-resolved through `node` at a read site - a
+        // caller that means "the node's timeline" must spell out
+        // entry.node->timeLine() itself, so the two identities cannot be
+        // confused (they are the same timeline only because buildEntries
+        // enumerates each target's own timeLine()). Never null: buildEntries
+        // skips a target whose timeLine() is null, so no entry is built without
+        // a line.
+        core::TimeLine* line;
         graph::Channel channel;
         graph::Curve curve;
     };
@@ -1333,6 +1354,12 @@ private:
     // that path's, exactly as if the timeline had added the key. False when
     // there is no key to clone from (a shown curve always has one, so this is
     // the guard for a caller that hands in an empty map).
+    //
+    // aLine is the entry's own line - the map the seed is READ from - while
+    // aTarget is the node the TimeLineEvent names and whose own timeLine()
+    // TimeLineUtil::pushNew*Key writes into. buildEntries takes the two from one
+    // (node, node->timeLine()) pair, so they are the same map; an entry whose
+    // line were not its node's would sample one map and insert into another.
     bool pushSeededKey(
         core::TimeLine& aLine, core::ObjectNode& aTarget, const graph::Channel& aChannel, core::Frame aFrame
     );
@@ -1491,8 +1518,10 @@ private:
     int mScrollBarWheelRemainder;
 
     // The key-move gesture's armed PRESSED key, in the timeline's own currency:
-    // the layer that owns the key map, the node the TimeLineEvent names, the key
-    // type, and the frame the key is at NOW (advanced by every accepted move).
+    // the LINE that owns the key map (the pressed entry's own line, held as the
+    // TimeLine it is - not re-resolved through the node on every step), the node
+    // the TimeLineEvent names, the key type, and the frame the key is at NOW
+    // (advanced by every accepted move).
     // Held instead of an index into buildEntries() so the move follows the key
     // the press hit rather than the position of a rebuilt list. The frame and
     // value DELTAS the whole gesture applies are measured from this key's press
@@ -1500,7 +1529,7 @@ private:
     // The COMPONENT the press landed on is not kept here: it is the marker's own
     // half of the name, and every member carries its own (MoveMember::component),
     // the pressed one included.
-    core::ObjectNode* mMoveLine;
+    core::TimeLine* mMoveLine;
     core::ObjectNode* mMoveNode;
     core::TimeKeyType mMoveType;
     core::Frame mMoveFrame;

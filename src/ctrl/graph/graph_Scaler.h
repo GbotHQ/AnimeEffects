@@ -202,7 +202,10 @@ public:
     // One wheel notch over a LANE scrolls the window this many pixels times the
     // application's wheelScrollLines: the timeline's own step (gui::kVerticalStep = 24
     // content pixels, set as its scroll bar's singleStep), so a notch is 3 x 24 = 72px
-    // on either bar here, exactly the travel the timeline's bar makes.
+    // on either bar here. The timeline's bar pages instead when Shift or Ctrl is held
+    // (it has no modifier branch of its own: any nonzero delta is one page), so the
+    // two agree for an unmodified notch only - the bar's own wheel is otherwise the
+    // panel's.
     static constexpr int kScrollBarStepPixels = 24;
 
     // THE REFERENCE IS THE TIMELINE'S OWN HANDLE ARITHMETIC, not QStyle's slider
