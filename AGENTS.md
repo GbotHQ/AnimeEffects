@@ -2989,3 +2989,21 @@ cmake -S . -B /tmp/build612 -DCMAKE_PREFIX_PATH=$HOME/Qt/6.12.0/gcc_64 -DCMAKE_B
       -DAE_FFMPEG_GPL_AVCODEC=/usr/lib64/ffmpeg/libavcodec.so.62
 cmake --build /tmp/build612 -j"$(nproc)"
 ```
+
+### A CLEAN configure must be MULTI-CONFIG, and the fresh build found two dead locals (2026-10-23)
+
+`cmake -S . -B <dir>` with the default generator (single-config) FAILS at the link of the app:
+`cannot open output file src/gui/AnimeEffects: Is a directory`. The directory is the **QML module's**
+output (`src/gui/AnimeEffects/Dialogs/AnimeEffects.qmltypes`): a single-config build puts the binary
+at `src/gui/AnimeEffects` and the QML module claims the same path. The tree's own `build/` is Ninja
+Multi-Config, where the binary lands in `src/gui/Debug/`. So a from-scratch verification build is:
+
+```bash
+cmake -S . -B /tmp/verify-build -G "Ninja Multi-Config" -DAE_FFMPEG_GPL_AVCODEC=/usr/lib64/ffmpeg/libavcodec.so.62
+cmake --build /tmp/verify-build --config Debug -j"$(nproc)"
+```
+
+The clean Debug compile also found two `-Wunused-variable` warnings the incremental builds never
+reported - `stem` (the handle-stem colour the backend now computes) and `palette` (the frame driver's
+local, now composed inside `composePanelFrame`) - both deleted. Same lesson as the earlier note: a
+warning is only absent from the run that COMPILED that translation unit.
