@@ -98,8 +98,8 @@ Fixture fixtureFor(ctrl::TimeLineEditor& aEditor, const QFontMetrics& aMetrics, 
     const ctrl::time::Scaler& sc = aEditor.timeScale();
     const int mg = ctrl::TimeLineEditor::kTimeLineMargin;
     gui::frameRuler::Axis ax;
-    ax.pixelOfFrame = [&sc, mg](int fr) { return double(mg + sc.pixelWidth(fr)); };
-    ax.frameOfPixel = [&sc, mg](int px) { return sc.frame(px - mg); };
+    ax.pixelOfFrame = [&sc](int fr) { return double(mg + sc.pixelWidth(fr)); };
+    ax.frameOfPixel = [&sc](int px) { return sc.frame(px - mg); };
     ax.attributeAt = [&sc](int fr, double) { return sc.attribute(fr); };
     ax.pixelsPerFrame = sc.pixelsPerFrame();
     ax.tickStride = sc.tickStride(sc.pixelsPerFrame());

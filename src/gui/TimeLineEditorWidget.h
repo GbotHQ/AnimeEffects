@@ -35,7 +35,7 @@ public:
     TimeCursor(QWidget* aParent);
     void setCursorPos(const QPoint& aPos, int aHeight);
     void setHeaderInfo(const QString& aFrameText, const QColor& aBadgeColor);
-    virtual void paintEvent(QPaintEvent* aEvent);
+    void paintEvent(QPaintEvent* aEvent) override;
 
     QColor numberColor() const;
     void setNumberColor(const QColor& numberColor);
@@ -282,9 +282,9 @@ protected:
 
 private:
 #else
-    virtual void paintEvent(QPaintEvent* aEvent);
+    void paintEvent(QPaintEvent* aEvent) override;
 #endif
-    virtual void resizeEvent(QResizeEvent* aEvent);
+    void resizeEvent(QResizeEvent* aEvent) override;
     // THE SURFACE'S KEYBOARD. The surface takes focus on a click (it is the widget
     // the pointer lands on, and it has Qt::ClickFocus: a click here hands it the
     // keyboard without adding a Tab stop beside the timeline's own, and the press
@@ -295,7 +295,7 @@ private:
     // Every other key is IGNORED, so it propagates to TimeLineWidget (the arrow-key
     // panning) and from there to the application's key map, exactly as before this
     // widget could hold focus.
-    virtual void keyPressEvent(QKeyEvent* aEvent);
+    void keyPressEvent(QKeyEvent* aEvent) override;
     void onTimeLineModified(core::TimeLineEvent& aEvent, bool aUndo);
     void onTreeRestructured(core::ObjectTreeEvent& aEvent, bool aUndo);
     void onProjectAttributeModified(core::ProjectEvent& aEvent, bool aUndo);

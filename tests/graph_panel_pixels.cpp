@@ -7246,14 +7246,13 @@ bool renderBackendMatrix(const theme::Graph& aTheme, const gui::PanelFocus& aFoc
             return makeChromeStressModel(aTheme);
         return makeTinyModel(aTheme);
     };
-    int cases = 0, failures = 0, totalGeometry = 0;
+    int cases = 0, failures = 0;
     for (const MatrixState& state : states) {
         const gui::GraphPanelModel model = build(state.name);
         const bool ok = rendBackendParity(model, aTheme, aFocus, state.name);
         if (!ok)
             ++failures;
-        ++cases;
-        totalGeometry += 0; // rendBackendParity prints its own count, per state
+        ++cases; // rendBackendParity prints its own geometry count, per state
     }
     std::printf("MEASURED backend_matrix states=%d failures=%d\n", cases, failures);
     return failures == 0;

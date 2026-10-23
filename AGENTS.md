@@ -3007,3 +3007,22 @@ The clean Debug compile also found two `-Wunused-variable` warnings the incremen
 reported - `stem` (the handle-stem colour the backend now computes) and `palette` (the frame driver's
 local, now composed inside `composePanelFrame`) - both deleted. Same lesson as the earlier note: a
 warning is only absent from the run that COMPILED that translation unit.
+
+### The clean 6.12 build, and the warnings a fresh compile found (2026-10-23)
+
+A from-scratch Qt 6.12 build (`-G "Ninja Multi-Config" -DCMAKE_PREFIX_PATH=$HOME/Qt/6.12.0/gcc_64
+--config Release`) reported **36 warnings** that no incremental build had shown - five of them real
+defects of the migration, all fixed:
+- `FrameRulerCanvas.cpp`: `const QFontMetrics metrics(QFont());` is a VEXING PARSE (a function
+  declaration) - `= QFontMetrics(QFont())` fixes it;
+- `TimeLineEditorWidget.h`: `paintEvent`, `resizeEvent` and `keyPressEvent` override the base class
+  in both host branches and were not marked `override` (the class gained a swappable base);
+- `InkCanvas.cpp`: an unused `boxOf(QRect)` overload, left when every call site became a QRectF;
+- the ruler gates captured `margin`/`mg` in lambdas that no longer read them;
+- `graph_panel_pixels`: an accumulator that only ever added zero.
+
+After them: **exit 0, 0 errors, 3 warnings**, and both remaining kinds are PRE-EXISTING and outside
+this work - `ObjectTreeWidget.cpp`'s `QDragMoveEvent` ctor and `img/PSDReader.cpp`'s
+`QString::fromUtf16`. All three Canvas gates from that clean tree, on both drivers:
+`frame_ruler_canvas cases=9 failures=0`, `time_body_canvas cases=2 failures=0`,
+`graph_panel_pixels` (192 measurements + `backend_matrix states=7 failures=0`) OK.

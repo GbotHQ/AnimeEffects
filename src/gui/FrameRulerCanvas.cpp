@@ -52,7 +52,7 @@ void paintRulerCanvas(QCanvasPainter& aPainter, const Model& aModel, const Paint
         aPainter.setTextAlign(QCanvasPainter::TextAlign::Left);
         aPainter.setTextBaseline(QCanvasPainter::TextBaseline::Top);
     }
-    const QFontMetrics metrics(QFont());
+    const QFontMetrics metrics = QFontMetrics(QFont());
     for (const Label& label : aModel.labels) {
         QColor colour = aInk.content;
         if (!label.inActiveRange)

@@ -19,7 +19,6 @@ namespace {
 // A QRectF's far edge is x + w (see gui/Ink.h's rect convention): the pixel box a fill must
 // cover is that span, so the width W is the rect's own width, not one more.
 QRectF boxOf(const QRectF& aRect) { return aRect; }
-QRectF boxOf(const QRect& aRect) { return QRectF(aRect); }
 
 constexpr double kHalf = 0.5;
 
