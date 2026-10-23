@@ -2716,7 +2716,7 @@ The two fixes, both structural:
 Discriminating, measured: with the bug restored by hand the body gate reports
 `label Opa ... canvas=100 px MISSING/DIFFERS`, `failures=2`; with the fix, `raster=265 canvas=274`
 and `failures=0`. Ruler: 9/9 with its ten numbers asserted; body: 2/2, on **radeonsi and llvmpipe**.
-The app then shows `Move`, `Scale`, `Opa` on the Canvas host (`/tmp/canvas-fixed.png`).
+The app then shows `Move`, `Scale`, `Opa` on the Canvas host (`docs/verification/graph-panel/canvas-fixed.png`).
 
 Lesson, in the file's own idiom: a gate that excuses a region from comparison must still assert that
 the region is OCCUPIED on both sides, or the excuse becomes the hole.
@@ -2849,7 +2849,7 @@ TWO MEASURED DEFECTS the cutover paid for, both app-visible and both fixed:
 VERIFIED IN THE APP (Xvfb, `I_think_its_cursed_honestly.anie`, Graph tab by name through AT-SPI):
 the Canvas host draws the dock floor, the frame ruler (0..150), the value column (1/0.5/0), the
 playhead pill at 0, the empty state and the scroll bar - `/tmp/graph-canvas3.png`. Against the ImGui
-host on the same state (`/tmp/graph-imgui.png`) the panel page differs in **2382 of 178160 px
+host on the same state (`docs/verification/graph-panel/imgui-host-check.png`) the panel page differs in **2382 of 178160 px
 (1.34%)**, with the dominant colours identical to 0.2% (floor 38,38,38; 82,82,82 at 3591 vs 3584;
 64,64,64 at 1661 vs 1645): that is text rasterisation plus the 1px ink paths, not structure.
 
@@ -2887,8 +2887,8 @@ classified by CAUSE, with the rule printed in the montage:
 - `coverage` - both sides ink of the same chroma, different coverage (antialiasing);
 - `UNEXPLAINED` - everything else: a difference with no counterpart, i.e. a real defect.
 
-Both hosts on **radeonsi**, same project, same layer, same frame (`/tmp/ig-1-base.png` vs
-`/tmp/cv-1-base.png`, panel page 675x255): **4284 px differ = 654 text_row + 637 shift_le2px + 2993
+Both hosts on **radeonsi**, same project, same layer, same frame (`docs/verification/graph-panel/imgui-host-check.png` vs
+`docs/verification/graph-panel/hosts-final.png`, panel page 675x255): **4284 px differ = 654 text_row + 637 shift_le2px + 2993
 coverage + 0 UNEXPLAINED**. The causes, and what each one IS:
 1. **Text metrics**: Dear ImGui bakes integral advances (`PixelSnapH`) and its own line height; Qt uses
    fractional advances and `QFontMetricsF::height()`. Consequences, both visible: the value labels sit
@@ -2904,7 +2904,7 @@ No mark is missing, none is in the wrong place by more than 2px, and nothing dif
 
 ### Hover, menus and drags on the Canvas host: DRIVEN, on the GPU (2026-10-22)
 
-All three, on the docked Canvas page under cage (`/tmp/cv-*.png`), with the app log at 0 errors:
+All three, on the docked Canvas page under cage (`docs/verification/graph-panel/`), with the app log at 0 errors:
 - **hover on a key** changes 744 px in the plot (the marker brightens and its chip appears - the Xvfb
   captures show the `Scale Y` chip at the curve's end);
 - **right-click** opens the panel's menu ("Paste key" disabled, "Fit graph") - 0 px inside the panel
@@ -2922,7 +2922,7 @@ DONE and verified: one ink vocabulary (`gui/Ink.h`), three backends (`InkImGui`,
 radeonsi and llvmpipe) plus its backend section (QPainter vs Canvas, GEOMETRY 0 on both drivers, two
 models). The app was driven on the GPU under cage: hover, right-click menu and marquee all work on the
 Canvas host, and the ImGui host still draws the same page on the 6.11 tree (suite 51/0, screenshots
-`/tmp/imgui-host-check.png` and `/tmp/gx-graph.png`).
+`docs/verification/graph-panel/imgui-host-check.png` and `docs/verification/graph-panel/gx-graph.png`).
 
 STILL OPEN, and none of it is scaffolding:
 1. **Dear ImGui is still a dependency**, used only by the 6.11 tree's host and by
@@ -2933,7 +2933,7 @@ STILL OPEN, and none of it is scaffolding:
    runs at scale 1, and the text-origin snapping is in LOGICAL space (the same residual recorded for
    the timeline's ImGui text).
 3. `probe_graph_ink.sh` still targets the ImGui host only; the Canvas host's drag/hover assertions
-   exist as measurements in this file (`/tmp/cv-*.png`), not yet as a probe with pass/fail counts.
+   exist as measurements in this file (`docs/verification/graph-panel/`), not yet as a probe with pass/fail counts.
 
 ### Edge cases, and per-MARK evidence instead of a pixel count (2026-10-23)
 
@@ -2970,3 +2970,22 @@ labels), and measuring each capture AGAINST that geometry gives, for both hosts:
 The +0.45px stroke offset is SHARED, i.e. it is the model-to-pixel relation of a 2px stroke, not a
 host difference. What genuinely differs is text (glyph rasteriser) and the corner arcs - not any
 mark's position.
+
+### Evidence lives in the REPO now (2026-10-23)
+
+The captures and the model dumps this file cites are in `docs/verification/graph-panel/`
+(`hosts-final.png`, `host-diff-gpu.png`, `gx-graph.png`, the three interaction shots, the two
+`fx-*-final.json` model dumps), and the two recipes are scripts:
+`scripts/gui/cage_app.sh <bin> <out-prefix>` (drives the expander, the layer and the Graph tab under
+cage, capturing with grim) and `scripts/gui/cage_model_dump.sh` (the same with
+`AE_PANEL_MODEL_DUMP`, so a capture can be measured against the frame's own geometry).
+
+/tmp holds no source: the tree is committed (`500f3ce1`). It DOES hold two build directories -
+`/tmp/build612` (the Qt 6.12 tree that `AE_CANVAS_PAINTER` needs) and a clean verify tree - and both
+are recreated, not preserved:
+
+```bash
+cmake -S . -B /tmp/build612 -DCMAKE_PREFIX_PATH=$HOME/Qt/6.12.0/gcc_64 -DCMAKE_BUILD_TYPE=Release \
+      -DAE_FFMPEG_GPL_AVCODEC=/usr/lib64/ffmpeg/libavcodec.so.62
+cmake --build /tmp/build612 -j"$(nproc)"
+```
