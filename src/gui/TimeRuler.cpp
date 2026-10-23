@@ -132,8 +132,8 @@ void TimeRuler::renderHeader(QPainter& aPainter, const QRect& aCameraRect, const
     // The timeline's own axis: the ladder's integer positions, offset by the margin that
     // the keys, the playhead and the range markers share.
     frameRuler::Axis axis;
-    axis.pixelOfFrame = [&scale, margin](int aFrame) { return double(margin + scale.pixelWidth(aFrame)); };
-    axis.frameOfPixel = [&scale, margin](int aPixel) { return scale.frame(aPixel - margin); };
+    axis.pixelOfFrame = [&scale](int aFrame) { return double(margin + scale.pixelWidth(aFrame)); };
+    axis.frameOfPixel = [&scale](int aPixel) { return scale.frame(aPixel - margin); };
     axis.attributeAt = [&scale](int aFrame, double) { return scale.attribute(aFrame); };
     axis.pixelsPerFrame = scale.pixelsPerFrame();
     axis.tickStride = scale.tickStride(scale.pixelsPerFrame());
