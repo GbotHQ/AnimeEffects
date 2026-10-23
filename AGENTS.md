@@ -3026,3 +3026,23 @@ this work - `ObjectTreeWidget.cpp`'s `QDragMoveEvent` ctor and `img/PSDReader.cp
 `QString::fromUtf16`. All three Canvas gates from that clean tree, on both drivers:
 `frame_ruler_canvas cases=9 failures=0`, `time_body_canvas cases=2 failures=0`,
 `graph_panel_pixels` (192 measurements + `backend_matrix states=7 failures=0`) OK.
+
+### The last two warnings were API deprecations, and both took the RIGHT change (2026-10-23)
+
+With the migration's own warnings gone, two pre-existing deprecations were left, and silencing them
+would have been wrong:
+- **`img/PSDReader.cpp`: `QString::fromUtf16(unsigned short*)`.** The block is UTF-16BE, so the
+  units are already swapped by hand; the fix is to decode them into a `std::vector<char16_t>` - the
+  type the non-deprecated overload takes - rather than keep a `uint16_t` buffer and
+  `reinterpret_cast` it (two 16-bit integer types are not interchangeable through a pointer without
+  breaking the aliasing rule, and the cast would have been the only reason for the buffer's type).
+- **`gui/ObjectTreeWidget.cpp`: `QDragMoveEvent(QPoint, ...)`.** The QPointF constructor exists from
+  **6.12** and the QPoint one is `QT_DEPRECATED_VERSION_X_6_16`; **6.11 has the QPoint one only**
+  (read out of both headers, not inferred). So the newer spelling is used where it exists behind
+  `QT_VERSION >= QT_VERSION_CHECK(6,12,0)` and the old one stays where it is the only one - no cast,
+  and the cheat point stays the integer a ROW's centre is (widening it is exact).
+
+Both trees then built from EMPTY directories: **6.11.2 Debug and 6.12.0 Release, exit 0, 0 errors,
+0 warnings**, and every gate still passes (`frame_ruler_canvas` 9/9, `time_body_canvas` 2/2,
+`graph_panel_pixels` incl. `backend_matrix states=7 failures=0`, on llvmpipe and radeonsi; suite
+51/0).

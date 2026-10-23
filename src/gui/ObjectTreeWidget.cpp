@@ -1753,14 +1753,22 @@ void ObjectTreeWidget::dragMoveEvent(QDragMoveEvent* aEvent) {
     QPoint cheatPos = aEvent->position().toPoint();
     mDragIndex = cheatDragDropPos(cheatPos);
 
+    // THE POSITION'S TYPE IS THE Qt VERSION'S. QDragMoveEvent gained a QPointF constructor in
+    // 6.12 and deprecates the QPoint one (QT_DEPRECATED_VERSION_X_6_16); 6.11 has the QPoint
+    // constructor ONLY, and there it is not deprecated. So the newer spelling is used where it
+    // exists rather than casting anything, and the old one stays where it is the only one - the
+    // cheat point is an integer on purpose (a ROW's centre for the index lookup), so widening it
+    // is exact.
+#if QT_VERSION >= QT_VERSION_CHECK(6, 12, 0)
     QDragMoveEvent dummyEvent(
-        cheatPos,
-        aEvent->dropAction(),
-        aEvent->mimeData(),
-        aEvent->buttons(),
-        aEvent->modifiers(),
+        QPointF(cheatPos), aEvent->dropAction(), aEvent->mimeData(), aEvent->buttons(), aEvent->modifiers(),
         aEvent->type()
     );
+#else
+    QDragMoveEvent dummyEvent(
+        cheatPos, aEvent->dropAction(), aEvent->mimeData(), aEvent->buttons(), aEvent->modifiers(), aEvent->type()
+    );
+#endif
     QTreeWidget::dragMoveEvent(&dummyEvent);
 
     if (!dummyEvent.isAccepted()) {
