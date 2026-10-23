@@ -1763,7 +1763,6 @@ void drawPanel(
                 // A<<24|R<<16|G<<8|B, i.e. the red and blue channels swap. Both
                 // branches pass the mixed colour and the strength carries the alpha.
                 const float stemStrength = handle.ghost ? kGhostHandleStemAlpha : kStoredHandleStemAlpha;
-                const QColor stem = withStrength(handleInk, stemStrength);
                 const float radius =
                     handle.ghost ? ImMax(0.0f, float(handle.radius) - kGhostHandleShrink) : float(handle.radius);
                 const QColor edge = highlighted
@@ -2793,13 +2792,8 @@ ImDrawData* runPanelFrame(
     // index buffer bound.
     ImGui_ImplOpenGL3_NewFrame();
 
-    // THE PALETTE of THIS frame, which is what the panel is drawn from. It is
-    // re-derived every frame rather than cached because the app changes palette at
-    // runtime (a settings change, a different accent): theme::Colors::current() is
-    // the live answer and the panel's colours are rebuilt from it below, so there is
-    // nothing to invalidate and no signal to miss.
-    const theme::Graph palette = theme::Graph::from(theme::Colors::current());
-
+    // The palette is COMPOSED with the model now (gui::composePanelFrame re-derives it every frame
+    // from theme::Colors::current()), so this host no longer holds one of its own.
     ImGui::NewFrame();
 
     // THE POINTER IS THE HOST'S, NOT ImGui's QUEUED INPUT (see the header). This host
