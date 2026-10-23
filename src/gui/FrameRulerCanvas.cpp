@@ -112,6 +112,31 @@ void paintRulerCanvas(QCanvasPainter& aPainter, const Model& aModel, const Paint
         }
     }
 
+    // THE PLAYHEAD'S PILL, LAST (the same order as the QPainter renderer): the model
+    // reserved its column, so no number is drawn under it.
+    if (aModel.playhead.isValid()) {
+        aPainter.setFillStyle(aInk.playheadFill);
+        // fill()/stroke() do NOT reset the current path (measured while porting the body's
+        // markers: every shape was appended to the previous one's, 1923 px of phantom
+        // differences). The ticks left their own subpaths current, so the pill states a
+        // fresh path before adding its own.
+        aPainter.beginPath();
+        // The ANTI-ALIASED fill: the raster renderer's pill has a smooth corner ramp
+        // (paintPill sets the hint itself), so the canvas states its own rather than
+        // inheriting the ticks' "off".
+        aPainter.setAntialias(1);
+        aPainter.roundRect(QRectF(aModel.playhead.rect), float(kPillRadius));
+        aPainter.fill();
+        aPainter.setAntialias(0);
+        aPainter.setFillStyle(aInk.playheadText);
+        aPainter.setTextAlign(QCanvasPainter::TextAlign::Left);
+        aPainter.setTextBaseline(QCanvasPainter::TextBaseline::Top);
+        aPainter.fillText(
+            aModel.playhead.text, float(aModel.playhead.rect.left() + kPillPadding),
+            float(aModel.band.top() + kNumberTop)
+        );
+    }
+
     aPainter.restore();
 }
 

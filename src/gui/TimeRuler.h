@@ -3,7 +3,12 @@
 
 #include <QWidget>
 #include <QString>
+#if defined(AE_CANVAS_PAINTER) && AE_CANVAS_PAINTER
+#include <QCanvasPainterWidget>
+class QCanvasPainter;
+#endif
 #include "core/AbstractCursor.h"
+#include "gui/FrameRuler.h"
 #include "core/CameraInfo.h"
 #include "gui/theme/TimeLine.h"
 #include "util/Range.h"
@@ -25,7 +30,13 @@ class TimeLineEditorWidget;
 // like the track surface - so the controller stays the single gesture state machine. The playhead's line and frame-number pill
 // (TimeCursor) overlay it; the hairline under it is drawn by the surface
 // (it sits on the first track row, outside this widget).
-class TimeRuler: public QWidget {
+class TimeRuler:
+#if defined(AE_CANVAS_PAINTER) && AE_CANVAS_PAINTER
+    public QCanvasPainterWidget
+#else
+    public QWidget
+#endif
+{
     Q_OBJECT
 
 public:
@@ -44,13 +55,22 @@ signals:
     void frameChanged();
 
 protected:
+#if defined(AE_CANVAS_PAINTER) && AE_CANVAS_PAINTER
+    void paint(QCanvasPainter* aPainter) override;
+#else
     virtual void paintEvent(QPaintEvent* aEvent) override;
+#endif
     virtual void mousePressEvent(QMouseEvent* aEvent) override;
     virtual void mouseMoveEvent(QMouseEvent* aEvent) override;
     virtual void mouseReleaseEvent(QMouseEvent* aEvent) override;
 
 private:
-    void renderHeader(QPainter& aPainter, const QRect& aCameraRect, const util::Range& aVisibleRange, int aFps);
+    // THE RULER'S CONTENT IS ONE VALUE, whichever engine paints it: the strip's geometry,
+    // the editor's facts and the font's measurements go in, and the shared frame-ruler
+    // model comes out (gui/FrameRuler.h). The two painters below differ in nothing but
+    // their rasteriser, so a rule cannot move in one host and not the other.
+    frameRuler::Model buildModel(const QRect& aCameraRect, const util::Range& aVisibleRange, int aFps) const;
+    frameRuler::PaintInk paintInk() const;
 
     TimeLineEditorWidget& mSurface;
     ctrl::TimeLineEditor* mEditor;

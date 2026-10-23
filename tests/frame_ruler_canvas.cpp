@@ -111,6 +111,11 @@ Fixture fixtureFor(ctrl::TimeLineEditor& aEditor, const QFontMetrics& aMetrics, 
     f.ink.windowBand = c.windowBand;
     f.ink.windowEdge = c.windowEdge;
     f.ink.windowText = c.windowText;
+    // The playhead's pill is part of the strip now (it used to be the cursor widget's), so
+    // the fixture states its ink too - otherwise both hosts would paint an invalid colour
+    // and the gate would compare two blanks.
+    f.ink.playheadFill = c.accentBright;
+    f.ink.playheadText = c.accentBrightText;
     return f;
 }
 
@@ -136,9 +141,17 @@ struct Verdict {
     int blendRounding = 0;
 };
 
-// Is (x, y) inside any label's BOX or any pill's? Those are the only places the two
-// rasterizers' glyph coverage may differ.
-bool isText(int aX, int aY, const gui::frameRuler::Model& aModel) {
+// Is (x, y) a place the two rasterizers may legitimately differ? Two such places:
+//
+//  * a LABEL's box - two glyph rasterizers cannot agree per pixel;
+//  * the ONE-PIXEL OUTLINE of a published pill (the playhead's and the playback window's
+//    arms). A rounded corner's antialiasing is a kernel, and the measured difference is
+//    exactly one unit of coverage on the rows and columns outside the pill (Canvas:
+//    #262627 where the raster has #262626, and mirrored inside). The pill's BODY is not
+//    excused: the per-pill ink assert below requires both renderings to fill it.
+//
+// Everything else - a tick, a rule, a band's edge - must match to the pixel.
+bool isExcused(int aX, int aY, const gui::frameRuler::Model& aModel) {
     for (const auto& label : aModel.labels) {
         // The raster renderer draws into QRect(QPoint(left, top), QPoint(left + width + 1,
         // top + kNumberHeight)) - an INCLUSIVE rect two columns wider than the model's
@@ -151,11 +164,35 @@ bool isText(int aX, int aY, const gui::frameRuler::Model& aModel) {
             aY >= label.top - kFringe && aY <= label.top + gui::frameRuler::kNumberHeight + kFringe)
             return true;
     }
+    const auto onPillOutline = [&aX, &aY](const QRect& aRect) {
+        const QRect outer = aRect.adjusted(-1, -1, 1, 1);
+        const QRect inner = aRect.adjusted(1, 1, -1, -1);
+        return outer.contains(aX, aY) && !inner.contains(aX, aY);
+    };
+    if (aModel.playhead.isValid()) {
+        if (onPillOutline(aModel.playhead.rect))
+            return true;
+        // The pill's NUMBER is text (a glyph rasterizer difference), so its own box is
+        // excused exactly as a ruler number's is - and its fill, which is not text, stays
+        // compared. The per-pill ink assert below is what proves the pill is drawn.
+        constexpr int kFringe = 2;
+        const int textWidth = QFontMetrics(QFont()).horizontalAdvance(aModel.playhead.text);
+        const QRect textBox(
+            aModel.playhead.rect.left() + gui::frameRuler::kPillPadding - kFringe,
+            aModel.band.top() + gui::frameRuler::kNumberTop - kFringe,
+            textWidth + 2 * kFringe, gui::frameRuler::kNumberHeight + 2 * kFringe
+        );
+        if (textBox.contains(aX, aY))
+            return true;
+    }
     if (aModel.window.active) {
         for (const auto& pill : {aModel.window.merged, aModel.window.start, aModel.window.end}) {
             if (!pill.isValid())
                 continue;
-            if (pill.rect.contains(aX, aY))
+            // The window arms' BODIES are excused too: their faces are squared against the
+            // bracket stems by overdrawing slivers, which the two engines composite
+            // differently - a rule older than this gate, measured when the arms were added.
+            if (pill.rect.contains(aX, aY) || onPillOutline(pill.rect))
                 return true;
         }
     }
@@ -182,7 +219,7 @@ Verdict compare(const QImage& aRaster, const QImage& aCanvas, const gui::frameRu
                 ++v.blendRounding; // translucent ink: one LSB is the renderer's, not ours
                 continue;
             }
-            if (isText(x - aOrigin.x(), y - aOrigin.y(), aModel))
+            if (isExcused(x - aOrigin.x(), y - aOrigin.y(), aModel))
                 ++v.textDiff;
             else {
                 ++v.nonTextDiff;
@@ -284,28 +321,31 @@ int main(int argc, char** argv) {
         // The model's boxes are ABSOLUTE; the two images are the view's columns shifted by
         // the host's translation (compare() gets the same origin), so map before counting.
         const QPoint origin(-state.offset, 0);
+        // Ink inside a box, measured against the box's own modal colour (so it works on
+        // either palette): a region one engine paints and the other leaves empty is the
+        // failure this counts.
+    const auto inkCount = [](const QImage& aImage, const QRect& aBox) {
+        const QRect clip = aBox.intersected(aImage.rect());
+        if (clip.isEmpty())
+            return 0;
+        QHash<QRgb, int> hist;
+        for (int y = clip.top(); y <= clip.bottom(); ++y)
+            for (int x = clip.left(); x <= clip.right(); ++x)
+                ++hist[aImage.pixel(x, y)];
+        QRgb bg = 0;
+        int best = -1;
+        for (auto it = hist.cbegin(); it != hist.cend(); ++it)
+            if (it.value() > best) { best = it.value(); bg = it.key(); }
+        int ink = 0;
+        for (int y = clip.top(); y <= clip.bottom(); ++y)
+            for (int x = clip.left(); x <= clip.right(); ++x)
+                if (aImage.pixel(x, y) != bg)
+                    ++ink;
+        return ink;
+    };
         for (const auto& eachLabel : fixture.model.labels) {
             const QRect box = QRect(eachLabel.left - 2, eachLabel.top - 2, eachLabel.width + 6,
                                     gui::frameRuler::kNumberHeight + 5).translated(-origin.x(), -origin.y());
-            const auto inkCount = [](const QImage& aImage, const QRect& aBox) {
-                const QRect clip = aBox.intersected(aImage.rect());
-                if (clip.isEmpty())
-                    return 0;
-                QHash<QRgb, int> hist;
-                for (int y = clip.top(); y <= clip.bottom(); ++y)
-                    for (int x = clip.left(); x <= clip.right(); ++x)
-                        ++hist[aImage.pixel(x, y)];
-                QRgb bg = 0;
-                int best = -1;
-                for (auto it = hist.cbegin(); it != hist.cend(); ++it)
-                    if (it.value() > best) { best = it.value(); bg = it.key(); }
-                int ink = 0;
-                for (int y = clip.top(); y <= clip.bottom(); ++y)
-                    for (int x = clip.left(); x <= clip.right(); ++x)
-                        if (aImage.pixel(x, y) != bg)
-                            ++ink;
-                return ink;
-            };
             const int a = inkCount(raster, box);
             const int b = inkCount(canvasAt, box);
             // The rule is PARITY BETWEEN THE TWO RENDERINGS, not "the model says draw it": the
@@ -315,6 +355,20 @@ int main(int argc, char** argv) {
             const bool ok = (a == 0) == (b == 0) && (a == 0 || std::abs(a - b) * 2 <= std::max(a, b));
             std::printf("    number %-5s x=%d raster=%3d px canvas=%3d px %s\n",
                         qPrintable(eachLabel.text), eachLabel.left, a, b, ok ? "ok" : "MISSING/DIFFERS");
+            if (!ok)
+                ++failures;
+        }
+
+        // THE PLAYHEAD'S PILL IS EXCUSED FROM PIXEL COMPARISON (its outline is one
+        // antialiasing kernel against another), so - exactly as with a number - its BODY
+        // must be shown to carry ink in BOTH renderings, or a missing pill would pass.
+        if (fixture.model.playhead.isValid()) {
+            const QRect box =
+                fixture.model.playhead.rect.adjusted(2, 2, -2, -2).translated(-origin.x(), -origin.y());
+            const int a = inkCount(raster, box);
+            const int b = inkCount(canvasAt, box);
+            const bool ok = (a == 0) == (b == 0) && (a == 0 || std::abs(a - b) * 2 <= std::max(a, b));
+            std::printf("    playhead pill  raster=%3d px canvas=%3d px %s\n", a, b, ok ? "ok" : "MISSING/DIFFERS");
             if (!ok)
                 ++failures;
         }

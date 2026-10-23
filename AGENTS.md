@@ -3046,3 +3046,46 @@ Both trees then built from EMPTY directories: **6.11.2 Debug and 6.12.0 Release,
 0 warnings**, and every gate still passes (`frame_ruler_canvas` 9/9, `time_body_canvas` 2/2,
 `graph_panel_pixels` incl. `backend_matrix states=7 failures=0`, on llvmpipe and radeonsi; suite
 51/0).
+
+## The timeline's ruler is Canvas Painter now, and the playhead's pill moved into the model (2026-10-23)
+
+`TimeRuler` is a `QCanvasPainterWidget` on 6.12 (`#else` keeps the QWidget host for the 6.11 tree),
+and its content is now ONE value for both rasterisers: `TimeRuler::buildModel` produces
+`frameRuler::Model` + `PaintInk`, `paintRulerCanvas` inks it on Canvas, `paintRuler` inks the same
+model with QPainter. No rule lives in a paint function any more.
+
+**The playhead's pill is the RULER's, not the cursor's.** `gui::TimeCursor` used to recompute the
+same pill from the same font that the ruler's model had already computed for its number-suppression
+rule - two spellings of one rect. `frameRuler::PaintInk` gained `playheadFill`/`playheadText` and
+both renderers paint `Model::playhead`; `TimeCursor` is now only the 1px rule that crosses the lanes.
+That also removed an invisible defect: the cursor widget was `2*pillWidth+1` wide and NOT
+`WA_TransparentForMouseEvents`, so it swallowed every press in that ~60px column. It is 1px wide and
+transparent to the mouse now.
+
+**Verified** (Qt 6.12 Release, Xvfb llvmpipe): the strip's numbers, ticks and pill are at the same
+rows and columns as the 6.11 raster host (rows 410..419 differ in glyph ink only; the only other
+differing row on the whole screen is the known 1-LSB translucent lane tint at row 429), and
+`ctrl+Right` moves the pill AND its line one frame together (captured: pill "0" -> "1", accent column
+373 -> 378). `frame_ruler_canvas` 9/9 with `NON-TEXT = 0` on llvmpipe **and** radeonsi,
+`probe_timeline_ink.sh` OK, `probe_graph_parity.sh` OK, suite 51 pass / 0 fail.
+
+**Three traps paid for here, all measured:**
+- **`beginPath()` is load-bearing before every Canvas2D `roundRect`+`fill`.** The ticks left their own
+  subpaths current, and the pill's `roundRect` appended to them: the measured result was that the pill
+  painted NOTHING (`#262626`, the band floor, where the raster had ink). `fill()` does not reset the
+  path - the same trap the body's markers hit (1923 px that were one missing call).
+- **A filled rounded rect needs `setAntialias(1)` of its own.** The ruler's paint turns AA off for its
+  ticks, and a pill inheriting that draws a stair-stepped corner while `paintPill` (the raster rule)
+  sets the hint itself. With AA on, the corner coverage matches to 1 LSB and the shape spills one
+  unit of coverage onto the rows just outside it (`#262627` where the raster has `#262626`).
+- **The gate needs the `inShapeBorder` rule for this**, exactly as the panel's gate does: pixels within
+  1px OUTSIDE a published pill's rect are ink-path (an AA kernel), the pill's BODY and its TEXT box are
+  not excused - the body is asserted for ink parity on both sides (`playhead pill raster=125 canvas=137
+  ok`), the text box is a glyph rasteriser difference. Excusing a region without asserting it is the
+  blind spot that once let a lane's label vanish.
+
+**The repaint scope is why the cursor is NOT folded into the surface.** The surface is one Canvas
+texture; `setFrame` repaints only the ruler (22px) and the cursor's own column today, and folding the
+line into the body's paint would repaint every key on every frame step (measured elsewhere at 1.85 ms
+with the pixmap cache, 19.1 ms without). A 1px opaque child widget keeps the repaint the size of the
+thing that changed and needs no transparent RHI overlay - which nothing here has verified.

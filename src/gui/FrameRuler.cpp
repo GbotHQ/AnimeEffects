@@ -402,6 +402,13 @@ void paintRuler(QPainter& aPainter, const Model& aModel, const PaintInk& aInk) {
         }
     }
 
+    // THE PLAYHEAD'S PILL, LAST: it sits on the strip and over the temporary window's
+    // band, and the model already reserved its column (no number is drawn under it).
+    if (aModel.playhead.isValid()) {
+        paintPill(aPainter, aModel.playhead.rect, aInk.playheadFill, kPillRadius);
+        paintPillText(aPainter, aModel.playhead.rect, aModel.playhead.text, aInk.playheadText, aModel.band.top());
+    }
+
     aPainter.restore();
 }
 

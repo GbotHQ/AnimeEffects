@@ -190,6 +190,12 @@ struct PaintInk {
     QColor windowBand;  // the temporary window's wash
     QColor windowEdge;  // its stems and pills
     QColor windowText;  // its numbers
+    // THE PLAYHEAD'S PILL. It is the model's (`Model::playhead`) and it is painted by
+    // whoever paints the ruler, so the pill has ONE spelling: the cursor widget used to
+    // recompute the same rect from the same font, which is the second spelling this moved
+    // out of. `theme::Colors::accentBright` / `accentBrightText`.
+    QColor playheadFill;
+    QColor playheadText;
 };
 
 void paintRuler(QPainter& aPainter, const Model& aModel, const PaintInk& aInk);

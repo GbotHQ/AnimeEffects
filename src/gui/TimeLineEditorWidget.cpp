@@ -49,90 +49,28 @@ bool samePlayWindow(
 //-------------------------------------------------------------------------------------------------
 TimeCursor::TimeCursor(QWidget* aParent):
     QWidget(aParent),
-    mNumberColor(theme::Colors::current().text),
-    mEdgeColor(theme::Colors::current().accentBright),
-    mFrameText(),
-    mBadgeColor(),
-    mLineX(2) {
+    mEdgeColor(theme::Colors::current().accentBright) {
     this->setAutoFillBackground(false);
-}
-
-void TimeCursor::setCursorPos(const QPoint& aPos, int aHeight) {
-    const QFontMetrics fm(font());
-    const int badgeWidth = fm.horizontalAdvance(mFrameText) + ctrl::TimeLineEditor::kPillPadding * 2;
-    // The playhead line sits in the middle of the widget; widen the widget as
-    // needed so the frame-number pill fits around the line. aPos.y() is the
-    // ruler header's top, so the pill lands exactly on the numbers row.
-    mLineX = std::max(1, badgeWidth / 2);
-
-    QRect rect;
-    rect.setTopLeft(aPos - QPoint(mLineX, 0));
-    rect.setBottomRight(aPos + QPoint(mLineX, 0) + QPoint(0, aHeight));
-    this->setGeometry(rect);
-    update();
-}
-
-void TimeCursor::setHeaderInfo(const QString& aFrameText, const QColor& aBadgeColor) {
-    mFrameText = aFrameText;
-    mBadgeColor = aBadgeColor;
-    update();
+    // The line is decoration: every press in its column belongs to the surface (and, over
+    // the strip, to the ruler's own seek). It used to swallow them.
+    this->setAttribute(Qt::WA_TransparentForMouseEvents, true);
 }
 
 void TimeCursor::paintEvent(QPaintEvent* aEvent) {
     (void)aEvent;
-    QPainter painter;
-    painter.begin(this);
+    // One opaque column - the strip's own line ink, which is what the playhead is.
+    QPainter painter(this);
+    painter.fillRect(this->rect(), mEdgeColor);
+}
 
-    // The playhead pill wraps the number-text row. Its top edge rides one
-    // pixel below the number text's top (kNumberTop + 1) so the pill and the
-    // ruler numbers shift together as kNumberTop moves.
-    const int pillTop = ctrl::TimeLineEditor::kNumberTop + 1;
-
-    // Playhead line: starts at the bottom of the frame-number row (the pill
-    // covers the row above it) and runs down the tracks.
-    painter.setPen(QPen(mEdgeColor, 1));
-    painter.drawLine(mLineX, pillTop + ctrl::TimeLineEditor::kNumberHeight, mLineX, this->geometry().height());
-
-    // Frame-number pill on the numbers row: an accentBright rounded pill —
-    // the playhead's identity. It must read on the plain ruler AND on the
-    // temporary playback window's band, so it is token-driven (accentBright
-    // fill + max-contrast text), not base-on-base like the old badge.
-    if (!mFrameText.isEmpty()) {
-        const QFontMetrics fm(font());
-        const int textWidth = fm.horizontalAdvance(mFrameText);
-        const int pillWidth = textWidth + ctrl::TimeLineEditor::kPillPadding * 2;
-        const QRect pill(mLineX - pillWidth / 2, pillTop, pillWidth, ctrl::TimeLineEditor::kNumberHeight);
-        // The window's label arms draw the SAME rounded pill through the same call
-        // (gui::paintPill). This used to fill a QPainterPath with no antialiasing
-        // hint set, and a QWidget's painter starts with the hint OFF, so the
-        // playhead had a hard, stair-stepped corner while the window pills (which
-        // set the hint themselves) were smooth. The rule now owns the hint.
-        gui::paintPill(painter, pill, mBadgeColor, ctrl::TimeLineEditor::kPillRadius);
-        // Draw the number with the exact same rect and alignment as the ruler
-        // numbers (time_Renderer::renderHeader) so it sits in the same row, and on
-        // THE ONE PILL TEXT COLUMN: the pill was measured as `advance + 2 *
-        // kPillPadding`, so `mLineX - textWidth / 2` and `pill.left() + kPillPadding`
-        // are the same integer (TimeRuler::drawPillText derives it; the graph panel
-        // draws its window arms on it too). Stated as the pill's own edge so all
-        // three cannot drift into three spellings of one column.
-        const QRect numberRect(
-            pill.left() + ctrl::TimeLineEditor::kPillPadding, ctrl::TimeLineEditor::kNumberTop, textWidth,
-            ctrl::TimeLineEditor::kNumberHeight
-        );
-        painter.setPen(mNumberColor);
-        painter.drawText(numberRect, mFrameText);
-    }
-
-    painter.end();
+void TimeCursor::setCursorPos(const QPoint& aLineTopLeft, int aHeight) {
+    this->setGeometry(aLineTopLeft.x(), aLineTopLeft.y(), 1, aHeight);
+    update();
 }
 
 QColor TimeCursor::edgeColor() const { return mEdgeColor; }
 
 void TimeCursor::setEdgeColor(const QColor& cursorEdgeColor) { mEdgeColor = cursorEdgeColor; }
-
-QColor TimeCursor::numberColor() const { return mNumberColor; }
-
-void TimeCursor::setNumberColor(const QColor& cursorNumberColor) { mNumberColor = cursorNumberColor; }
 
 //-------------------------------------------------------------------------------------------------
 TimeLineEditorWidget::TimeLineEditorWidget(ViaPoint& aViaPoint, QWidget* aParent):
@@ -313,23 +251,15 @@ core::Frame TimeLineEditorWidget::currentFrame() const { return mEditor->current
 void TimeLineEditorWidget::updateTimeCursorPos() {
     if (mCamera) {
         auto pos = mEditor->currentTimeCursorPos();
-        const core::TimeFormat format(mEditor->frameRange(), mEditor->fps());
-        const QString frameText = format.frameToString(mEditor->currentFrame().get(), mEditor->timeFormatType());
-        // The playhead pill is token-driven (accentBright fill, max-contrast
-        // text, accentBright line): it must read on the plain ruler AND on
-        // the temporary window's band, and follow accent hue changes, so the
-        // QSS-substituted colors do not drive it.
-        mTimeCursor.setHeaderInfo(frameText, theme::Colors::current().accentBright);
-        mTimeCursor.setNumberColor(theme::Colors::current().accentBrightText);
-        mTimeCursor.setEdgeColor(theme::Colors::current().accentBright);
-        // The playhead pill overlays the ruler numbers, so repaint the full
-        // ruler strip (22px) each tick.
+        // THE PILL IS THE RULER'S (Model::playhead): the model suppresses the number under
+        // it, so the strip repaints each tick anyway - which is what moves the pill.
         if (mTimeRuler)
             mTimeRuler->update();
-        // The playhead overlays the viewport: pinned to the top (on the fixed
-        // ruler) and following the content horizontally.
-        const QPoint viewportPos(mCamera->leftTopPos().toPoint().x() + pos.x(), 0);
-        mTimeCursor.setCursorPos(viewportPos, mCamera->screenHeight());
+        // The line is the surface's own decoration: pinned to the top (the ruler's line
+        // row) and following the content horizontally.
+        mTimeCursor.setEdgeColor(theme::Colors::current().accentBright);
+        const QPoint viewportPos(mCamera->leftTopPos().toPoint().x() + pos.x(), frameRuler::kLineTop);
+        mTimeCursor.setCursorPos(viewportPos, mCamera->screenHeight() - frameRuler::kLineTop);
     }
 }
 

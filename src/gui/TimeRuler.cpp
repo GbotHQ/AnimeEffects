@@ -2,11 +2,17 @@
 
 #include <QPainter>
 #include <QMouseEvent>
+#if defined(AE_CANVAS_PAINTER) && AE_CANVAS_PAINTER
+#include <QCanvasPainter>
+#endif
 #include <QFontMetrics>
 #include "core/TimeFormat.h"
 #include "ctrl/TimeLineEditor.h"
 #include "gui/TimeLineEditorWidget.h"
 #include "gui/FrameRuler.h"
+#if defined(AE_CANVAS_PAINTER) && AE_CANVAS_PAINTER
+#include "gui/FrameRulerCanvas.h"
+#endif
 #include "gui/theme/Colors.h"
 
 namespace gui {
@@ -17,7 +23,11 @@ namespace {
 
 //-------------------------------------------------------------------------------------------------
 TimeRuler::TimeRuler(TimeLineEditorWidget& aSurface, QWidget* aParent):
+#if defined(AE_CANVAS_PAINTER) && AE_CANVAS_PAINTER
+    QCanvasPainterWidget(aParent),
+#else
     QWidget(aParent),
+#endif
     mSurface(aSurface),
     mEditor(aSurface.editor()),
     mCamera(),
@@ -31,6 +41,11 @@ TimeRuler::TimeRuler(TimeLineEditorWidget& aSurface, QWidget* aParent):
     // so right-clicks over the pill would otherwise split the menu paths).
     this->setContextMenuPolicy(Qt::NoContextMenu);
     this->setAutoFillBackground(false);
+#if defined(AE_CANVAS_PAINTER) && AE_CANVAS_PAINTER
+    // The Canvas host clears its texture every frame; the strip's floor is the ruler band's
+    // own colour, and updateTheme() re-reads it when the palette changes.
+    setFillColor(mTimelineTheme.headerBackgroundColor());
+#endif
 }
 
 void TimeRuler::setCamera(const core::CameraInfo* aCamera) {
@@ -40,59 +55,23 @@ void TimeRuler::setCamera(const core::CameraInfo* aCamera) {
 
 void TimeRuler::updateTheme() {
     mTimelineTheme.reset();
+#if defined(AE_CANVAS_PAINTER) && AE_CANVAS_PAINTER
+    setFillColor(mTimelineTheme.headerBackgroundColor());
+#endif
     update();
 }
 
 //-------------------------------------------------------------------------------------------------
-void TimeRuler::paintEvent(QPaintEvent* aEvent) {
-    QPainter painter;
-    painter.begin(this);
-    painter.setRenderHint(QPainter::Antialiasing, false);
-
-    // The strip is viewport-fixed: its paint translates by the view origin,
-    // exactly like the track surface, so the numbers scroll with the content
-    // while the strip itself never moves. camRect mirrors the renderer's
-    // camera rect in this widget's painter space.
-    const QPoint origin = mCamera ? mCamera->leftTopPos().toPoint() : QPoint();
-    painter.translate(origin);
-    const QRect cameraRect(-origin, this->size());
-
-    const QRect cullRect(aEvent->rect().translated(-origin).marginsAdded(QMargins(2, 2, 2, 2)));
-    const int margin = ctrl::TimeLineEditor::kTimeLineMargin;
-    const ctrl::time::Scaler& scale = mEditor->timeScale();
-    const int bgn = scale.frame(cullRect.left() - margin - 5);
-    const int end = scale.frame(cullRect.right() - margin + 5);
-
-    renderHeader(painter, cameraRect, util::Range(bgn, end), mEditor->fps());
-    painter.end();
-}
-
-void TimeRuler::renderHeader(QPainter& aPainter, const QRect& aCameraRect, const util::Range& aVisibleRange, int aFps) {
+// THE STRIP'S CONTENT, BUILT ONCE. Both rasterisers below call this, so the ruler's
+// decisions (which frame is ticked, which is numbered, where the playhead's pill sits)
+// are made in one place and only the ink is the host's.
+frameRuler::Model TimeRuler::buildModel(const QRect& aCameraRect, const util::Range& aVisibleRange, int aFps) const {
     const int aHeight = ctrl::TimeLineEditor::kHeaderHeight;
     const ctrl::time::Scaler& scale = mEditor->timeScale();
     const int margin = ctrl::TimeLineEditor::kTimeLineMargin;
 
-    aPainter.setRenderHint(QPainter::Antialiasing, false);
-
-    // draw header background (the hairline under it is drawn by the surface:
-    // it sits on the first track row, below this widget)
-    {
-        const QBrush kBrush(mTimelineTheme.headerBackgroundColor());
-        QRect rect = aCameraRect;
-        rect.setHeight(aHeight);
-        aPainter.setPen(QPen(kBrush, 1));
-        aPainter.setBrush(kBrush);
-        aPainter.drawRect(rect);
-    }
-
-    // THE STRIP IS THE SHARED RULER'S MODEL (gui/FrameRuler.h): this widget supplies
-    // the geometry, the font's measurements and the editor's facts; the model decides
-    // which frames are ticked, which are numbered, how a number yields to the
-    // project's own first/last frame, and how the temporary window's band, stems and
-    // pills are laid out. The graph panel builds the same model and paints it with
-    // ImGui, so the two rulers cannot disagree about any of that.
     const QRect band(aCameraRect.left(), aCameraRect.top(), aCameraRect.width(), aHeight);
-    const QFontMetrics metrics(aPainter.font());
+    const QFontMetrics metrics(this->font());
     const core::TimeFormat format(mEditor->frameRange(), aFps);
 
     frameRuler::Inputs in;
@@ -106,10 +85,10 @@ void TimeRuler::renderHeader(QPainter& aPainter, const QRect& aCameraRect, const
     in.fps = aFps;
     in.formatType = mEditor->timeFormatType();
 
-    // The playhead's own column: gui::TimeCursor draws the frame-number pill there, and
-    // that pill carries the only number in its column, so the model suppresses any
-    // number whose centre falls inside the pill's half-width. The span is the PILL's own
-    // geometry, measured with the font both are painted in.
+    // The playhead's own column: its frame-number pill carries the only number in that
+    // column, so the model suppresses any number whose centre falls inside the pill's
+    // half-width. The span is the PILL's own geometry, measured in the font both are
+    // painted in.
     const int playFrame = mEditor->currentFrame().get();
     in.hasPlayhead = true;
     in.playheadFrame = playFrame;
@@ -138,15 +117,81 @@ void TimeRuler::renderHeader(QPainter& aPainter, const QRect& aCameraRect, const
     axis.pixelsPerFrame = scale.pixelsPerFrame();
     axis.tickStride = scale.tickStride(scale.pixelsPerFrame());
 
+    return frameRuler::build(in, axis);
+}
+
+frameRuler::PaintInk TimeRuler::paintInk() const {
     const theme::Colors& colors = theme::Colors::current();
     frameRuler::PaintInk ink;
     ink.content = mTimelineTheme.headerContentColor();
     ink.windowBand = colors.windowBand;
     ink.windowEdge = colors.windowEdge;
     ink.windowText = colors.windowText;
-
-    frameRuler::paintRuler(aPainter, frameRuler::build(in, axis), ink);
+    ink.playheadFill = colors.accentBright;
+    ink.playheadText = colors.accentBrightText;
+    return ink;
 }
+
+#if defined(AE_CANVAS_PAINTER) && AE_CANVAS_PAINTER
+// CANVAS PAINTER: the same model, the same geometry, the GPU's triangles instead of Qt's
+// raster engine. The strip is viewport-fixed, so the paint translates by the view origin
+// exactly as the raster host does - the numbers scroll with the content, the strip does not.
+void TimeRuler::paint(QCanvasPainter* aPainter) {
+    if (!mEditor)
+        return;
+    const QPoint origin = mCamera ? mCamera->leftTopPos().toPoint() : QPoint();
+    const QRect cameraRect(-origin, this->size());
+    const ctrl::time::Scaler& scale = mEditor->timeScale();
+    const int margin = ctrl::TimeLineEditor::kTimeLineMargin;
+    const int bgn = scale.frame(cameraRect.left() - margin - 5);
+    const int end = scale.frame(cameraRect.right() - margin + 5);
+
+    const frameRuler::Model model = buildModel(cameraRect, util::Range(bgn, end), mEditor->fps());
+
+    aPainter->save();
+    aPainter->translate(float(origin.x()), float(origin.y()));
+    // The band's own floor. The strip covers its rows completely, so this is opaque; the
+    // host's clear colour carries the same value for the frame's first row.
+    aPainter->setFillStyle(mTimelineTheme.headerBackgroundColor());
+    aPainter->fillRect(QRectF(model.band));
+    frameRuler::paintRulerCanvas(*aPainter, model, paintInk());
+    aPainter->restore();
+}
+#else
+void TimeRuler::paintEvent(QPaintEvent* aEvent) {
+    QPainter painter;
+    painter.begin(this);
+    painter.setRenderHint(QPainter::Antialiasing, false);
+
+    // The strip is viewport-fixed: its paint translates by the view origin,
+    // exactly like the track surface, so the numbers scroll with the content
+    // while the strip itself never moves. camRect mirrors the renderer's
+    // camera rect in this widget's painter space.
+    const QPoint origin = mCamera ? mCamera->leftTopPos().toPoint() : QPoint();
+    painter.translate(origin);
+    const QRect cameraRect(-origin, this->size());
+
+    const QRect cullRect(aEvent->rect().translated(-origin).marginsAdded(QMargins(2, 2, 2, 2)));
+    const int margin = ctrl::TimeLineEditor::kTimeLineMargin;
+    const ctrl::time::Scaler& scale = mEditor->timeScale();
+    const int bgn = scale.frame(cullRect.left() - margin - 5);
+    const int end = scale.frame(cullRect.right() - margin + 5);
+
+    // draw header background (the hairline under it is drawn by the surface:
+    // it sits on the first track row, below this widget)
+    {
+        const QBrush brush(mTimelineTheme.headerBackgroundColor());
+        QRect rect = cameraRect;
+        rect.setHeight(ctrl::TimeLineEditor::kHeaderHeight);
+        painter.setPen(QPen(brush, 1));
+        painter.setBrush(brush);
+        painter.drawRect(rect);
+    }
+
+    frameRuler::paintRuler(painter, buildModel(cameraRect, util::Range(bgn, end), mEditor->fps()), paintInk());
+    painter.end();
+}
+#endif // AE_CANVAS_PAINTER
 
 //-------------------------------------------------------------------------------------------------
 // Input: the strip's gestures (header seek, shift-drag window) run through

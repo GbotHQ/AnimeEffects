@@ -26,29 +26,29 @@ namespace gui {
 
 namespace prop { class EasingItem; } // the header's easing control (prop_Items.h)
 
+// THE PLAYHEAD'S LINE, AND NOTHING ELSE. The 14px frame-number pill above it is the
+// ruler's model (gui/FrameRuler.h's Model::playhead) and the ruler paints it, so the
+// pill has exactly one spelling; what is left here is the 1px rule that crosses the
+// lanes, which cannot be the ruler's ink (it starts under the strip and runs to the
+// bottom of the surface) and must not be the lanes' either (a frame step would repaint
+// every key). So it is a ONE-COLUMN widget: 1px wide, from the strip's line row down,
+// painted opaquely - no transparency, no compositing, and a repaint the size of the
+// thing that changed.
 class TimeCursor: public QWidget {
     Q_OBJECT
 
-    Q_PROPERTY(QColor numberColor READ numberColor WRITE setNumberColor DESIGNABLE true)
     Q_PROPERTY(QColor edgeColor READ edgeColor WRITE setEdgeColor DESIGNABLE true)
 public:
     TimeCursor(QWidget* aParent);
-    void setCursorPos(const QPoint& aPos, int aHeight);
-    void setHeaderInfo(const QString& aFrameText, const QColor& aBadgeColor);
+    // aLineTopLeft is the line's own column and top row (the surface maps the playhead).
+    void setCursorPos(const QPoint& aLineTopLeft, int aHeight);
     void paintEvent(QPaintEvent* aEvent) override;
-
-    QColor numberColor() const;
-    void setNumberColor(const QColor& numberColor);
 
     QColor edgeColor() const;
     void setEdgeColor(const QColor& edgeColor);
 
 private:
-    QColor mNumberColor;
     QColor mEdgeColor;
-    QString mFrameText;
-    QColor mBadgeColor;
-    int mLineX;
 };
 
 // THE TIMELINE'S SURFACE IS A HOST. It paints ctrl::time::BodyScene - the lanes, the frame
