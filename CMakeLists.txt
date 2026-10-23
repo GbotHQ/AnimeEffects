@@ -102,6 +102,25 @@ if(AE_ENABLE_IMGUI)
     )
 endif()
 
+# ---------------------------------------------------------------------------
+# Qt Canvas Painter (Qt 6.12+): the RHI-backed 2D canvas the timeline and the
+# animation-graph panel migrate to. OFF unless the Qt in use actually provides it:
+# the module ships in 6.12, and QRhiWidget's xcb composite path crashes on 6.11.2
+# (AGENTS.md, "Canvas Painter on this machine"). Fedora 44's Qt is 6.11.2, so the
+# default build here does NOT get it; a 6.12 toolchain (aqt/Qt installer) turns it on.
+# ---------------------------------------------------------------------------
+option(AE_ENABLE_CANVAS_PAINTER "Build the Canvas Painter renderer (needs Qt >= 6.12)" ON)
+set(AE_CANVAS_PAINTER 0)
+if(AE_ENABLE_CANVAS_PAINTER)
+    find_package(Qt6 QUIET COMPONENTS CanvasPainter)
+    if(Qt6CanvasPainter_FOUND AND Qt6Core_VERSION VERSION_GREATER_EQUAL 6.12)
+        set(AE_CANVAS_PAINTER 1)
+        message(STATUS "Canvas Painter: ON (Qt ${Qt6Core_VERSION})")
+    else()
+        message(STATUS "Canvas Painter: OFF (needs Qt >= 6.12; this is ${Qt6Core_VERSION})")
+    endif()
+endif()
+
 add_subdirectory(src/util)
 add_subdirectory(src/thr)
 add_subdirectory(src/cmnd)

@@ -173,6 +173,42 @@ target_link_libraries(creation_select_keys PRIVATE
     cmnd core ctrl gl img thr util pugixml
 )
 
+# Proportional-key EDIT contract: a frame move, a value edit and a toggle each
+# stay one undo step and restore the selected keys AND the proportional keys
+# between their bounds. Drives the real TimeLineUtil commands; headless.
+add_executable(proportional_edits proportional_edits.cpp
+    ../src/gui/theme/TimeLine.cpp)
+target_include_directories(proportional_edits PRIVATE ..)
+target_compile_definitions(proportional_edits PRIVATE
+    AE_MAJOR_VERSION=1
+    AE_MINOR_VERSION=7
+    AE_MICRO_VERSION=1
+    USE_GL_CORE_PROFILE
+)
+target_link_libraries(proportional_edits PRIVATE
+    Qt6::Core Qt6::Core5Compat Qt6::Widgets
+    Qt6::Gui Qt6::OpenGL Qt6::OpenGLWidgets
+    Qt6::Svg Qt6::Xml Qt6::Concurrent Qt6::Multimedia
+    cmnd core ctrl gl img thr util pugixml
+)
+
+# The 0.16 key record on disk: stable id + proportional bound ids/weights survive
+# TimeLine serialize/deserialize. Headless, in-memory stream.
+add_executable(timekey_roundtrip timekey_roundtrip.cpp)
+target_include_directories(timekey_roundtrip PRIVATE ..)
+target_compile_definitions(timekey_roundtrip PRIVATE
+    AE_MAJOR_VERSION=1
+    AE_MINOR_VERSION=7
+    AE_MICRO_VERSION=1
+    USE_GL_CORE_PROFILE
+)
+target_link_libraries(timekey_roundtrip PRIVATE
+    Qt6::Core Qt6::Core5Compat Qt6::Widgets
+    Qt6::Gui Qt6::OpenGL Qt6::OpenGLWidgets
+    Qt6::Svg Qt6::Xml Qt6::Concurrent Qt6::Multimedia
+    cmnd core gl img thr util pugixml
+)
+
 # Headless reproduction of the "Pull bones" (PoseEditMode_Draw -> pose::
 # DrawBoneMode) crash. Loads a real .anie, builds the real ctrl::Driver with the
 # Pose tool, and feeds synthetic left-button press/drag/release frames through
@@ -988,6 +1024,39 @@ target_link_libraries(time_scaler PRIVATE
     Qt6::Core ctrl util
 )
 
+# Proportional keys: stable ids/state and the atomic multi-key batch move at the
+# core::TimeLine layer. Headless QApplication only; no widgets, no GL.
+add_executable(timekey_proportional timekey_proportional.cpp)
+target_include_directories(timekey_proportional PRIVATE ..)
+target_compile_definitions(timekey_proportional PRIVATE
+    AE_MAJOR_VERSION=1
+    AE_MINOR_VERSION=7
+    AE_MICRO_VERSION=1
+)
+target_link_libraries(timekey_proportional PRIVATE
+    Qt6::Core Qt6::Core5Compat Qt6::Widgets
+    Qt6::Gui Qt6::OpenGL Qt6::OpenGLWidgets
+    Qt6::Svg Qt6::Xml Qt6::Concurrent Qt6::Multimedia
+    cmnd core gl img thr util pugixml
+)
+
+# Proportional keys: the stored-weight solver (bounds, rebase, drift-free
+# projection) and the value reflow, over a real core::TimeLine. Headless.
+add_executable(proportional_keys proportional_keys.cpp)
+target_include_directories(proportional_keys PRIVATE ..)
+target_compile_definitions(proportional_keys PRIVATE
+    AE_MAJOR_VERSION=1
+    AE_MINOR_VERSION=7
+    AE_MICRO_VERSION=1
+    USE_GL_CORE_PROFILE
+)
+target_link_libraries(proportional_keys PRIVATE
+    Qt6::Core Qt6::Core5Compat Qt6::Widgets
+    Qt6::Gui Qt6::OpenGL Qt6::OpenGLWidgets
+    Qt6::Svg Qt6::Xml Qt6::Concurrent Qt6::Multimedia
+    cmnd core ctrl gl img thr util pugixml
+)
+
 # ---------------------------------------------------------------------------
 # The overlay's units (the Dear ImGui renderer of the viewport panel). They exist
 # because the pieces a screenshot cannot see need gates of their own: the font
@@ -1051,6 +1120,9 @@ if(AE_ENABLE_IMGUI)
         ../src/gui/ImGuiGLBackend.cpp
         ../src/gui/GraphPanelFrame.cpp
         ../src/gui/GraphPanelModel.cpp
+        ../src/gui/InkImGui.cpp
+        ../src/gui/InkQPainter.cpp
+        ../src/gui/FrameRuler.cpp
         ../src/gui/ImGuiInputBridge.cpp
         ../src/gui/ImGuiA11y.cpp
         ../src/gui/ImGuiQtFontLoader.cpp
@@ -1098,6 +1170,29 @@ target_link_libraries(imgui_a11y PRIVATE
 # leaves its symbols unresolved (the same reason graph_panel_model compiles
 # theme::Graph). See timeline_visuals.cpp.
 
+# THE FRAME RULER'S CONTRACT: the one model both rulers read (src/gui/FrameRuler.h).
+# It drives the real ctrl::TimeLineEditor through the shared builder and painter into an
+# offscreen QImage, and pins the tick tiers, the boundary/merged labels, the one-frame
+# range publishing none, the playhead's column, the playback window's geometry and the
+# two signed-off rules (clip-never-shift, and the project range as the formatter's
+# basis). No GL, no widget. See frame_ruler.cpp.
+add_executable(frame_ruler frame_ruler.cpp
+    ../src/gui/FrameRuler.cpp
+    ../src/gui/theme/TimeLine.cpp)
+target_include_directories(frame_ruler PRIVATE .. ../src)
+target_compile_definitions(frame_ruler PRIVATE
+    AE_MAJOR_VERSION=1
+    AE_MINOR_VERSION=7
+    AE_MICRO_VERSION=1
+    USE_GL_CORE_PROFILE
+)
+target_link_libraries(frame_ruler PRIVATE
+    Qt6::Core Qt6::Core5Compat Qt6::Widgets
+    Qt6::Gui Qt6::OpenGL Qt6::OpenGLWidgets
+    Qt6::Svg Qt6::Xml Qt6::Concurrent Qt6::Multimedia
+    cmnd core ctrl gl img thr util pugixml
+)
+
 add_executable(timeline_visuals timeline_visuals.cpp
     ../src/gui/theme/TimeLine.cpp)
 target_include_directories(timeline_visuals PRIVATE .. ../src)
@@ -1121,6 +1216,7 @@ target_link_libraries(timeline_visuals PRIVATE
 # graph_drag does. See graph_panel_model.cpp.
 add_executable(graph_panel_model graph_panel_model.cpp
     ../src/gui/GraphPanelModel.cpp
+    ../src/gui/FrameRuler.cpp
     ../src/gui/theme/Graph.cpp
     # The model now reaches the timeline renderer's theme through the shared easing
     # rewrite path; theme::TimeLine is a leaf, so it is linked rather than stubbed.
@@ -1274,3 +1370,55 @@ target_link_libraries(asset_remove_layers PRIVATE
     Qt6::Svg Qt6::Xml Qt6::Concurrent Qt6::Multimedia
     cmnd core ctrl gl img thr util pugixml
 )
+
+# THE CANVAS PAINTER RULER'S PARITY GATE: one model painted by QPainter and by Canvas
+# Painter, compared pixel by pixel (text coverage is reported separately - two glyph
+# rasterizers never agree). QA: only built when the Qt in use provides the module AND is
+# 6.12+, which the default Fedora 6.11.2 toolchain is not. See frame_ruler_canvas.cpp.
+if(AE_CANVAS_PAINTER)
+    add_executable(frame_ruler_canvas frame_ruler_canvas.cpp
+        ../src/gui/FrameRuler.cpp
+        ../src/gui/FrameRulerCanvas.cpp
+        ../src/gui/theme/TimeLine.cpp)
+    target_include_directories(frame_ruler_canvas PRIVATE .. ../src)
+    target_compile_definitions(frame_ruler_canvas PRIVATE
+        AE_MAJOR_VERSION=1
+        AE_MINOR_VERSION=7
+        AE_MICRO_VERSION=1
+        USE_GL_CORE_PROFILE
+    )
+    target_link_libraries(frame_ruler_canvas PRIVATE
+        Qt6::Core Qt6::Core5Compat Qt6::Widgets
+        Qt6::Gui Qt6::OpenGL Qt6::OpenGLWidgets
+        Qt6::Svg Qt6::Xml Qt6::Concurrent Qt6::Multimedia
+        Qt6::CanvasPainter
+        cmnd core ctrl gl img thr util pugixml
+    )
+endif()
+
+# THE CANVAS PAINTER BODY'S PARITY GATE (Qt >= 6.12 + AE_CANVAS_PAINTER only).
+# NOT PASSING YET: 268 of 76,800 px differ in the "geometry" class - see AGENTS.md ("the body's
+# Canvas port is SHORT"). Registered so the remaining gap has a number to close.
+if(AE_CANVAS_PAINTER)
+    add_executable(time_body_canvas time_body_canvas.cpp
+        ../src/gui/TimeBodyCanvas.cpp
+        ../src/gui/theme/TimeLine.cpp)
+    target_include_directories(time_body_canvas PRIVATE .. ../src)
+    target_compile_definitions(time_body_canvas PRIVATE
+        AE_MAJOR_VERSION=1 AE_MINOR_VERSION=7 AE_MICRO_VERSION=1 USE_GL_CORE_PROFILE)
+    target_link_libraries(time_body_canvas PRIVATE
+        Qt6::Core Qt6::Core5Compat Qt6::Widgets Qt6::Gui Qt6::OpenGL Qt6::OpenGLWidgets
+        Qt6::Svg Qt6::Xml Qt6::Concurrent Qt6::Multimedia Qt6::CanvasPainter
+        cmnd core ctrl gl img thr util pugixml)
+endif()
+
+# THE GRAPH PANEL'S BACKEND PARITY (Qt >= 6.12 + AE_CANVAS_PAINTER): the pixel gate above
+# renders the SAME models through InkQPainter (Qt's own rasteriser) and InkCanvas (Canvas
+# Painter) and compares them. It lives inside graph_panel_pixels because that target already
+# carries the whole panel - the ink decisions, the fixtures and the ImGui reference.
+if(AE_CANVAS_PAINTER)
+    target_sources(graph_panel_pixels PRIVATE
+        ../src/gui/InkCanvas.cpp)
+    target_compile_definitions(graph_panel_pixels PRIVATE AE_CANVAS_PAINTER=1)
+    target_link_libraries(graph_panel_pixels PRIVATE Qt6::CanvasPainter)
+endif()

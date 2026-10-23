@@ -1,5 +1,7 @@
 #include "gui/GraphPanelFrame.h"
 
+#include "gui/InkImGui.h"
+
 #include <algorithm>
 #include <cfloat>
 #include <cmath>
@@ -9,6 +11,10 @@
 #include <vector>
 
 #include <QCoreApplication>
+#include <QFile>
+#include <QJsonArray>
+#include <QJsonDocument>
+#include <QJsonObject>
 #include <QDebug>
 #include <QElapsedTimer>
 #include <QFont>
@@ -103,21 +109,12 @@ constexpr int kAxisTickLength = gui::frameRuler::kTickLength;
 // widths would be the pixel measurement the timeline's own comment rejects; the
 // model has the ladder, so it states the tier and this table only says what a tier
 // looks like.
+// THE TIER TABLE IS THE SHARED RULER'S (gui/FrameRuler.h), not a second copy: the
+// timeline's strip and this band read one table, so a change to what a tier looks like
+// cannot move one and leave the other. A model that published no tier for a tick (a
+// hand-built one, e.g. a pixel gate's model) keeps the major-tier alpha, so the marks
+// are never dropped for want of a classification.
 constexpr float kMajorTickAlpha = 0.85f;
-
-float tickAlpha(int aLevel) {
-    switch (static_cast<ctrl::time::Scaler::TickLevel>(aLevel)) {
-        case ctrl::time::Scaler::TickLevel::Major:
-            return kMajorTickAlpha;
-        case ctrl::time::Scaler::TickLevel::Intermediate:
-            return 0.60;
-        case ctrl::time::Scaler::TickLevel::Minor:
-            return 0.20;
-        case ctrl::time::Scaler::TickLevel::None:
-            return 0.0; // not a tick: the model publishes no entry for it
-    }
-    return 0.0;
-}
 
 // The alpha of the model's tick `aIndex`, from its published tier. A model that
 // published no tier for that tick (a hand-built one, e.g. a pixel gate's model built
@@ -125,17 +122,14 @@ float tickAlpha(int aLevel) {
 // published, so the marks are never dropped for want of a classification.
 float tickAlphaOf(const GraphPanelModel& aModel, int aIndex) {
     if (0 <= aIndex && aIndex < aModel.frameTickLevel.size())
-        return tickAlpha(aModel.frameTickLevel.at(aIndex));
+        return float(gui::frameRuler::tickAlpha(aModel.frameTickLevel.at(aIndex)));
     return kMajorTickAlpha;
 }
 
 // THE TIMELINE'S RECESSION FACTOR, for a tick or a frame number whose frame lies
-// outside the ACTIVE playback range (the project's frame range, or the play window
-// while it is active). TimeRuler::renderHeader multiplies an out-of-range tick's tier
-// alpha by 0.4 and writes an out-of-range number at 0.4 alpha; the model publishes the
-// per-frame classification (frameTickInActiveRange, PanelLabel::inActiveRange) and
-// this is the one appearance decision it leaves to this layer.
-constexpr float kOutsideActiveRangeAlpha = 0.4f;
+// outside the ACTIVE playback range - the shared ruler's own constant, so both views
+// recede by the same amount.
+constexpr float kOutsideActiveRangeAlpha = float(gui::frameRuler::kOutsideRangeFactor);
 
 // TRUE when the model says tick `aIndex` is inside the active range. A hand-built
 // model (the pixel gate) that publishes no flag keeps the old full-strength ink.
@@ -153,8 +147,6 @@ constexpr float kMarqueeRounding = 6.0f;
 // The label halo: the same glyphs drawn at the eight compass offsets of radius 1
 // and radius 2, so the ring reaches 2px past the glyph ink in every direction.
 // Read only while gui::kDrawTextHalo is on (shipped off: see addHaloedText).
-constexpr int kHaloRadius = 2;
-constexpr float kHaloAlpha = 0.85f;
 
 // Emphasis by SELECTION: the alpha a curve and its key markers are drawn at when its
 // channel owns no selected key (gui::drawPanel's curveStrength). 45% keeps the shape
@@ -240,37 +232,20 @@ QString trText(const char* aSource, int aPlural = -1) {
     return QCoreApplication::translate(kTranslationContext, aSource, nullptr, aPlural);
 }
 
-ImU32 toImU32(const QColor& aColor) {
-    return IM_COL32(aColor.red(), aColor.green(), aColor.blue(), aColor.alpha());
-}
 
 // The colour as it should be painted under a strength factor. Emphasis and
 // "hidden" both scale ALPHA and leave the hue alone, so a dimmed curve still
 // reads as its own channel.
-ImU32 toImU32Strength(const QColor& aColor, float aStrength) {
-    QColor color = aColor;
-    color.setAlphaF(qBound(0.0f, color.alphaF() * aStrength, 1.0f));
-    return toImU32(color);
-}
 
 // The window rect as ImGui's half-open rect: right()/bottom() are the last
 // INCLUDED pixel columns.
-ImVec2 rectMin(const QRect& aRect) { return ImVec2(float(aRect.left()), float(aRect.top())); }
-ImVec2 rectMax(const QRect& aRect) { return ImVec2(float(aRect.right() + 1), float(aRect.bottom() + 1)); }
 
 // The draw list's own font and size. drawPanel must NOT go through
 // ImGui::CalcTextSize(): that one reads the current context (g.Font), and the
 // drawing has to be callable from a headless pixel gate that owns nothing but a
 // draw list. ImDrawList keeps the frame's font in its shared data, so this is
 // the same font the glyphs are drawn with.
-ImFont* drawListFont(ImDrawList& aDrawList) { return aDrawList._Data ? aDrawList._Data->Font : nullptr; }
-float drawListFontSize(ImDrawList& aDrawList) { return aDrawList._Data ? aDrawList._Data->FontSize : 0.0f; }
 
-ImVec2 measureText(ImFont* aFont, float aFontSize, const char* aText) {
-    if (!aFont || !aText || !*aText)
-        return ImVec2(0.0f, 0.0f);
-    return aFont->CalcTextSizeA(aFontSize, FLT_MAX, 0.0f, aText);
-}
 
 // How far below the position ImGui is HANDED the first row of a run's ink falls: the
 // smallest top bearing among the run's glyphs, at the size it is drawn at.
@@ -282,27 +257,6 @@ ImVec2 measureText(ImFont* aFont, float aFontSize, const char* aText) {
 // numbers out with the same face at the same size and its ink starts one row higher
 // (see gui::kRulerNumberInkTop): aligning the INK needs the font's own offset, and
 // this is it - not a constant, so a different size or face keeps working.
-float inkTopInset(ImFont* aFont, float aFontSize, const char* aText) {
-    if (!aFont || !aText || !*aText || !(aFontSize > 0.0f))
-        return 0.0f;
-    ImFontBaked* baked = aFont->GetFontBaked(aFontSize);
-    if (!baked || !(baked->Size > 0.0f))
-        return 0.0f;
-    const float scale = aFontSize / baked->Size;
-    float inset = FLT_MAX;
-    // The panel's labels are numbers: the ASCII bytes are the whole run (the run aligns
-    // by its HIGHEST glyph, so a '-' cannot drag the row down). A multi-byte character
-    // - the en dash of a merged window pill - is skipped rather than read as the first
-    // of its bytes, which would be a different glyph with a different bearing.
-    for (const char* c = aText; *c; ++c) {
-        const unsigned char byte = (unsigned char)*c;
-        if (byte < 0x20 || byte > 0x7e)
-            continue;
-        if (const ImFontGlyph* glyph = baked->FindGlyphNoFallback(ImWchar(byte)))
-            inset = ImMin(inset, glyph->Y0 * scale);
-    }
-    return inset == FLT_MAX ? 0.0f : inset;
-}
 
 // One glyph run, haloed: the 16 halo passes, then the text itself. The halo is
 // what kept a label readable over arbitrary artwork - the panel has no background
@@ -314,30 +268,7 @@ float inkTopInset(ImFont* aFont, float aFontSize, const char* aText) {
 // other piece of panel ink - but only where the ink would otherwise have been
 // lost, and in the outline colour rather than a panel tone. The body below is kept
 // whole so the flag is the only difference between the two.
-void addHaloedText(
-    ImDrawList& aDrawList, ImFont* aFont, float aFontSize, const ImVec2& aPos, ImU32 aColor, ImU32 aHalo,
-    const char* aText
-) {
-    if (!aFont || !aText || !*aText)
-        return;
 
-    if (kDrawTextHalo) {
-        static const int kOffsets[8][2] = {
-            {-1, 0}, {1, 0}, {0, -1}, {0, 1}, {-1, -1}, {1, -1}, {-1, 1}, {1, 1}
-        };
-        for (int radius = kHaloRadius; radius >= 1; --radius) {
-            for (const int* offset : kOffsets) {
-                aDrawList.AddText(
-                    aFont, aFontSize,
-                    ImVec2(aPos.x + float(offset[0] * radius), aPos.y + float(offset[1] * radius)), aHalo, aText
-                );
-            }
-        }
-    }
-    aDrawList.AddText(aFont, aFontSize, aPos, aColor, aText);
-}
-
-enum class LabelAlign { Left, Centre, Right };
 
 // Where a label's GLYPH LINE BOX sits inside its box's ROWS - an axis of its own,
 // because the horizontal alignment is the label's JOB (a value number is right-aligned
@@ -351,7 +282,6 @@ enum class LabelAlign { Left, Centre, Right };
 // glyph line box starts ON the box's first row. Centring a glyph in that 14px box
 // instead - what every label here did - put the panel's numbers two rows BELOW the
 // timeline's on the same capture: same glyph, same height, shifted.
-enum class LabelVAlign { Centre, Top };
 
 // One label inside the box the model decided, at the alignment the model
 // documented for it, with the halo. The box is the model's; only the placement
@@ -366,59 +296,13 @@ enum class LabelVAlign { Centre, Top };
 // takes the larger of "centred" and "flush with the box's top": an over-tall font
 // hangs into the box's own interior (where there is room) instead of out of it.
 //
-// LabelVAlign::Top aligns the RUN'S INK, not its line box: the first inked row is
+// Labelink::VAlign::Top aligns the RUN'S INK, not its line box: the first inked row is
 // `box.top() + gui::kRulerNumberInkTop`, the row Qt's top-aligned drawText inks for
 // the timeline's numbers of the same face and size. The font's own top bearing is
 // subtracted to get there (inkTopInset), so the row is the same at any drawing size -
 // the panel's 12px layer font and the pixel gate's different face land on it alike.
 // The glyph CELL may therefore start above the box by that bearing; its ink does not,
 // and a font taller than the box hangs BELOW it, into the band's remaining rows.
-void drawLabel(
-    ImDrawList& aDrawList, ImFont* aFont, float aFontSize, const QRect& aBox, const QString& aText, LabelAlign aAlign,
-    ImU32 aColor, ImU32 aHalo, LabelVAlign aVAlign = LabelVAlign::Centre, int aRightGapPx = 0
-) {
-    if (!aFont || aText.isEmpty() || aBox.isEmpty())
-        return;
-
-    const QByteArray utf8 = aText.toUtf8();
-    const ImVec2 size = measureText(aFont, aFontSize, utf8.constData());
-    float x = float(aBox.left());
-    if (aAlign == LabelAlign::Centre) {
-        x += (float(aBox.width()) - size.x) * 0.5f;
-    } else if (aAlign == LabelAlign::Right) {
-        // THE RIGHT GAP IS TAKEN FROM THE BOX'S OWN SPARE WIDTH (see
-        // kValueLabelGap): a label that fills its box is left exactly where
-        // right-alignment puts it, so the gap can never push a number out of the
-        // column the model measured for it. What is left over - a label wider than
-        // its box, which the measured column cannot produce but a wider drawing font
-        // can - is the caller's clip to hold back.
-        const float spare = ImMax(0.0f, float(aBox.width()) - size.x);
-        x = float(aBox.left() + aBox.width()) - size.x - ImMin(float(aRightGapPx), spare);
-    }
-    // THE ORIGIN IS A WHOLE DEVICE PIXEL. Centring and right-alignment are float
-    // arithmetic on a measured advance, so they land on a fraction (the pill's
-    // `(width - advance) / 2` is the obvious one). ImGui truncates the origin before
-    // it rasterises (ImFont::RenderText's "align to be pixel perfect" IM_TRUNC), so
-    // such an origin was already floored - but the panel then depended on two float
-    // expressions agreeing with that truncation, and a fractional origin is exactly
-    // what makes a glyph's CELL and its INK disagree by a column whenever the
-    // measured advance changes. Snap once, here, to the pixel the run starts on; the
-    // per-glyph advances inside the run are the atlas' business (and the reason the
-    // panel's numbers are still not Qt's, see the file header).
-    const int snappedX = int(std::floor(x));
-    // THE ROW IS A WHOLE PIXEL FOR THE SAME REASON. Top alignment subtracts the
-    // font's ink bearing (already scaled) and centring halves a line-height
-    // difference; both can be fractional, and both are truncated by the same
-    // ImFont::RenderText call. Rounding the origin to the row it will rasterise on
-    // makes the inkTopInset contract below exact instead of "within the truncation".
-    const float rawY = aVAlign == LabelVAlign::Top
-        ? float(aBox.top() + kRulerNumberInkTop) - inkTopInset(aFont, aFontSize, utf8.constData())
-        : float(aBox.top()) + ImMax((float(aBox.height()) - size.y) * 0.5f, 0.0f);
-    const int snappedY = int(std::floor(rawY));
-    addHaloedText(
-        aDrawList, aFont, aFontSize, ImVec2(float(snappedX), float(snappedY)), aColor, aHalo, utf8.constData()
-    );
-}
 
 // THE MARKER RULE's ink tokens, and where each comes from.
 //
@@ -483,6 +367,12 @@ constexpr float kKeySelectedFillMix = 0.45f;   // 0.45 of the way to the text co
 constexpr float kKeyHoverFillMix = 0.4f;       // mock-graph.js lighten(hue, 0.4)
 constexpr float kKeySiblingRingAlpha = 0.35f;  // mock-graph.js hexA(hue, 0.35)
 constexpr float kKeyRingWidth = 1.0f;          // the 1px ring of the design's sentence
+// THE PROPORTIONAL MARKER'S FILL: the same fill (channel hue, hovered mix or selected
+// mix) at 45% of its ALPHA - ctrl::time::kProportionalFillAlpha, 115/255, the
+// timeline's own token. Only the opacity moves: the marker's radius, its hue, its
+// edge stroke and both rings keep the exact ink every other marker gets, so one
+// proportional key reads as the same dot, softer, in either view.
+constexpr float kKeyProportionalFillAlpha = 0.45f;
 
 // TANGENT-HANDLE CHROMA (see the handle pass below). A handle sits ON its own
 // curve, so at the curve's full chroma its stem and dot disappear into the stroke
@@ -534,6 +424,7 @@ float curveStrength(const PanelCurve& aCurve) {
 }
 
 } // namespace
+
 
 //-------------------------------------------------------------------------------------------------
 // THE CONTRAST OUTLINE AND COMPOSITE PASS (declared and described in the header).
@@ -1160,7 +1051,24 @@ void addInkCallback(
     aDrawList.AddCallback(stroke::drawListCallback, blob.data(), size_t(blob.size()));
 }
 
+
 } // namespace
+
+// THE IMGUI BACKEND'S STROKE. The coverage pass is this backend's own business (it exists
+// because ImGui's antialiased polyline is not area-exact), so it answers the backend's hook:
+// true when the pass is ready and drew, false when it is not, and the backend then falls back
+// to ImGui's own polyline at the same width. The colour arrives already strength-scaled.
+bool panelStrokeSink(ImDrawList& aList, const QVector<QPointF>& aPoints, const QColor& aColour, double aHalfWidth) {
+    if (!stroke::isReady())
+        return false;
+    // THE COLOUR'S ALPHA IS THE INK'S STRENGTH, one rule for every backend (Qt and Canvas
+    // Painter honour a colour's alpha by construction). The pass takes the ink as a vec3 and
+    // the strength as a scalar, so the alpha is handed over separately: baking it into the RGB
+    // draws the stroke at full opacity - MEASURED, the gate's curve samples read the token
+    // itself (distance 122) instead of the dimmed blend (55) when this passed 1.0.
+    addInkCallback(aList, aPoints, aColour, aColour.alphaF(), float(aHalfWidth));
+    return true;
+}
 
 namespace stroke {
 
@@ -1407,11 +1315,18 @@ void drawListCallback(const ImDrawList*, const ImDrawCmd* aCommand) {
 
 //-------------------------------------------------------------------------------------------------
 void drawPanel(
-    ImDrawList& aDrawList, const GraphPanelModel& aModel, const theme::Graph& aTheme, const PanelFocus& aFocus
+    ink::Ink& aInk, const GraphPanelModel& aModel, const theme::Graph& aTheme, const PanelFocus& aFocus,
+    const ink::Pointer& aPointer
 ) {
-    ImFont* font = drawListFont(aDrawList);
-    const float fontSize = drawListFontSize(aDrawList);
-    const ImU32 halo = toImU32Strength(aTheme.halo(), kHaloAlpha);
+    // The strength factor is ALPHA ONLY (emphasis and "hidden" both scale alpha and leave the
+    // hue alone, so a dimmed curve still reads as its own channel). It is a colour transform,
+    // so it lives here, on the decision side, and every backend receives the finished colour.
+    const auto withStrength = [](const QColor& aColour, float aFactor) {
+        QColor out = aColour;
+        out.setAlphaF(qBound(0.0f, out.alphaF() * aFactor, 1.0f));
+        return out;
+    };
+    const QColor halo = withStrength(aTheme.halo(), kHaloAlpha);
     // ONE ink for the ruler: the ticks and the numbers below them are the same token
     // (theme::Graph::axisText()), the numbers at full strength and every FRAME mark at
     // its own tier's alpha (tickAlphaOf, over the timeline's table) - the timeline's
@@ -1419,15 +1334,15 @@ void drawPanel(
     // axis' three marks have no ladder to tier them (one per window value), so they
     // take the major tier's alpha; the zero rule keeps its own line tone (axisLine),
     // because it is a LINE and not a ruler mark.
-    const ImU32 axisText = toImU32(aTheme.axisText());
-    const ImU32 valueTick = toImU32Strength(aTheme.gridMajor(), kMajorTickAlpha);
+    const QColor axisText = aTheme.axisText();
+    const QColor valueTick = withStrength(aTheme.gridMajor(), kMajorTickAlpha);
 
     const QRect& plot = aModel.plot;
 
     if (plot.isEmpty()) {
         // No room for the plot. The model still states why, and the panel is the
         // whole viewport, so the reason goes in the middle of it.
-        drawLabel(aDrawList, font, fontSize, aModel.panel, aModel.emptyState, LabelAlign::Centre, axisText, halo);
+        aInk.text(aModel.panel, aModel.emptyState, ink::HAlign::Centre, ink::VAlign::Centre, axisText, halo, 0);
         return;
     }
 
@@ -1447,7 +1362,7 @@ void drawPanel(
         ? QRect(aModel.panel.left(), aModel.rulerBandTop, aModel.panel.width(), gui::frameRuler::kBandHeight)
         : aModel.rulerBand;
     if (!aModel.rulerBand.isEmpty()) {
-        aDrawList.AddRectFilled(rectMin(aModel.rulerBand), rectMax(aModel.rulerBand), toImU32(aTheme.rulerBand()));
+        aInk.fillRect(aModel.rulerBand, aTheme.rulerBand());
     }
 
     // The axes: SHORT marks only, 1px with AA off (an AA'd 1px line straddles two
@@ -1455,8 +1370,7 @@ void drawPanel(
     // column by the model). The model publishes positions, never spans, so there is
     // no grid to draw. The flags are put back exactly as they were found, so a
     // caller's own setting is not clobbered.
-    const ImDrawListFlags savedLineFlags = aDrawList.Flags;
-    aDrawList.Flags = savedLineFlags & ~ImDrawListFlags_AntiAliasedLines;
+    aInk.setLineAntialias(false);
     // The hairline UNDER the band, in the same 1px integer-column style: the timeline
     // draws its ruler line on the first track row below the header
     // (TimeLineEditorWidget.cpp's paintEvent), so this is that row.
@@ -1474,10 +1388,7 @@ void drawPanel(
         const float hairlineY = float(aModel.rulerBand.bottom() + 1);
         // The hairline is the band's own rule, so it spans the BAND's columns - the
         // whole panel, including the value column's top corner the band now covers.
-        aDrawList.AddLine(
-            ImVec2(float(aModel.rulerBand.left()), hairlineY), ImVec2(float(aModel.rulerBand.right() + 1), hairlineY),
-            toImU32(aTheme.rulerLine()), 1.0f
-        );
+        aInk.line(QPointF(float(aModel.rulerBand.left()), hairlineY), QPointF(float(aModel.rulerBand.right() + 1), hairlineY), aTheme.rulerLine(), 1.0f);
     }
     // ...UP from the ruler band's LAST ROW, exactly as the timeline's ruler draws them
     // (TimeRuler.cpp:110-112, :281: the baseline is the band's bottom row and a tick
@@ -1504,9 +1415,7 @@ void drawPanel(
         // The tier's alpha, receded by the timeline's fixed factor when the frame is
         // outside the ACTIVE playback range.
         const float alpha = tickAlphaOf(aModel, i) * (tickInActiveRange(aModel, i) ? 1.0f : kOutsideActiveRangeAlpha);
-        aDrawList.AddLine(
-            ImVec2(fx, tickBottom), ImVec2(fx, tickTop), toImU32Strength(aTheme.gridMajor(), alpha), 1.0f
-        );
+        aInk.line(QPointF(fx, tickBottom), QPointF(fx, tickTop), withStrength(aTheme.gridMajor(), alpha), 1.0f);
     }
     // The frame numbers, LEFT-ALIGNED in the boxes the model nudged inside the band's
     // number row. Like the band itself, they are above the plot and therefore
@@ -1525,16 +1434,12 @@ void drawPanel(
     // slot does so on the right, exactly as the timeline's own numbers do.
     //
     // TOP-ALIGNED ON THE TIMELINE'S INK ROW: the box is the RULER's, and
-    // LabelVAlign::Top lands the run's first inked row on kRulerNumberInkTop rows
+    // Labelink::VAlign::Top lands the run's first inked row on kRulerNumberInkTop rows
     // below its top - the row TimeRuler's own numbers ink. Centring in the same box is
     // what put the panel's numbers below the timeline's; aligning the line box alone
     // still left them one row low (the two rasterizers' bearings differ).
     for (const PanelLabel& label : aModel.frameLabels)
-        drawLabel(
-            aDrawList, font, fontSize, label.rect, label.text, LabelAlign::Left,
-            label.inActiveRange ? axisText : toImU32Strength(aTheme.axisText(), kOutsideActiveRangeAlpha), halo,
-            LabelVAlign::Top
-        );
+        aInk.text(label.rect, label.text, ink::HAlign::Left, ink::VAlign::Top, label.inActiveRange ? axisText : withStrength(aTheme.axisText(), kOutsideActiveRangeAlpha), halo, 0);
 
     // THE TEMPORARY PLAYBACK WINDOW, on top of the ruler content it washes - the
     // timeline's own order (TimeRuler::renderPlayWindow): the translucent band first,
@@ -1544,19 +1449,12 @@ void drawPanel(
     // ruler in the timeline.
     if (aModel.playWindow.active && !aModel.rulerBand.isEmpty()) {
         const theme::Colors& colors = theme::Colors::current();
-        aDrawList.PushClipRect(rectMin(aModel.rulerBand), rectMax(aModel.rulerBand), true);
+        aInk.pushClip(aModel.rulerBand);
         if (!aModel.playWindow.band.isEmpty()) {
-            aDrawList.AddRectFilled(
-                rectMin(aModel.playWindow.band), rectMax(aModel.playWindow.band), toImU32(colors.windowBand)
-            );
+            aInk.fillRect(aModel.playWindow.band, colors.windowBand);
         }
-        aDrawList.AddRectFilled(
-            rectMin(aModel.playWindow.startStem), rectMax(aModel.playWindow.startStem),
-            toImU32(colors.windowEdge)
-        );
-        aDrawList.AddRectFilled(
-            rectMin(aModel.playWindow.endStem), rectMax(aModel.playWindow.endStem), toImU32(colors.windowEdge)
-        );
+        aInk.fillRect(aModel.playWindow.startStem, colors.windowEdge);
+        aInk.fillRect(aModel.playWindow.endStem, colors.windowEdge);
         // The label arms carry the window's number row. A merged label is one pill;
         // otherwise each arm is rounded on its outer corners and SQUARE on the face
         // against its stem (the timeline overdraws the rounded slivers with the pill
@@ -1566,31 +1464,17 @@ void drawPanel(
         const auto drawWindowPill = [&](const QRect& aPill, const QString& aText, bool aSquareLeft, bool aSquareRight) {
             if (aPill.isEmpty() || aText.isEmpty())
                 return;
-            aDrawList.AddRectFilled(
-                rectMin(aPill), rectMax(aPill), toImU32(colors.windowEdge), float(gui::frameRuler::kPillRadius)
-            );
+            aInk.fillRect(aPill, colors.windowEdge, float(gui::frameRuler::kPillRadius));
             const int r = gui::frameRuler::kPillRadius;
             const int leftX = aPill.left();
             const int rightX = aPill.right() - r + 1;
             if (aSquareLeft) {
-                aDrawList.AddRectFilled(
-                    rectMin(QRect(leftX, aPill.top(), r, r)), rectMax(QRect(leftX, aPill.top(), r, r)),
-                    toImU32(colors.windowEdge)
-                );
-                aDrawList.AddRectFilled(
-                    rectMin(QRect(leftX, aPill.bottom() - r + 1, r, r)),
-                    rectMax(QRect(leftX, aPill.bottom() - r + 1, r, r)), toImU32(colors.windowEdge)
-                );
+                aInk.fillRect(QRect(leftX, aPill.top(), r, r), colors.windowEdge);
+                aInk.fillRect(QRect(leftX, aPill.bottom() - r + 1, r, r), colors.windowEdge);
             }
             if (aSquareRight) {
-                aDrawList.AddRectFilled(
-                    rectMin(QRect(rightX, aPill.top(), r, r)), rectMax(QRect(rightX, aPill.top(), r, r)),
-                    toImU32(colors.windowEdge)
-                );
-                aDrawList.AddRectFilled(
-                    rectMin(QRect(rightX, aPill.bottom() - r + 1, r, r)),
-                    rectMax(QRect(rightX, aPill.bottom() - r + 1, r, r)), toImU32(colors.windowEdge)
-                );
+                aInk.fillRect(QRect(rightX, aPill.top(), r, r), colors.windowEdge);
+                aInk.fillRect(QRect(rightX, aPill.bottom() - r + 1, r, r), colors.windowEdge);
             }
             // THE TEXT COLUMN IS THE TIMELINE'S, not a second centring. TimeRuler's
             // drawPillText centres a pill it measured as `advance + 2*kPillPadding`
@@ -1610,10 +1494,7 @@ void drawPanel(
             // "the exact same rect convention as the ruler numbers (top-aligned at
             // kNumberTop), so the pill text lines up with them precisely"
             // (renderPlayWindow).
-            drawLabel(
-                aDrawList, font, fontSize, numberBox, aText, LabelAlign::Left, toImU32(colors.windowText), halo,
-                LabelVAlign::Top
-            );
+            aInk.text(numberBox, aText, ink::HAlign::Left, ink::VAlign::Top, colors.windowText, halo, 0);
         };
         if (!aModel.playWindow.mergedPill.isEmpty()) {
             drawWindowPill(aModel.playWindow.mergedPill, aModel.playWindow.mergedText, false, false);
@@ -1621,7 +1502,7 @@ void drawPanel(
             drawWindowPill(aModel.playWindow.startPill, aModel.playWindow.startText, true, false);
             drawWindowPill(aModel.playWindow.endPill, aModel.playWindow.endText, false, true);
         }
-        aDrawList.PopClipRect();
+        aInk.popClip();
     }
 
     // Everything that belongs to the GRAPH is clipped to the plot - now starting
@@ -1629,24 +1510,19 @@ void drawPanel(
     // (ctrl::GLCorePaintEngine has no clip), and it is what keeps a curve that
     // leaves the value window from stroking over the value column, the panel's
     // chrome - or the ruler above it.
-    aDrawList.PushClipRect(rectMin(plot), rectMax(plot), true);
+    aInk.pushClip(plot);
 
     for (int y : aModel.valueTickY) {
         const float fy = float(y);
-        aDrawList.AddLine(
-            ImVec2(float(plot.left()), fy), ImVec2(float(plot.left() + kAxisTickLength), fy), valueTick, 1.0f
-        );
+        aInk.line(QPointF(float(plot.left()), fy), QPointF(float(plot.left() + kAxisTickLength), fy), valueTick, 1.0f);
     }
 
     // The zero rule, only while 0 is inside the value window (the model publishes
     // zeroY exactly then).
     if (aModel.zeroY >= 0) {
-        aDrawList.AddLine(
-            ImVec2(float(plot.left()), float(aModel.zeroY)), ImVec2(float(plot.right() + 1), float(aModel.zeroY)),
-            toImU32(aTheme.axisLine()), 1.0f
-        );
+        aInk.line(QPointF(float(plot.left()), float(aModel.zeroY)), QPointF(float(plot.right() + 1), float(aModel.zeroY)), aTheme.axisLine(), 1.0f);
     }
-    aDrawList.Flags = savedLineFlags;
+    aInk.setLineAntialias(true);
 
     // The curves. Clipped to the plot (above); the channels that own a SELECTED
     // marker - or the same key on a sibling channel - at full colour, every other
@@ -1666,21 +1542,13 @@ void drawPanel(
 
         const float strength = curveStrength(curve);
 
-        if (stroke::isReady()) {
-            addInkCallback(aDrawList, curve.points, curve.color, strength, kCurveWidth * 0.5f);
-            continue;
-        }
+        // ONE call: whether the coverage pass runs is the BACKEND's business (the ImGui
+        // backend appends its shader callback, the Qt and Canvas ones stroke the same
+        // polyline at the same width), and the fallback when the pass cannot run lives
+        // there too. What is not delegated is the ink: the strength is applied here, so
+        // every backend receives the same colour.
+        aInk.stroke(curve.points, withStrength(curve.color, strength), kCurveWidth * 0.5);
 
-        // A stack buffer, so the common curve converts without touching the heap.
-        QVarLengthArray<ImVec2, 256> points(int(curve.points.size()));
-        for (int i = 0; i < curve.points.size(); ++i) {
-            const QPointF& point = curve.points.at(i);
-            points[i] = ImVec2(float(point.x()), float(point.y()));
-        }
-        aDrawList.AddPolyline(
-            points.constData(), int(points.size()), toImU32Strength(curve.color, strength), ImDrawFlags_None,
-            kCurveWidth
-        );
     }
 
     // The key MARKERS, from the model's own centres (PanelCurve::keyDots): a DOT
@@ -1717,6 +1585,12 @@ void drawPanel(
     // The marker's floor ring (keyEdge) is drawn for every marker whether or not the
     // pointer is on it - the pointer never changes a marker's SIZE or its edges.
     //
+    // PROPORTIONAL is a fourth, ORTHOGONAL axis (PanelCurve::keyProportional), not a
+    // state: whatever fill the state above gives the marker, a proportional marker
+    // gets that same ink at 45% of its alpha (kKeyProportionalFillAlpha, the
+    // timeline's token). Its radius, hue, edge and both rings are untouched, so the
+    // only difference from an absolute marker is how solid the body reads.
+    //
     // THE MARKER IS NOT THE PICK AREA, and that is the timeline's own rule for a
     // small element ("hit testing and visuals are two separate things"): the editor
     // grabs a key within ctrl::graph::kKeyHitRadius (10px) of this centre, and the
@@ -1737,27 +1611,32 @@ void drawPanel(
     // pass leaves the marker alone, exactly as a press there would drag the handle.
     // Under the pointer AND not selected, the three conditions the mock's `hov` line
     // states.
-    const ImVec2 pointer = ImGui::GetIO().MousePos;
-    const PanelPick pick = panelPickAt(aModel, QPoint(int(pointer.x), int(pointer.y)));
+    const QPointF pointer = aPointer.pos;
+    const PanelPick pick = panelPickAt(aModel, QPoint(int(pointer.x()), int(pointer.y())));
     const bool hovered = pick.kind == ctrl::graph::PickKind::Key;
     for (const PanelCurve& curve : aModel.curves) {
         // The markers follow their own curve's emphasis (curveStrength): a channel
         // that owns a selected marker, or a selected sibling of one, draws its dots at
         // full strength - every other channel's are dimmed.
         const float strength = curveStrength(curve);
-        const ImU32 fill = toImU32Strength(curve.color, strength);
-        const ImU32 edge = toImU32Strength(aTheme.keyEdge(), strength);
-        const ImU32 siblingRing = toImU32Strength(curve.color, kKeySiblingRingAlpha);
+        const QColor edge = withStrength(aTheme.keyEdge(), strength);
+        const QColor siblingRing = withStrength(curve.color, kKeySiblingRingAlpha);
         // THE SELECTION RING IS THE TIMELINE'S: the channel's RAW hue at
         // ctrl::time::kSelectRingAlpha (0.85), 1px - NOT the mixed fill ink. The
         // fill below still uses the mixed highlight ink; the two views' rings must
         // be one expression, and this is the timeline's.
         QColor ringInk = curve.color;
         ringInk.setAlpha(ctrl::time::kSelectRingAlpha);
-        const ImU32 selectedRing = toImU32(ringInk);
+        const QColor selectedRing = ringInk;
         // The selected FILL keeps the timeline's fill rule: the channel hue mixed
         // 0.45 toward the text ink.
         const QColor selectedFillInk = mixedToward(curve.color, highlightInk, kKeySelectedFillMix);
+        // THE PLAIN FILL, computed once per curve: the channel hue at the curve's
+        // strength. Every marker's fill is one of three COLOURS - this one, the hovered
+        // mix or the selected mix - so a proportional marker can scale only the chosen
+        // colour's alpha; the hue never moves.
+        QColor plainFill = curve.color;
+        plainFill.setAlphaF(qBound(0.0f, plainFill.alphaF() * strength, 1.0f));
         const int keys = int(curve.keyDots.size());
         for (int k = 0; k < keys; ++k) {
             const QPointF& dot = curve.keyDots.at(k);
@@ -1765,19 +1644,26 @@ void drawPanel(
             // the header), but a hand-built model - a pixel gate's, or a caller that
             // only carries geometry - may publish the dots alone: a missing flag is
             // "neither state", which is what a model that says nothing about the
-            // selection means.
+            // selection means. A missing PROPORTIONAL flag means false, like the other
+            // marker flags.
             const bool selected = k < curve.keySelected.size() && curve.keySelected.at(k);
             const bool sibling = k < curve.keySiblingSelected.size() && curve.keySiblingSelected.at(k);
+            const bool proportional =
+                k < curve.keyProportional.size() && curve.keyProportional.at(k);
             const bool hoveredHere = hovered && !selected && k < curve.keyFrames.size()
                 && curve.node == pick.node && curve.channel == pick.channel
                 && curve.keyFrames.at(k) == pick.frame;
-            const ImVec2 centre(float(dot.x()), float(dot.y()));
-            aDrawList.AddCircleFilled(
-                centre, dotRadius,
-                selected ? toImU32(selectedFillInk)
-                         : hoveredHere ? toImU32(mixedToward(curve.color, highlightInk, kKeyHoverFillMix))
-                                       : fill
-            );
+            const QPointF centre(dot.x(), dot.y());
+            // A proportional marker's fill is the SAME ink at 45% of its alpha; the
+            // edge below and both rings keep their own tokens untouched.
+            QColor fill = plainFill;
+            if (selected)
+                fill = selectedFillInk;
+            else if (hoveredHere)
+                fill = mixedToward(curve.color, highlightInk, kKeyHoverFillMix);
+            if (proportional)
+                fill.setAlphaF(fill.alphaF() * kKeyProportionalFillAlpha);
+            aInk.circleFill(centre, dotRadius, fill);
             // THE EDGE STROKE IS CENTRED ON THE REFERENCE'S RADIUS. ImGui's AddCircle
             // strokes INWARD from the radius it is given (a 1px circle at r covers
             // [r-1, r]), so r on its own would draw the whole band inside the fill. At
@@ -1786,19 +1672,19 @@ void drawPanel(
             // edge is identical on every marker, selected or not; the ring that must be
             // OUTSIDE is the selection ring below (that inner placement is what made a
             // selected key read smaller).
-            aDrawList.AddCircle(centre, dotRadius + 0.5f, edge, 0, 1.0f);
+            aInk.circleStroke(centre, dotRadius + 0.5f, edge, 1.0f);
             if (sibling && !selected) {
                 // The faint ring, at the selection ring's own radius and geometry;
                 // it is the same raw hue at 0.35, so STRENGTH alone tells it apart
                 // from the selected marker's ring.
-                aDrawList.AddCircle(centre, ringRadius, siblingRing, 0, kKeyRingWidth);
+                aInk.circleStroke(centre, ringRadius, siblingRing, kKeyRingWidth);
             }
             if (selected) {
                 // THE TIMELINE'S RING: the channel's raw hue at 0.85, 1px, centred
                 // dotRadius + kSelectRingOffset out (ringRadius is that +0.5 for
                 // ImGui's inward stroke) - drawn outside the marker, so it never
                 // eats the fill.
-                aDrawList.AddCircle(centre, ringRadius, selectedRing, 0, kKeyRingWidth);
+                aInk.circleStroke(centre, ringRadius, selectedRing, kKeyRingWidth);
             }
         }
     }
@@ -1837,7 +1723,7 @@ void drawPanel(
             return !aFocus.valid || (aFocus.node == aCurve.node && aFocus.channel == aCurve.channel);
         };
 
-        const ImU32 handleSurface = toImU32(aTheme.handleFill());
+        const QColor handleSurface = aTheme.handleFill();
         for (int c = 0; c < aModel.curves.size(); ++c) {
             const PanelCurve& curve = aModel.curves.at(c);
             if (!drawsHandles(curve))
@@ -1855,13 +1741,13 @@ void drawPanel(
             // reduced chroma lifted toward the axis text by the panel's one brightened
             // step, so the highlight still reads as this handle's family.
             const QColor hoverInk = mixedToward(handleInk, aTheme.axisText(), kHandleHoverMix);
-            const ImU32 handleHover = toImU32(hoverInk);
+            const QColor handleHover = hoverInk;
             for (int h = 0; h < curve.handles.size(); ++h) {
                 const PanelHandle& handle = curve.handles.at(h);
                 const bool highlighted =
                     pick.kind == ctrl::graph::PickKind::Handle && c == pick.curve && h == pick.handle;
-                const ImVec2 base(float(handle.base.x()), float(handle.base.y()));
-                const ImVec2 dot(float(handle.dot.x()), float(handle.dot.y()));
+                const QPointF base = handle.base;
+                const QPointF dot = handle.dot;
                 // BOTH KINDS READ THE HANDLE'S REDUCED HUE: a stored pair's stem and
                 // stroke are that hue at 0.85 / 0.9, a ghost pair's at 0.5 / 0.7 - so
                 // a handle, the curve it belongs to and the key it leaves are one hue,
@@ -1877,12 +1763,12 @@ void drawPanel(
                 // A<<24|R<<16|G<<8|B, i.e. the red and blue channels swap. Both
                 // branches pass the mixed colour and the strength carries the alpha.
                 const float stemStrength = handle.ghost ? kGhostHandleStemAlpha : kStoredHandleStemAlpha;
-                const ImU32 stem = toImU32Strength(handleInk, stemStrength);
+                const QColor stem = withStrength(handleInk, stemStrength);
                 const float radius =
                     handle.ghost ? ImMax(0.0f, float(handle.radius) - kGhostHandleShrink) : float(handle.radius);
-                const ImU32 edge = highlighted
+                const QColor edge = highlighted
                     ? handleHover
-                    : toImU32Strength(handleInk, handle.ghost ? kGhostHandleEdgeAlpha : kStoredHandleEdgeAlpha);
+                    : withStrength(handleInk, handle.ghost ? kGhostHandleEdgeAlpha : kStoredHandleEdgeAlpha);
                 // THE STEM IS A 1px LINE WITH FRACTIONAL ENDS, and it goes through the same
                 // coverage pass the curves do - measured first, because it is the one 1px
                 // line in the panel whose position can be wrong: ImGui's own AddLine shifts
@@ -1895,27 +1781,21 @@ void drawPanel(
                 // asked for. The stem is already antialiased today (the draw list's
                 // AntiAliasedLines flag is not turned off here), so nothing about its
                 // crispness changes; only where its ink sits.
-                if (stroke::isReady()) {
-                    addInkCallback(
-                        aDrawList, QVector<QPointF>{handle.base, handle.dot}, handleInk, stemStrength, 0.5f
-                    );
-                } else {
-                    aDrawList.AddLine(base, dot, stem, 1.0f);
-                }
+                // A STEM IS A STROKE, not a chrome line: it has fractional ends and its
+                // ink must sit on the segment the model asked for, which is why it goes
+                // through the same pass as the curves (the measured reason is above).
+                aInk.stroke(QVector<QPointF>{base, dot}, withStrength(handleInk, stemStrength), 0.5);
                 if (handle.ghost) {
                     // A SOLID dot of the ghost's own (reduced) hue: radius 3.5
                     // (kHandleRadius - kGhostHandleShrink), fill at the ghost's 0.7
                     // edge alpha, ring the same hue at 0.7.
-                    aDrawList.AddCircleFilled(
-                        dot, radius,
-                        highlighted ? handleHover : toImU32Strength(handleInk, kGhostHandleEdgeAlpha)
-                    );
+                    aInk.circleFill(dot, radius, highlighted ? handleHover : withStrength(handleInk, kGhostHandleEdgeAlpha));
                 } else {
                     // A STORED dot is the raised surface at radius 5, the palette's
                     // own fill; its ring carries the handle hue at 0.9.
-                    aDrawList.AddCircleFilled(dot, radius, highlighted ? handleHover : handleSurface);
+                    aInk.circleFill(dot, radius, highlighted ? handleHover : handleSurface);
                 }
-                aDrawList.AddCircle(dot, radius, edge, 0, 1.0f);
+                aInk.circleStroke(dot, radius, edge, 1.0f);
             }
         }
     }
@@ -1929,10 +1809,8 @@ void drawPanel(
     // It is drawn INSIDE the plot clip (pushed above), and the playhead goes on top
     // of it, so a drag never paints over the axes or the value column.
     if (!aModel.marquee.isEmpty()) {
-        const ImVec2 min = rectMin(aModel.marquee);
-        const ImVec2 max = rectMax(aModel.marquee);
-        aDrawList.AddRectFilled(min, max, toImU32(aTheme.marqueeFill()), kMarqueeRounding);
-        aDrawList.AddRect(min, max, toImU32(aTheme.marqueeEdge()), kMarqueeRounding, ImDrawFlags_None, 1.0f);
+        aInk.fillRect(QRectF(aModel.marquee), aTheme.marqueeFill(), kMarqueeRounding);
+        aInk.strokeRect(QRectF(aModel.marquee), aTheme.marqueeEdge(), kMarqueeRounding, 1.0f);
     }
 
     // The name CHIPS: one for every curve IN PLAY - the channels that own a selected
@@ -1954,24 +1832,24 @@ void drawPanel(
     // _move: |valueAt(x) - y| <= 6). The polyline is one sample per ~2px, so the
     // sample nearest the pointer's x IS the value at that column.
     if (!aModel.curves.isEmpty()) {
-        const ImVec2 mouse = ImGui::GetIO().MousePos;
+        const QPointF mouse = aPointer.pos;
         int hovered = -1;
-        if (plot.contains(QPoint(int(mouse.x), int(mouse.y)))) {
+        if (plot.contains(QPoint(int(mouse.x()), int(mouse.y())))) {
             double best = kChipHoverDistance;
             for (int c = 0; c < aModel.curves.size(); ++c) {
                 const PanelCurve& curve = aModel.curves.at(c);
                 if (curve.points.isEmpty())
                     continue;
                 int nearest = 0;
-                double nearestDx = std::abs(curve.points.first().x() - double(mouse.x));
+                double nearestDx = std::abs(curve.points.first().x() - mouse.x());
                 for (int i = 1; i < curve.points.size(); ++i) {
-                    const double dx = std::abs(curve.points.at(i).x() - double(mouse.x));
+                    const double dx = std::abs(curve.points.at(i).x() - mouse.x());
                     if (dx <= nearestDx) {
                         nearestDx = dx;
                         nearest = i;
                     }
                 }
-                const double dy = std::abs(curve.points.at(nearest).y() - double(mouse.y));
+                const double dy = std::abs(curve.points.at(nearest).y() - mouse.y());
                 if (dy <= best) { // `<=`, so the LAST curve at the same distance wins, like the reference
                     best = dy;
                     hovered = c;
@@ -2030,26 +1908,21 @@ void drawPanel(
             const QRect& box = boxes.at(chips.at(i));
             // The chip carries its OWN backing: the name has to be readable wherever
             // the curve leaves the window, and the panel has no background otherwise.
-            aDrawList.AddRectFilled(
-                rectMin(box), rectMax(box), toImU32Strength(aTheme.halo(), kChipBackdropAlpha), kChipRounding
-            );
+            aInk.fillRect(box, withStrength(aTheme.halo(), kChipBackdropAlpha), kChipRounding);
             // A channel that owns a selected key reads at full strength even while the
             // pointer is on it; only a chip that is there because of the POINTER is
             // dimmed (the reference's own order: live wins over hover).
             const float strength = curveStrength(curve) >= 1.0f ? 1.0f : kChipHoverAlpha;
-            drawLabel(
-                aDrawList, font, fontSize, box, curve.chipText, LabelAlign::Centre,
-                toImU32Strength(curve.color, strength), halo
-            );
+            aInk.text(box, curve.chipText, ink::HAlign::Centre, ink::VAlign::Centre, withStrength(curve.color, strength), halo, 0);
         }
     }
 
     // Why the panel is empty, in the middle of the plot: an empty panel has to say
     // so, and this is the only place it can.
     if (!aModel.emptyState.isEmpty())
-        drawLabel(aDrawList, font, fontSize, plot, aModel.emptyState, LabelAlign::Centre, axisText, halo);
+        aInk.text(plot, aModel.emptyState, ink::HAlign::Centre, ink::VAlign::Centre, axisText, halo, 0);
 
-    aDrawList.PopClipRect();
+    aInk.popClip();
 
     // THE PLAYHEAD, drawn AFTER the plot's ink and after every name chip, so nothing
     // in the plot can cover it. Its line SPANS THE NEW PLOT PLUS THE PILL'S COLUMN:
@@ -2085,17 +1958,12 @@ void drawPanel(
         // that sits over the value column draw at all - the shared mapping puts
         // frames on the timeline's pixels, and some of those pixels are chrome.
         const int clipTop = aModel.rulerBand.isEmpty() ? int(lineTop) : aModel.rulerBand.top();
-        aDrawList.PushClipRect(
-            ImVec2(float(aModel.panel.left()), float(clipTop)),
-            ImVec2(float(aModel.panel.right() + 1), float(aModel.panel.bottom() + 1)), true
-        );
-        const ImDrawListFlags savedPlayheadFlags = aDrawList.Flags;
-        aDrawList.Flags = savedPlayheadFlags & ~ImDrawListFlags_AntiAliasedLines;
-        aDrawList.AddLine(
-            ImVec2(px, lineTop - 0.5f), ImVec2(px, float(aModel.panel.bottom()) + 0.5f),
-            toImU32(aTheme.selected()), 1.0f
-        );
-        aDrawList.Flags = savedPlayheadFlags;
+        aInk.pushClip(QRect(
+            aModel.panel.left(), clipTop, aModel.panel.width(), aModel.panel.bottom() - clipTop + 1
+        ));
+        aInk.setLineAntialias(false);
+        aInk.line(QPointF(px, lineTop - 0.5f), QPointF(px, float(aModel.panel.bottom()) + 0.5f), aTheme.selected(), 1.0f);
+        aInk.setLineAntialias(true);
 
         if (!aModel.playheadPill.isEmpty() && !aModel.playheadText.isEmpty()) {
             // TimeCursor draws the number on the ruler's own NUMBER ROW, from the SAME
@@ -2122,16 +1990,10 @@ void drawPanel(
                                            : aModel.rulerBand.top() + gui::frameRuler::kNumberTop,
                 textWidth, aModel.playheadPill.height()
             );
-            aDrawList.AddRectFilled(
-                rectMin(aModel.playheadPill), rectMax(aModel.playheadPill), toImU32(aTheme.selected()),
-                float(gui::frameRuler::kPillRadius)
-            );
-            drawLabel(
-                aDrawList, font, fontSize, numberBox, aModel.playheadText, LabelAlign::Left,
-                toImU32(aTheme.playheadText()), halo, LabelVAlign::Top
-            );
+            aInk.fillRect(aModel.playheadPill, aTheme.selected(), float(gui::frameRuler::kPillRadius));
+            aInk.text(numberBox, aModel.playheadText, ink::HAlign::Left, ink::VAlign::Top, aTheme.playheadText(), halo, 0);
         }
-        aDrawList.PopClipRect();
+        aInk.popClip();
     }
 
     // THE TWO SCROLL BARS: the frame axis' along the plot's bottom edge, the value
@@ -2156,19 +2018,20 @@ void drawPanel(
     // the whole block because the axis marks above set it.
     if (!aModel.hTrack.isEmpty() || !aModel.vTrack.isEmpty()) {
         const theme::Colors& colors = theme::Colors::current();
-        const ImGuiIO& io = ImGui::GetIO();
-        const QPoint hovered(int(io.MousePos.x), int(io.MousePos.y));
-        const QPoint pressed(int(io.MouseClickedPos[0].x), int(io.MouseClickedPos[0].y));
-        const bool buttonDown = ImGui::IsMouseDown(ImGuiMouseButton_Left);
+        // THE POINTER IS THE HOST'S, not the rasteriser's: a Qt host passes its own
+        // cursor and button state, a headless gate states any pointer it wants, and the
+        // backend never reads one itself.
+        const QPoint hovered(int(aPointer.pos.x()), int(aPointer.pos.y()));
+        const QPoint pressed(int(aPointer.pressPos.x()), int(aPointer.pressPos.y()));
+        const bool buttonDown = aPointer.leftDown;
         // THE HOVER IDENTITY IS panelBarAt's, the same answer the host repaints on
         // (GraphPanelWidget::updateHoverRepaint). The press is asked separately because
         // a drag pans by the pointer's delta, so the pointer may have left the lane
         // while the bar is still being dragged.
         const PanelBar hoverBar = panelBarAt(aModel, hovered);
         const PanelBar pressBar = buttonDown ? panelBarAt(aModel, pressed) : PanelBar::None;
-        const ImDrawListFlags savedBarFlags = aDrawList.Flags;
-        aDrawList.Flags = savedBarFlags & ~ImDrawListFlags_AntiAliasedLines;
-        aDrawList.PushClipRect(rectMin(aModel.panel), rectMax(aModel.panel), true);
+        aInk.setLineAntialias(false);
+        aInk.pushClip(aModel.panel);
         const auto drawBar = [&](const QRect& aTrack, const QRect& aThumb, PanelBar aBar) {
             // AN EMPTY RUN DRAWS NOTHING, AND A FULL ONE DRAWS THE WHOLE LANE. The run
             // is the model's (Scaler::scrollBars), and BOTH lanes publish the handle in
@@ -2188,15 +2051,12 @@ void drawPanel(
                 aTrack, aThumb, aBar == PanelBar::Horizontal ? Qt::Horizontal : Qt::Vertical
             );
             const bool hot = hoverBar == aBar || pressBar == aBar;
-            aDrawList.AddRectFilled(
-                rectMin(pill.rect), rectMax(pill.rect), toImU32(hot ? colors.hover : colors.outline),
-                float(pill.radius)
-            );
+            aInk.fillRect(pill.rect, hot ? colors.hover : colors.outline, float(pill.radius));
         };
         drawBar(aModel.hTrack, aModel.hThumb, PanelBar::Horizontal);
         drawBar(aModel.vTrack, aModel.vThumb, PanelBar::Vertical);
-        aDrawList.PopClipRect();
-        aDrawList.Flags = savedBarFlags;
+        aInk.popClip();
+        aInk.setLineAntialias(true);
     }
 
     // The value numbers live in the column LEFT of the plot, so they are drawn after
@@ -2213,13 +2073,10 @@ void drawPanel(
     //     drawing font wider than the model's can make one) is cut at the panel's
     //     edge instead of painting outside the panel - the one place in this
     //     function whose ink is outside every other clip.
-    aDrawList.PushClipRect(rectMin(aModel.panel), rectMax(aModel.panel), true);
+    aInk.pushClip(aModel.panel);
     for (const PanelLabel& label : aModel.valueLabels)
-        drawLabel(
-            aDrawList, font, fontSize, label.rect, label.text, LabelAlign::Right, axisText, halo,
-            LabelVAlign::Centre, kValueLabelGap
-        );
-    aDrawList.PopClipRect();
+        aInk.text(label.rect, label.text, ink::HAlign::Right, ink::VAlign::Centre, axisText, halo, kValueLabelGap);
+    aInk.popClip();
 }
 
 
@@ -2812,6 +2669,98 @@ bool bindPanelVertexArray(QOpenGLWidget& aHost) {
     return true;
 }
 
+namespace {
+
+// THE FRAME'S OWN GEOMETRY, ON DEMAND. A comparison of two HOSTS needs the marks' positions, and
+// the only authority for those is the model: reading them out of the pixels is exactly the
+// inference that cannot settle a difference. With AE_PANEL_MODEL_DUMP=<path> set, every frame
+// writes the model's coordinates as JSON, so a capture can be measured AGAINST the geometry that
+// produced it - which is what makes a per-mark comparison evidence instead of a guess.
+void dumpPanelModel(const PanelFrame& aFrame, const QSize& aViewport) {
+    const QByteArray path = qgetenv("AE_PANEL_MODEL_DUMP");
+    if (path.isEmpty())
+        return;
+    QFile file(QString::fromUtf8(path));
+    if (!file.open(QIODevice::WriteOnly | QIODevice::Truncate))
+        return;
+    QJsonObject root;
+    root.insert("viewport", QJsonArray{aViewport.width(), aViewport.height()});
+    root.insert("panel", QJsonArray{aFrame.model.panel.x(), aFrame.model.panel.y(), aFrame.model.panel.width(),
+                                    aFrame.model.panel.height()});
+    root.insert("plot", QJsonArray{aFrame.model.plot.x(), aFrame.model.plot.y(), aFrame.model.plot.width(),
+                                   aFrame.model.plot.height()});
+    QJsonArray curves;
+    for (const PanelCurve& curve : aFrame.model.curves) {
+        QJsonObject entry;
+        entry.insert("color", curve.color.name(QColor::HexArgb));
+        QJsonArray points;
+        for (const QPointF& point : curve.points)
+            points.append(QJsonArray{point.x(), point.y()});
+        entry.insert("points", points);
+        QJsonArray keys;
+        for (const QPointF& dot : curve.keyDots)
+            keys.append(QJsonArray{dot.x(), dot.y()});
+        entry.insert("keys", keys);
+        QJsonArray chip;
+        chip.append(curve.chip.x()); chip.append(curve.chip.y());
+        chip.append(curve.chip.width()); chip.append(curve.chip.height());
+        entry.insert("chip", chip);
+        entry.insert("chipText", curve.chipText);
+        curves.append(entry);
+    }
+    root.insert("curves", curves);
+    QJsonArray labels;
+    for (const PanelLabel& label : aFrame.model.frameLabels) {
+        labels.append(QJsonObject{{"text", label.text},
+                                  {"rect", QJsonArray{label.rect.x(), label.rect.y(), label.rect.width(),
+                                                      label.rect.height()}}});
+    }
+    root.insert("frameLabels", labels);
+    QJsonArray values;
+    for (const PanelLabel& label : aFrame.model.valueLabels) {
+        values.append(QJsonObject{{"text", label.text},
+                                  {"rect", QJsonArray{label.rect.x(), label.rect.y(), label.rect.width(),
+                                                      label.rect.height()}}});
+    }
+    root.insert("valueLabels", values);
+    root.insert("playheadX", aFrame.model.playheadX);
+    root.insert("zeroY", aFrame.model.zeroY);
+    root.insert("hThumb", QJsonArray{aFrame.model.hThumb.x(), aFrame.model.hThumb.y(), aFrame.model.hThumb.width(),
+                                     aFrame.model.hThumb.height()});
+    root.insert("vThumb", QJsonArray{aFrame.model.vThumb.x(), aFrame.model.vThumb.y(), aFrame.model.vThumb.width(),
+                                     aFrame.model.vThumb.height()});
+    file.write(QJsonDocument(root).toJson(QJsonDocument::Compact));
+}
+
+} // namespace
+
+PanelFrame composePanelFrame(
+    ctrl::GraphEditor* aEditor, bool aVisible, const QSize& aViewport, PanelFrameState& aState,
+    const QFont& aMeasuredFont, GraphPanelHost aHostStyle
+) {
+    PanelFrame frame;
+    // The palette of THIS frame: re-derived rather than cached, because the application changes
+    // palette at runtime and theme::Colors::current() is the live answer.
+    frame.palette = theme::Graph::from(theme::Colors::current());
+    const bool panelDrawn = aVisible && aEditor;
+    if (panelDrawn) {
+        // The host's own font is the ruler's measuring font (see buildGraphPanelModel's
+        // aMeasuredFont): the timeline measures its pill with QFontMetrics(aPainter.font())
+        // and the dock's stylesheet gives both pages the same widget font, so the panel's pill
+        // comes out exactly as wide as TimeCursor's and on the same column.
+        frame.model = buildGraphPanelModel(*aEditor, aViewport, frame.palette, aState.topInset, aHostStyle, aMeasuredFont);
+        frame.focus = buildFocus(*aEditor);
+        frame.drawn = true;
+    }
+    // Published whether or not anything was drawn: the host's own hits and the accessibility
+    // layer both read THIS, so they can never disagree with the pixels.
+    aState.model = frame.model;
+    aState.editor = panelDrawn ? aEditor : nullptr;
+    aState.palette = frame.palette;
+    dumpPanelModel(frame, aViewport);
+    return frame;
+}
+
 ImDrawData* runPanelFrame(
     QOpenGLWidget& aHost, GraphPanelHost aHostStyle, ctrl::GraphEditor* aEditor, bool aVisible,
     PanelFrameState& aState, const QPoint& aPointer
@@ -2873,26 +2822,20 @@ ImDrawData* runPanelFrame(
     // its AddPolyline path rather than with no curves at all (see gui::stroke).
     stroke::init();
 
-    // The model of this frame, and nothing else: the panel's geometry never comes
-    // from a rect computed here. aHostStyle is republished as the floor the model was
-    // built for; it places nothing (the panel's one control lives in the dock header).
-    GraphPanelModel model;
+    // The model of this frame, composed exactly as every other host composes it.
+    const PanelFrame frame = composePanelFrame(aEditor, aVisible, viewport, aState, aHost.font(), aHostStyle);
     ImDrawList* drawList = ImGui::GetBackgroundDrawList();
-    const bool panelDrawn = aVisible && aEditor && drawList;
-    if (panelDrawn) {
-        // The host's own font is the ruler's measuring font (see buildGraphPanelModel's
-        // aMeasuredFont): the timeline measures its pill with QFontMetrics(aPainter.font())
-        // and the dock's stylesheet gives both pages the same widget font, so the panel's
-        // pill comes out exactly as wide as TimeCursor's and on the same column.
-        model = buildGraphPanelModel(*aEditor, viewport, palette, aState.topInset, aHostStyle, aHost.font());
-        drawPanel(*drawList, model, palette, buildFocus(*aEditor));
+    if (frame.drawn && drawList) {
+        // THE BACKEND IS THIS HOST'S CHOICE, and the pointer is read HERE - the one place
+        // that owns ImGui's IO - because a backend reads no pointer at all.
+        ink::InkImGui inkBackend(*drawList, &panelStrokeSink);
+        const ImGuiIO& io = ImGui::GetIO();
+        const ink::Pointer pointer{
+            QPointF(io.MousePos.x, io.MousePos.y), QPointF(io.MouseClickedPos[0].x, io.MouseClickedPos[0].y),
+            ImGui::IsMouseDown(ImGuiMouseButton_Left)
+        };
+        drawPanel(inkBackend, frame.model, frame.palette, frame.focus, pointer);
     }
-
-    // Published whether or not anything was drawn: the host's own hits and the
-    // accessibility layer both read THIS, so they can never disagree with the pixels.
-    aState.model = model;
-    aState.editor = (aVisible && aEditor) ? aEditor : nullptr;
-    aState.palette = palette;
 
     ImGui::Render();
     return ImGui::GetDrawData();
@@ -2900,7 +2843,7 @@ ImDrawData* runPanelFrame(
 
 //-------------------------------------------------------------------------------------------------
 void publishPanelAccessibility(
-    QOpenGLWidget& aHost, PanelFrameState& aState, void (*aOnAction)(void*, int aId), void* aUser
+    QWidget& aHost, PanelFrameState& aState, void (*aOnAction)(void*, int aId), void* aUser
 ) {
     const bool onScreen = aState.editor != nullptr;
 

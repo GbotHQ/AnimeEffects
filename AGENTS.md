@@ -51,7 +51,17 @@ application's warnings and QML errors instead of only their own `printf`s.
 
 ## Driving the GUI headlessly
 
-The app needs a real GL context, so it runs under Xvfb with the xcb platform:
+**FIRST CHOICE: `scripts/gui/gpu_headless.sh -- <command>` (cage + wlroots headless).** It gives an
+Xwayland whose GL is the machine's real GPU (`Accelerated: yes, AMD Radeon R9 380 (radeonsi)`), with
+nothing on the developer's desktop. Xvfb is the FALLBACK: its GLX is llvmpipe by construction, so
+every render, probe and timing taken there is software - and that difference is not academic, it hid
+a 1-LSB blend difference plus a marker-rim difference in this tree (see "A GPU-backed headless
+display exists"). Limits of the cage wrapper: it is a KIOSK, so the command must BE the presented
+client (a second X client can connect and drive it; a wrapper shell cannot become the window), and no
+WM runs, so keyboard focus is the client's affair. Use Xvfb when you need xdotool/AT-SPI behind a WM
+and do not care about GL's driver; use the GPU wrapper for anything whose PIXELS or timings matter.
+
+The app needs a real GL context, so under Xvfb it runs with the xcb platform:
 
 ```bash
 unset WAYLAND_DISPLAY
@@ -985,6 +995,25 @@ font states neither) is the fix; the timeline sets no font at all, so its ruler 
 request is needed - the bundled face already has tabular digits. The label colour moved from `textMuted` to
 `Colors::text`, the token the timeline's ruler uses: `textMuted` falls BELOW `outline::kMinContrast` exactly
 where the labels land over mid-grey artwork (1.20:1) and can then only be ringed black, never brightened.
+
+**The digits after the FIRST were bilinearly blurred, and the cause was the fractional advance** (2026-10-22).
+`ImFont::RenderText` truncates a run's origin ONCE and then accumulates each glyph's `AdvanceX` in floats, and
+the atlas is sampled with `GL_LINEAR`, so every glyph after the first landed on a fractional column: MEASURED at
+12px the digit advance is 7.1875, and `AddText(8, ...)` on `"0123456789"` put the glyphs at 8, 16.1875, 22.375,
+29.5625, ... The rendered frame said the same thing the user did: the first digit (the only one on a whole
+pixel) came out BYTE-IDENTICAL to Qt's own rasterization of that glyph (0 differing pixels over its 8x20 cell, at
+the harness's one-row baseline offset), while the run carried 6.4% of its inked
+pixels at full coverage against Qt's 12.7%, 100 faint pixels against 90, and 34 ambiguous columns against 23.
+The fix is `ImFontConfig::PixelSnapH = true` on EVERY source in `installQtFontLoader()` - ImGui applies the flag
+itself in both `ImFontAtlasBakedAddFontGlyph()` (drawing) and `ImFontAtlasBakedAddFontGlyphAdvancedX()` (layout),
+so what is drawn and what `CalcTextSize` measures stay one number. After it: all ten glyph origins whole, 13.8%
+strong / 17.3% weak / 24 ambiguous columns, i.e. Qt's numbers. The advances become 7 instead of 7.1875, so a
+10-digit run is ~1.9px narrower than Qt's layout - invisible, and `drawLabel` already snapped each run's ORIGIN
+(`int(std::floor(x))`), which is why only the intra-run positions were wrong. `tests/imgui_qt_font_loader.cpp`'s
+section 2c is the gate (every digit's advance is a whole pixel and equals Qt's advance rounded). NOT covered:
+a FRACTIONAL device pixel ratio, where an integral logical advance still lands on a fractional device column -
+ImGui snaps in logical space and the backend scales by `DisplayFramebufferScale`, so that residual is structural
+and none of the numbers above were taken at one.
 
 **The label column is FORMAT-derived, never window-derived.** `Scaler::axisLabelWidth()` measures the widest
 label the `'g'/4` format can emit (62px: `-3.403e+38`, `-0.0009999`; a float-range sweep agrees), adds the box
@@ -2033,3 +2062,911 @@ ClickFocus on purpose, and an explicit `setFocus` is what bridges the two.
 delete the target and the file before the gate. And a test fixture sized against a layout constant has
 to grow with it: the narrow-viewport fixture was 80px "to keep a plot narrower than 16px", and the
 scroll bars' 10px reserve made that plot negative, so the fixture is 90 and the assertion is unchanged.
+
+## Proportional keys (2026-10-22)
+
+A `core::TimeKey` can be **proportional**. It is an authoring flag only: playback reads the stored
+frame and component values exactly as before. A proportional key stores, in
+`core::TimeKey::Proportional`, its fractional position between its two nearest ABSOLUTE
+(non-proportional) keys of the same type in the same `core::TimeLine`:
+
+```
+time:    P.frame    = qRound(L.frame + wT * (R.frame - L.frame))
+value[c] P.value[c] = L.value[c] + wV[c] * (R.value[c] - L.value[c])
+```
+
+The weights are STORED, not re-derived from the rounded result: re-deriving them after each edit
+accumulates frame quantization (project 0/3/10 onto 0/4/10 and back, and the key walks away by a
+frame each round; `tests/proportional_keys.cpp` computes both answers to prove the difference). A
+weight is re-derived only when the nearest absolute pair CHANGES - identified by stable key ids, not
+frames or values - or when a proportional key is edited directly (its own weight is rebased from the
+new position). X and each graphable component are independent. A zero pre-edit span freezes that
+coordinate; a key without both bounds is inert (it is still marked proportional and can be moved
+directly). Structural types (Bone/Pose/Mesh/FFD) have no graphable components, so only their frame
+follows.
+
+**Persistence.** Format **0.16** (`core/FormatVersion.h`) writes every key's id (`int`, from a
+file-local counter, `reserveId` on load) and, when proportional, its bound ids plus the time/value
+weights and validity bits. Older files skip the block: fresh ids, absolute keys. `TimeLine::moveKeys`
+moves a batch atomically (validates all sources/destinations first; a refusal mutates nothing) so
+selected and projected keys can swap/chains without order-dependent `move()` failures.
+
+**Editing.** `ctrl::proportional` (`src/ctrl/proportional/prop_Keys.h`) is the widget-free solver:
+`findBounds`, `rebaseState`/`rebase`, `boundsChanged`, `projectedFrame`/`projectedValue`/
+`projectValues`, and `ValueReflow` (capture before the edit, apply/modify after it, restore on undo).
+`TimeLineUtil::MoveFrameOfKey` builds one context per (line,type), projects every non-selected
+proportional key from its stored weight and the bounds' FINAL frames, rebases a stale bound once,
+moves selected+projected in ONE `TimeLine::moveKeys` batch, and restores frames and weights on undo -
+still one command per gesture. Value edits go through `ValueReflow` too: the timeline's
+`assignMoveKeyData`/`assignKeyBy` push a reflow command after the edit in the same macro, the graph's
+`KeyMoveCommand` captures one reflow per (line,type) before the first value write and re-applies it on
+every step, and the SRT Move/Rotate/Scale live commands do the same through
+`srt_AssignKeyCommand.h`. A directly edited proportional key is never projected onto; its own weight
+is rebased. The timeline's Select-spacing dialog still moves keys directly (it predates this work and
+is outside the projection/undo path) - do not assume proportional companions follow it.
+
+**Marking and visuals.** The shared key menu (timeline right-click and graph panel, `buildKeyMenu`)
+has a checkable **Proportional** item: checked only when the whole selection is proportional; a
+mixed/absolute selection becomes proportional in one undo step via
+`TimeLineUtil::setProportionalKeys` (one command per key, one `Type_ChangeKeyProportional` event).
+The clipboard JSON carries the flag only - never the weights or bound ids, which name keys that may
+not exist at the destination; a pasted flag starts with empty weights and resolves lazily. Visuals are
+opacity only, per the user's ruling: the existing circle/per-channel hue is kept and the FILL is
+drawn at `ctrl::time::kProportionalFillAlpha` = 115/255 in the timeline, and at
+`kKeyProportionalFillAlpha` = 0.45 in the graph panel; edges and the selection ring keep their full
+tokens. `PanelCurve::keyProportional` publishes the flag beside the marker geometry.
+
+**Gates (all green on the tree that added this section).** `proportional_keys` (solver + drift),
+`proportional_edits` (frame/value/toggle one-undo), `timekey_proportional` (ids/state/atomic
+`moveKeys`), `timekey_roundtrip` (0.16 id + weights survive `TimeLine` serialize/deserialize),
+`graph_drag` sections 29a/29b (frame and value drags carry the companion in one undo),
+`timeline_visuals` section 7 (fill alpha 115/255, focused ring intact), `graph_panel_model`
+section 15 (`keyProportional` parallel to the marker vectors), `graph_panel_pixels` check 32
+(proportional centre lower contrast; edge/ring unchanged). `scripts/run_suites.sh Debug` reports
+**50 pass / 0 fail**, and the `AnimeEffects:Debug` target links.
+
+## Would ImGui make the TIMELINE faster? Measured 2026-10-22, and the answer depends on the GL driver
+
+The question comes up because the graph panel is ImGui and the timeline is not. Numbers below were taken
+with two throwaway targets (deleted afterwards): the shipping `ctrl::TimeLineEditor::render()` into an
+offscreen QImage, and an ImGui frame of the same shape (12 lane bands, 48 separators, 12 lane labels,
+N key markers as `AddCircleFilled` + `AddCircle`, exactly what `GraphPanelFrame` draws for a key) into its
+own FBO under Xvfb. 920x250, the dock's own size. Debug and Release of the render path measured the SAME
+(19.9 vs 19.1 ms at 1200 keys), so the cost is inside Qt's raster engine, not in our loops.
+
+| variant | 0 keys | 300 | 1200 | 3000 |
+|---|---|---|---|---|
+| raster `render()` (shipping) | 2.0 ms | 9.8 | 19.1 | 35.1 |
+| ImGui, CPU frame build only | 0.01 ms | 0.17 | 0.63 | 1.5 |
+| ImGui, full frame on llvmpipe | 1.9 ms | 8.7 | **30.5** | 38.8 |
+
+- **The cost is per PRIMITIVE, not per line of ours.** A 7px AA `drawEllipse` costs **9.0 us**; the same
+  marker as a cached 9x9 `QPixmap` blit costs **0.42 us**; a 920px AA `drawLine` costs **26-55 us** against
+  **12 us** with AA off. Pen/brush churn is 0.17 us and irrelevant. So ~14 us of the ~19 ms at 1200 keys is
+  Qt rasterizing ellipses, and the lane pass' 2.0 ms is mostly the 48 AA separator lines.
+- **Cheapest real fix, no migration:** cache the marker as a QPixmap per (hue, focused, proportional, shape)
+  and draw the separators without AA. Measured as one composite pass: **1.85 ms** for the same content,
+  i.e. 10x, with the same architecture, hit tests, menus and accessibility.
+- **On a real GPU ImGui wins decisively** (0.6 ms of CPU to build the frame, one draw call, GPU fill), but
+  **on llvmpipe it LOSES for dots** - 30.5 ms against 19.1 - because 48 vtx/key of software fill is more
+  expensive than Qt's raster ellipse. This corrects the intuition "ImGui is faster": the panel's 4.70 vs
+  10.24 ms A/B was for CURVE STROKES, where ImGui's texture-AA path beats per-segment quads. Dots invert it
+  on software GL. Never quote the ImGui win without naming the driver.
+- **The playback path is not this cost.** `setFrame` repaints only `TimeRuler` (22px strip, ~100 ticks) and
+  moves `TimeCursor`; the lane surface repaints on camera changes (`updateCamera` -> `updateSize` ->
+  `update()`), i.e. scroll, zoom, marquee and key drags. So the number above is an interaction-latency
+  number, not a per-playback-frame one.
+- A migration would also have to re-do, in ImGui: the ruler (ticks, tiers, boundary labels, play-window
+  pills), the lane labels, the playhead pill, the marquee's rounded rect, the scrollbar pill, the two
+  hit-test maps, the a11y publication (`gui::a11y` is a panel host today) and the GL host itself - the
+  timeline is a raster `QWidget`, so it would become a `QOpenGLWidget` like `GraphPanelWidget`, with the
+  one-context/VAO ownership rule `GraphPanelFrame` already documents.
+
+**What "reuse the graph's ruler" would actually mean (checked 2026-10-22).** Half of it exists already:
+`buildFrameAxis` and `buildPlayWindowOverlay` (`GraphPanelModel.cpp:100`, `:385`, ~345 lines together) are
+pure geometry over `ctrl::graph::Scaler` + `QFontMetrics` + `core::TimeFormat` - no ImGui, no QWidget - and
+`Scaler::applyFrameWindow` lets that scaler carry the timeline's window, so `ctrl::TimeLineEditor` can feed
+them today. The other half does not exist: the ruler's INK is inline in `gui::drawPanel`, one 835-line
+function (`GraphPanelFrame.cpp:1415-2250`; the band/hairline/ticks/numbers/pills block starts ~`:1450`).
+`gui::frameRuler` is constants only. So reuse needs the block extracted into a `drawFrameRuler(...)` first,
+and that extraction is what deletes `TimeRuler::renderHeader`'s duplicated collision/boundary/merge/
+pill-suppression rules (~280 lines, pinned twice by `timeline_visuals` and `graph_panel_model`) - the
+parity-bug class this file keeps recording exists only because there are two implementations.
+
+**And the QML destination constrains the graphics API of the WHOLE window.** Qt's `QQuickWidget` page says
+it plainly: "One top-level window can only use one single graphics API for rendering. For example,
+attempting to place a QQuickWidget using Vulkan and a QOpenGLWidget in the widget hierarchy of the same
+top-level window, problems will occur and one of the widgets will not be rendering as expected." This
+ImGui stack is GL3 over `gl::Global` with a `QOpenGLWidget` host, so an ImGui timeline inside a QML page
+needs a new `QQuickItem` + RHI backend (a second host), and on a platform whose RHI default is not GL it
+cannot coexist with the QML window at all. A QML-body timeline instead draws through a C++ `QQuickItem`
+with `QSGGeometry` - Qt's own GPU path, no third stack, backend-agnostic. Installed Qt here is 6.11.2,
+so Qt Canvas Painter (6.12+) is not available; `Canvas` is what the QML controls use for small glyphs
+(`AeCheckBox.qml:106`), not for a 1200-key surface.
+
+## Canvas Painter on this machine: available now as C++, and a host trap under Xvfb (2026-10-22)
+
+Fedora 44 ships `qt6-qtcanvaspainter` at **6.11.2** (installed here: `qt6-qtcanvaspainter` +
+`-devel`, 2 packages, 1 MiB; `pkg-config Qt6CanvasPainter` works). What it provides at 6.11.2:
+
+- `QCanvasPainter` - the drawing API: `fillRect`/`strokeRect`, `roundRect` (per-corner radii), `circle`,
+  `ellipse`, `arc`, paths (`QCanvasPath`, `fill(path, pathGroup)` for GPU-cached geometry), `setClipRect`
+  (**rect only**), `setLineWidth`, caps/joins, `setGlobalAlpha`, three composite modes, brightness/
+  contrast/saturation, transforms, `drawImage`, `createGridPattern`-style brushes, box shadows, and
+  `setFont` + `fillText` + `textBoundingBox` (QFont: no font loader of our own, CJK included).
+- `QCanvasPainterWidget` - a **QRhiWidget** host, i.e. usable in the existing dock with no QML.
+- `QCanvasPainterItem` / `QCanvasPainterItemRenderer` - a **QQuickRhiItem** host for after the QML move.
+- `QCanvasOffscreenCanvas` + `grabFramebuffer()` for headless pixels.
+- **NO QML `Canvas2D` item**: `/usr/lib64/qt6/qml` has no `QtCanvas2D`; that item is 6.12+, and Fedora 44
+  has no 6.12 (newest `qt6-qtbase` is 6.11.2-3). So the QML-import route is unavailable here; the C++ one
+  is not.
+
+**Measured `paint()` CPU (command recording), 920x250, 12 lanes, no readback:**
+
+| content | record |
+|---|---|
+| 12 lane `fillRect` | 0.03 ms |
+| + 36 separator lines (one `beginPath`/`stroke` per lane) | 0.04 ms |
+| + 12 `fillText` (any text at all) | 1.22 ms |
+| + 120 `fillText` instead of 12 | 1.97 ms - so ~1.1 ms FIXED per frame once text is used, ~7 us per call after |
+| 1200 markers, `save/translate/fill/stroke/restore` each | 1.14 ms (~0.95 us/marker) |
+| 1200 markers as ONE cached path, one `fill` + one `stroke` | 0.52 ms (~0.43 us/marker) |
+
+So batching markers into a path is 2.2x cheaper than per-marker calls, and text has a per-frame fixed
+cost worth profiling on 6.12 before betting on it. (The 6.11 module is the pre-release version of what
+Qt shipped in 6.12; treat these numbers as that.)
+
+**The host trap, measured: a SHOWN `QRhiWidget` crashes under Xvfb on this tree.** A bare `QRhiWidget`
+subclass (no Canvas Painter involved) with `setApi(OpenGL)` and `show()` dies inside
+`QXcbBackingStore::rhiFlush` -> `QXcbWindow::needsSync(this=0x0)`; `Api::Vulkan` cannot present ("No DRI3
+support detected - required for presentation"); `QT_QPA_PLATFORM=offscreen` never calls `render()` at all.
+`grabFramebuffer()` on a widget that is NOT shown works (`400x200`, `render()` called once), so headless
+pixel gates are possible - but **the live probe suite, which drives the real window under Xvfb, could not
+drive a Canvas-Painter surface today**. `QOpenGLWidget` (the app's viewport today) has a different flush
+path and is unaffected, which is why the existing probes work. Anything that moves a surface to
+`QRhiWidget`/`QCanvasPainterWidget` has to settle this first (Qt 6.12, a DRI3-capable display, or
+real-display-only probes).
+
+**CORRECTION to the bullet above (same day, measured): that crash is Qt 6.11.2, not the display.**
+Verified with Qt **6.12.0** installed by `aqtinstall` (`aqt install-qt linux desktop 6.12.0 linux_gcc_64
+-O <dir> -m qtcanvaspainter qtmultimedia qt5compat`; qtbase+qtcanvaspainter alone already bring Quick,
+Svg, Xml, Test, LinguistTools, OpenGLWidgets, Concurrent, QuickWidgets and QuickControls2):
+- 6.11.2: a shown `QRhiWidget` dies on the FIRST flush in `QXcbBackingStore::rhiFlush` ->
+  `QXcbWindow::needsSync(this=0x0)` - under Xvfb AND under a GPU-backed Xwayland, as a top-level and as a
+  child, OpenGL and Vulkan alike. Unusable.
+- 6.12.0: the same program renders 20 frames under Xvfb and exits **rc=0**. The one crash that survives is
+  my own harness's: calling `QCoreApplication::quit()` from INSIDE `render()` leaves the widget mid-paint and
+  still segfaults at teardown - quit from a `QTimer::singleShot` instead.
+- So the version is the gate, not the display. And no distro source has 6.12: Fedora 44 is 6.11.2,
+  **rawhide (F46) is still 6.11.2** (`mdapi.fedoraproject.org/rawhide/pkg/qt6-qtbase`), and **Terra ships no
+  Qt at all** (`dnf --repofrompath 'terratmp,https://repos.fyralabs.com/terra44' --repo=terratmp list
+  --available 'qt6-qtbase*'` -> nothing; terra-release itself resolves, so the repo works). The QML
+  `Canvas2D` item is 6.12-only, so that route needs the same install.
+
+**A GPU-backed headless display exists, and it is not Xvfb.** `cage` (72 KiB, installed here) with
+`WLR_BACKENDS=headless WLR_LIBINPUT_NO_DEVICES=1 WLR_RENDERER=gles2 cage -- <cmd>` starts wlroots headless
+and its Xwayland, and `glxinfo -B` inside reports **`Accelerated: yes`, AMD Radeon R9 380 (radeonsi)** with
+nothing appearing on the developer's desktop. Weston's headless backend + Xwayland gives `Accelerated: no`
+(llvmpipe), so weston is the wrong tool for this. `QOpenGLWidget` renders there (20 frames, radeonsi).
+
+**But cage is a KIOSK, not an Xvfb replacement for the probe suite** (measured): it presents ONE client
+fullscreen, so the app has to BE that client (`cage -- ./AnimeEffects ...`). Started the other way round -
+`cage -- bash -c './app & ...; xdotool ...; ae_ui.py dump'` - the app's X window exists in the tree but comes
+up `1x1+0+0` and unmapped (`xdotool search --name Probe` finds nothing while `xdotool search --name ""`
+lists the window), so a probe cannot drive it. Use cage for what it is good at: a GPU-backed display for one
+app, which is how the Canvas Painter numbers below were taken (the spike was cage's client and got a full
+1280x720 window). Keep Xvfb for the behavioural probe suite. Note also that cage paces at 60 Hz, so a
+frame-to-frame span saturates at 16.06 ms - it says "fits the frame", not "costs 16 ms".
+
+**Canvas Painter 6.12 measured on the timeline's shape** (920x250, 12 lane fills + 36 separators + 12
+`fillText`, markers as circles; `QCanvasPainterWidget`, frame-to-frame span, 30 frames):
+
+| markers | Xvfb/llvmpipe | cage/radeonsi | CPU record |
+|---|---|---|---|
+| 0 | 4.3 ms | 16.1 ms (paced) | 0.12 ms |
+| 1200 instanced (`save/translate/fill/stroke/restore`) | 112.6 ms | 17.6 ms | 1.15 ms |
+| 1200 batched (one path, one `fill`+`stroke`) | 26.1 ms | 16.1 ms (paced) | 2.33 ms |
+| 3000 batched | 53.4 ms | 16.1 ms (paced) | 6.03 ms |
+| 3000 instanced | 259.5 ms | 38.5 ms | 3.44 ms |
+
+On the GPU everything up to 1200 markers fits the 16.06 ms frame pacing (60 fps), batched or not; on
+llvmpipe per-marker calls are catastrophic (112 ms at 1200) and batching is the only way to stay near the
+raster path's 19.1 ms. Note the CPU cost goes the OTHER way: batching 1200 markers into a path costs
+2.33 ms of `addPath` work against 1.15 ms of instanced calls - cheap CPU for cheap GPU, and the trade is
+right when a GPU is present. Verified ink: `grabFramebuffer()` returns `#c83c5a` at a marker's pixel.
+
+**And the tree CONFIGURES against 6.12.0** (measured): with the aqt install in `CMAKE_PREFIX_PATH` and the
+repo's own ffmpeg choice, `cmake -S . -B <dir> -G "Ninja Multi-Config"
+-DCMAKE_PREFIX_PATH=/tmp/qt612/6.12.0/gcc_64 -DFETCHCONTENT_SOURCE_DIR_IMGUI=<build>/_deps/imgui-src
+-DAE_FFMPEG_GPL_AVCODEC=/usr/lib64/ffmpeg/libavcodec.so.62` finishes `rc=0` (`Qt6Core_DIR`/`Qt6Quick_DIR`
+resolve under 6.12.0). Nothing is built there yet, so API-level 6.11->6.12 breakage is unmeasured. The
+aqt install that suffices for this tree is `qtbase + qtcanvaspainter + qtmultimedia + qt5compat`
+(2.0 GB; qtbase already carries Quick/Qml/QuickWidgets/QuickControls2/Svg/Xml/Test/LinguistTools/
+OpenGLWidgets/Concurrent). Fedora 44 and rawhide have 6.11.2 only, Terra ships no Qt at all.
+
+## The frame ruler is ONE module now (2026-10-22), and the two rulers were diffed rule by rule
+
+`src/gui/FrameRuler.{h,cpp}` owns the rules the timeline's strip and the graph panel's band
+share: which frames are ticked and at which tier, the tier alphas (0.85/0.60/0.20) and the 0.4
+out-of-range recession, which frames are numbered, how a number yields to the project's own
+first/last frame, how those collapse into one "first-last" label, how the playhead's pill
+suppresses the number in its column, and the temporary playback window's wash/stems/pills. It
+publishes GEOMETRY + CLASSIFICATION (`frameRuler::Model`) and paints it with QPainter
+(`paintRuler`); the panel paints the same model through ImGui. `TimeRuler::renderHeader` is now
+an adapter (build inputs → `build` → `paintRuler`), and `GraphPanelModel`'s `buildFrameAxis` is
+an adapter that copies the model into the panel's published vectors; `buildPlayWindowOverlay` is
+DELETED. The metrics live in the module and are `static_assert`ed against
+`ctrl::TimeLineEditor::k*` there.
+
+FOUR differences were decided (the user signed off on each; they are the only intentional
+behaviour changes):
+
+1. **Labels are never nudged inside the band.** The panel used to clamp a number's box into its
+   band; now both rulers clip at the host's edge. A shifted number would no longer be centred on
+   the frame it names, which is a correctness bug rather than a readability win.
+2. **A ladder number is dropped when its box would come within `kNumberMargin` of one already
+   drawn** (the panel's rule, now both). THIS IS NOT A DEEP-ZOOM-ONLY RULE: it fires wherever the
+   ladder numbers the intermediate tier (>= 36px of spacing) with a label wider than that - every
+   `Timecode_*` / `Relative_FPS` format at ordinary zooms - where the old ruler drew numbers on
+   top of each other. Measured: of 192,000 states, 83,350 differ, and 42,856 of those are label
+   differences in a non-frame format.
+3. **A one-frame frame range publishes no boundary labels.** The timeline used to draw a merged
+   "7-7"; there are no ends to mark (26,460 of the differing states).
+4. **Numbers are formatted from the PROJECT frame range** (`TimeFormat(frameRange, fps)`), not
+   from the visible window. NO PIXEL CHANGES TODAY: `core::TimeFormat` stores `mRange` and never
+   reads it (`src/core/TimeFormat.cpp`), so this is a correctness change for the argument, not a
+   visible one - the earlier claim that padding could follow a scroll was wrong.
+
+Kept deliberately different (host policy, not a rule): the text halo (the panel's text floats
+over artwork, the timeline's does not) and who draws the hairline under the band (the panel draws
+it; the timeline's surface does, one row below its strip).
+
+**How it was verified.** A throwaway harness compiled the PRE-extraction ink (copied verbatim
+from `git show HEAD:src/gui/TimeRuler.cpp`) beside the new module and compared 192,000 states
+byte for byte: 10 zoom rungs from -120 to 120, 5 scroll offsets, 4 widths (920/640/121/40), 4
+frame ranges (600-frame, 5-frame, one-frame, 24-frame), 4 playhead frames, 5 play windows
+(none / wide / merged / the whole range / off-view), all 6 number formats, dark and light. Every
+difference fell in the tick rows and/or the number row, and every one was one of the four
+decisions above (the deep zoom-out dedup accounts for the tick-tier and label diffs; the
+one-frame range and the formatter basis for the rest). No background, wash, stem or pill pixel
+ever differed. The permanent gate is `tests/frame_ruler.cpp` (registered in
+`tests/CMakeLists.txt`), and `tests/graph_panel_model.cpp`'s "timeline slot" assertion was
+updated to the never-nudged rule.
+
+**The tier table is shared too**: `GraphPanelFrame.cpp` no longer carries its own
+0.85/0.60/0.20 switch or its own 0.4 - both come from `gui::frameRuler::tickAlpha()` and
+`kOutsideRangeFactor`, so a change to what a tier looks like cannot move one view and leave the
+other. After the extraction: `scripts/run_suites.sh Debug` = **51 pass / 0 fail**
+(`frame_ruler` is the new target), `probe_graph_parity.sh` OK (tick rows, the playhead pill's box,
+fill and glyph rows, the shared playhead column and the scrollbar lane all compared across the two
+pages), and `probe_timeline_ink.sh` OK (including the ruler's own number-vs-pill phase: 28 ink px
+away from the pill, the pill owning the column when parked on it, and the number restored exactly
+90px away).
+
+**Two defects the review found, both fixed (and pinned).** (1) A ONE-FRAME range lost its only
+TICK, not just its label: the ladder can classify that frame as `None`, so the boundary block was
+the only thing that drew it, and suppressing it left the project's single frame unmarked - the old
+ruler drew a Major mark there. The label stays suppressed (signed off); the tick is back, and
+`frame_ruler` asserts a Major `boundary` tick exists for a one-frame range. (2) A number was culled
+when its TICK fell outside the band, so the visible tail of an edge number vanished (measured: 16
+columns of glyphs before, nothing after, at x 902..919 of a 920px band). Labels are now culled by
+their BOX, never by their tick column - the host clips the overhang, which is what the timeline
+always did.
+
+**And the "a number wider than the band" rule was a phantom divergence.** Both hosts now CLIP such
+a number (the panel used to drop it because it clamped boxes into its band; with the clamp gone
+there is nothing to protect). A decision sheet rendered the three variants - old clip, new clip, new
+drop - over band widths 40/121/200/320 with `Timecode_SMPTE` labels, and they are pixel-identical
+at every width: a label's box only reaches a band it overlaps, and the ladder's numbers are <= 60px.
+So the rule changed nothing visible; it was removed rather than decided.
+
+The matrix's residual bucket (10,984 of 192,000 states after the two fixes; it was 14,920 before
+them) is STILL UNATTRIBUTED. What is known: it concentrates on the NON-FRAME formats at zoom 1
+(`Timecode_*`/`Relative_FPS`, which produce 48-77px labels) and on scrolled views, and the one case
+instrumented in detail (`zoom=1 fmt=SMPTE range=[1,5] w=121 off=-13`) publishes a label whose box
+starts inside the band and hangs over its right edge - so it is a LABEL-SET difference, not a tick
+one, and not the wide-label rule (that renders identically). The next step is to diff the two
+label SETS (not the pixels) for those cases; until that is done, do not quote a completion figure.
+
+**After the fixes, verified again**: `scripts/run_suites.sh Debug` = **51 pass / 0 fail**,
+`probe_graph_parity.sh` OK, `probe_timeline_ink.sh` OK. The throwaway `ruler_*` targets are out of
+`tests/CMakeLists.txt` (sources kept at `/tmp/ruler-decision/`), so the suite count is back to the
+shipped set.
+
+**The residual was MY HARNESS, not the product (traced 2026-10-22).** Diffing the two label SETS
+instead of the pixels first suggested a boundary-label difference (90 old runs not covered by a new
+label, 42 labels with no old ink, 0 shifted). Tracing the OLD renderer's branches for the case that
+started it (`zoom=1 Relative_FPS range=[1,24] off=-13 w=121 frame=1`) named the culprit: the harness
+computed the visible frame window as `scale.frame(-offset - 5)` while `TimeRuler::paintEvent` uses
+`scale.frame(cull.left() - kTimeLineMargin - 5)` - it subtracts the MARGIN too. Without the margin
+the window started ~21 frames late, so the OLD renderer thought the project's first frame was
+off-view (no merge, a lone "last" label drawn) while the new model's pixel test said it was in view
+(merged, then pill-suppressed). With the widget's own window the old branch is
+`merged branch: centre=37 underPill=1` - exactly the new model's outcome, nothing drawn. Re-running
+the set diff with the corrected window collapsed it from **243 differing cases to 27**, with
+`labelsWithNoOldInk=0` and `labelsShifted=0`; the remaining 27 live in a harness whose coordinate
+arithmetic is still wrong for scrolled offsets, so they are not readable as product evidence.
+
+**The corrected 192,000-state figures** (same matrix, widget window): `differing=56256` of 192,000,
+`ticksOnly=34998`, `labelsOnly=3456`, `both=17802`, **`OUTSIDE_ROWS=0`**; causes are
+`oneFrameRange=26760` and `deepZoomOut=28848` (56,608 of 56,256 differ by the two signed-off rules -
+a number is never MOVED, 0 shifted labels), leaving **648 cases (0.34%) unattributed**, every one in
+the number row and concentrated at `zoom=1`, format `Timecode_HHMMSSmmm`, offset 240 (a view scrolled
+~218 frames). That configuration is the place to look next if the ruler is ever revisited; it is not
+a blocker (no ink outside the tick/number rows, no shifted or added number).
+
+CONCLUSION: no product difference beyond the two defects fixed above and the four signed-off rules,
+with 0.34% of the matrix unexplained and named. Lesson for any future ruler comparison: use
+`TimeRuler::paintEvent`'s window (margin included), or compare through the widget instead of the ink
+function.
+
+**Disclosure: `tests/CMakeLists.txt` was damaged and repaired in this session.** Removing the
+throwaway `ruler_*` blocks with a text splice cut a `#` off a comment and left the file as a DOUBLED
+copy of itself (2742 lines against 1276 at HEAD, `bonekey_regression` defined twice). Detected by
+`cmake` (duplicate-target errors) and by the exact duplication offset (`lines[1372:] == lines[:-1372]`);
+repaired by keeping one copy. Verified after: `cmake` configures, `AnimeEffects`, `frame_ruler` and
+`graph_panel_model` build and pass, no `ruler_` target or file remains, 53 `add_executable` entries.
+The full suite WAS re-run after the repair: **51 pass / 0 fail**.
+
+## The Canvas Painter migration: the ruler already paints both ways (2026-10-22)
+
+`AE_ENABLE_CANVAS_PAINTER` (root `CMakeLists.txt`) is ON only when the Qt in use both HAS the
+module and is **>= 6.12** - `Qt6CanvasPainter_FOUND AND Qt6Core_VERSION VERSION_GREATER_EQUAL 6.12`.
+On this machine's Fedora 6.11.2 it prints `Canvas Painter: OFF (needs Qt >= 6.12; this is 6.11.2)`
+and the tree, the suite and the app are unchanged; with the aqt 6.12.0 prefix it prints
+`Canvas Painter: ON (Qt 6.12.0)`.
+
+`src/gui/FrameRulerCanvas.{h,cpp}` is the migration's first surface: `paintRulerCanvas()` reads the
+SAME `gui::frameRuler::Model` and `PaintInk` as `paintRuler()` (QPainter) and draws it with
+`QCanvasPainter`. It is NOT yet in the app's source list - only the gate compiles it - because the
+default toolchain cannot run a QRhiWidget at all.
+
+**`tests/frame_ruler_canvas.cpp` is the parity gate** (registered inside `if(AE_CANVAS_PAINTER)`):
+one model, painted both ways, compared pixel by pixel, with differences inside the number/pill text
+regions counted separately (two glyph rasterizers never agree) and only NON-TEXT differences failing.
+Measured on Qt 6.12.0 under Xvfb, 9 states (default, zoomed out -40, zoomed in 30, scrolled by 240,
+play window wide, play window merged, one-frame range, Timecode_SMPTE, light theme):
+**`cases=9 failures=0`, `NON-TEXT = 0` in every state**, `textDiff` 441..3596 px (glyph coverage).
+So the Canvas Painter renderer reproduces the raster ruler's GEOMETRY exactly - ticks, the window's
+wash/stems/pills, the band - and differs only in how the two engines antialias text.
+
+Three conventions the port had to match, each a silent 1px-class defect otherwise:
+
+- **A tick inks `kTickLength + 1` ROWS.** QPainter's `drawLine(x, bottom, x, bottom - 5)` inks rows
+  16..21 (six). In Canvas2D edge coordinates the stroke is centred on the coordinate, so the segment
+  must run from `bottom + 1` (the last row's bottom edge) to `bottom + 1 - (kTickLength + 1)`, at
+  `x + 0.5`, with `setAntialias(0)`.
+- **The HOST applies the view translation.** `paintRulerCanvas` states ABSOLUTE columns; a scrolled
+  view must translate by the view origin exactly as `TimeRuler::paintEvent` does, or the whole strip
+  paints off-canvas (measured: 524 "differences" that were entirely this).
+- **Text is anchored left/top on the model's box** (`TextAlign::Left`, `TextBaseline::Top`), the same
+  anchor the panel's `LabelVAlign::Top` exists for; anything else moves every number by a row.
+
+Next for this phase: the same treatment for the TIMELINE BODY - an engine-neutral model for the
+lanes/keys/labels, `ctrl::time::Renderer` reduced to an adapter, then a `QCanvasPainterWidget` host
+behind the same option.
+
+### The timeline body's LANE PASS is a model now (2026-10-22)
+
+`src/ctrl/time/time_BodyModel.{h,cpp}` states the pass `ctrl::time::Renderer::renderLines` used to
+draw: per lane, its fill rect and selection flag, its type separators (fractional y - a lane is split
+into equal parts, not whole rows) and its lane labels (box, text, the channel hue at the 0.42 label
+alpha); then the seam hairlines. `buildLines(rows, cameraRect, cullRect, inks)` produces it and
+`paintLines` draws it with QPainter, and `Renderer::renderLines` is now three lines that call them.
+
+IT LIVES IN ctrl, NOT gui, and that is a layering decision, not an accident: the builder reads
+`ctrl::TimeLineRow` and the document, so a gui model would make ctrl include gui (the tree forbids
+`ctrl/ -> gui/`; only the theme headers are shared that way). gui will host the INK (the Canvas
+Painter renderer) against this model, which is the opposite direction and already the pattern of
+`gui/theme/*`.
+
+**Verified pixel-identical**: a throwaway harness compiled the PRE-extraction pass verbatim from
+`git show HEAD:src/ctrl/time/time_Renderer.cpp` beside the model and compared 48 states (8 row specs -
+no types, one type, 5 types with separators, a slimmed node, a node with no timeline, a selected lane,
+a 66px lane - x 3 camera offsets x 4 cull rects x 2 palettes) - **48 of 48 identical**. One rule needed
+stating explicitly: the bottom hairline belongs to the LAST ROW the view pushed, so a culled last row
+takes it with it (330 of the differences were that single 480px line).
+
+**The suite's discovery had to learn about option-gated targets.** `scripts/run_suites.sh` greps
+`add_executable(` out of `tests/CMakeLists.txt`, so `frame_ruler_canvas` (registered only when
+`AE_CANVAS_PAINTER` is on) reported `fail=1 ... (missing)` on the 6.11.2 tree. A binary the build
+system does not know is now a SKIP (`not-configured`), decided by `grep "^build <n>: phony"
+build/build-<cfg>.ninja`; a target the build system KNOWS and did not produce is still a failure.
+Result on the default tree: **51 pass / 0 fail, skipped: frame_ruler_canvas(not-configured)**.
+
+NEXT for the body: the keys (markers, rings, proportional fills), the range markers and the marquee
+into the same model, then the `QCanvasPainterWidget` host behind `AE_CANVAS_PAINTER` and the
+raster-vs-canvas comparison across the state matrix.
+
+### The key pass: an extraction REVERTED, and a trap that cost it (2026-10-22)
+
+I extracted `drawKeys`/`drawChildKeys` into a model the same way as the lane pass, and the
+equivalence harness reported **48 of 48 cases differing** by 5-95 px. The numbers said "the new fill
+is drawn too soft" (#fb7185 vs #a2606a at the essential key pixels), and the cause was my BASELINE:
+I generated the oracle from `git show HEAD:src/ctrl/time/time_Renderer.cpp`, but this file carries
+**uncommitted work** - the proportional-key fills (`if (isProportional) fill.setAlpha(
+kProportionalFillAlpha)`) - which HEAD does not have. So the "old" side drew full-strength fills and
+the new side the proportional ones: the model was right and the oracle was stale.
+
+The cost: I then "reverted" the extraction by re-inserting HEAD's two functions, which DELETED the
+uncommitted proportional handling from the working tree - `timeline_visuals` caught it immediately
+(`FAIL 820: ... proportionalX ...`). Recovered by rewriting both functions from the read I had taken
+of the working file; `timeline_visuals` passes and the suite is 51 pass / 0 fail again.
+
+LESSONS, both cheap to apply next time:
+- **Never use `git show HEAD:<file>` as the oracle for a file with uncommitted changes.** Copy the
+  function out of the WORKING TREE (or `git diff` it first) - the working tree is the behaviour under
+  test, not the last commit.
+- A revert of an extraction must restore the working tree's version, not HEAD's.
+
+RESOLVED the same day: with the oracle copied from the WORKING TREE, the SAME model is
+**48 of 48 cases pixel-identical** (`buildKeys`/`buildChildKeys`/`paintKeys` in
+`ctrl/time/time_BodyModel.{h,cpp}`, `Renderer::drawKeys`/`drawChildKeys` gone,
+`renderKeys` delegating). The model needed no change at all - only the baseline was wrong.
+`timeline_visuals` passes (it covers the proportional fill, the focused fill and the ring) and the
+suite is 51 pass / 0 fail.
+
+The key pass is therefore: bands/seams/labels (lane pass) + keys (markers, holder diamonds, slimmed
+diamonds, folder summaries, focused ring, proportional alpha) - all modelled in ctrl and drawn by one
+QPainter adapter. Left: the range markers, the marquee, the Canvas host and the body comparison.
+
+### The whole body is modelled; its Canvas port is SHORT and the gate says so (2026-10-22)
+
+Modelled in `ctrl::time::` and drawn by the shipped QPainter renderers, each verified against an
+oracle copied from the WORKING TREE:
+
+| pass | equivalence |
+|---|---|
+| lanes: fills, separators, lane labels, seam hairlines | 48 / 48 |
+| keys: markers, holder/slim diamonds, folder summaries, focused ring, proportional alpha | 48 / 48 |
+| frame-range guides + marquee | 78 / 78 |
+
+`renderRangeMarkers`/`renderSelectionRange` are adapters over `buildRangeMarkers`/`buildMarquee` +
+`paintGuides`, and the dead `Renderer::renderHandle` (its only caller is commented out) is DELETED
+with its declaration.
+
+**The Canvas Painter body** is `src/gui/TimeBodyCanvas.{h,cpp}` (lines, keys, guides) hosted behind
+`AE_CANVAS_PAINTER`, and `tests/time_body_canvas.cpp` is its parity gate: one set of models painted by
+both paths, with the regions Canvas2D cannot reproduce (boxed text, dashed strokes, `DotLine` pitch,
+and the 1px antialiased marker outlines/rings) counted separately.
+
+WHERE IT STANDS: **the gate PASSES - `cases=2 failures=0`, GEOMETRY 0 in both themes.** Every
+remaining difference is confined to the three ink paths Canvas2D cannot reproduce (below); the lane
+fills, the seam rows, the guide COLUMNS, the marker fills and their positions all match. Three real
+findings came out of closing it:
+- **`fill()`/`stroke()` do NOT reset the current path** - without `beginPath()` before each marker,
+  every shape was appended to the previous one's and re-inked with the next style (1923 px of
+  "differences" that were really one missing call);
+- Canvas2D has no dashed strokes: `DotLine` separators are drawn as 1px marks at Qt's 1-on/2-off
+  pitch, and the marquee's `DashLine` edge as 4-on/4-off - both counted as expected ink-path
+  differences rather than geometry.
+
+- **Canvas2D cannot fill ONE device column.** A span of `[x, x+1)` inks three columns
+  (`x-1..x+1`) and `[x+0.5, x+1.5)` two, and `setAntialias(0)` does not change it (it governs
+  STROKE fringes, not rect edges) - measured three ways. The frame-range guides are therefore two
+  columns wide in the canvas against one in the raster, and the gate counts those columns as an
+  expected ink-path difference. The half-pixel span is the narrower of the two options and is what
+  the renderer uses.
+
+The 402 px that remained before that classification were entirely this: the guide's columns, nothing
+else.
+
+**Where the 268 px actually are (drilled one level further).** The differing band is x 463..465, and
+in this fixture the SECOND range marker's column is `24 + 1.1 * 400 = 464` - so the guide column is
+the suspect, not the keys (the marker fills matched). The colours at those pixels are near-white in
+the raster (`#f2eef9`) against a slightly darker canvas (`#e9e0f7`), i.e. an ALPHA/coverage
+difference on one column, not a position difference. Next: print `f.markers` and the two images'
+columns 462..466 side by side for one state - the same technique that found the missing
+`beginPath()`. Do NOT guess again; the model is right and the ink path is one column off in coverage.
+
+**Body Canvas parity: green.** `tests/time_body_canvas.cpp` reports `cases=2 failures=0` on Qt 6.12
+(`AE_CANVAS_PAINTER`), with the differences split into geometry (0) and the three ink paths Canvas2D
+cannot reproduce - boxed text, dashed strokes (`DotLine`/`DashLine`), and the 1px column above. The
+default Fedora 6.11.2 tree registers none of it: suite **51 pass / 0 fail**, `frame_ruler_canvas` and
+`time_body_canvas` both skipped as not-configured.
+
+## The body is a SCENE now, and the host swap is one class (2026-10-22)
+
+`ctrl::TimeLineEditor::bodyScene(camera, theme, cullRect)` returns `ctrl::time::BodyScene` - the
+lanes, the frame-range guides, every key pass in draw order, and the marquee - with no QPainter and
+no document access. `render()` is `paintBodyScene(painter, bodyScene(...))`, and
+`gui::timeBodyCanvas::paint*Canvas` paints the SAME value for the Canvas host. So the timeline's
+surface is now a host: swapping it is one class, not a rewrite.
+
+Two defects the cutover exposed, both fixed:
+
+- **The scene must carry the CALLER's theme.** `bodyScene()` first built a default
+  `theme::TimeLine` for the four lane inks, which repainted every lane in the wrong colours
+  (`timeline_visuals` failed at its lane-ink fraction). The theme is now a parameter.
+- **A paint function owns its antialiasing hint.** `paintKeys` inherited whatever the previous
+  pass left: after the guides' hairlines the focused key's ring was drawn faceted and its coverage
+  profile read 0 where the test expects >0.3. `paintKeys` sets `Antialiasing` itself, as the old
+  `renderKeys` did once for the whole pass.
+
+Gates: `timeline_visuals` passes (the body's pixel contract), suite **51 pass / 0 fail**. The
+Canvas gates still pass unchanged, because the models are the same ones they already compared.
+
+WHAT REMAINS for the dock: `TimeLineEditorWidget` derives from `QWidget` and paints in
+`paintEvent`; hosting Canvas Painter means deriving from `QCanvasPainterWidget` under
+`AE_CANVAS_PAINTER` and painting `bodyScene()` through `paint*Canvas` in `paint()` instead. Its
+children (`TimeCursor`, `TimeRuler`) and its input/hit-testing are unaffected - `QRhiWidget` is a
+QWidget - but the swap changes the class's construction and composes through a texture, so it needs
+a live run (Xvfb screenshots) to be called done. Qt 6.12 is installed durably at
+`~/Qt/6.12.0/gcc_64` (aqt; `-O ~/Qt -m qtcanvaspainter qtmultimedia qt5compat`), and both Canvas
+gates were re-run from it: 9/9 and 2/2.
+
+### The dock host is SWAPPED: the timeline surface is a QCanvasPainterWidget (2026-10-22)
+
+`gui::TimeLineEditorWidget` derives from `QCanvasPainterWidget` when `AE_CANVAS_PAINTER` is on
+(`#else` keeps `QWidget` + `paintEvent`, byte-for-byte the old path) and paints
+`ctrl::TimeLineEditor::bodyScene()` through `gui::timeBodyCanvas` in `paint()`. Its children
+(`TimeRuler`, `TimeCursor`), its input, its hit-testing and its keyboard are untouched - a
+`QRhiWidget` is a QWidget - and the only two additions are the host's clear colour, set in the
+constructor and re-read in `updateTheme()` (the Canvas host clears its texture each frame; a QWidget
+host shows the QSS floor instead).
+
+Wiring: `src/gui/CMakeLists.txt` adds `FrameRulerCanvas.{h,cpp}` and `TimeBodyCanvas.{h,cpp}` to the
+app, links `Qt6::CanvasPainter` and defines `AE_CANVAS_PAINTER=1`, all inside `if(AE_CANVAS_PAINTER)`.
+
+VERIFIED (Qt 6.12.0, Xvfb, `~/Qt/6.12.0/gcc_64`):
+- the app builds and runs (`Release`, one warning-free link), no RHI/warning in its log;
+- the SAME project (`~/Downloads/test.anie`, which has no visible keys) rendered by the 6.11.2
+  raster build and the 6.12 Canvas build gives **identical dock pixels**: 344 distinct colours and
+  the same 432 accent pixels in the timeline band. That proves the host composites, colours and lays
+  out identically; the KEY/LANE ink parity is what `time_body_canvas` (GEOMETRY 0) and
+  `frame_ruler_canvas` (0 non-text px) already compare against the raster path directly.
+- NOT verified: a project with visible keys or a live GPU (Xvfb is llvmpipe), and the drag
+  gestures inside the surface (marquee, key drags) - the ink is proven, the interaction is the same
+  code as before but has not been driven on this host.
+- default 6.11.2 tree: **51 pass / 0 fail**, both Canvas targets skipped as not-configured.
+
+## A GPU-backed headless display exists, and it changes the Canvas verdict (2026-10-22)
+
+**`scripts/gui/gpu_headless.sh -- <command>`** runs a command on an Xwayland whose GL is the real
+GPU: `cage` + wlroots' headless backend (`WLR_BACKENDS=headless WLR_RENDERER=gles2`) composites via
+EGL on the device and hands it through, so the client sees `Accelerated: yes, AMD Radeon R9 380
+(radeonsi)`. Nothing appears on the developer's desktop. Xvfb cannot do this at all - its GLX is
+llvmpipe by construction, it has no DRM node. Weston's headless backend is also llvmpipe (measured),
+so wlroots is the one that works. Limits: cage is a KIOSK (one presented client, so the command must
+BE that client - a wrapper shell cannot become the window), no WM, and keyboard focus is the client's.
+
+**WHAT THAT IMMEDIATELY EXPOSED.** Both Canvas Painter parity gates PASS under Xvfb/llvmpipe and FAIL
+on radeonsi:
+
+| gate | llvmpipe | radeonsi |
+|---|---|---|
+| `frame_ruler_canvas` | 9/9 (0 non-text px) | **5/9** - 4 failures |
+| `time_body_canvas` | 2/2 (GEOMETRY 0) | **1/2** |
+
+The ruler's failures are precisely the states with an ACTIVE PLAY WINDOW (`window` 1168 px,
+`timecode` 586, `light` 1172, `window-merged` 4) and none of the window-less ones (all 0); the body's
+is the state with the marquee. Both are ALPHA-BLENDED fills (`windowBand`, the marquee's 24-alpha
+wash). So the earlier "parity" verdict was a SOFTWARE-RENDERER verdict: opaque ink matches on both
+drivers, exactly-alpha ink does not.
+
+STATUS: the Canvas host is NOT shippable. Next: compare one washed pixel's composited value on both
+drivers (`grabFramebuffer` on each, same model) to see whether it is premultiplication, the fill's
+coverage rounding, or the DPR - the ruler gate already isolates it to the window's band.
+
+**GPU gates now PASS, and the earlier failure was 1 LSB of blend.** The ruler's four failing states
+were all play-window ones, and every differing pixel was `#3e3e3e` (raster) against `#3d3d3d` (GPU):
+a one-unit rounding difference in a TRANSLUCENT fill. Both gates now count a <=1-per-channel
+difference inside translucent ink as `blendLSB` (reported, not hidden) and stay exact for opaque ink:
+`frame_ruler_canvas` 9/9 with 0 non-text (975..1337 blendLSB in the window states),
+`time_body_canvas` 2/2, on **radeonsi** and unchanged on llvmpipe.
+
+**Real project data on the Canvas host, with keys.** `~/Downloads/AE ForTesting/AnimeEffects/
+I_think_its_cursed_honestly.anie` (892 KB) needs its tree expanded (click the branch indicator at
+`(rowX-12, rowY+rowH/2)` from `ae extents "<top node>" "table cell"`) before any key row exists:
+- Canvas host (6.12, Xvfb): 74 px of the Move/Scale-X hue, 515 distinct colours in the dock;
+- raster host (6.11.2, Xvfb): 90 px of the same hue, 564 distinct colours.
+So keys DO render on the Canvas host, but the two hosts' ink does not match pixel-for-pixel on this
+project (16 hue px, ~49 colours). NOT YET ATTRIBUTED - candidates: the selection/focus state differs
+between the two runs (a focused key's 1px ring is the ~16px scale), or the 1px-column limitation on a
+key's edge. Next: pin the state (select the same row, no focus) and diff the two captures pixel by
+pixel, as the ruler gate does; do not call this parity until that number is 0.
+
+**The 90-vs-74 is NOT run-to-run noise (measured).** Same binary, same click, two runs each:
+raster 90, 90 rose px / 564, 564 colours; Canvas 74, 74 / 515, 515. So the Canvas host really does
+ink less on that project. The difference sits in ONE full-width row (a lane band/seam boundary, ~684
+px) plus ~15 px per key row (marker edges) - located by row histogram, not yet attributed to a
+primitive. Do not call real-project parity until it is 0. The next tool is a HEADLESS harness that
+loads the .anie, flattens the tree into rows, and renders the same scene both ways (no app, no run
+state), which is the only way to pin this without the two-run confound that this measurement just
+ruled out.
+
+**ATTRIBUTED: the 90-vs-74 is two ink-path differences, not one defect.** Diffing the two stable
+captures row by row (`rast-1.png` vs `canv-2.png`, both repeats of a single run each):
+
+- **row 429, 683 px in two runs (275..300, 302..958): raster `#262626`, canvas `#272727`** - a ONE
+  LSB difference across a whole row, i.e. the translucent ink that spans a lane: the selected lane's
+  accent tint (`trackSelectColor`, accentBright at 0.06). The same blend rounding already classified
+  as `blendLSB` in the gates; the app capture has no tolerance, so it counts.
+- **rows 435..443, ~13-32 px per row at x 297..305 and 589..605: `raster=(51,45,46)` vs
+  `canvas=(70,69,69)`** - the KEY MARKER'S 1px OUTLINE. On the Canvas host the rim is drawn with an
+  antialiased fringe that spills onto the neighbouring pixels, so the outline eats into the fill: that
+  is where the 16 missing HUE pixels went (line 74 vs 90), not a missing key.
+
+So: geometry and positions match; a translucent tint rounds 1 LSB differently on the GPU path, and the
+marker rim is one pixel wider in coverage. Both are INK-PATH properties (the same family as the 1px
+column and the dashed strokes). Neither is a functional difference, and both are measurable with the
+tolerance the gates already carry; the app-level comparison simply needs the same rule.
+
+### The lane labels vanished on the Canvas host, and both gates were blind to it (2026-10-22)
+
+`paintLinesCanvas` nested the whole label block inside `if (lane.separators.isEmpty()) continue;`.
+A lane with ONE valid key type has no separator - so such a lane drew its fill and its keys and its
+name never. Measured on `I_think_its_cursed_honestly.anie`, whose three lanes are each one type
+(`head`=Move, `line`=Scale, `circle`=Opa): the Canvas host lost "Move", the first lane.
+
+WHY NOTHING CAUGHT IT, and this is the part worth keeping: both Canvas gates classify a pixel inside
+a published label/number box as "expected" (two text engines cannot agree per pixel), so **a missing
+label is an expected difference too**. `time_body_canvas` was green with a lane's name absent. The
+fixture could not have caught it either - its single lane HAS separators (21.5, 43.0), i.e. the
+opposite of the shape the bug needs.
+
+The two fixes, both structural:
+- the label draw is outside the separator branch, with the reason in place;
+- each gate now checks PARITY OF INK PER LABEL: for every label the model publishes it counts
+  non-background pixels inside that box in BOTH images and fails when one engine has ink and the
+  other does not (or when the counts differ by more than 2x). The rule is deliberately between the
+  TWO RENDERINGS, not "the model says draw it": the ruler legitimately blanks a number under the
+  playhead's pill, and a box can fall outside the image, so both-zero is a pass. The body fixture
+  gained the missing shape - a second lane with one type, no separators, and a label.
+Discriminating, measured: with the bug restored by hand the body gate reports
+`label Opa ... canvas=100 px MISSING/DIFFERS`, `failures=2`; with the fix, `raster=265 canvas=274`
+and `failures=0`. Ruler: 9/9 with its ten numbers asserted; body: 2/2, on **radeonsi and llvmpipe**.
+The app then shows `Move`, `Scale`, `Opa` on the Canvas host (`/tmp/canvas-fixed.png`).
+
+Lesson, in the file's own idiom: a gate that excuses a region from comparison must still assert that
+the region is OCCUPIED on both sides, or the excuse becomes the hole.
+
+## The graph editor's ink is a VOCABULARY now, not a pile of ImGui calls (2026-10-22)
+
+The timeline's migration (models in ctrl, one QPainter adapter, one Canvas Painter adapter) does not
+transfer to the graph panel: its 835-line `drawPanel` made every shape AND ink decision inside ImGui
+draw calls, so re-hosting it meant either two permanent copies of that function or keeping ImGui for
+ever. What it needed was one decision site and swappable rasterisers.
+
+**`src/gui/Ink.h`** is that vocabulary: `fillRect` (optional radius), `strokeRect`, `line`, `stroke`
+(polyline + half width), `circleFill`/`circleStroke`, `text` (box + HAlign + VAlign + colour + halo +
+right gap), `pushClip`/`popClip`, `setLineAntialias`, plus `ink::Pointer {pos, pressPos, leftDown}`.
+It deliberately carries NO ImGui type, and `gui/InkImGui.{h,cpp}` is the shipped backend over
+`ImDrawList` - the text rules (`drawLabel`'s whole-pixel snapping, the ink-top row, the 16-pass halo),
+`measureText`, `inkTopInset` and `toImU32` MOVED there verbatim.
+
+Three contract decisions, each one paid for by a defect during the port:
+
+- **A `QRectF(x,y,w,h)` names the same pixels as `QRect(x,y,w,h)`.** QRect's `right()` is x+w-1 and
+  QRectF's is x+w, so a backend that adds 1 to a QRectF's `right()` widens every converted rect by a
+  column: MEASURED as the play window's pills reading 533 fill pixels against 522.
+- **A stroke's ink is the COLOUR'S ALPHA.** The coverage pass takes the ink as a vec3 plus a scalar
+  strength; baking the strength into the RGB's alpha and passing 1.0 draws every dimmed curve at full
+  opacity (MEASURED: the gate's curve samples read the token itself, distance 122, against 55 for the
+  dimmed blend). `panelStrokeSink` hands `aColour.alphaF()` over as the strength instead, which is also
+  what Qt and Canvas Painter mean by a colour with alpha.
+- **The POINTER belongs to the HOST.** `drawPanel` no longer reads `ImGui::GetIO()`; `runPanelFrame`
+  (the ImGui host) fills `ink::Pointer` from the IO it owns, and a headless gate states any hover it
+  wants. A backend reads no pointer at all.
+
+**The coverage pass stays with the ImGui backend.** It exists because ImGui's antialiased polyline is
+not area-exact, its GL objects are owned by `GraphPanelFrame.cpp`, so the backend asks for it through
+`gui::panelStrokeSink` (`InkImGui::StrokeSink`) and falls back to `AddPolyline` at the same width. The
+Qt and Canvas backends have no such dependency.
+
+**Verified, and how.** `tests/graph_panel_pixels` drives the real backend into its own framebuffer and
+prints 192 `MEASURED` lines (every pixel assertion the panel has). Diffing its output between the
+pre-Ink build and the refactored one: **all 192 identical**, except the stroke-cost timings and the
+fringe measurement below - i.e. the refactor is pixel-neutral on every claim the gate makes. Three
+consecutive runs: 192 lines, no failure, identical apart from timings.
+
+**One measurement had to be re-aimed, and it is a real finding.** The gate used to prove the stem
+belongs in the coverage pass by comparing `AddLine` (0.68..0.76px off the requested segment) with the
+pass (0.01px). With the vocabulary in place BOTH halves draw through `Ink::stroke`, so the comparison
+collapsed to 0.01 against 0.01 and the gate said so ("the stem measurement does not separate the two
+strokes"). The fringe half now issues ImGui's own `AddLine` directly, which is where that error lives;
+the number is 0.68..0.76px again, and the assertion discriminates. The lesson for the next port: a gate
+that measures a rasteriser through the NEW abstraction stops measuring the rasteriser.
+
+### The graph panel's two portable backends exist, and the gate MEASURES their gap (2026-10-22)
+
+`gui::ink::Ink` now has three implementations: `InkImGui` (shipped), `InkQPainter` (Qt's
+rasteriser, the default tree) and `InkCanvas` (QCanvasPainter, the 6.12 host; compiled only behind
+`AE_CANVAS_PAINTER`). The comparison runs INSIDE `tests/graph_panel_pixels` (behind
+`if(AE_CANVAS_PAINTER)`), not as a separate target: a standalone target needed `GraphPanelFrame.cpp`
+plus the whole editor and dragged `core::Project`/`ctrl::TimeLineEditor` in, whose GUI dependencies
+the app links but a test cannot - the pixel gate already carries the fixtures, the ink decisions and
+the ImGui reference, so the second and third backends are compared where they are.
+
+Its rules, each stated where it is applied in the file:
+- geometry and fills EXACT;
+- a **1-LSB** per-channel difference is `blendLSB` (translucent ink's last bit);
+- a pixel within **1.6px of a model POLYLINE** (a curve or a handle stem) is `strokeDiff`, because two
+  engines antialias a 2px stroke with different kernels - the polyline itself is still the model's, so
+  the geometry is checked, only the fringe is forgiven;
+- text is compared for **PRESENCE per published label box**, both-empty allowed (the ruler's pill
+  suppression) and one-sided ink a FAILURE.
+
+FIRST MEASUREMENT, then the two rules that closed it. `ink` model, 400x320:
+`textDiff=0 strokeDiff=943 blendLSB=1019 GEOMETRY=352` - and the 352 were ONE lead, which the
+frame dump (AE_BACKEND_DUMP=<prefix> writes both PNGs) named exactly: the flat curve is a 2px
+stroke at rows 39..40 in BOTH, but Canvas also inks rows 38 and 41 at +3, and its stroke BODY is
+131,70,79 against Qt's 134,72,81. So two ink-path facts, both measured:
+- a 2px stroke on a half-pixel phase covers THREE rows (1.5px each side), and Canvas's AA spills
+  one row further - hence the ink-path tolerance is **2.5px**, not 1.6;
+- a 1px CIRCLE (a marker's edge, its selection ring, a handle's dot) is the same class: Qt centres
+  its pen on the path and Canvas's AA spreads a column either side - so a disc of
+  `radius + ring + 2.5` around every published marker centre is ink-path territory too.
+With both, **GEOMETRY = 0 on both models on BOTH drivers**: llvmpipe `strokeDiff=1295/284,
+blendLSB=1019/10`; radeonsi `strokeDiff=1537/283, blendLSB=612/10`, gate ends OK. The classification
+is honest in the direction that matters: everything the model PLACES must match exactly, and what is
+forgiven is only the fringe around a stroke or a 1px ring, with its size stated.
+
+### One frame COMPOSITION for two hosts, and what the host swap still needs (2026-10-22)
+
+`gui::composePanelFrame(editor, visible, viewport, state, measuredFont, hostStyle)` returns
+`PanelFrame { model, focus, palette, drawn }` and publishes the host's `PanelFrameState`. It is the
+model half of a frame with no rasteriser in it at all, and `runPanelFrame` is now three lines over it
+(the ImGui draw list, the ImGui pointer, `InkImGui`). A QCanvasPainter or QPainter host composes the
+SAME value and paints it with its own backend, so two hosts cannot disagree about what the panel
+says. Verified: the pixel gate's 192 measurements are unchanged and `graph_panel_pixels` ends OK on
+both drivers; the default tree still builds the app.
+
+WHAT THE HOST SWAP STILL NEEDS, so the next step is not re-derived: `gui::GraphPanelWidget` must
+derive from `QCanvasPainterWidget` behind `AE_CANVAS_PAINTER` (the pattern `TimeLineEditorWidget`
+already uses) and paint `composePanelFrame(...)` through `InkCanvas` in `paint()`. Three things make
+that more than a class swap:
+1. **ImGui's GL calls cannot run there.** `QCanvasPainterWidget` is a `QRhiWidget`, not a
+   `QOpenGLWidget`: `runPanelFrame`/`ImGui_ImplOpenGL3_*`/`stroke::init` are the ImGui host's and
+   must be compiled out of that branch entirely;
+2. **the input path is ImGui's.** The widget feeds `gui::ImGuiInputBridge` (ImGuiIO) for IME and the
+   `keyboardCaptured` rule, while the panel's own gestures already go straight to
+   `ctrl::GraphEditor::ownsCursor/updateCursor/updateWheel`. With ImGui gone from this host the
+   bridge goes too (its only consumer was ImGui's own text fields, and the panel's menus are Qt), and
+   the keyboard rule becomes "the editor owns it";
+3. **the pointer is already the host's** (`ink::Pointer` from the widget's own tracked position), so
+   the hover path needs no change - that was done deliberately in the vocabulary.
+
+### The panel's host is swapped: the docked page is a QCanvasPainterWidget on 6.12 (2026-10-22)
+
+`gui::GraphPanelWidget` now derives from `gui::PanelHostBase`, which is `QCanvasPainterWidget` when
+`AE_CANVAS_PAINTER` is on and `QOpenGLWidget` otherwise - the same shape `TimeLineEditorWidget` uses.
+The ImGui host (`initializeGL`, `paintGL`, `runPanelFrame`, the input bridge, `releasePanelContext`)
+is compiled only in the `#else` branch; the Canvas branch is one `paint(QCanvasPainter*)` that fills
+the floor, calls `ctrl::GraphEditor::syncFrameWindowFor(this->size())`, composes the frame with
+`gui::composePanelFrame` and inks it with `gui::InkCanvas`. Every explicit base-class call in the .cpp
+says `PanelHostBase::`, so the two branches cannot drift. `publishPanelAccessibility` now takes a
+`QWidget&` (its rasteriser was never part of its job).
+
+TWO MEASURED DEFECTS the cutover paid for, both app-visible and both fixed:
+- **the page painted BLACK under a `#262626` dock.** First `setFillColor` was never called (the
+  RHI widget's default clear), then the floor's `fillRect` inherited whatever fill style was current
+  - Canvas's default. The floor now sets its own style per frame; the fill colour is also set at
+  construction and in `onThemeUpdated`.
+- the ImGui host's pointer facts (`mPointer`) were not enough for `ink::Pointer`: the press position
+  and the button state are now tracked in `mousePressEvent`/`mouseReleaseEvent` for BOTH hosts.
+
+VERIFIED IN THE APP (Xvfb, `I_think_its_cursed_honestly.anie`, Graph tab by name through AT-SPI):
+the Canvas host draws the dock floor, the frame ruler (0..150), the value column (1/0.5/0), the
+playhead pill at 0, the empty state and the scroll bar - `/tmp/graph-canvas3.png`. Against the ImGui
+host on the same state (`/tmp/graph-imgui.png`) the panel page differs in **2382 of 178160 px
+(1.34%)**, with the dominant colours identical to 0.2% (floor 38,38,38; 82,82,82 at 3591 vs 3584;
+64,64,64 at 1661 vs 1645): that is text rasterisation plus the 1px ink paths, not structure.
+
+NOT VERIFIED on the Canvas host: hover, the key/channel menus and the drag gestures. The input path
+is shared code (the editor's own `ownsCursor`/`updateCursor`/`updateWheel`), and the ImGui-only bridge
+is simply absent (`mBridge` null, every `if (mBridge)` a no-op), so nothing routes differently by
+construction - but "by construction" is not a measurement, and this tree has already shipped one
+invisible label through that reasoning. NEXT: drive hover, a key right-click and a marquee drag on the
+Canvas host and assert on the pixels, exactly as `probe_graph_ink.sh` does for the ImGui host.
+
+### The APP runs under cage after all, and grim captures it (2026-10-22)
+
+The earlier note ("the app does not map under cage: black capture") is WRONG and corrected here. The
+app maps as cage's presented client and `grim` (installed for this) captures the composited output:
+
+```bash
+sudo dnf install grim
+scripts/gui/gpu_headless.sh -- /tmp/cage_app.sh <bin> <out-prefix>
+# inside: app >> log & sleep 22; xdotool clicks; grim out.png
+```
+
+MEASURED: 1280x720 output, `OpenGL renderer: AMD Radeon R9 380 Series (radeonsi, tonga, ACO)`, app
+log errors 0. Two kiosk caveats, both measured: **keys do not arrive** (no WM, so the X window has no
+input focus - `xdotool key Right` did nothing; only pointer events work), and **a Qt popup window is
+placed at 0,0** (a menu with no WM to place it), which is a kiosk artifact and not the panel.
+The tree's expander toggles at x 10..22 on the row's own y; two clicks there collapse it again.
+
+### The host divergence, CLASSIFIED - 0 unexplained (2026-10-22)
+
+Counting differing pixels says nothing on its own, so every differing pixel of the panel page is
+classified by CAUSE, with the rule printed in the montage:
+- `text_row` - inside the ruler's number row (glyph rasteriser);
+- `shift_le2px` - one side floor, the other ink, AND the other image holds the same colour within 2px
+  (the same mark, placed a pixel differently);
+- `coverage` - both sides ink of the same chroma, different coverage (antialiasing);
+- `UNEXPLAINED` - everything else: a difference with no counterpart, i.e. a real defect.
+
+Both hosts on **radeonsi**, same project, same layer, same frame (`/tmp/ig-1-base.png` vs
+`/tmp/cv-1-base.png`, panel page 675x255): **4284 px differ = 654 text_row + 637 shift_le2px + 2993
+coverage + 0 UNEXPLAINED**. The causes, and what each one IS:
+1. **Text metrics**: Dear ImGui bakes integral advances (`PixelSnapH`) and its own line height; Qt uses
+   fractional advances and `QFontMetricsF::height()`. Consequences, both visible: the value labels sit
+   1..2 rows differently, and a right-aligned run shifts ~2px. FIXED for the ruler's row: the portable
+   backends now put VAlign::Top's ink on the model's row through the run's own INK BOX
+   (`tightBoundingRect().top()`) instead of the ascent - MEASURED before that: glyph rows 412..420
+   against ImGui's 410..417, i.e. two rows low, and after: identical.
+2. **Rounded corners**: a radius-2 pill's corner covers one row fewer under Canvas2D than under ImGui's
+   `AddRectFilled` (measured at the bar pill's top row: 952..955 vs 953..954).
+3. **Antialiasing**: every curve edge - the same 2px stroke, two kernels (the model-level gate's
+   `strokeDiff`, tolerance 2.5px).
+No mark is missing, none is in the wrong place by more than 2px, and nothing differs in hue.
+
+### Hover, menus and drags on the Canvas host: DRIVEN, on the GPU (2026-10-22)
+
+All three, on the docked Canvas page under cage (`/tmp/cv-*.png`), with the app log at 0 errors:
+- **hover on a key** changes 744 px in the plot (the marker brightens and its chip appears - the Xvfb
+  captures show the `Scale Y` chip at the curve's end);
+- **right-click** opens the panel's menu ("Paste key" disabled, "Fit graph") - 0 px inside the panel
+  because a Qt popup is its own window; it appears at 0,0 with no WM (kiosk artifact);
+- **marquee drag** changes 4027 px while the button is down and the release takes all 4027 away
+  (transient state cleared, the class this tree has been bitten by);
+- the earlier "hover 0 px" was a probe that parked the pointer on empty floor - not a defect.
+
+### Where the graph migration stands, and what is left (2026-10-22, closing note)
+
+DONE and verified: one ink vocabulary (`gui/Ink.h`), three backends (`InkImGui`, `InkQPainter`,
+`InkCanvas`), one decision site (`drawPanel`, no ImGui type in it), one frame COMPOSITION
+(`composePanelFrame`) that both hosts use, the dock's page deriving from `QCanvasPainterWidget` on
+6.12 (`PanelHostBase`), and the parity gates: `graph_panel_pixels` (ImGui, 192 measurements, OK on
+radeonsi and llvmpipe) plus its backend section (QPainter vs Canvas, GEOMETRY 0 on both drivers, two
+models). The app was driven on the GPU under cage: hover, right-click menu and marquee all work on the
+Canvas host, and the ImGui host still draws the same page on the 6.11 tree (suite 51/0, screenshots
+`/tmp/imgui-host-check.png` and `/tmp/gx-graph.png`).
+
+STILL OPEN, and none of it is scaffolding:
+1. **Dear ImGui is still a dependency**, used only by the 6.11 tree's host and by
+   `ImGuiInputBridge`. Dropping it means re-pointing INPUT: the widget's events must feed
+   `ctrl::GraphEditor` directly (mouse/wheel/keys/IME) instead of ImGui's IO, and the
+   `keyboardCaptured` rule goes with the bridge. The ink side is ready (the backend reads no input).
+2. **A fractional DEVICE PIXEL RATIO** is still untested for the portable backends: the canvas gate
+   runs at scale 1, and the text-origin snapping is in LOGICAL space (the same residual recorded for
+   the timeline's ImGui text).
+3. `probe_graph_ink.sh` still targets the ImGui host only; the Canvas host's drag/hover assertions
+   exist as measurements in this file (`/tmp/cv-*.png`), not yet as a probe with pass/fail counts.
+
+### Edge cases, and per-MARK evidence instead of a pixel count (2026-10-23)
+
+**The backend matrix.** `graph_panel_pixels` now paints SEVEN states through both portable backends,
+one measured line each, on both drivers: `empty` (the model's empty state, no curves),
+`silent-curve`, `crowded-8` (eight channels, chips de-collided, curves crossing), `marker-states`
+(selected / sibling / proportional on one row), `handle-kinds` (stored + ghost on a focused
+channel), `chrome-stress` (play window + pills, playhead parked over the VALUE column, marquee, both
+bars) and `tiny` (a 120x90 panel whose value column barely fits). Result: **GEOMETRY 0 in all seven
+on llvmpipe AND radeonsi**, `backend_matrix states=7 failures=0`, and every state asserts label ink
+on both sides (`crowded-8` checks **8** chip labels).
+
+Two real gaps the matrix found, both fixed rather than excused:
+- `chrome-stress` reported **800 px** - the marquee's **rounded border**, exactly its perimeter.
+  Canvas2D's arc rasterises one column further out than Qt's (measured: `#9a80e5` where Qt inks
+  `#8671c3`, at the same corner). The class is now `inShapeBorder`: a pixel within 2.5px of ANY
+  published rounded shape's OUTLINE (marquee, playhead pill, play-window pills, both bar thumbs,
+  every chip) is ink-path - the outline is still the model's, only its arc fringe is forgiven.
+- the last 7 px were the same corner at radius 6, which is why that band is 2.5px and not 1.6.
+
+**Per-mark evidence in the app, on the GPU.** `AE_PANEL_MODEL_DUMP=<path>` makes
+`composePanelFrame` write the frame's own geometry as JSON (panel, plot, every curve's sampled
+points, every key centre, every label rect and text, the playhead, the thumbs). Both hosts on
+radeonsi publish **identical geometry** (plot `[75,26,599,218]`, 2 curves, 1 key each, 3 value
+labels), and measuring each capture AGAINST that geometry gives, for both hosts:
+
+| measure | ImGui host | Canvas host |
+|---|---|---|
+| page origin from the playhead column + curve alignment (score 0.994) | x=274, y=463 | x=274, y=463 |
+| stroke offset vs the model, 104 sample columns | mean +0.45, max 1.50 px | mean +0.45, max 1.50 px |
+| key dot A offset / ink | (-0.28, +0.50) / 50 px | (-0.28, +0.50) / 50 px |
+| key dot B offset / ink | (-0.26, +0.50) / 46 px | (-0.28, +0.50) / 50 px |
+
+The +0.45px stroke offset is SHARED, i.e. it is the model-to-pixel relation of a 2px stroke, not a
+host difference. What genuinely differs is text (glyph rasteriser) and the corner arcs - not any
+mark's position.

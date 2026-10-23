@@ -59,7 +59,18 @@ pass=0; fail=0; skipped=""; failed=""
 for n in $targets; do
   [ -n "${SKIP[$n]:-}" ] && continue
   bin=build/tests/$CFG/$n
-  if [ ! -x "$bin" ]; then echo "MISSING $n"; fail=$((fail+1)); failed="$failed $n(missing)"; continue; fi
+  if [ ! -x "$bin" ]; then
+    # A target registered inside an option's `if()` block exists only in the
+    # configurations that option allows (frame_ruler_canvas needs Qt >= 6.12 and
+    # AE_CANVAS_PAINTER). "Not built here" is a SKIP, not a failure - but a target the
+    # build system KNOWS and did not produce is still a failure.
+    if [ -f "build/build-$CFG.ninja" ] && ! grep -q "^build $n: phony" "build/build-$CFG.ninja"; then
+      echo "SKIP $n (not configured in this build: an option excludes it)"
+      skipped="$skipped $n(not-configured)"
+      continue
+    fi
+    echo "MISSING $n"; fail=$((fail+1)); failed="$failed $n(missing)"; continue
+  fi
   # export_encoder_fallback renders too (a real export writes pixels), and takes
   # the same optional project argument or its own fixture default. The same GL
   # requirement puts psd_layer_identity here: it drives core::ImageKey's image

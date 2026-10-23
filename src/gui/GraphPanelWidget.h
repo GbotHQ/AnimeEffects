@@ -1,7 +1,17 @@
 #ifndef GUI_GRAPHPANELWIDGET_H
 #define GUI_GRAPHPANELWIDGET_H
 
+// THE HOST IS SWAPPABLE, EXACTLY AS THE TIMELINE'S SURFACE IS (TimeLineEditorWidget): the panel's
+// ink is backend-neutral (gui/Ink.h), so this class is a DRAWING SURFACE plus the panel's input
+// arbitration, and which base class it has decides who rasterises. Canvas Painter needs a
+// QCanvasPainterWidget (an RHI widget); a Qt without the module keeps the Dear ImGui host, which
+// needs a QOpenGLWidget.
+#if defined(AE_CANVAS_PAINTER) && AE_CANVAS_PAINTER
+#include <QtCanvasPainter/QCanvasPainterWidget>
+class QCanvasPainter;
+#else
 #include <QtOpenGLWidgets/QOpenGLWidget>
+#endif
 #include <QPoint>
 #include <QScopedPointer>
 #include <QVariant>
@@ -102,7 +112,15 @@ class MainDisplayWidget;
 // application's GUIResources and its parent, is handed the live ctrl::Driver when a
 // project is set, and is asked to refresh() when the document changed. That is the
 // whole of what the dock calls.
-class GraphPanelWidget: public QOpenGLWidget {
+// ONE NAME FOR THE BASE, so every explicit base-class call in the .cpp (`PanelHostBase::hideEvent`,
+// `::keyPressEvent`, ...) is spelled once and cannot drift per host.
+#if defined(AE_CANVAS_PAINTER) && AE_CANVAS_PAINTER
+using PanelHostBase = QCanvasPainterWidget;
+#else
+using PanelHostBase = QOpenGLWidget;
+#endif
+
+class GraphPanelWidget: public PanelHostBase {
     Q_OBJECT
 public:
     GraphPanelWidget(GUIResources& aResources, QWidget* aParent = nullptr);
@@ -154,8 +172,15 @@ public:
     QVector<PanelChannelRow> channelRows() const;
 
 protected:
+#if defined(AE_CANVAS_PAINTER) && AE_CANVAS_PAINTER
+    // THE CANVAS PAINT: compose the frame (gui::composePanelFrame) and ink it with
+    // gui/InkCanvas. No ImGui anywhere in this path - an RHI widget has no raw GL context for
+    // the ImGui backend, and this host needs none: the panel's ink is a vocabulary now.
+    void paint(QCanvasPainter* aPainter) override;
+#else
     void initializeGL() override;
     void paintGL() override;
+#endif
     void hideEvent(QHideEvent* aEvent) override;
     // The pointer left the page: the hover it was drawing goes with it (see
     // updateHoverRepaint).
@@ -277,7 +302,13 @@ private:
     // when it is asked to and Dear ImGui trickles its input queue across frames, so its
     // position can lag the pointer (see runPanelFrame - the measured readout defect).
     // Starts outside the panel so no hover is painted before the pointer arrives.
+    // The pointer as the INK wants it (gui/Ink.h's ink::Pointer): the position, the press's own
+    // position and whether the left button is still down. A backend never reads a pointer, so
+    // the host is the only place these three facts exist - and they are tracked for EVERY host,
+    // because the ImGui one feeds them from the same events.
     QPoint mPointer;
+    QPoint mPressPointer;
+    bool mLeftDown = false;
 
     // THE HOVERED TARGET, in the panel's pointer-driven marks: the key under the
     // pointer, the tangent handle nearest it, and the scroll-bar lane the pointer is

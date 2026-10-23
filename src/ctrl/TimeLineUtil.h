@@ -37,12 +37,54 @@ namespace TimeLineUtil {
         virtual void redo();
 
     private:
-        bool contains(const core::TimeLine::MapType& aMap, int aIndex);
+        // One key type of one timeline this move touches. A selected key is
+        // moved explicitly; every other PROPORTIONAL key of the same map is
+        // projected from its stored weight.
+        struct SelectedProportional {
+            core::TimeKey* key = nullptr;
+            core::TimeKey::Proportional baseState;
+            core::TimeKey::Proportional nextState;
+            bool nextStateValid = false;
+        };
+        struct ProjectedKey {
+            core::TimeKey* key = nullptr;
+            int baseFrame = 0;    // frame at construction, restored by undo
+            int currentFrame = 0; // where the map has it now
+            int nextFrame = 0;    // last projected destination, replayed by redo
+            core::TimeKey::Proportional baseState;
+            core::TimeKey::Proportional nextState;
+        };
+        struct Context {
+            core::TimeLine* line = nullptr;
+            core::TimeKeyType type = core::TimeKeyType_Move;
+            QVector<int> targetIndices; // into mSortedTargets
+            QVector<SelectedProportional> selected;
+            QVector<ProjectedKey> projected;
+        };
+        struct Pending {
+            QVector<int> selectedFrames;
+            QVector<QVector<int>> projectedFrames;
+            QVector<QVector<core::TimeKey::Proportional>> projectedStates;
+        };
+
+        void applyForward(const Pending& aPending);
+        int finalFrameOf(const Context& aContext, const core::TimeKey& aKey, const QVector<int>& aFinalFrames) const;
 
         QVector<core::TimeLineEvent::Target> mSortedTargets;
+        QVector<Context> mContexts;
         int mCurrent;
         int mMove;
     };
+
+    //-------------------------------------------------------------------------------------------------
+    // Turns each targeted key into a proportional key (aEnabled) or back into an
+    // absolute one, as ONE undo step announcing
+    // core::TimeLineEvent::Type_ChangeKeyProportional for the targeted keys.
+    // Enabling derives each key's weights from its CURRENT position against its
+    // CURRENT absolute neighbours; disabling drops them entirely. Duplicate
+    // targets collapse, and default/missing keys are ignored - nothing valid
+    // targeted means no command.
+    void setProportionalKeys(core::Project& aProject, const core::TimeLineEvent& aTargets, bool aEnabled);
 
     //-------------------------------------------------------------------------------------------------
     // The VALUE half of the graph's 2-axis key move: rewrites ONE numeric

@@ -2,6 +2,10 @@
 #define GUI_TIMELINEINNERWIDGET_H
 
 #include <QWidget>
+#if defined(AE_CANVAS_PAINTER) && AE_CANVAS_PAINTER
+#include <QCanvasPainterWidget>
+class QCanvasPainter;
+#endif
 #include <QAction>
 #include <QTreeWidgetItem>
 #include <functional>
@@ -47,7 +51,18 @@ private:
     int mLineX;
 };
 
-class TimeLineEditorWidget: public QWidget {
+// THE TIMELINE'S SURFACE IS A HOST. It paints ctrl::time::BodyScene - the lanes, the frame
+// range's guides, the key passes and the marquee - with QPainter by default, and with Canvas
+// Painter (QRhi, GPU) when AE_CANVAS_PAINTER is on. Nothing else changes: the children
+// (TimeRuler, TimeCursor), the input and the hit-testing are untouched, because a
+// QCanvasPainterWidget is a QWidget.
+class TimeLineEditorWidget:
+#if defined(AE_CANVAS_PAINTER) && AE_CANVAS_PAINTER
+    public QCanvasPainterWidget
+#else
+    public QWidget
+#endif
+{
     Q_OBJECT
 
     // Properties introduced to let users theme the custom rendered parts of the widget.
@@ -261,7 +276,14 @@ private:
     void updateTimeCursorPos();
     void updateSize();
     void updateLinesRecursive(QTreeWidgetItem* aItem);
+#if defined(AE_CANVAS_PAINTER) && AE_CANVAS_PAINTER
+protected:
+    void paint(QCanvasPainter* aPainter) override;
+
+private:
+#else
     virtual void paintEvent(QPaintEvent* aEvent);
+#endif
     virtual void resizeEvent(QResizeEvent* aEvent);
     // THE SURFACE'S KEYBOARD. The surface takes focus on a click (it is the widget
     // the pointer lands on, and it has Qt::ClickFocus: a click here hands it the

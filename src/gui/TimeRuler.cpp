@@ -6,30 +6,12 @@
 #include "core/TimeFormat.h"
 #include "ctrl/TimeLineEditor.h"
 #include "gui/TimeLineEditorWidget.h"
-#include "gui/PillInk.h"
+#include "gui/FrameRuler.h"
 #include "gui/theme/Colors.h"
 
 namespace gui {
 
 namespace {
-
-// Tick appearance, keyed by the Scaler's classification. The Scaler decides
-// *which* frames get a tick and *how prominent* it is (TickLevel); this file
-// owns how a tier is drawn — its length and its alpha. Keeping both in one
-// table means a tier's length and alpha change here, and the painter never
-// has to recover a tier from a pixel length.
-using TickLevel = ctrl::time::Scaler::TickLevel;
-constexpr int kTickLength = 5; // all tiers share one tick length
-
-qreal tickAlpha(TickLevel aLevel) {
-    switch (aLevel) {
-        case TickLevel::Major:        return 0.85;
-        case TickLevel::Intermediate: return 0.60;
-        case TickLevel::Minor:        return 0.20;
-        case TickLevel::None:         return 0.0;
-    }
-    return 0.0;
-}
 
 } // namespace
 
@@ -103,379 +85,67 @@ void TimeRuler::renderHeader(QPainter& aPainter, const QRect& aCameraRect, const
         aPainter.drawRect(rect);
     }
 
-    // draw header info
-    {
-        const QBrush kBrush(mTimelineTheme.headerContentColor());
-        const int numberWidth = 6;
-        const QPoint lt(margin, aCameraRect.top());
-        // the ticks end one row above the ruler hairline (drawn at
-        // top + height) so they never draw over it
-        const QPoint rb = lt + QPoint(scale.maxPixelWidth(), aHeight - 1);
-        const core::TimeFormat timeFormat(aVisibleRange, aFps);
+    // THE STRIP IS THE SHARED RULER'S MODEL (gui/FrameRuler.h): this widget supplies
+    // the geometry, the font's measurements and the editor's facts; the model decides
+    // which frames are ticked, which are numbered, how a number yields to the
+    // project's own first/last frame, and how the temporary window's band, stems and
+    // pills are laid out. The graph panel builds the same model and paints it with
+    // ImGui, so the two rulers cannot disagree about any of that.
+    const QRect band(aCameraRect.left(), aCameraRect.top(), aCameraRect.width(), aHeight);
+    const QFontMetrics metrics(aPainter.font());
+    const core::TimeFormat format(mEditor->frameRange(), aFps);
 
-        // The playhead's own column. gui::TimeCursor draws the frame-number
-        // pill at the playhead's x, and that pill carries the only number in
-        // its column: a ruler number whose centre falls inside the pill's
-        // half-width is not drawn at all (design s1/s3 — the mock's ruler
-        // suppresses its numbers the same way). The span is the PILL's own
-        // geometry, derived exactly as the cursor derives it (the frame text
-        // measured with the font both are painted in, plus kPillPadding either
-        // side), so the yield matches the pill rather than a guessed number.
-        const int playFrame = mEditor->currentFrame().get();
-        const QString playText = timeFormat.frameToString(playFrame, mEditor->timeFormatType());
-        const int pillHalfWidth =
-            (QFontMetrics(aPainter.font()).horizontalAdvance(playText) + 2 * ctrl::TimeLineEditor::kPillPadding) / 2;
-        const int playheadX = lt.x() + scale.pixelWidth(playFrame);
-        const auto underPill = [&](int aNumberCenter) {
-            return qAbs(aNumberCenter - playheadX) < pillHalfWidth;
-        };
+    frameRuler::Inputs in;
+    in.band = band;
+    in.visible = band;
+    in.labelTop = band.top() + frameRuler::kNumberTop;
+    in.frameRange = mEditor->frameRange();
+    in.hasFrameRange = true;
+    in.activeRange = mEditor->playbackRange();
+    in.visibleFrames = aVisibleRange;
+    in.fps = aFps;
+    in.formatType = mEditor->timeFormatType();
 
-        // The project's last frame owns the end of the ruler: when it is
-        // in view but not on a scale multiple, it reads as a major tick
-        // with its number, and any numbered neighbor whose label would
-        // overlap it yields instead. The label occupies its slot in view
-        // regardless of grid alignment — the loop draws it when the frame
-        // falls on a scale multiple, the end block below otherwise — so
-        // the yield rule must not depend on which path drew it (alignment
-        // changes with zoom; gating on it made neighbor labels pop in and
-        // out with the view).
-        const int lastFrame = scale.frameEnd();
-        const auto lastAttr = scale.attribute(lastFrame);
-        const bool endLabelInView = lastFrame >= aVisibleRange.min() && lastFrame <= aVisibleRange.max();
-        // The boundary label owns the range edge whenever the frame isn't
-        // already drawn as a full numbered major tick by the loop.
-        const bool lastLabelActive = endLabelInView && lastAttr.level != TickLevel::Major;
-        const int lastLabelCenter = lt.x() + lastAttr.pos;
-        const QString lastNumber = timeFormat.frameToString(lastFrame, mEditor->timeFormatType());
-        const int lastNumberWidth = numberWidth * lastNumber.size();
+    // The playhead's own column: gui::TimeCursor draws the frame-number pill there, and
+    // that pill carries the only number in its column, so the model suppresses any
+    // number whose centre falls inside the pill's half-width. The span is the PILL's own
+    // geometry, measured with the font both are painted in.
+    const int playFrame = mEditor->currentFrame().get();
+    in.hasPlayhead = true;
+    in.playheadFrame = playFrame;
+    in.playheadText = format.frameToString(playFrame, in.formatType);
+    in.playheadTextWidth = metrics.horizontalAdvance(in.playheadText);
 
-        // The project's first frame mirrors the end label: off the scale
-        // grid it reads as a major tick with its number, and numbered
-        // neighbors yield to it the same way.
-        const int firstFrame = mEditor->frameRange().min();
-        const auto firstAttr = scale.attribute(firstFrame);
-        const bool firstLabelInView = firstFrame >= aVisibleRange.min() && firstFrame <= aVisibleRange.max();
-        const bool firstLabelActive = firstLabelInView && firstAttr.level != TickLevel::Major;
-        const int firstLabelCenter = lt.x() + firstAttr.pos;
-        const QString firstNumber = timeFormat.frameToString(firstFrame, mEditor->timeFormatType());
-        const int firstNumberWidth = numberWidth * firstNumber.size();
-
-        // Number labels never come closer than this gap: without a
-        // margin, adjacent numbers (a boundary label and a nearby major)
-        // read as one.
-        constexpr int kNumberMargin = 8;
-
-        // A narrow range's two boundary labels can come within the margin
-        // (or overlap); collapse them into one "first–last" label
-        // centered between the ticks, mirroring how the playback
-        // window's pills collapse. The collision test ignores grid
-        // alignment: an on-major boundary is drawn by the tick loop
-        // itself, but it still occupies the same slot and must collapse
-        // the same way — a range [1, 5] reads "1–5", not a lone "5"
-        // eating the start. The ticks still mark both edges.
-        const bool boundaryLabelsCollide = firstLabelInView && endLabelInView &&
-            (firstLabelCenter + (firstNumberWidth >> 1) + kNumberMargin >=
-             lastLabelCenter - (lastNumberWidth >> 1));
-        const QString mergedNumber = boundaryLabelsCollide
-            ? firstNumber + QString::fromUtf8("\u2013") + lastNumber
-            : QString();
-        const int mergedNumberWidth = numberWidth * mergedNumber.size();
-        const int mergedLabelCenter = (firstLabelCenter + lastLabelCenter) / 2;
-
-        const util::Range& activeRange = mEditor->playbackRange();
-
-        // Strided by the finest level the ladder draws (see Scaler::tickStride): at a deep
-        // zoom-out the visible span is viewport / spacing frames, and visiting every one of them
-        // would cost millions of iterations for a handful of ticks. The start is aligned so the
-        // absolute multiples the levels are tested against are all visited.
-        const double spacing = scale.pixelsPerFrame();
-        const int stride = scale.tickStride(spacing);
-        int i = aVisibleRange.min();
-        if (const int rem = i % stride)
-            i += rem > 0 ? stride - rem : -rem;
-        for (; i <= aVisibleRange.max(); i += stride) {
-            // The boundary labels own their frames: when the range's
-            // first/last frame label is active (the frame is off-major)
-            // or the labels are merged, the loop's tier tick would stack
-            // under the boundary's major tick — skip the frame entirely,
-            // the boundary block below draws both the tick and the
-            // number. On-major boundaries keep their loop tick only when
-            // they are not merged.
-            if ((i == firstFrame && (boundaryLabelsCollide || firstLabelActive)) ||
-                (i == lastFrame && (boundaryLabelsCollide || lastLabelActive)))
-                continue;
-
-            auto attr = scale.attribute(i);
-            if (attr.level == TickLevel::None) continue;
-
-            QPoint pos(lt.x() + attr.pos, rb.y());
-
-            // Fade the tick tiers so minor blips recede and even the
-            // numbered major ticks stay a step below full brightness.
-            qreal alpha = tickAlpha(attr.level);
-            // Ticks outside the active playback range recede further:
-            // the tier structure stays, but a fixed extra dim makes the
-            // range edge read at a glance. The active range is the
-            // project frame range — or the temporary playback window
-            // while it overrides — and the boundary frames themselves
-            // keep full tier brightness.
-            const bool inRange = activeRange.contains(i);
-            if (!inRange)
-                alpha *= 0.4;
-            QColor tickColor = kBrush.color();
-            tickColor.setAlphaF(alpha);
-            aPainter.setPen(QPen(tickColor, 1));
-            aPainter.drawLine(pos, pos + QPoint(0, -kTickLength));
-
-            if (attr.showNumber) {
-                QString number = timeFormat.frameToString(i, mEditor->timeFormatType());
-                const int width = static_cast<int>(numberWidth * number.size());
-                // A neighbor label never comes within kNumberMargin of
-                // the range's boundary labels: without a gap, adjacent
-                // numbers read as one. The boundary label wins the space
-                // it occupies — its own span when the labels are apart,
-                // the collapsed "first–last" span when the range is too
-                // narrow for both. The test is symmetric — a label yields
-                // only when it actually enters the reserved span, on
-                // either side (a one-sided test would swallow every label
-                // past the end). Each boundary reserves its slot whenever
-                // it is in view: the first label's test must not ride on
-                // the end label's visibility (the end can be scrolled out
-                // while the start is still on screen).
-                const bool yieldToLast = endLabelInView && i != lastFrame;
-                const bool yieldToFirst = firstLabelInView && i != firstFrame;
-                if (yieldToLast || yieldToFirst) {
-                    const int left = pos.x() - (width >> 1);
-                    const int right = pos.x() + (width >> 1);
-                    const int m = kNumberMargin;
-                    if (boundaryLabelsCollide) {
-                        const int center = mergedLabelCenter;
-                        const int half = (mergedNumberWidth >> 1) + m;
-                        if (left < center + half && right > center - half)
-                            continue;
-                    } else {
-                        if (yieldToLast &&
-                            left < lastLabelCenter + (lastNumberWidth >> 1) + m &&
-                            right > lastLabelCenter - (lastNumberWidth >> 1) - m)
-                            continue;
-                        if (yieldToFirst &&
-                            left < firstLabelCenter + (firstNumberWidth >> 1) + m &&
-                            right > firstLabelCenter - (firstNumberWidth >> 1) - m)
-                            continue;
-                    }
-                }
-                // The pill owns its column: the number yields to it (the tick
-                // above it stays — only the number is the pill's).
-                if (underPill(pos.x()))
-                    continue;
-                QColor numberColor = kBrush.color();
-                if (!inRange)
-                    numberColor.setAlphaF(0.4);
-                aPainter.setPen(QPen(numberColor, 1));
-                const int left = pos.x() - (width >> 1);
-                const int top = lt.y() + ctrl::TimeLineEditor::kNumberTop;
-                const QRect rect(
-                    QPoint(left, top), QPoint(left + width + 1, top + ctrl::TimeLineEditor::kNumberHeight)
-                );
-                aPainter.drawText(rect, number);
-            }
-        }
-
-        // The boundary ticks mark both edges at major prominence; each
-        // recedes with the out-of-range content while a playback window
-        // overrides the range. A merged label owns both edges, so both
-        // ticks draw even when one boundary frame is on-major (its loop
-        // tick was skipped).
-        const bool drawFirstTick = boundaryLabelsCollide || firstLabelActive;
-        const bool drawLastTick = boundaryLabelsCollide || lastLabelActive;
-        if (drawFirstTick) {
-            const qreal firstAlpha = activeRange.contains(firstFrame) ? 1.0 : 0.4;
-            const QPoint pos(lt.x() + firstAttr.pos, rb.y());
-
-            QColor tickColor = kBrush.color();
-            tickColor.setAlphaF(tickAlpha(TickLevel::Major) * firstAlpha);
-            aPainter.setPen(QPen(tickColor, 1));
-            aPainter.drawLine(pos, pos + QPoint(0, -kTickLength));
-        }
-        if (drawLastTick) {
-            const qreal lastAlpha = activeRange.contains(lastFrame) ? 1.0 : 0.4;
-            const QPoint pos(lt.x() + lastAttr.pos, rb.y());
-
-            QColor tickColor = kBrush.color();
-            tickColor.setAlphaF(tickAlpha(TickLevel::Major) * lastAlpha);
-            aPainter.setPen(QPen(tickColor, 1));
-            aPainter.drawLine(pos, pos + QPoint(0, -kTickLength));
-        }
-
-        // The loop skips the boundary frames while their labels are
-        // active, so the numbers are always ours here (the yield rule
-        // keeps numbered neighbors away from the reserved slots). A
-        // range too narrow for both labels collapses into one
-        // "first–last" label, like the playback window's pills.
-        if (boundaryLabelsCollide) {
-            const bool inRange = activeRange.contains(firstFrame) && activeRange.contains(lastFrame);
-            const qreal mergedAlpha = inRange ? 1.0 : 0.4;
-
-            // The pill owns its column (its own number is the one to read).
-            if (!underPill(mergedLabelCenter)) {
-                QColor numberColor = kBrush.color();
-                numberColor.setAlphaF(mergedAlpha);
-                aPainter.setPen(QPen(numberColor, 1));
-                const int left = mergedLabelCenter - (mergedNumberWidth >> 1);
-                const int top = lt.y() + ctrl::TimeLineEditor::kNumberTop;
-                const QRect rect(
-                    QPoint(left, top), QPoint(left + mergedNumberWidth + 1, top + ctrl::TimeLineEditor::kNumberHeight)
-                );
-                aPainter.drawText(rect, mergedNumber);
-            }
-        } else {
-            if (firstLabelActive && !underPill(firstLabelCenter)) {
-                const qreal firstAlpha = activeRange.contains(firstFrame) ? 1.0 : 0.4;
-
-                QColor numberColor = kBrush.color();
-                numberColor.setAlphaF(firstAlpha);
-                aPainter.setPen(QPen(numberColor, 1));
-                const int left = firstLabelCenter - (firstNumberWidth >> 1);
-                const int top = lt.y() + ctrl::TimeLineEditor::kNumberTop;
-                const QRect rect(
-                    QPoint(left, top), QPoint(left + firstNumberWidth + 1, top + ctrl::TimeLineEditor::kNumberHeight)
-                );
-                aPainter.drawText(rect, firstNumber);
-            }
-            if (lastLabelActive && !underPill(lastLabelCenter)) {
-                const qreal lastAlpha = activeRange.contains(lastFrame) ? 1.0 : 0.4;
-
-                QColor numberColor = kBrush.color();
-                numberColor.setAlphaF(lastAlpha);
-                aPainter.setPen(QPen(numberColor, 1));
-                const int left = lastLabelCenter - (lastNumberWidth >> 1);
-                const int top = lt.y() + ctrl::TimeLineEditor::kNumberTop;
-                const QRect rect(
-                    QPoint(left, top), QPoint(left + lastNumberWidth + 1, top + ctrl::TimeLineEditor::kNumberHeight)
-                );
-                aPainter.drawText(rect, lastNumber);
-            }
-        }
-
-        // The playback window overlays the ruler content: the translucent
-        // band washes ticks and numbers, the bracket stems and label
-        // pills sit on top (the playhead widget paints above all of it).
-        renderPlayWindow(aPainter, aCameraRect, aVisibleRange, aFps);
-    }
-}
-
-void TimeRuler::renderPlayWindow(QPainter& aPainter, const QRect& aCameraRect, const util::Range& aVisibleRange, int aFps) {
     const ctrl::TimeLineEditor::PlayWindow& window = mEditor->playWindow();
-    if (!window.active())
-        return;
-
-    // Window edges on the content axis: the start frame's tick and the end
-    // frame's tick. A frame is a point at its tick (its key and number sit
-    // at `margin + spacing*frame`), so the inclusive window [start, end]
-    // spans the tick-points start..end: the band is [tick(start), tick(end)]
-    // and the end bracket lands on frame `end`'s tick — the same convention
-    // as the range marker at the last frame's tick (pixelWidth(max)).
-    const ctrl::time::Scaler& scale = mEditor->timeScale();
-    const int margin = ctrl::TimeLineEditor::kTimeLineMargin;
-    const int x0 = margin + scale.attribute(window.start).pos;
-    const int x1 = margin + scale.attribute(window.end).pos;
-    if (x1 <= x0)
-        return;
-
-    const int top = aCameraRect.top();
-    const theme::Colors& c = theme::Colors::current();
-    // The bracket stems and label pills wrap the number-text row, so their top
-    // edge rides one pixel below the number text's top (kNumberTop + 1) and
-    // moves with it. The translucent band stays at the header top.
-    const int pillTop = top + ctrl::TimeLineEditor::kNumberTop + 1;
-
-    // The translucent band washes the ruler content inside the window,
-    // clipped to the visible ruler (off-view pills are clipped by the
-    // widget itself).
-    const int c0 = qMax(x0, aCameraRect.left());
-    const int c1 = qMin(x1 + 1, aCameraRect.right() + 1);
-    if (c1 > c0) {
-        aPainter.setPen(Qt::NoPen);
-        aPainter.setBrush(c.windowBand);
-        aPainter.drawRect(QRect(c0, top, c1 - c0, ctrl::TimeLineEditor::kHeaderHeight));
+    if (window.active()) {
+        in.windowStart = window.start;
+        in.windowEnd = window.end;
+        in.windowStartText = format.frameToString(window.start, in.formatType);
+        in.windowEndText = format.frameToString(window.end, in.formatType);
+        in.windowStartTextWidth = metrics.horizontalAdvance(in.windowStartText);
+        in.windowEndTextWidth = metrics.horizontalAdvance(in.windowEndText);
+        in.windowMergedTextWidth = metrics.horizontalAdvance(
+            in.windowStartText + QString::fromUtf8("\u2013") + in.windowEndText
+        );
     }
 
-    // Bracket stems: 2px, running from the label pill's top to the ruler
-    // bottom, drawn UNDER the pills: a merged pill wider than the window
-    // would otherwise cover the stems' upper portion — the stems remain
-    // visible below it, and the label glyphs are never cut.
-    aPainter.setRenderHint(QPainter::Antialiasing, false);
-    aPainter.setPen(Qt::NoPen);
-    aPainter.setBrush(c.windowEdge);
-    const int stemBottom = top + ctrl::TimeLineEditor::kHeaderHeight;
-    aPainter.drawRect(QRect(x0, pillTop, 2, stemBottom - pillTop));
-    aPainter.drawRect(QRect(x1 - 1, pillTop, 2, stemBottom - pillTop));
+    // The timeline's own axis: the ladder's integer positions, offset by the margin that
+    // the keys, the playhead and the range markers share.
+    frameRuler::Axis axis;
+    axis.pixelOfFrame = [&scale, margin](int aFrame) { return double(margin + scale.pixelWidth(aFrame)); };
+    axis.frameOfPixel = [&scale, margin](int aPixel) { return scale.frame(aPixel - margin); };
+    axis.attributeAt = [&scale](int aFrame, double) { return scale.attribute(aFrame); };
+    axis.pixelsPerFrame = scale.pixelsPerFrame();
+    axis.tickStride = scale.tickStride(scale.pixelsPerFrame());
 
-    // Label pills: the frame number is the bracket's horizontal arm,
-    // attached to the stem's inner face. Rounded on the outer corners,
-    // square on the face against the stem, so the joint stays
-    // continuous. Two pills that would collide collapse into one
-    // centered "a–b" label.
-    const core::TimeFormat timeFormat(aVisibleRange, aFps);
-    const QString sL = timeFormat.frameToString(window.start, mEditor->timeFormatType());
-    const QString sR = timeFormat.frameToString(window.end, mEditor->timeFormatType());
-    const QFontMetrics fm(aPainter.font());
-    const int wL = fm.horizontalAdvance(sL) + ctrl::TimeLineEditor::kPillPadding * 2;
-    const int wR = fm.horizontalAdvance(sR) + ctrl::TimeLineEditor::kPillPadding * 2;
-    const QRect pillL(x0 + 2, pillTop, wL, ctrl::TimeLineEditor::kNumberHeight);
-    const QRect pillR(x1 - 1 - wR, pillTop, wR, ctrl::TimeLineEditor::kNumberHeight);
+    const theme::Colors& colors = theme::Colors::current();
+    frameRuler::PaintInk ink;
+    ink.content = mTimelineTheme.headerContentColor();
+    ink.windowBand = colors.windowBand;
+    ink.windowEdge = colors.windowEdge;
+    ink.windowText = colors.windowText;
 
-    // The pills, through the ONE rounded-pill rule the playhead uses too
-    // (gui::paintPill owns the radius and the antialiasing hint).
-    aPainter.setPen(Qt::NoPen);
-    aPainter.setBrush(c.windowEdge);
-    if (pillL.right() >= pillR.left()) {
-        const QString merged = sL + QString::fromUtf8("\u2013") + sR;
-        const int w = fm.horizontalAdvance(merged) + ctrl::TimeLineEditor::kPillPadding * 2;
-        const QRect pill((x0 + x1) / 2 - w / 2, pillTop, w, ctrl::TimeLineEditor::kNumberHeight);
-        paintPill(aPainter, pill, c.windowEdge, ctrl::TimeLineEditor::kPillRadius);
-        drawPillText(aPainter, pill, merged, c.windowText, top);
-    } else {
-        paintPill(aPainter, pillL, c.windowEdge, ctrl::TimeLineEditor::kPillRadius);
-        paintPill(aPainter, pillR, c.windowEdge, ctrl::TimeLineEditor::kPillRadius);
-        // Square the inner corners (the faces against the stems) by
-        // overdrawing the rounded slivers with the pill color, so the
-        // bracket joint reads continuous. The cut pixels run to
-        // right()/bottom() inclusive, so the right/bottom overdraws
-        // start at -r+1 (right()-r / bottom()-r would miss the last
-        // pixel row/column and leave the corner visibly rounded).
-        const int r = ctrl::TimeLineEditor::kPillRadius;
-        aPainter.fillRect(QRect(pillL.x(), pillL.y(), r, r), c.windowEdge);
-        aPainter.fillRect(QRect(pillL.x(), pillL.bottom() - r + 1, r, r), c.windowEdge);
-        aPainter.fillRect(QRect(pillR.right() - r + 1, pillR.y(), r, r), c.windowEdge);
-        aPainter.fillRect(QRect(pillR.right() - r + 1, pillR.bottom() - r + 1, r, r), c.windowEdge);
-        drawPillText(aPainter, pillL, sL, c.windowText, top);
-        drawPillText(aPainter, pillR, sR, c.windowText, top);
-    }
-
-    aPainter.setRenderHint(QPainter::Antialiasing, false);
-}
-
-void TimeRuler::drawPillText(QPainter& aPainter, const QRect& aPill, const QString& aText, const QColor& aColor, int aTop) {
-    const QFontMetrics fm(aPainter.font());
-    const int textWidth = fm.horizontalAdvance(aText);
-    // THE PILL'S TEXT COLUMN, stated as the integer it is. The pill is measured as
-    // `textWidth + 2 * kPillPadding`, so centring it with integer halves
-    // (`aPill.center().x() - textWidth / 2`) reduces to exactly `aPill.left() +
-    // kPillPadding` for an even AND an odd text width:
-    //   even: left + (textWidth + 10)/2 - textWidth/2 = left + 5;
-    //   odd:  left + (textWidth + 9)/2  - (textWidth-1)/2 = left + 5.
-    // Writing it that way makes the panel's pill (which has no QFontMetrics at draw
-    // time) able to reproduce the SAME column: GraphPanelFrame's window arms place
-    // their number at `pill.left() + kPillPadding` with LEFT alignment.
-    const int textLeft = aPill.left() + ctrl::TimeLineEditor::kPillPadding;
-    // The exact same rect convention as the ruler numbers (top-aligned
-    // at kNumberTop), so the pill text lines up with them precisely.
-    const QRect numberRect(
-        textLeft, aTop + ctrl::TimeLineEditor::kNumberTop, textWidth, ctrl::TimeLineEditor::kNumberHeight
-    );
-    aPainter.setPen(QPen(aColor, 1));
-    aPainter.drawText(numberRect, aText);
+    frameRuler::paintRuler(aPainter, frameRuler::build(in, axis), ink);
 }
 
 //-------------------------------------------------------------------------------------------------

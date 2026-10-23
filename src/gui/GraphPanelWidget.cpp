@@ -29,12 +29,20 @@
 #include "gui/MouseSetting.h"
 #include "gui/theme/Colors.h"
 #include "gui/theme/Graph.h" // the palette channelRows() builds the panel's model with
+#if defined(AE_CANVAS_PAINTER) && AE_CANVAS_PAINTER
+#include <QCanvasPainter>
+#include "gui/InkCanvas.h"
+#endif
 
 namespace gui {
 
 //-------------------------------------------------------------------------------------------------
 GraphPanelWidget::GraphPanelWidget(GUIResources& aResources, QWidget* aParent):
+#if defined(AE_CANVAS_PAINTER) && AE_CANVAS_PAINTER
+    QCanvasPainterWidget(aParent),
+#else
     QOpenGLWidget(aParent),
+#endif
     mResources(aResources),
     mThemeSlot(),
     mDriver(nullptr),
@@ -74,6 +82,11 @@ GraphPanelWidget::GraphPanelWidget(GUIResources& aResources, QWidget* aParent):
     // The floor colour and the panel's palette are read per frame from
     // theme::Colors::current(), so a theme change needs no cached state - only a frame,
     // which nothing else would ask this widget for.
+#if defined(AE_CANVAS_PAINTER) && AE_CANVAS_PAINTER
+    // The Canvas host's floor: it clears its texture with this, so it must be right before the
+    // first frame (see onThemeUpdated for why the floor lives here and not in the ink).
+    setFillColor(theme::Colors::current().base);
+#endif
     mThemeSlot = mResources.onThemeChanged.connect(this, &GraphPanelWidget::onThemeUpdated);
 }
 
@@ -93,10 +106,12 @@ void GraphPanelWidget::shutdownHost() {
     if (!mReady)
         return;
 
+#if !defined(AE_CANVAS_PAINTER) || !AE_CANVAS_PAINTER
     // The context, the backend and the atlas are NOT this host's: releasePanelContext
     // drops this host's hold and tears them down only when it was the last holder, with
     // the context made current for it while the widget is still usable.
     releasePanelContext(*this);
+#endif
     mReady = false;
 }
 
@@ -114,9 +129,19 @@ void GraphPanelWidget::setDriver(ctrl::Driver* aDriver) {
 
 void GraphPanelWidget::refresh() { this->update(); }
 
-void GraphPanelWidget::onThemeUpdated(theme::Theme&) { this->update(); }
+void GraphPanelWidget::onThemeUpdated(theme::Theme&) {
+#if defined(AE_CANVAS_PAINTER) && AE_CANVAS_PAINTER
+    // THE FLOOR OF AN RHI WIDGET IS ITS FILL COLOUR: the Canvas host clears its texture with it
+    // each frame and draws no background of its own, so a palette change has to reach it here -
+    // MEASURED: without this the page painted BLACK (the default) under a `base` floor, which read
+    // as "the panel lost its floor" in the app screenshot.
+    setFillColor(theme::Colors::current().base);
+#endif
+    this->update();
+}
 
 //-------------------------------------------------------------------------------------------------
+#if !defined(AE_CANVAS_PAINTER) || !AE_CANVAS_PAINTER
 void GraphPanelWidget::initializeGL() {
     // initializeGL runs when this page is first SHOWN (Qt initializes the widget's GL
     // resources on its first paint), and it runs again whenever the widget is given a
@@ -225,8 +250,54 @@ void GraphPanelWidget::paintGL() {
     publishAccessibility();
 }
 
+#else // AE_CANVAS_PAINTER: the Canvas host
+
+namespace {
+// The panel's pointer, as the ink wants it: the widget's own tracked position and buttons.
+gui::ink::Pointer inkPointerOf(const QPoint& aPosition, const QPoint& aPressPosition, bool aLeftDown) {
+    gui::ink::Pointer pointer;
+    pointer.pos = QPointF(aPosition);
+    pointer.pressPos = QPointF(aPressPosition);
+    pointer.leftDown = aLeftDown;
+    return pointer;
+}
+} // namespace
+
+void GraphPanelWidget::paint(QCanvasPainter* aPainter) {
+    // THE FLOOR FIRST, and always: the panel draws no background of its own (there is no fill
+    // anywhere in drawPanel), and this page's floor is the dock's opaque panel colour
+    // (theme::Colors::base), read per frame so a theme change needs no signal. THE STYLE IS SET
+    // HERE, not inherited: a first version filled the rect with whatever fill style was current,
+    // which at the top of a frame is Canvas's default - MEASURED in the app: the page painted
+    // BLACK under a #262626 dock, which reads as "the panel lost its floor".
+    aPainter->setFillStyle(theme::Colors::current().base);
+    aPainter->fillRect(QRectF(0, 0, width(), height()));
+
+    ctrl::GraphEditor* editor = graphEditor();
+    if (!editor)
+        return;
+
+    // THE EDITOR'S GEOMETRY PINNED TO THIS WIDGET (the ImGui host's own rule): the frame window
+    // is mapped in pixels computed from THIS page's width, so a mapping left by the viewport or
+    // by a previous size must not be what the panel is built from.
+    editor->syncFrameWindowFor(this->size());
+
+    const PanelFrame frame =
+        composePanelFrame(editor, true, this->size(), mFrame, this->font(), GraphPanelHost::Dock);
+    gui::ink::InkCanvas ink(*aPainter, this->font());
+    gui::drawPanel(ink, frame.model, frame.palette, frame.focus, inkPointerOf(mPointer, mPressPointer, mLeftDown));
+
+    publishAccessibility();
+}
+
+#endif // AE_CANVAS_PAINTER
+
 void GraphPanelWidget::hideEvent(QHideEvent* aEvent) {
-    QOpenGLWidget::hideEvent(aEvent);
+#if !defined(AE_CANVAS_PAINTER) || !AE_CANVAS_PAINTER
+    PanelHostBase::hideEvent(aEvent);
+#else
+    QCanvasPainterWidget::hideEvent(aEvent);
+#endif
 
     // A GESTURE LEFT OPEN GOES NO FURTHER. The tab can be switched away from with a key
     // move, a handle drag, a marquee or a pan in flight (the release usually beats the
@@ -325,6 +396,10 @@ void GraphPanelWidget::mouseMoveEvent(QMouseEvent* aEvent) {
 
 void GraphPanelWidget::mousePressEvent(QMouseEvent* aEvent) {
     mPointer = aEvent->position().toPoint();
+    if (aEvent->button() == Qt::LeftButton) {
+        mPressPointer = mPointer;
+        mLeftDown = true;
+    }
     if (mBridge)
         mBridge->handleMouseButton(*aEvent);
 
@@ -359,6 +434,8 @@ void GraphPanelWidget::mousePressEvent(QMouseEvent* aEvent) {
 
 void GraphPanelWidget::mouseReleaseEvent(QMouseEvent* aEvent) {
     mPointer = aEvent->position().toPoint();
+    if (aEvent->button() == Qt::LeftButton)
+        mLeftDown = false;
     // The release must reach ImGui even for a press the panel acted on, or ImGui would
     // keep the button latched.
     if (mBridge)
@@ -426,7 +503,7 @@ void GraphPanelWidget::tabletEvent(QTabletEvent* aEvent) {
     if (consumed)
         aEvent->accept();
     else
-        QOpenGLWidget::tabletEvent(aEvent);
+        PanelHostBase::tabletEvent(aEvent);
 }
 
 void GraphPanelWidget::keyPressEvent(QKeyEvent* aEvent) {
@@ -450,7 +527,7 @@ void GraphPanelWidget::keyPressEvent(QKeyEvent* aEvent) {
 
     // Otherwise the event is ignored, i.e. it propagates to the main window's key map,
     // which is where the application's key routing has always been.
-    QOpenGLWidget::keyPressEvent(aEvent);
+    PanelHostBase::keyPressEvent(aEvent);
 }
 
 bool GraphPanelWidget::panelKeyAction(const QKeyEvent& aEvent) {
@@ -518,7 +595,7 @@ void GraphPanelWidget::keyReleaseEvent(QKeyEvent* aEvent) {
         aEvent->accept();
         return;
     }
-    QOpenGLWidget::keyReleaseEvent(aEvent);
+    PanelHostBase::keyReleaseEvent(aEvent);
 }
 
 void GraphPanelWidget::inputMethodEvent(QInputMethodEvent* aEvent) {
@@ -528,7 +605,7 @@ void GraphPanelWidget::inputMethodEvent(QInputMethodEvent* aEvent) {
         aEvent->accept();
         return;
     }
-    QOpenGLWidget::inputMethodEvent(aEvent);
+    PanelHostBase::inputMethodEvent(aEvent);
 }
 
 QVariant GraphPanelWidget::inputMethodQuery(Qt::InputMethodQuery aQuery) const {
@@ -540,7 +617,7 @@ QVariant GraphPanelWidget::inputMethodQuery(Qt::InputMethodQuery aQuery) const {
         if (answer.isValid())
             return answer;
     }
-    return QOpenGLWidget::inputMethodQuery(aQuery);
+    return PanelHostBase::inputMethodQuery(aQuery);
 }
 
 void GraphPanelWidget::focusInEvent(QFocusEvent* aEvent) {
@@ -550,17 +627,17 @@ void GraphPanelWidget::focusInEvent(QFocusEvent* aEvent) {
     // for it while a field wants text).
     if (mBridge)
         mBridge->handleFocus(true);
-    QOpenGLWidget::focusInEvent(aEvent);
+    PanelHostBase::focusInEvent(aEvent);
 }
 
 void GraphPanelWidget::focusOutEvent(QFocusEvent* aEvent) {
     if (mBridge)
         mBridge->handleFocus(false);
-    QOpenGLWidget::focusOutEvent(aEvent);
+    PanelHostBase::focusOutEvent(aEvent);
 }
 
 bool GraphPanelWidget::event(QEvent* aEvent) {
-    const bool handled = QOpenGLWidget::event(aEvent);
+    const bool handled = PanelHostBase::event(aEvent);
 
     if (mBridge) {
         switch (aEvent->type()) {
@@ -789,7 +866,7 @@ void GraphPanelWidget::updateHoverRepaint() {
 }
 
 void GraphPanelWidget::leaveEvent(QEvent* aEvent) {
-    QOpenGLWidget::leaveEvent(aEvent);
+    PanelHostBase::leaveEvent(aEvent);
 
     // The hover is the POINTER's and the pointer is gone: the host parks it outside the
     // panel (the same "nothing hovers" point it starts at, see mPointer) and drops the

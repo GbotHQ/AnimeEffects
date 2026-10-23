@@ -61,6 +61,12 @@
 //     view transform can express, and its gutter is part of the RUNG choice.
 //     The new-project policy (fits on attach, not on a tab switch) is asserted
 //     through the same call.
+//   7 THE PROPORTIONAL KEY'S FILL IS THE SAME HUE, SOFTER. A proportional key
+//     is drawn in its channel's hue like any other key, but its fill's alpha is
+//     ctrl::time::kProportionalFillAlpha (115/255) - the token both this renderer
+//     and the graph panel's marker pass read. The absolute key beside it is the
+//     full hue, and a FOCUSED proportional key still gains the full selection
+//     ring: only the fill's opacity moves, never the shape, radius, hue or ring.
 //
 // The geometry is read off the implementation's own public mapping
 // (TimeLineEditor::timeScale(), kTimeLineMargin) rather than restated, so a
@@ -753,6 +759,101 @@ int main(int argc, char** argv) {
         );
         CHECK(hardBlends == 0);   // the control: a hard corner has no partial coverage
         CHECK(roundedBlends > 0); // the rule draws an antialiased radius
+    }
+
+    // --- 7: THE PROPORTIONAL KEY IS THE SAME HUE AT A LOWER FILL ALPHA.
+    //
+    // A proportional key is drawn in its channel hue exactly like an absolute one -
+    // same ellipse, same radius, same edge - and ONLY its fill's alpha drops to
+    // ctrl::time::kProportionalFillAlpha (115/255, 0.45). The two keys sit in one
+    // unselected lane, so the pixel under each is that key's own fill over the
+    // floor, and the expectation is built from the exported token rather than a
+    // second copy of the renderer's arithmetic. The focused pass then proves the
+    // selection ring is untouched: a proportional key that is focused keeps the
+    // full-strength ring at kSelectRingOffset, in the same raw hue.
+    {
+        // A lane of its own: the shared fixtures above are left exactly as the
+        // earlier sections read them.
+        core::TestNode nodeP;
+        cmnd::Stack stackP;
+        auto* absoluteKey = new core::MoveKey();
+        auto* proportionalKey = new core::MoveKey();
+        stackP.push(nodeP.timeLine()->createPusher(core::TimeKeyType_Move, kKeyFrameA, absoluteKey));
+        stackP.push(nodeP.timeLine()->createPusher(core::TimeKeyType_Move, kKeyFrameFocused, proportionalKey));
+        // The document's own flag: the renderer reads nothing else to decide the fill
+        // alpha. The state's bounds are inert here, and that is the point - the DRAWING
+        // of a proportional key never depends on where its bounds currently are.
+        proportionalKey->setProportional(true);
+        CHECK(proportionalKey->isProportional());
+        CHECK(!absoluteKey->isProportional());
+
+        ctrl::TimeLineEditor proportionEditor;
+        proportionEditor.setFrameRange(util::Range(0, 200));
+        proportionEditor.pushRow(&nodeP, util::Range(kRowATop, kRowABottom), false);
+
+        const ctrl::time::Scaler& proportionScale = proportionEditor.timeScale();
+        const int absoluteX = margin + proportionScale.pixelWidth(kKeyFrameA);
+        const int proportionalX = margin + proportionScale.pixelWidth(kKeyFrameFocused);
+        const int keyRowPY = kRowATop + (kRowABottom - kRowATop + 1) / 2;
+
+        // The lane is unselected, so its band is the floor: the clean dst both fills
+        // composite onto.
+        const QImage unfocused = renderTimeline(proportionEditor, theme);
+        const Rgb band = pixelAt(unfocused, kBandProbeX, keyRowPY);
+        CHECK(chebyshev(band, floor) <= kClean);
+        CHECK(absoluteX != proportionalX);
+        // ...and both keys are left of the lane label, whose ink would otherwise sit
+        // under the proportional fill's translucency.
+        CHECK(proportionalX + 9 < labelBox(kRowATop, kRowABottom).left());
+
+        const QColor hue = theme::channelColor(colors, core::TimeKeyType_Move, 0);
+        const Rgb plainHue = rgbOf(hue);
+        // THE ALPHA IS THE RENDERER'S OWN TOKEN, not a literal: this is the rule
+        // (115/255), read from the header the graph panel reads too.
+        const double proportionalAlpha = double(ctrl::time::kProportionalFillAlpha) / 255.0;
+        const Rgb proportionalFill = over(hue, proportionalAlpha, band);
+
+        // The absolute key: the full channel hue, unsoftened.
+        CHECK(chebyshev(pixelAt(unfocused, absoluteX, keyRowPY), plainHue) <= 1);
+        // The proportional key: the same hue at the lower alpha - the exact composite,
+        // and far from the absolute key's ink.
+        CHECK(chebyshev(pixelAt(unfocused, proportionalX, keyRowPY), proportionalFill) <= 2);
+        CHECK(chebyshev(pixelAt(unfocused, proportionalX, keyRowPY), plainHue) > 20);
+        // Neither carries a ring while nothing is focused.
+        CHECK(maxInkIn(unfocused, absoluteX + 5, absoluteX + 9, keyRowPY, band) <= kClean);
+        CHECK(maxInkIn(unfocused, proportionalX + 5, proportionalX + 9, keyRowPY, band) <= kClean);
+
+        // THE FOCUSED PROPORTIONAL KEY. Focus changes the fill's MIX (toward the text
+        // colour) but not the ring: the ring is the raw channel hue at
+        // kSelectRingAlpha, on the same 1px band the absolute key uses, so being
+        // proportional cannot cost the selection its mark.
+        util::LifeLink proportionFocus;
+        proportionalKey->setFocus(proportionFocus);
+        CHECK(proportionalKey->isFocused());
+        const QImage focused = renderTimeline(proportionEditor, theme);
+        // The focused fill is the same mix section 2 asserts (hue toward the text
+        // colour at kSelectFillMix), then the proportional alpha on top of it.
+        const Rgb mixedFill = towardText(plainHue, kSelectFillMix);
+        const Rgb focusedFill = over(
+            QColor(mixedFill.r, mixedFill.g, mixedFill.b), proportionalAlpha, band
+        );
+        CHECK(chebyshev(pixelAt(focused, proportionalX, keyRowPY), focusedFill) <= 2);
+        // The ring's token and offset, read exactly as section 2 reads them.
+        const double ringAlpha = double(ctrl::time::kSelectRingAlpha) / 255.0;
+        const Rgb fullRing = over(hue, ringAlpha, band);
+        const int ringInk = std::max(
+            maxInkIn(focused, proportionalX + 5, proportionalX + 9, keyRowPY, band),
+            maxInkIn(focused, proportionalX - 9, proportionalX - 5, keyRowPY, band)
+        );
+        CHECK(ringInk > 40);
+        for (const int sign : { 1, -1 }) {
+            const Rgb body = pixelAt(focused, proportionalX + sign * 6, keyRowPY);
+            const double fraction = inkFraction(body, fullRing, band);
+            CHECK(fraction > 0.3 && fraction <= 1.0);
+            CHECK(chebyshev(body, over(hue, ringAlpha * fraction, band)) <= 3);
+        }
+        // The absolute key beside it is still ringless - the focus did not spread.
+        CHECK(maxInkIn(focused, absoluteX + 5, absoluteX + 9, keyRowPY, band) <= kClean);
     }
 
     std::printf("timeline_visuals: all checks passed\n");

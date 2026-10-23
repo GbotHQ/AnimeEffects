@@ -800,15 +800,18 @@ int main(int argc, char** argv) {
             }
         }
 
-        // THE TIMELINE'S SLOT, NOT A MEASURED BOX. TimeRuler reserves
-        // kNumberCharWidth (6) per character and draws the number with Qt's default
-        // LEFT alignment from `left = tickX - (reserve >> 1)` inside that reserve
-        // (src/gui/TimeRuler.cpp:108, :231, :272-278). The panel must publish the
-        // same integer slot: same width, same left edge, so the drawing layer can
-        // anchor the run at the box's left instead of centring it on the drawing
-        // font's advance (that subtraction is the 1px left shift this test exists
-        // to prevent). The nudge inside the band is the panel's only allowed
-        // difference.
+        // THE TIMELINE'S SLOT, NOT A MEASURED BOX. The ruler reserves
+        // kNumberCharWidth (6) per character and draws the number from
+        // `left = tickX - (reserve >> 1)`. The panel must publish the same integer slot:
+        // same width, same left edge, so the drawing layer can anchor the run at the
+        // box's left instead of centring it on the drawing font's advance (that
+        // subtraction is the 1px left shift this test exists to prevent).
+        //
+        // AND THE BOX IS NEVER NUDGED: a number that leaves the band is CLIPPED by the
+        // host, not slid inward, because a shifted number would name a frame it is not
+        // centred on. That rule is the shared model's (src/gui/FrameRuler.h) and was
+        // signed off when the two rulers were unified - before it, this test allowed the
+        // panel one nudge inside the band.
         const auto measureSlots = [&](const gui::GraphPanelModel& aModel, const ctrl::graph::Scaler& aScale,
                                       const char* aWindow) {
             for (const gui::PanelLabel& label : aModel.frameLabels) {
@@ -819,9 +822,7 @@ int main(int argc, char** argv) {
                 const int reserve = numberReserve * int(label.text.size());
                 const int tickX = aScale.pixelX(core::Frame(label.frame));
                 const int unclampedLeft = tickX - (reserve >> 1);
-                const int expectedLeft = std::clamp(
-                    unclampedLeft, aModel.rulerBand.left(), aModel.rulerBand.right() - reserve + 1
-                );
+                const int expectedLeft = unclampedLeft;
                 if (label.rect.width() != reserve)
                     ++wrongBoxWidth;
                 if (label.rect.left() != expectedLeft)
@@ -3125,6 +3126,71 @@ int main(int argc, char** argv) {
         CHECK(clearedTally.wrongSelected == 0);
         CHECK(clearedTally.wrongSibling == 0);
         CHECK(flaggedCount(cleared) == 0);
+
+        // ---- THE PROPORTIONAL FLAG: published parallel to the geometry, and it IS the
+        // document's answer. The pair is the Move channel's two keys - frame 0 stays
+        // absolute, frame 20 is made proportional - so the model must report exactly
+        // one true entry and name the right frame for it. The flag is read from the KEY
+        // the model's own `keyFrames` names, through core::TimeKey::isProportional();
+        // nothing about the model's geometry may change with it (the model is read-only).
+        const int absoluteFrame = 0;
+        const int proportionalFrame = 20;
+        move1->setProportional(true);
+        CHECK(nodeA.timeLine()->timeKey(core::TimeKeyType_Move, proportionalFrame) == move1);
+
+        const gui::GraphPanelModel proportionalModel = gui::buildGraphPanelModel(editor, viewport, palette);
+        int widerProportional = 0;
+        int wrongProportional = 0;
+        for (const gui::PanelCurve& curve : proportionalModel.curves) {
+            if (curve.keyProportional.size() != curve.keys.size()
+                || curve.keyProportional.size() != curve.keyDots.size()
+                || curve.keyProportional.size() != curve.keyFrames.size()) {
+                ++widerProportional;
+            }
+            for (int i = 0; i < curve.keyFrames.size(); ++i) {
+                const core::TimeKey* key =
+                    curve.node->timeLine()->timeKey(curve.channel.type(), curve.keyFrames.at(i).get());
+                const bool expected = key && key->isProportional();
+                if (i >= curve.keyProportional.size() || curve.keyProportional.at(i) != expected)
+                    ++wrongProportional;
+            }
+        }
+        CHECK(widerProportional == 0);
+
+        const gui::PanelCurve* proportionalX = curveFor(proportionalModel, &nodeA, moveX);
+        CHECK(proportionalX != nullptr);
+        bool absolutePublished = false;
+        bool proportionalPublished = false;
+        const bool absoluteFlag =
+            proportionalX && flagOf(proportionalX->keyProportional, *proportionalX, core::Frame(absoluteFrame),
+                                    absolutePublished);
+        const bool proportionalFlag =
+            proportionalX && flagOf(proportionalX->keyProportional, *proportionalX,
+                                    core::Frame(proportionalFrame), proportionalPublished);
+        QString proportionalFlags;
+        if (proportionalX) {
+            for (const bool flag : proportionalX->keyProportional)
+                proportionalFlags += flag ? QLatin1Char('P') : QLatin1Char('.');
+        } else {
+            proportionalFlags = QStringLiteral("<missing>");
+        }
+        std::printf(
+            "[15] proportional flag: parallel_mismatches=%d flag_mismatches=%d  Move X=[%s]  abs@%d=%d"
+            " prop@%d=%d\n",
+            widerProportional, wrongProportional, qUtf8Printable(proportionalFlags), absoluteFrame,
+            int(absoluteFlag), proportionalFrame, int(proportionalFlag)
+        );
+        CHECK(absolutePublished && proportionalPublished);
+        CHECK(!absoluteFlag);      // the absolute neighbour keeps its flag off
+        CHECK(proportionalFlag);   // ...and the proportional key turns exactly its own on
+        CHECK(wrongProportional == 0);
+
+        // ...and CLEARED AGAIN: the flag follows the document rather than latching.
+        move1->setProportional(false);
+        const gui::GraphPanelModel afterClear = gui::buildGraphPanelModel(editor, viewport, palette);
+        const gui::PanelCurve* clearedX = curveFor(afterClear, &nodeA, moveX);
+        CHECK(clearedX != nullptr);
+        CHECK(clearedX && clearedX->keyProportional.count(true) == 0);
 
         // The editor is left as the blocks before this one left it: no selection, the
         // two targets, the panel's own rect in the scaler.

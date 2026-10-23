@@ -16,6 +16,10 @@
 #include "ctrl/UILogger.h"
 #include "ctrl/graph/graph_Curve.h"
 #include "ctrl/graph/graph_Scaler.h"
+// The proportional reflow one key-move gesture carries: a whole ValueReflow per
+// (line, type) group is a member of KeyMoveCommand below, so the type is needed
+// here (and it drags in nothing the panel does not already read).
+#include "ctrl/proportional/prop_Keys.h"
 // The selection the panel writes is the TIMELINE's own currency (see the
 // SELECTION note below): time::Selection is what carries the focus the
 // timeline's renderer highlights, so the panel holds a reference to the very
@@ -58,10 +62,28 @@ namespace TimeLineUtil {
 // exactly what makes replay work: each carries the values it restores, so
 // undoing this command puts every frame and every value back, as cmnd/Stable.h
 // requires of an interactive edit.
+//
+// THE THIRD HALF is the PROPORTIONAL REFLOW: the proportional keys between the
+// edited absolute ones follow the gesture too. Their frames belong to the frame
+// half's own command (which projects them), and their VALUES are what
+// ctrl::proportional::ValueReflow carries - captured once, before the first
+// value write, and re-applied on every step, so a gesture that drags a bound's
+// value drags the proportional companions by their STORED weights and one undo
+// puts their values AND weights back.
 class KeyMoveCommand: public cmnd::Stable {
 public:
     KeyMoveCommand();
     virtual ~KeyMoveCommand();
+
+    // One value the gesture edits DIRECTLY, named with the map it belongs to: the
+    // reflow's capture needs the (line, type) group a key's weights live in, and
+    // the key itself, which the reflow never projects onto (its own weight is
+    // rebased from the value the gesture writes).
+    struct ValueReflowTarget {
+        core::TimeLine* line;
+        core::TimeKeyType type;
+        core::TimeKey* key;
+    };
 
     // The FRAME half, over every target of aTargets (one per selected key, at the
     // frame it held when the gesture began).
@@ -77,8 +99,17 @@ public:
     // delta, from the aBaseValue it held when the gesture began.
     void addValue(core::TimeKey& aKey, core::TimeKeyType aType, int aComponent, float aBaseValue);
     // Rewrites every value half to aBaseValue + aValueDelta (an absolute function
-    // of the pointer, so it cannot accumulate a key's own clamp).
+    // of the pointer, so it cannot accumulate a key's own clamp), then lets every
+    // proportional key of the gesture follow the values just written.
     void modifyValues(float aValueDelta);
+
+    // THE PROPORTIONAL HALF, built ONCE per gesture: one ValueReflow per
+    // (line, type), each captured over the whole group's edited keys. MUST run
+    // before the first value write (buildValueReflows never writes), because the
+    // capture takes the keys' pre-gesture values and weights. A null line or key
+    // in aTargets is skipped; a group with no proportional key captures nothing
+    // and costs nothing.
+    void buildValueReflows(const QVector<ValueReflowTarget>& aTargets);
 
     virtual void exec();
     virtual void undo();
@@ -91,6 +122,9 @@ private:
         float base;
     };
     QVector<Value> mValues;
+    // One per (line, type) the gesture touches, in the order the first target of
+    // each group appeared.
+    QVector<proportional::ValueReflow> mReflows;
 };
 
 // ONE HANDLE DRAG'S COMMAND: the two easing params a handle drag writes - the
@@ -709,6 +743,12 @@ public:
     //     cmnd::ScopedMacro carrying ONE TimeLineUtil::Notifier. Every later move
     //     rewrites that command (modifyMove/modifyValues), so a drag cannot push
     //     one command per move;
+    //   * the PROPORTIONAL companions come with it: the same command carries one
+    //     ctrl::proportional::ValueReflow per (line, type), captured from the
+    //     members' own groups BEFORE the first value write - so a proportional key
+    //     between the edited bounds follows by the weight it stored, in every
+    //     component, and one undo restores its values and weights along with the
+    //     selection's;
     //   * WHICH VALUES MOVE. Every member is a (key, component) pair, so every
     //     member's value half is written on its own component - the pressed one and
     //     the ones Shift added alike - and a member's value is always the base it

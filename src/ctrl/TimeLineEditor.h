@@ -29,6 +29,10 @@
 class QPainter;
 
 namespace ctrl {
+namespace time {
+    struct BodyScene;
+}
+
 
 //-------------------------------------------------------------------------------------------------
 class TimeLineEditor {
@@ -123,6 +127,13 @@ public:
     void pushRow(core::ObjectNode* aNode, util::Range aWorldTB, bool aClosedFolder);
     void updateRowSelection(const core::ObjectNode* aRepresent);
     void render(QPainter& aPainter, const core::CameraInfo& aCamera, theme::TimeLine& aTheme, const QRect& aCullRect) const;
+
+    // THE BODY AS A VALUE: every pass the surface draws, in paint order, with no QPainter and no
+    // document access. The QPainter surface paints it (paintBodyScene); the Canvas Painter host
+    // paints the same scene, which is what makes the host swap a host swap.
+    ctrl::time::BodyScene bodyScene(
+        const core::CameraInfo& aCamera, theme::TimeLine& aTheme, const QRect& aCullRect
+    ) const;
 
     core::Frame currentFrame() const;
     // The temporary playback window (inactive when empty). The renderer draws

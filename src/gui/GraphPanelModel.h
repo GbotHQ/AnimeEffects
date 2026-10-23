@@ -6,6 +6,8 @@
 #include <QPointF>
 #include <QRect>
 #include <QString>
+
+#include "gui/FrameRuler.h"
 #include <QVector>
 #include "ctrl/graph/graph_Channel.h"
 #include "util/Range.h"
@@ -204,6 +206,16 @@ struct PanelCurve {
     // appended in one step.
     QVector<bool> keySelected;
     QVector<bool> keySiblingSelected;
+    // WHETHER EACH KEY IS PROPORTIONAL, same order and same length as
+    // `keys`/`keyDots`/`keyFrames`/`keySelected`: core::TimeKey::isProportional() of
+    // the key `keyFrames[i]` names. It is the key's own classification, published as
+    // the engine states it - the model does not decide what a proportional key looks
+    // like. The drawing layer does: both views lower ONLY the marker's fill opacity
+    // (ctrl::time::kProportionalFillAlpha, 0.45), leaving the shape, the radius, the
+    // hue, the edge stroke and the selection ring untouched. Appended in the same step
+    // as the geometry above, so a missing entry means "not proportional" exactly as a
+    // missing marker state means "neither state".
+    QVector<bool> keyProportional;
     QVector<PanelHandle> handles; // every segment's tangent handles, in segment order
     QColor color;            // == channels[channelRow].color; the drawing layer paints
                              // this curve's stroke, its key markers' FILL, its chip's
@@ -302,20 +314,11 @@ struct PanelPlayWindow {
 // last three are the ruler's own file-local numbers there (TimeRuler.cpp:19, :108,
 // :164); they are restated here because the model and the drawing layer both need
 // them.
-namespace frameRuler {
-constexpr int kBandHeight = 22;
-constexpr int kNumberTop = 1;
-constexpr int kNumberHeight = 14;
-constexpr int kTickLength = 5;
-constexpr int kNumberCharWidth = 6;
-constexpr int kNumberMargin = 8;
-constexpr int kPillPadding = 5;
-constexpr int kPillRadius = 3;
-// The pill rides one row below the number text's top (gui::TimeCursor's pillTop ==
-// kNumberTop + 1), and the playhead line starts under it.
-constexpr int kPillTop = kNumberTop + 1;
-constexpr int kLineTop = kPillTop + kNumberHeight;
-} // namespace frameRuler
+// THE RULER'S METRICS AND RULES live in gui/FrameRuler.h: one module for the strip above
+// the timeline's lanes and this panel's band, so the two cannot disagree about a tick, a
+// number or the temporary window's pills. gui::frameRuler is that module's namespace
+// (included at the top of this header - it declares a namespace and must not be pulled
+// in inside gui's).
 
 
 // WHICH PLACEMENT THE MODEL PUBLISHES - the dock's Graph tab's, or the viewport

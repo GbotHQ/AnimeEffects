@@ -37,6 +37,16 @@ namespace time {
     constexpr int kSelectRingAlpha = 217;      // 0.85 of the channel hue
     constexpr double kSelectRingOffset = 2.6;  // px past the marker's own radius
 
+    // THE PROPORTIONAL KEY'S FILL RULE: a key whose frame/value follow its absolute
+    // neighbours is painted in the same shape and hue as any other key, but its fill
+    // is drawn at 45% opacity (115/255) so the stored, derived position reads as a
+    // softer body. Nothing else changes - not the radius, not the hue, not the edge,
+    // and not the selection ring (which stays at kSelectRingAlpha). The graph panel's
+    // marker pass applies the same factor to its own marker fill (its
+    // kKeyProportionalFillAlpha, 0.45), so one proportional key cannot be inked two
+    // ways in the two views.
+    constexpr int kProportionalFillAlpha = 115; // 0.45 of the channel hue
+
     class Renderer {
     public:
         Renderer(QPainter& aPainter, const core::CameraInfo& aCamera, const theme::TimeLine& aTheme);
@@ -60,7 +70,6 @@ namespace time {
         // Key graphics for every row: child-key summaries on closed folders
         // and the per-lane key shapes.
         void renderKeys(const QVector<TimeLineRow>& aRows, const QRect& aCullRect);
-        void renderHandle(const QPoint& aPoint, int aRange);
         void renderSelectionRange(const QRect& aRect);
 
     private:

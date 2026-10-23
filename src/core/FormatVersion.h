@@ -37,8 +37,12 @@
 //                clamp the retired type always applied). An older file's one
 //                flag maps to both sides
 //                (Aligned/Free), and a pre-0.13 file has neither and loads Free
+//   0.15 -> 0.16 every key writes its stable id and, when proportional, its
+//                bound ids + per-axis weights (see core/TimeKey.h /
+//                core/TimeLine.cpp). Older files carry neither: the loader
+//                keeps the fresh constructor id and the absolute default
 #define AE_PROJECT_FORMAT_MAJOR_VERSION 0
-#define AE_PROJECT_FORMAT_MINOR_VERSION 15
+#define AE_PROJECT_FORMAT_MINOR_VERSION 16
 
 #define AE_PROJECT_FORMAT_OLDEST_MAJOR_VERSION 0
 #define AE_PROJECT_FORMAT_OLDEST_MINOR_VERSION 4

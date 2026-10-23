@@ -13,6 +13,7 @@
 #include "core/TimeKeyType.h"
 #include "ctrl/graph/graph_Geometry.h"
 #include "gui/GraphPanelModel.h"
+#include "gui/Ink.h"
 
 // The shared frame API's return type. Forward-declared rather than pulled in through
 // imgui.h: the header is included by targets that do not carry ImGui at all (the graph
@@ -117,9 +118,21 @@ struct PanelFocus {
 // background and no grid are drawn - the model publishes none, and the panel
 // must leave the artwork showing through (a plot area with nothing in it is
 // therefore untouched by this function).
+// THE PANEL'S INK, expressed in the backend's vocabulary (gui/Ink.h) - one implementation of
+// every SHAPE and INK decision, drawn by whichever backend the host supplies (ImGui today, Qt
+// and Canvas Painter next). The pointer is the HOST's: a backend reads no pointer, so the same
+// function paints a headless gate with any hover state and a window with the real cursor.
 void drawPanel(
-    ImDrawList& aDrawList, const GraphPanelModel& aModel, const theme::Graph& aTheme, const PanelFocus& aFocus
+    ink::Ink& aInk, const GraphPanelModel& aModel, const theme::Graph& aTheme, const PanelFocus& aFocus,
+    const ink::Pointer& aPointer
 );
+
+// THE IMGUI BACKEND'S STROKE HOOK (ink::InkImGui::StrokeSink). The per-fragment coverage pass
+// belongs to that backend - it exists because ImGui's own antialiased polyline is not
+// area-exact - and its GL objects are owned by this file, which is why the hook is declared
+// here rather than inside the backend. Answers false when the pass is not ready, and the
+// backend then strokes the same polyline with ImGui's own path.
+bool panelStrokeSink(ImDrawList& aList, const QVector<QPointF>& aPoints, const QColor& aColour, double aHalfWidth);
 
 // WHICH SCROLL-BAR LANE THE POINTER IS OVER. One answer for the three things that
 // must agree about it: the drawing layer's hot test (a lane's pill takes
@@ -152,6 +165,11 @@ inline PanelBar panelBarAt(const GraphPanelModel& aModel, const QPoint& aPointer
 // colour rather than a panel tone. The halo's code is kept and this flag is the
 // only thing that switches it off, so the two can still be compared.
 constexpr bool kDrawTextHalo = false;
+// The halo's geometry and ink: 2 rings of 8 offsets at 0.85 of the theme's halo tone. They
+// live here beside the switch because the TEXT BACKEND (gui/InkImGui.cpp) draws the halo,
+// while the switch is the panel's decision.
+constexpr int kHaloRadius = 2;
+constexpr float kHaloAlpha = 0.85f;
 
 // The gutter a VALUE label keeps from the right edge of its box, when the box has
 // that much room to spare (see drawLabel's right-alignment): the top value label and
@@ -543,6 +561,23 @@ bool bindPanelVertexArray(QOpenGLWidget& aHost);
 // The frame's vertices are NOT drawn here. The returned draw data is rendered into the
 // host's own framebuffer - the dock's page with ImGui_ImplOpenGL3_RenderDrawData and
 // nothing else. Null when no context is up, i.e. when the host must draw nothing.
+// THE COMPOSITION OF ONE FRAME, independent of any rasteriser: the model, the focus, the
+// palette and the state a host publishes for its own hit tests and the accessibility layer.
+// runPanelFrame() is the ImGui host's spelling of it (its draw list, its pointer, its ink);
+// a QCanvasPainter or QPainter host composes the SAME value and paints it with its own
+// backend, so two hosts cannot disagree about what the panel says.
+struct PanelFrame {
+    GraphPanelModel model;
+    PanelFocus focus;
+    theme::Graph palette;
+    bool drawn = false;
+};
+
+PanelFrame composePanelFrame(
+    ctrl::GraphEditor* aEditor, bool aVisible, const QSize& aViewport, PanelFrameState& aState,
+    const QFont& aMeasuredFont, GraphPanelHost aHostStyle
+);
+
 ImDrawData* runPanelFrame(
     QOpenGLWidget& aHost, GraphPanelHost aHostStyle, ctrl::GraphEditor* aEditor, bool aVisible,
     PanelFrameState& aState, const QPoint& aPointer
@@ -567,8 +602,10 @@ ImDrawData* runPanelFrame(
 //
 // aOnAction(aUser, aId) is the host's own handler for the ids below, called
 // synchronously from the accessibility call that activated the item.
+// aHost is the WIDGET whose accessibility interface is published - its rasteriser is irrelevant
+// (QWidget& rather than QOpenGLWidget&, so the Canvas Painter host can be published too).
 void publishPanelAccessibility(
-    QOpenGLWidget& aHost, PanelFrameState& aState, void (*aOnAction)(void* aUser, int aId), void* aUser
+    QWidget& aHost, PanelFrameState& aState, void (*aOnAction)(void* aUser, int aId), void* aUser
 );
 
 // The panel's accessible item ids. No item is a row index (the channel list and the key

@@ -211,6 +211,60 @@ namespace ctrl {
         for (const Value& value : mValues) {
             value.command->modifyValue(value.base + aValueDelta);
         }
+        // The values are written, so the proportional keys between the bounds
+        // follow them: their stored weights were captured before the gesture, so
+        // this reads the bounds' CURRENT values and never a previous projection.
+        for (int i = 0; i < mReflows.size(); ++i) {
+            mReflows[i].modify();
+        }
+    }
+
+    void KeyMoveCommand::buildValueReflows(const QVector<ValueReflowTarget>& aTargets) {
+        mReflows.clear();
+
+        // Group by (line, type): one ValueReflow owns one map. A gesture can touch
+        // several types (a whole-key selection expands to every component) and
+        // several layers' timelines, and each group captured against its own map is
+        // what keeps their restore bases apart.
+        struct Group {
+            core::TimeLine* line;
+            core::TimeKeyType type;
+            QVector<core::TimeKey*> edited;
+        };
+        QVector<Group> groups;
+
+        // Index loops, not ranged-for: a non-const QVector's ranged-for detaches,
+        // and this runs once per gesture over the whole selection.
+        for (int i = 0; i < aTargets.size(); ++i) {
+            const ValueReflowTarget& target = aTargets.at(i);
+            if (!target.line || !target.key)
+                continue;
+
+            int group = -1;
+            for (int g = 0; g < groups.size(); ++g) {
+                if (groups.at(g).line == target.line && groups.at(g).type == target.type) {
+                    group = g;
+                    break;
+                }
+            }
+            if (group < 0) {
+                Group fresh;
+                fresh.line = target.line;
+                fresh.type = target.type;
+                groups.append(fresh);
+                group = groups.size() - 1;
+            }
+            groups[group].edited.append(target.key);
+        }
+
+        // capture() dedups the edited list and excludes absolute keys itself; a
+        // group whose map holds no proportional key leaves the reflow empty, and
+        // every later apply()/restore() of it is a no-op.
+        for (int g = 0; g < groups.size(); ++g) {
+            const Group& group = groups.at(g);
+            mReflows.append(proportional::ValueReflow());
+            mReflows.last().capture(*group.line, group.type, group.edited);
+        }
     }
 
     void KeyMoveCommand::exec() {
@@ -223,12 +277,21 @@ namespace ctrl {
         for (const Value& value : mValues) {
             value.command->exec();
         }
+        // The values are final for this commit: the proportional keys follow them.
+        for (int i = 0; i < mReflows.size(); ++i) {
+            mReflows[i].apply();
+        }
     }
 
     void KeyMoveCommand::undo() {
         // Reverse of exec, so a key's value is restored before the map entry that
         // names its frame (they are independent, but an undo that reads like the
-        // exec backwards is the one that is easy to check).
+        // exec backwards is the one that is easy to check). The reflow goes FIRST:
+        // it wrote the proportional keys' values, and putting them back before the
+        // value halves' own undo is the same backwards order.
+        for (int i = mReflows.size() - 1; i >= 0; --i) {
+            mReflows[i].restore();
+        }
         for (int i = mValues.size() - 1; i >= 0; --i) {
             mValues[i].command->undo();
         }
@@ -243,6 +306,9 @@ namespace ctrl {
         }
         for (const Value& value : mValues) {
             value.command->redo();
+        }
+        for (int i = 0; i < mReflows.size(); ++i) {
+            mReflows[i].apply();
         }
     }
 
@@ -2572,6 +2638,24 @@ namespace ctrl {
         for (const MoveMember& member : mMoveMembers) {
             command->addValue(*member.key, member.target.pos.type(), member.component, member.baseValue);
         }
+
+        // The proportional half: every proportional key of each (line, type) the
+        // gesture edits follows the bounds the value halves are about to move.
+        // Captured HERE, before modifyValues() below writes the first value, so
+        // the base values and weights are the pre-gesture document - the whole
+        // reason the capture is a build-time step and not an exec-time one.
+        QVector<KeyMoveCommand::ValueReflowTarget> reflowTargets;
+        reflowTargets.reserve(mMoveMembers.size());
+        for (const MoveMember& member : mMoveMembers) {
+            // A NON-const copy: the reflow writes the line's map, and the
+            // selection hands out const items (the same copy beginKeyMove makes).
+            core::TimeLineEvent::Target target = member.target;
+            reflowTargets.append(KeyMoveCommand::ValueReflowTarget {
+                target.pos.line(), target.pos.type(), member.key
+            });
+        }
+        command->buildValueReflows(reflowTargets);
+
         command->modifyValues(valueDelta);
 
         // ONE command in ONE gesture inside ONE macro: the whole selection's move

@@ -98,7 +98,9 @@
 //     ctrl::TimeLineUtil::AssignKeyValue for the value, side by side in ONE macro;
 //     the easing never moves, a destination another key owns refuses the whole
 //     step (and leaves no entry of its own), and the whole gesture is ONE undo
-//     step.
+//     step. The proportional keys between the edited bounds come with it (section
+//     29): their frames with the frame half's own projection, their values and
+//     weights through the move's ValueReflow.
 //   * REMOVE: acts on every key the panel's selection names through
 //     TimeLine::createRemover; ONE undo step, and the undo restores the SAME key
 //     objects with their values and easings. With no key selected, or a selection
@@ -233,6 +235,21 @@
 //     depends on which handle is longer. One gesture/command/undo (flag
 //     included); the first and last keys have one handle and nothing to link; a
 //     written Auto param converts to Custom carrying its derived pair.
+//
+// PROPORTIONAL COMPANIONS are pinned in section 29, on the same public surface:
+// a Move channel of three keys - an absolute, a PROPORTIONAL one, an absolute -
+// stored through ctrl::proportional (the weights are document state, written
+// with rebase() before the gesture, never re-derived by the gesture):
+//
+//   * a FRAME drag of the right absolute key moves it and the proportional key
+//     between the two bounds follows its stored 1/2 (0 and 5 project 2.5, which
+//     the map rounds to 3), and ONE undo puts both frames back - the frame half's
+//     own command carries the projection, this panel's command carries the rest;
+//   * a VALUE drag of an absolute key writes the companion through
+//     KeyMoveCommand's ValueReflow, by the weight captured BEFORE the gesture -
+//     so the values cannot drift and the weights stay exactly what they were -
+//     and ONE undo restores the dragged key AND the companion (values and
+//     weights), with nothing behind it: still one stack entry per gesture.
 #include <QApplication>
 #include <QMouseEvent>
 #include <QPoint>
@@ -267,6 +284,7 @@
 #include "ctrl/graph/graph_Curve.h"
 #include "ctrl/graph/graph_Geometry.h"
 #include "ctrl/graph/graph_Scaler.h"
+#include "ctrl/proportional/prop_Keys.h"
 #include "gui/CanvasMover.h"
 #include "util/Easing.h"
 
@@ -6552,6 +6570,202 @@ int main(int argc, char** argv) {
         );
     }
 
+    // --- 29: PROPORTIONAL COMPANIONS. A key move and a pose drag both edit a
+    // key's VALUE, and a proportional key between the edited absolute ones
+    // follows by the weight it STORED (ctrl::proportional), captured before the
+    // gesture. The graph carries that in the same command as the move
+    // (KeyMoveCommand's ValueReflow), so the contract here is one undo step per
+    // gesture for the companions too:
+    //   * (a) a FRAME drag of the right absolute key: the proportional key
+    //     between the bounds follows the moved bound (stored 1/2 of 0..5 is
+    //     2.5, which the map rounds to 3), the drag writes no value, and ONE
+    //     undo restores both frames - the frame half's own command already
+    //     carries the projection, this panel's command the values and weights;
+    //   * (b) a VALUE drag of an absolute key: the proportional key between the
+    //     bounds follows the value by its stored fraction, in ITS OWN channel,
+    //     the weights stay what they were, and ONE undo restores the dragged
+    //     key's value AND the companion's - a second undo finds nothing, which
+    //     is what "one command per gesture" means for the reflow as well.
+    // The weights are written with rebase() BEFORE the gesture, so nothing here
+    // depends on a rebase the gesture could have made for itself.
+    {
+        core::TestNode propNode;
+        core::MoveKey* propLeft = new core::MoveKey();
+        propLeft->setPos(QVector2D(0.0f, 0.0f));
+        setup.push(propNode.timeLine()->createPusher(core::TimeKeyType_Move, 0, propLeft));
+        core::MoveKey* propMiddle = new core::MoveKey();
+        propMiddle->setPos(QVector2D(30.0f, 30.0f));
+        setup.push(propNode.timeLine()->createPusher(core::TimeKeyType_Move, 2, propMiddle));
+        propMiddle->setProportional(true);
+        core::MoveKey* propRight = new core::MoveKey();
+        propRight->setPos(QVector2D(60.0f, 60.0f));
+        setup.push(propNode.timeLine()->createPusher(core::TimeKeyType_Move, 4, propRight));
+
+        // The stored state both halves read: the proportional key sits at 1/2 of
+        // the frame span and of BOTH value spans. Asserted, because a wrong weight
+        // would make every projection below pass for the wrong reason.
+        {
+            const auto& propMap = propNode.timeLine()->map(core::TimeKeyType_Move);
+            ctrl::proportional::rebase(
+                *propMiddle, ctrl::proportional::findBounds(propMap, *propMiddle)
+            );
+        }
+        CHECK(propMiddle->isProportional());
+        CHECK(propMiddle->proportionalState()->timeValid);
+        CHECK(propMiddle->proportionalState()->timeWeight == 0.5f);
+        CHECK(propMiddle->proportionalState()->valueValid[0]);
+        CHECK(propMiddle->proportionalState()->valueValid[1]);
+        CHECK(propMiddle->proportionalState()->valueWeight[0] == 0.5f);
+        CHECK(propMiddle->proportionalState()->valueWeight[1] == 0.5f);
+
+        editor.setTargets({ &propNode });
+        editor.scale().setRect(panel);
+        editor.fitAll();
+        editor.clearSelection();
+        project.commandStack().clear();
+
+        // (a) THE FRAME DRAG. A horizontal drag of the KEY at frame 4, from its
+        // own pixel to the pixel the next frame maps to: the pointer really names
+        // frame 5, so the step is +1 and the bounds span 0..5.
+        const Scaler& propScale = editor.scale();
+        const QPoint propFrom(propScale.pixelX(core::Frame(4)), propScale.pixelY(60.0f));
+        const QPoint propTo(propScale.pixelX(core::Frame(5)), propScale.pixelY(60.0f));
+        CHECK(propScale.plotRect().contains(propFrom));
+        CHECK(propScale.frameAt(propFrom.x()).get() == 4);
+        CHECK(propScale.frameAt(propTo.x()).get() == 5);
+
+        core::AbstractCursor propCur;
+        CHECK(sendPress(editor, camera, propCur, propFrom));
+        CHECK(sendMove(editor, camera, propCur, propTo));
+        CHECK(sendRelease(editor, camera, propCur, propTo));
+
+        CHECK(!propNode.timeLine()->hasTimeKey(core::TimeKeyType_Move, 4));
+        CHECK(propNode.timeLine()->timeKey(core::TimeKeyType_Move, 5) == propRight);
+        CHECK(propRight->frame() == 5);
+        // The companion followed the bounds: 0 + 1/2 * (5 - 0) = 2.5 -> 3.
+        CHECK(!propNode.timeLine()->hasTimeKey(core::TimeKeyType_Move, 2));
+        CHECK(propNode.timeLine()->timeKey(core::TimeKeyType_Move, 3) == propMiddle);
+        CHECK(propMiddle->frame() == 3);
+        // A frame move writes no value and no weight.
+        CHECK(propMiddle->pos() == QVector2D(30.0f, 30.0f));
+        CHECK(propRight->pos() == QVector2D(60.0f, 60.0f));
+        CHECK(propMiddle->proportionalState()->timeWeight == 0.5f);
+
+        // ONE undo restores the selected key AND the companion's frame, and a
+        // second undo finds nothing (the gesture was the only entry).
+        bool undonePropFrame = false;
+        CHECK(!stack.undo(&undonePropFrame).isEmpty());
+        CHECK(undonePropFrame);
+        CHECK(propNode.timeLine()->timeKey(core::TimeKeyType_Move, 4) == propRight);
+        CHECK(propNode.timeLine()->timeKey(core::TimeKeyType_Move, 2) == propMiddle);
+        CHECK(!propNode.timeLine()->hasTimeKey(core::TimeKeyType_Move, 5));
+        CHECK(!propNode.timeLine()->hasTimeKey(core::TimeKeyType_Move, 3));
+        CHECK(propRight->frame() == 4 && propMiddle->frame() == 2);
+        CHECK(propMiddle->pos() == QVector2D(30.0f, 30.0f));
+        CHECK(propMiddle->proportionalState() != nullptr);
+        CHECK(propMiddle->proportionalState()->timeWeight == 0.5f);
+
+        bool undonePropFrameAgain = true;
+        CHECK(stack.undo(&undonePropFrameAgain).isEmpty());
+        CHECK(!undonePropFrameAgain);
+
+        std::printf(
+            "[29a] proportional frame: the key at frame 4 was dragged to 5, the proportional key at 2 "
+            "followed its stored 1/2 to 3, the drag wrote no value, and one undo restored both frames "
+            "while a second undo found nothing\n"
+        );
+
+        editor.setTargets({}); // drop the target before its owner dies
+    }
+
+    {
+        // (b) THE VALUE DRAG, on a fresh channel so the frame move above cannot
+        // explain any of it: 0, 50 and 100 on X (and 0, 10, 20 on Y, so the two
+        // channels' markers are not the same pixels), the middle key proportional
+        // at 1/2 of both spans.
+        core::TestNode valueNode;
+        core::MoveKey* valueLeft = new core::MoveKey();
+        valueLeft->setPos(QVector2D(0.0f, 0.0f));
+        setup.push(valueNode.timeLine()->createPusher(core::TimeKeyType_Move, 0, valueLeft));
+        core::MoveKey* valueMiddle = new core::MoveKey();
+        valueMiddle->setPos(QVector2D(50.0f, 10.0f));
+        setup.push(valueNode.timeLine()->createPusher(core::TimeKeyType_Move, 2, valueMiddle));
+        valueMiddle->setProportional(true);
+        core::MoveKey* valueRight = new core::MoveKey();
+        valueRight->setPos(QVector2D(100.0f, 20.0f));
+        setup.push(valueNode.timeLine()->createPusher(core::TimeKeyType_Move, 4, valueRight));
+
+        {
+            const auto& valueMap = valueNode.timeLine()->map(core::TimeKeyType_Move);
+            ctrl::proportional::rebase(
+                *valueMiddle, ctrl::proportional::findBounds(valueMap, *valueMiddle)
+            );
+        }
+        CHECK(valueMiddle->proportionalState()->valueValid[0]);
+        CHECK(valueMiddle->proportionalState()->valueValid[1]);
+        CHECK(valueMiddle->proportionalState()->valueWeight[0] == 0.5f);
+        CHECK(valueMiddle->proportionalState()->valueWeight[1] == 0.5f);
+
+        editor.setTargets({ &valueNode });
+        editor.scale().setRect(panel);
+        editor.fitAll();
+        editor.clearSelection();
+        project.commandStack().clear();
+
+        // A PURE value drag: the same x, so the frame step is 0 and only the value
+        // half (and the reflow) can write anything.
+        const Scaler& valueScale = editor.scale();
+        const QPoint valueFrom(valueScale.pixelX(core::Frame(4)), valueScale.pixelY(100.0f));
+        const QPoint valueTo(valueFrom.x(), valueScale.pixelY(60.0f));
+        CHECK(valueScale.plotRect().contains(valueFrom));
+        CHECK(valueScale.frameAt(valueTo.x()).get() == 4);
+        CHECK(valueScale.valueAt(valueTo.y()) < valueScale.valueAt(valueFrom.y()));
+
+        core::AbstractCursor valueCur;
+        CHECK(sendPress(editor, camera, valueCur, valueFrom));
+        CHECK(sendMove(editor, camera, valueCur, valueTo));
+        CHECK(sendRelease(editor, camera, valueCur, valueTo));
+
+        // The dragged key wrote the pointer's value on both its components (the
+        // press selects the WHOLE key), and the companion followed with the weight
+        // stored BEFORE the gesture - in each component's own channel.
+        CHECK(valueRight->frame() == 4);
+        CHECK(valueNode.timeLine()->timeKey(core::TimeKeyType_Move, 4) == valueRight);
+        CHECK(valueRight->pos().x() < 100.0f && valueRight->pos().x() > 40.0f);
+        CHECK(valueRight->pos().y() < 20.0f);
+        CHECK(valueMiddle->frame() == 2); // the value drag moved no frame
+        CHECK(valueMiddle->pos().x() == 0.5f * valueRight->pos().x());
+        CHECK(valueMiddle->pos().y() == 0.5f * valueRight->pos().y());
+        // The weights are what the gesture captured, never a re-derivation.
+        CHECK(valueMiddle->proportionalState()->valueWeight[0] == 0.5f);
+        CHECK(valueMiddle->proportionalState()->valueWeight[1] == 0.5f);
+
+        // ONE undo restores the dragged key (its own value command) AND the
+        // companion (the reflow's restore), and nothing is left behind it.
+        bool undoneValue = false;
+        CHECK(!stack.undo(&undoneValue).isEmpty());
+        CHECK(undoneValue);
+        CHECK(valueRight->pos() == QVector2D(100.0f, 20.0f));
+        CHECK(valueMiddle->pos() == QVector2D(50.0f, 10.0f));
+        CHECK(valueMiddle->proportionalState() != nullptr);
+        CHECK(valueMiddle->proportionalState()->valueWeight[0] == 0.5f);
+        CHECK(valueMiddle->proportionalState()->valueWeight[1] == 0.5f);
+        CHECK(valueNode.timeLine()->timeKey(core::TimeKeyType_Move, 2) == valueMiddle);
+        CHECK(!valueNode.timeLine()->hasTimeKey(core::TimeKeyType_Move, 3));
+
+        bool undoneValueAgain = true;
+        CHECK(stack.undo(&undoneValueAgain).isEmpty());
+        CHECK(!undoneValueAgain);
+
+        std::printf(
+            "[29b] proportional value: dragging the absolute key's value moved the proportional key by "
+            "its stored 1/2 on both components, kept its weights, and one undo restored the absolute "
+            "and the companion while a second undo found nothing\n"
+        );
+
+        editor.setTargets({}); // drop the target before its owner dies
+    }
+
     std::printf(
         "graph_drag: one handle drag is one undo step, and the drag edits the key's own easing param "
         "at the pixel it points to - the grabbed handle where the pointer is, and the OPPOSITE handle "
@@ -6597,7 +6811,10 @@ int main(int argc, char** argv) {
         "an empty or stale selection, for the step-held image channel or for the type a key already "
         "has; and with a timeline attached the panel shares its selection (one instance, both "
         "directions) and its frame window (pushed as values, its own X written by nothing else, the "
-        "wheel's frame half and the middle-drag pan delegated to the timeline)\n"
+        "wheel's frame half and the middle-drag pan delegated to the timeline), and a PROPORTIONAL key "
+        "between the moved bounds follows them by the weight it stored before the gesture - its frame "
+        "with the bounds, its values through the move's own reflow - with one undo restoring the "
+        "selected keys and the companions together\n"
     );
     return 0;
 }

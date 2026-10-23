@@ -14,6 +14,11 @@
 #include "ctrl/TimeLineUtil.h"
 #include "ctrl/graph/graph_Curve.h"
 #include "gui/TimeLineEditorWidget.h"
+
+#if defined(AE_CANVAS_PAINTER) && AE_CANVAS_PAINTER
+#include <QCanvasPainter>
+#include "gui/TimeBodyCanvas.h"
+#endif
 #include "gui/MouseSetting.h"
 #include "gui/PillInk.h"
 #include "gui/obj/obj_Item.h"
@@ -131,7 +136,11 @@ void TimeCursor::setNumberColor(const QColor& cursorNumberColor) { mNumberColor 
 
 //-------------------------------------------------------------------------------------------------
 TimeLineEditorWidget::TimeLineEditorWidget(ViaPoint& aViaPoint, QWidget* aParent):
+#if defined(AE_CANVAS_PAINTER) && AE_CANVAS_PAINTER
+    QCanvasPainterWidget(aParent),
+#else
     QWidget(aParent),
+#endif
     mViaPoint(aViaPoint),
     mProject(),
     mTimeLineSlot(),
@@ -150,6 +159,11 @@ TimeLineEditorWidget::TimeLineEditorWidget(ViaPoint& aViaPoint, QWidget* aParent
     mPastePos(),
     mOnPasting(),
     mTimelineTheme() {
+#if defined(AE_CANVAS_PAINTER) && AE_CANVAS_PAINTER
+    // The Canvas host clears its texture to this every frame (a QWidget host shows the QSS
+    // floor instead); updateTheme() re-reads it when the palette changes.
+    setFillColor(theme::Colors::current().base);
+#endif
     mTimeCursor.show();
 
     mEditor.reset(new ctrl::TimeLineEditor());
@@ -450,6 +464,11 @@ void TimeLineEditorWidget::updateProjectAttribute() {
 void TimeLineEditorWidget::updateTheme(theme::Theme& aTheme) {
     Q_UNUSED(aTheme) // TODO
     mTimelineTheme.reset();
+#if defined(AE_CANVAS_PAINTER) && AE_CANVAS_PAINTER
+    // The Canvas host clears its texture to this every frame; a QWidget host shows the QSS
+    // floor instead. Re-read with the theme so a palette change reaches it.
+    setFillColor(theme::Colors::current().base);
+#endif
     if (mTimeRuler)
         mTimeRuler->updateTheme();
     updateTimeCursorPos();
@@ -466,6 +485,33 @@ int TimeLineEditorWidget::frameEndPixel() const {
     return mEditor->frameEndPixel();
 }
 
+#if defined(AE_CANVAS_PAINTER) && AE_CANVAS_PAINTER
+void TimeLineEditorWidget::paint(QCanvasPainter* aPainter) {
+    if (!mCamera)
+        return;
+    // The surface is viewport-fixed; the content translates by the view origin, exactly as the
+    // QPainter host's paintEvent does.
+    const QPoint origin = mCamera->leftTopPos().toPoint();
+    const QRect cull = QRect(QPoint(0, 0), size()).translated(-origin);
+    const ctrl::time::BodyScene scene = mEditor->bodyScene(*mCamera, mTimelineTheme, cull);
+
+    aPainter->save();
+    aPainter->translate(float(origin.x()), float(origin.y()));
+    gui::timeBodyCanvas::paintLinesCanvas(*aPainter, scene.lines);
+    gui::timeBodyCanvas::paintGuidesCanvas(*aPainter, scene.markers, ctrl::time::SelectionBox());
+    for (const ctrl::time::KeyPass& pass : scene.keyPasses)
+        gui::timeBodyCanvas::paintKeysCanvas(*aPainter, pass);
+    gui::timeBodyCanvas::paintGuidesCanvas(*aPainter, {}, scene.selection);
+    aPainter->restore();
+
+    // The hairline under the ruler separates it from the track area (the QPainter host draws the
+    // same row on the first track row, below the ruler widget).
+    aPainter->setFillStyle(mTimelineTheme.rulerLineColor());
+    aPainter->fillRect(QRectF(0, ctrl::TimeLineEditor::kHeaderHeight, width(), 1));
+
+    pushEasingChipState();
+}
+#else
 void TimeLineEditorWidget::paintEvent(QPaintEvent* aEvent) {
     QPainter painter;
     painter.begin(this);
@@ -506,6 +552,7 @@ void TimeLineEditorWidget::paintEvent(QPaintEvent* aEvent) {
     // so a repaint that changed nothing costs one compare.
     pushEasingChipState();
 }
+#endif // AE_CANVAS_PAINTER
 
 void TimeLineEditorWidget::onTimeLineModified(core::TimeLineEvent& aEvent, bool aUndo) {
     if (!mOnPasting) {
@@ -641,6 +688,31 @@ void TimeLineEditorWidget::buildKeyMenu(QMenu& aMenu) {
     aMenu.addAction(mCopyKey);
     aMenu.addAction(mCopyToClipboard);
     aMenu.addAction(mPasteKey);
+    // Proportional toggles the whole selection through ONE call, which pushes one
+    // undo step (ctrl::TimeLineUtil::setProportionalKeys). The check reflects the
+    // set: all keys proportional reads checked, a mixed or absolute set unchecked -
+    // activating then makes every selected key proportional. Weights are computed
+    // from each key's current position against its current absolute neighbours, so
+    // the action is a plain toggle of the set's state rather than a per-key edit.
+    {
+        bool allProportional = true;
+        for (auto& target : mTargets.targets()) {
+            const core::TimeKey* key = target.pos.key();
+            if (!key || !key->isProportional()) {
+                allProportional = false;
+                break;
+            }
+        }
+        aMenu.addSeparator();
+        QAction* proportional = aMenu.addAction(tr("Proportional"));
+        proportional->setCheckable(true);
+        proportional->setChecked(allProportional);
+        proportional->connect(proportional, &QAction::triggered, [this, allProportional]() {
+            if (!mProject)
+                return;
+            ctrl::TimeLineUtil::setProportionalKeys(*mProject, mTargets, !allProportional);
+        });
+    }
     aMenu.addSeparator();
     aMenu.addAction(mSelectSpacing);
     aMenu.addSeparator();
@@ -657,6 +729,10 @@ static void addVecToJson(QJsonObject* json, const QString& title, const QVector2
 static void addTfToObj(QJsonObject* json, int keyType, const core::TimeKey* timeKey) {
     json->insert("Type", core::TimeLine::getTimeKeyName(static_cast<core::TimeKeyType>(keyType)));
     json->insert("Frame", timeKey->frame());
+    // The flag travels, the weights and bound ids do NOT: the bounds may not exist
+    // at the destination object, so the reader enables the key with empty weights
+    // and the next projection resolves its bounds there.
+    json->insert("Proportional", timeKey->isProportional());
 }
 template<typename keyData>
 static void addStandardToObj(QJsonObject* json, keyData data, const int keyType, core::TimeKey* timeKey) {

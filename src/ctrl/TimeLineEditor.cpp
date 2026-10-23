@@ -1,4 +1,5 @@
 #include "core/ResourceUpdatingWorkspace.h"
+#include "ctrl/time/time_BodyModel.h"
 #include <algorithm>
 #include <climits>
 #include "core/BlurKey.h"
@@ -783,6 +784,9 @@ QList<TimeKey*> TimeLineEditor::getTypesFromCb(util::LifeLink::Pointee<Project> 
         // To get all keys isFolder is set to false.
         TimeKey* pastedKey = getKeyFromObj(keyObj, project, false, node);
         if (pastedKey != nullptr) {
+            // The clipboard carries the flag only: the weights are empty until the
+            // key's next projection resolves its bounds here.
+            pastedKey->setProportional(keyObj["Proportional"].toBool());
             keyList.append(pastedKey);
         }
     }
@@ -802,7 +806,10 @@ QString TimeLineEditor::pasteCbKeys(gui::obj::Item* objItem, util::LifeLink::Poi
     for (QJsonValue key : tlKeys) {
         auto keyObj = key.toObject();
         TimeKey* pastedKey = getKeyFromObj(keyObj, project, isFolder, &objItem->node());
-        if (pastedKey != nullptr) { keyList.append(pastedKey); }
+        if (pastedKey != nullptr) {
+            pastedKey->setProportional(keyObj["Proportional"].toBool());
+            keyList.append(pastedKey);
+        }
         else {
             auto keyType = TimeLine::getTimeKeyType(keyObj["Type"].toString());
             keyErrored.append(TimeLine::getTimeKeyName(keyType));
@@ -871,6 +878,11 @@ QString TimeLineEditor::pasteCbKeys(gui::obj::Item* objItem, util::LifeLink::Poi
                         auto parentKey = copiedKey->parent();
 
                         TimeKey* newKey = copiedKey->createClone();
+                        // createClone copies the key's data only, so the flag the
+                        // clipboard reader armed on the source key is re-armed here
+                        // (fresh id, empty weights; the bounds resolve lazily).
+                        if (copiedKey->isProportional())
+                            newKey->setProportional(true);
 
                         newKey->setFrame(newFrame);
 
@@ -1021,6 +1033,12 @@ bool TimeLineEditor::pasteCopiedKeys(TimeLineEvent& aEvent, const QPoint& aWorld
             auto parentKey = copiedKey->parent();
 
             TimeKey* newKey = copiedKey->createClone();
+            // createClone copies the key's data only (ids and the proportional
+            // state are deliberately not cloned), so the flag is re-armed here:
+            // a fresh id and empty weights are what a paste wants, and the
+            // destination's bounds are resolved lazily on the next projection.
+            if (copiedKey->isProportional())
+                newKey->setProportional(true);
 
             auto newFrame = copiedKey->frame() + frameOffset;
             newKey->setFrame(newFrame);
@@ -1423,10 +1441,16 @@ int TimeLineEditor::anchorPixelAfterScale(int aContentPixel, double aOldSpacing)
 }
 
 void TimeLineEditor::render(
-    QPainter& aPainter, const CameraInfo& aCamera, theme::TimeLine& aTheme, const QRect& aCullRect
+    QPainter& aPainter, const core::CameraInfo& aCamera, theme::TimeLine& aTheme, const QRect& aCullRect
+) const {
+    paintBodyScene(aPainter, bodyScene(aCamera, aTheme, aCullRect));
+}
+
+ctrl::time::BodyScene TimeLineEditor::bodyScene(
+    const core::CameraInfo& aCamera, theme::TimeLine& aTheme, const QRect& aCullRect
 ) const {
     if (aCamera.screenWidth() < 2 * kTimeLineMargin)
-        return;
+        return ctrl::time::BodyScene();
 
     const QRect camRect(-aCamera.leftTopPos().toPoint(), aCamera.screenSize());
     const QRect cullRect(aCullRect.marginsAdded(QMargins(2, 2, 2, 2))); // use culling
@@ -1435,23 +1459,20 @@ void TimeLineEditor::render(
     const int bgn = mTimeScale.frame(cullRect.left() - margin - 5);
     const int end = mTimeScale.frame(cullRect.right() - margin + 5);
 
-    time::Renderer renderer(aPainter, aCamera, aTheme);
-    renderer.setMargin(margin);
-    renderer.setRange(util::Range(bgn, end));
-    renderer.setTimeScale(mTimeScale);
-    renderer.setProjectRange(mFrameRange);
-    renderer.setPlayWindow(mPlayWindow);
+    // THE CALLER'S PALETTE, not a default one: the widget's theme carries the runtime colours
+    // (and the tests set them), so a default-constructed theme here would repaint every lane in
+    // the wrong ink.
+    ctrl::time::Inks inks;
+    inks.body = aTheme.trackColor();
+    inks.bodySelected = aTheme.trackSelectColor();
+    inks.edge = aTheme.trackEdgeColor();
+    inks.separator = aTheme.trackSeperatorColor();
 
-    renderer.renderLines(mRows, camRect, cullRect);
-    // Range hairlines are part of the track background: they paint over the
-    // fills and seams, but under the key graphics they must never cover.
-    renderer.renderRangeMarkers(camRect);
-    renderer.renderKeys(mRows, cullRect);
-    // renderer.renderHandle(mTimeCurrent.handlePos(), mTimeCurrent.handleRange());
-
-    if (mState == State_EncloseKeys && mMarquee.isActive()) {
-        renderer.renderSelectionRange(mMarquee.rect());
-    }
+    const QRect marquee = (mState == State_EncloseKeys && mMarquee.isActive()) ? mMarquee.rect() : QRect();
+    return buildBodyScene(
+        mRows, camRect, cullRect, mTimeScale, util::Range(bgn, end), mFrameRange, mPlayWindow.active(), marquee,
+        margin, inks
+    );
 }
 
 } // namespace ctrl
