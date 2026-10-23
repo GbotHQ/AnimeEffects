@@ -1375,50 +1375,44 @@ target_link_libraries(asset_remove_layers PRIVATE
 # Painter, compared pixel by pixel (text coverage is reported separately - two glyph
 # rasterizers never agree). QA: only built when the Qt in use provides the module AND is
 # 6.12+, which the default Fedora 6.11.2 toolchain is not. See frame_ruler_canvas.cpp.
-if(AE_CANVAS_PAINTER)
-    add_executable(frame_ruler_canvas frame_ruler_canvas.cpp
-        ../src/gui/FrameRuler.cpp
-        ../src/gui/FrameRulerCanvas.cpp
-        ../src/gui/theme/TimeLine.cpp)
-    target_include_directories(frame_ruler_canvas PRIVATE .. ../src)
-    target_compile_definitions(frame_ruler_canvas PRIVATE
-        AE_MAJOR_VERSION=1
-        AE_MINOR_VERSION=7
-        AE_MICRO_VERSION=1
-        USE_GL_CORE_PROFILE
-    )
-    target_link_libraries(frame_ruler_canvas PRIVATE
-        Qt6::Core Qt6::Core5Compat Qt6::Widgets
-        Qt6::Gui Qt6::OpenGL Qt6::OpenGLWidgets
-        Qt6::Svg Qt6::Xml Qt6::Concurrent Qt6::Multimedia
-        Qt6::CanvasPainter
-        cmnd core ctrl gl img thr util pugixml
-    )
-endif()
+add_executable(frame_ruler_canvas frame_ruler_canvas.cpp
+    ../src/gui/FrameRuler.cpp
+    ../src/gui/FrameRulerCanvas.cpp
+    ../src/gui/theme/TimeLine.cpp)
+target_include_directories(frame_ruler_canvas PRIVATE .. ../src)
+target_compile_definitions(frame_ruler_canvas PRIVATE
+    AE_MAJOR_VERSION=1
+    AE_MINOR_VERSION=7
+    AE_MICRO_VERSION=1
+    USE_GL_CORE_PROFILE
+)
+target_link_libraries(frame_ruler_canvas PRIVATE
+    Qt6::Core Qt6::Core5Compat Qt6::Widgets
+    Qt6::Gui Qt6::OpenGL Qt6::OpenGLWidgets
+    Qt6::Svg Qt6::Xml Qt6::Concurrent Qt6::Multimedia
+    Qt6::CanvasPainter
+    cmnd core ctrl gl img thr util pugixml
+)
 
 # THE CANVAS PAINTER BODY'S PARITY GATE (Qt >= 6.12 + AE_CANVAS_PAINTER only).
 # NOT PASSING YET: 268 of 76,800 px differ in the "geometry" class - see AGENTS.md ("the body's
 # Canvas port is SHORT"). Registered so the remaining gap has a number to close.
-if(AE_CANVAS_PAINTER)
-    add_executable(time_body_canvas time_body_canvas.cpp
-        ../src/gui/TimeBodyCanvas.cpp
-        ../src/gui/theme/TimeLine.cpp)
-    target_include_directories(time_body_canvas PRIVATE .. ../src)
-    target_compile_definitions(time_body_canvas PRIVATE
-        AE_MAJOR_VERSION=1 AE_MINOR_VERSION=7 AE_MICRO_VERSION=1 USE_GL_CORE_PROFILE)
-    target_link_libraries(time_body_canvas PRIVATE
-        Qt6::Core Qt6::Core5Compat Qt6::Widgets Qt6::Gui Qt6::OpenGL Qt6::OpenGLWidgets
-        Qt6::Svg Qt6::Xml Qt6::Concurrent Qt6::Multimedia Qt6::CanvasPainter
-        cmnd core ctrl gl img thr util pugixml)
-endif()
+add_executable(time_body_canvas time_body_canvas.cpp
+    ../src/gui/TimeBodyCanvas.cpp
+    ../src/gui/theme/TimeLine.cpp)
+target_include_directories(time_body_canvas PRIVATE .. ../src)
+target_compile_definitions(time_body_canvas PRIVATE
+    AE_MAJOR_VERSION=1 AE_MINOR_VERSION=7 AE_MICRO_VERSION=1 USE_GL_CORE_PROFILE)
+target_link_libraries(time_body_canvas PRIVATE
+    Qt6::Core Qt6::Core5Compat Qt6::Widgets Qt6::Gui Qt6::OpenGL Qt6::OpenGLWidgets
+    Qt6::Svg Qt6::Xml Qt6::Concurrent Qt6::Multimedia Qt6::CanvasPainter
+    cmnd core ctrl gl img thr util pugixml)
 
 # THE GRAPH PANEL'S BACKEND PARITY (Qt >= 6.12 + AE_CANVAS_PAINTER): the pixel gate above
 # renders the SAME models through InkQPainter (Qt's own rasteriser) and InkCanvas (Canvas
 # Painter) and compares them. It lives inside graph_panel_pixels because that target already
 # carries the whole panel - the ink decisions, the fixtures and the ImGui reference.
-if(AE_CANVAS_PAINTER)
-    target_sources(graph_panel_pixels PRIVATE
-        ../src/gui/InkCanvas.cpp)
-    target_compile_definitions(graph_panel_pixels PRIVATE AE_CANVAS_PAINTER=1)
-    target_link_libraries(graph_panel_pixels PRIVATE Qt6::CanvasPainter)
-endif()
+target_sources(graph_panel_pixels PRIVATE
+    ../src/gui/InkCanvas.cpp)
+target_compile_definitions(graph_panel_pixels PRIVATE AE_CANVAS_PAINTER=1)
+target_link_libraries(graph_panel_pixels PRIVATE Qt6::CanvasPainter)

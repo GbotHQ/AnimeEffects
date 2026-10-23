@@ -2,17 +2,13 @@
 
 #include <QPainter>
 #include <QMouseEvent>
-#if defined(AE_CANVAS_PAINTER) && AE_CANVAS_PAINTER
 #include <QCanvasPainter>
-#endif
 #include <QFontMetrics>
 #include "core/TimeFormat.h"
 #include "ctrl/TimeLineEditor.h"
 #include "gui/TimeLineEditorWidget.h"
 #include "gui/FrameRuler.h"
-#if defined(AE_CANVAS_PAINTER) && AE_CANVAS_PAINTER
 #include "gui/FrameRulerCanvas.h"
-#endif
 #include "gui/theme/Colors.h"
 
 namespace gui {
@@ -23,11 +19,7 @@ namespace {
 
 //-------------------------------------------------------------------------------------------------
 TimeRuler::TimeRuler(TimeLineEditorWidget& aSurface, QWidget* aParent):
-#if defined(AE_CANVAS_PAINTER) && AE_CANVAS_PAINTER
     QCanvasPainterWidget(aParent),
-#else
-    QWidget(aParent),
-#endif
     mSurface(aSurface),
     mEditor(aSurface.editor()),
     mCamera(),
@@ -41,11 +33,9 @@ TimeRuler::TimeRuler(TimeLineEditorWidget& aSurface, QWidget* aParent):
     // so right-clicks over the pill would otherwise split the menu paths).
     this->setContextMenuPolicy(Qt::NoContextMenu);
     this->setAutoFillBackground(false);
-#if defined(AE_CANVAS_PAINTER) && AE_CANVAS_PAINTER
     // The Canvas host clears its texture every frame; the strip's floor is the ruler band's
     // own colour, and updateTheme() re-reads it when the palette changes.
     setFillColor(mTimelineTheme.headerBackgroundColor());
-#endif
 }
 
 void TimeRuler::setCamera(const core::CameraInfo* aCamera) {
@@ -55,9 +45,7 @@ void TimeRuler::setCamera(const core::CameraInfo* aCamera) {
 
 void TimeRuler::updateTheme() {
     mTimelineTheme.reset();
-#if defined(AE_CANVAS_PAINTER) && AE_CANVAS_PAINTER
     setFillColor(mTimelineTheme.headerBackgroundColor());
-#endif
     update();
 }
 
@@ -132,7 +120,6 @@ frameRuler::PaintInk TimeRuler::paintInk() const {
     return ink;
 }
 
-#if defined(AE_CANVAS_PAINTER) && AE_CANVAS_PAINTER
 // CANVAS PAINTER: the same model, the same geometry, the GPU's triangles instead of Qt's
 // raster engine. The strip is viewport-fixed, so the paint translates by the view origin
 // exactly as the raster host does - the numbers scroll with the content, the strip does not.
@@ -157,41 +144,6 @@ void TimeRuler::paint(QCanvasPainter* aPainter) {
     frameRuler::paintRulerCanvas(*aPainter, model, paintInk());
     aPainter->restore();
 }
-#else
-void TimeRuler::paintEvent(QPaintEvent* aEvent) {
-    QPainter painter;
-    painter.begin(this);
-    painter.setRenderHint(QPainter::Antialiasing, false);
-
-    // The strip is viewport-fixed: its paint translates by the view origin,
-    // exactly like the track surface, so the numbers scroll with the content
-    // while the strip itself never moves. camRect mirrors the renderer's
-    // camera rect in this widget's painter space.
-    const QPoint origin = mCamera ? mCamera->leftTopPos().toPoint() : QPoint();
-    painter.translate(origin);
-    const QRect cameraRect(-origin, this->size());
-
-    const QRect cullRect(aEvent->rect().translated(-origin).marginsAdded(QMargins(2, 2, 2, 2)));
-    const int margin = ctrl::TimeLineEditor::kTimeLineMargin;
-    const ctrl::time::Scaler& scale = mEditor->timeScale();
-    const int bgn = scale.frame(cullRect.left() - margin - 5);
-    const int end = scale.frame(cullRect.right() - margin + 5);
-
-    // draw header background (the hairline under it is drawn by the surface:
-    // it sits on the first track row, below this widget)
-    {
-        const QBrush brush(mTimelineTheme.headerBackgroundColor());
-        QRect rect = cameraRect;
-        rect.setHeight(ctrl::TimeLineEditor::kHeaderHeight);
-        painter.setPen(QPen(brush, 1));
-        painter.setBrush(brush);
-        painter.drawRect(rect);
-    }
-
-    frameRuler::paintRuler(painter, buildModel(cameraRect, util::Range(bgn, end), mEditor->fps()), paintInk());
-    painter.end();
-}
-#endif // AE_CANVAS_PAINTER
 
 //-------------------------------------------------------------------------------------------------
 // Input: the strip's gestures (header seek, shift-drag window) run through

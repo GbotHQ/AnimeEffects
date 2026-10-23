@@ -2,10 +2,8 @@
 #define GUI_TIMELINEINNERWIDGET_H
 
 #include <QWidget>
-#if defined(AE_CANVAS_PAINTER) && AE_CANVAS_PAINTER
 #include <QCanvasPainterWidget>
 class QCanvasPainter;
-#endif
 #include <QAction>
 #include <QTreeWidgetItem>
 #include <functional>
@@ -57,11 +55,7 @@ private:
 // (TimeRuler, TimeCursor), the input and the hit-testing are untouched, because a
 // QCanvasPainterWidget is a QWidget.
 class TimeLineEditorWidget:
-#if defined(AE_CANVAS_PAINTER) && AE_CANVAS_PAINTER
     public QCanvasPainterWidget
-#else
-    public QWidget
-#endif
 {
     Q_OBJECT
 
@@ -276,14 +270,10 @@ private:
     void updateTimeCursorPos();
     void updateSize();
     void updateLinesRecursive(QTreeWidgetItem* aItem);
-#if defined(AE_CANVAS_PAINTER) && AE_CANVAS_PAINTER
 protected:
     void paint(QCanvasPainter* aPainter) override;
 
 private:
-#else
-    void paintEvent(QPaintEvent* aEvent) override;
-#endif
     void resizeEvent(QResizeEvent* aEvent) override;
     // THE SURFACE'S KEYBOARD. The surface takes focus on a click (it is the widget
     // the pointer lands on, and it has Qt::ClickFocus: a click here hands it the

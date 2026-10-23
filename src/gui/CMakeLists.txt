@@ -237,17 +237,15 @@ endif()
 # ImGui_ImplOpenGL3_* twice. (It was called ImGuiSpikeGL while it belonged to the
 # spike that measured the integration.)
 # ---------------------------------------------------------------------------
-if(AE_CANVAS_PAINTER)
-    # THE CANVAS PAINTER HOST: the ruler's and the body's Canvas ink. The surface
-    # (TimeLineEditorWidget) compiles its Canvas branch from the same definition.
-    target_sources(${PROJECT_NAME} PRIVATE
-        FrameRulerCanvas.cpp FrameRulerCanvas.h
-    InkCanvas.cpp InkCanvas.h
-        TimeBodyCanvas.cpp TimeBodyCanvas.h
-    )
-    target_link_libraries(${PROJECT_NAME} PRIVATE Qt6::CanvasPainter)
-    target_compile_definitions(${PROJECT_NAME} PRIVATE AE_CANVAS_PAINTER=1)
-endif()
+# THE CANVAS PAINTER HOST: the ruler's and the body's Canvas ink. The surface
+# (TimeLineEditorWidget) compiles its Canvas branch from the same definition.
+target_sources(${PROJECT_NAME} PRIVATE
+    FrameRulerCanvas.cpp FrameRulerCanvas.h
+InkCanvas.cpp InkCanvas.h
+    TimeBodyCanvas.cpp TimeBodyCanvas.h
+)
+target_link_libraries(${PROJECT_NAME} PRIVATE Qt6::CanvasPainter)
+target_compile_definitions(${PROJECT_NAME} PRIVATE AE_CANVAS_PAINTER=1)
 
 if(AE_ENABLE_IMGUI)
     target_sources(${PROJECT_NAME} PRIVATE

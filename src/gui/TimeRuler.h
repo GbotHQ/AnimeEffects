@@ -3,10 +3,8 @@
 
 #include <QWidget>
 #include <QString>
-#if defined(AE_CANVAS_PAINTER) && AE_CANVAS_PAINTER
 #include <QCanvasPainterWidget>
 class QCanvasPainter;
-#endif
 #include "core/AbstractCursor.h"
 #include "gui/FrameRuler.h"
 #include "core/CameraInfo.h"
@@ -31,11 +29,7 @@ class TimeLineEditorWidget;
 // (TimeCursor) overlay it; the hairline under it is drawn by the surface
 // (it sits on the first track row, outside this widget).
 class TimeRuler:
-#if defined(AE_CANVAS_PAINTER) && AE_CANVAS_PAINTER
     public QCanvasPainterWidget
-#else
-    public QWidget
-#endif
 {
     Q_OBJECT
 
@@ -55,11 +49,7 @@ signals:
     void frameChanged();
 
 protected:
-#if defined(AE_CANVAS_PAINTER) && AE_CANVAS_PAINTER
     void paint(QCanvasPainter* aPainter) override;
-#else
-    virtual void paintEvent(QPaintEvent* aEvent) override;
-#endif
     virtual void mousePressEvent(QMouseEvent* aEvent) override;
     virtual void mouseMoveEvent(QMouseEvent* aEvent) override;
     virtual void mouseReleaseEvent(QMouseEvent* aEvent) override;

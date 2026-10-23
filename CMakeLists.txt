@@ -22,7 +22,11 @@ include(GNUInstallDirs)
 # QtQuick.Controls types with the design's own background/contentItem delegates.
 # The Basic style is selected in Main.cpp (the default on Linux is Fusion, and
 # Basic is the documented base for a customised look).
-find_package(Qt6 REQUIRED COMPONENTS Core5Compat Core Gui OpenGL OpenGLWidgets Svg Xml Concurrent Widgets Multimedia Quick Qml QuickWidgets QuickControls2 LinguistTools Test)
+# THE Qt FLOOR IS 6.12. Canvas Painter is not an option any more: its QRhiWidget host is what the
+# timeline and the graph panel paint through, and the module ships in 6.12 (on 6.11.2 that host
+# crashed in its first flush - AGENTS.md, "Canvas Painter on this machine"). A tree configured
+# against an older Qt fails HERE, by name, instead of building a second renderer nobody ships.
+find_package(Qt6 6.12 REQUIRED COMPONENTS Core5Compat Core Gui OpenGL OpenGLWidgets Svg Xml Concurrent Widgets Multimedia Quick Qml QuickWidgets QuickControls2 LinguistTools Test CanvasPainter)
 # Qt's i18n CMake support: declares the translated languages lupdate/lrelease
 # operate on, and enables the qt_add_translations/update_translations targets.
 # The translation sources live in assets/locale/translation_<locale>.ts.
@@ -102,24 +106,15 @@ if(AE_ENABLE_IMGUI)
     )
 endif()
 
-# ---------------------------------------------------------------------------
-# Qt Canvas Painter (Qt 6.12+): the RHI-backed 2D canvas the timeline and the
-# animation-graph panel migrate to. OFF unless the Qt in use actually provides it:
-# the module ships in 6.12, and QRhiWidget's xcb composite path crashes on 6.11.2
-# (AGENTS.md, "Canvas Painter on this machine"). Fedora 44's Qt is 6.11.2, so the
-# default build here does NOT get it; a 6.12 toolchain (aqt/Qt installer) turns it on.
-# ---------------------------------------------------------------------------
-option(AE_ENABLE_CANVAS_PAINTER "Build the Canvas Painter renderer (needs Qt >= 6.12)" ON)
-set(AE_CANVAS_PAINTER 0)
-if(AE_ENABLE_CANVAS_PAINTER)
-    find_package(Qt6 QUIET COMPONENTS CanvasPainter)
-    if(Qt6CanvasPainter_FOUND AND Qt6Core_VERSION VERSION_GREATER_EQUAL 6.12)
-        set(AE_CANVAS_PAINTER 1)
-        message(STATUS "Canvas Painter: ON (Qt ${Qt6Core_VERSION})")
-    else()
-        message(STATUS "Canvas Painter: OFF (needs Qt >= 6.12; this is ${Qt6Core_VERSION})")
-    endif()
-endif()
+# Canvas Painter is required by the find_package above; it is no longer an option.
+set(AE_CANVAS_PAINTER 1)
+# ...AND ITS HEADERS ARE PART OF A PUBLIC CHAIN. gui/TimeLineEditorWidget.h IS a
+# QCanvasPainterWidget, and it is reachable from gui/MainWindow.h (TargetWidget ->
+# TimeLineWidget), which tests and several gui units include without wanting to paint. Linking
+# the module here keeps them building instead of teaching a dozen targets about the panel's
+# base class; the two hosts link it anyway, so nothing new is dragged into the binaries.
+link_libraries(Qt6::CanvasPainter)
+message(STATUS "Canvas Painter: REQUIRED (Qt ${Qt6Core_VERSION})")
 
 add_subdirectory(src/util)
 add_subdirectory(src/thr)

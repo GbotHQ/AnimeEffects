@@ -3089,3 +3089,43 @@ texture; `setFrame` repaints only the ruler (22px) and the cursor's own column t
 line into the body's paint would repaint every key on every frame step (measured elsewhere at 1.85 ms
 with the pixmap cache, 19.1 ms without). A 1px opaque child widget keeps the repaint the size of the
 thing that changed and needs no transparent RHI overlay - which nothing here has verified.
+
+## The Qt floor is 6.12 now, and the old timeline host is deleted (2026-10-23)
+
+**`find_package(Qt6 6.12 REQUIRED ... CanvasPainter)`** in the root `CMakeLists.txt`: a tree
+configured against 6.11 fails by name, and `AE_ENABLE_CANVAS_PAINTER` is gone (`AE_CANVAS_PAINTER`
+is set to 1 unconditionally). The aqt install at `~/Qt/6.12.0/gcc_64` is the toolchain:
+
+```bash
+rm -rf build && cmake -S . -B build -G "Ninja Multi-Config" \
+  -DCMAKE_PREFIX_PATH="$HOME/Qt/6.12.0/gcc_64" -DAE_FFMPEG_GPL_AVCODEC=/usr/lib64/ffmpeg/libavcodec.so.62
+cmake --build build --config Debug -j"$(nproc)"
+```
+
+**DO NOT `dnf remove 'qt6-*'` to "uninstall the old Qt".** Measured: the system's 6.11.2 packages
+have **80 installed dependents**, including the whole `kf6-*` stack and `cutecosmic-qt6` - the Qt
+platform theme this desktop runs. The project stops using them; the system keeps them.
+
+**The two qt-C++ hosts collapsed to one branch each.** `TimeLineEditorWidget` and `TimeRuler` are
+unconditionally `QCanvasPainterWidget` (`paint()`; the `#else` QWidget/`paintEvent` paths and every
+`#if defined(AE_CANVAS_PAINTER)` around them are deleted). Two consequences, both measured:
+
+- **The Canvas module's headers are a PUBLIC CHAIN.** `gui/TimeLineEditorWidget.h` IS a
+  `QCanvasPainterWidget` and is reachable from `gui/MainWindow.h` (`TargetWidget` -> `TimeLineWidget`),
+  which tests include. Forward-declaring it in `TimeLineWidget.h` does NOT work (that header calls
+  `mInner->...` and needs the complete type), so the root `CMakeLists.txt` links `Qt6::CanvasPainter`
+  at DIRECTORY scope: one line instead of teaching a dozen targets about the panel's base class.
+- **A dead include hid a layering violation until the include path changed.** `ctrl/ProjectLoader.cpp`
+  included `gui/MainWindow.h` and `gui/MainMenuBar.h` and used neither; it compiled for years because
+  nothing on that chain needed a module ctrl did not link. Both are deleted.
+
+**Suite: 53 pass / 0 fail.** The two Canvas gates moved onto `scripts/run_suites.sh`'s GL branch -
+a `QCanvasPainterWidget` is a QRhiWidget, so an offscreen run reports "no Canvas Painter frame" and
+fails; they were previously "skipped (not-configured)" and never ran in the suite at all.
+
+**Still the pre-6.12 renderer, and the next wave:** `GraphPanelWidget`'s ImGui host (`runPanelFrame`,
+the context/atlas refcount, `stroke`/`outline`), `InkQPainter` (0 callers), `InkImGui`, the
+`ImGuiInputBridge` gate in `KeyCommandInvoker`, and `tests/graph_panel_pixels` - which is 8185 lines
+whose 192 claims are measured THROUGH ImGui. That gate is the only reason `ae_imgui` is still a
+dependency: it must be re-hosted on Canvas with its expectations re-derived before the ImGui
+deletion can land, and it cannot be split from it without leaving the tree unbuildable.

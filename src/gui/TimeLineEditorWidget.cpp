@@ -15,10 +15,8 @@
 #include "ctrl/graph/graph_Curve.h"
 #include "gui/TimeLineEditorWidget.h"
 
-#if defined(AE_CANVAS_PAINTER) && AE_CANVAS_PAINTER
 #include <QCanvasPainter>
 #include "gui/TimeBodyCanvas.h"
-#endif
 #include "gui/MouseSetting.h"
 #include "gui/PillInk.h"
 #include "gui/obj/obj_Item.h"
@@ -74,11 +72,7 @@ void TimeCursor::setEdgeColor(const QColor& cursorEdgeColor) { mEdgeColor = curs
 
 //-------------------------------------------------------------------------------------------------
 TimeLineEditorWidget::TimeLineEditorWidget(ViaPoint& aViaPoint, QWidget* aParent):
-#if defined(AE_CANVAS_PAINTER) && AE_CANVAS_PAINTER
     QCanvasPainterWidget(aParent),
-#else
-    QWidget(aParent),
-#endif
     mViaPoint(aViaPoint),
     mProject(),
     mTimeLineSlot(),
@@ -97,11 +91,9 @@ TimeLineEditorWidget::TimeLineEditorWidget(ViaPoint& aViaPoint, QWidget* aParent
     mPastePos(),
     mOnPasting(),
     mTimelineTheme() {
-#if defined(AE_CANVAS_PAINTER) && AE_CANVAS_PAINTER
     // The Canvas host clears its texture to this every frame (a QWidget host shows the QSS
     // floor instead); updateTheme() re-reads it when the palette changes.
     setFillColor(theme::Colors::current().base);
-#endif
     mTimeCursor.show();
 
     mEditor.reset(new ctrl::TimeLineEditor());
@@ -394,11 +386,9 @@ void TimeLineEditorWidget::updateProjectAttribute() {
 void TimeLineEditorWidget::updateTheme(theme::Theme& aTheme) {
     Q_UNUSED(aTheme) // TODO
     mTimelineTheme.reset();
-#if defined(AE_CANVAS_PAINTER) && AE_CANVAS_PAINTER
     // The Canvas host clears its texture to this every frame; a QWidget host shows the QSS
     // floor instead. Re-read with the theme so a palette change reaches it.
     setFillColor(theme::Colors::current().base);
-#endif
     if (mTimeRuler)
         mTimeRuler->updateTheme();
     updateTimeCursorPos();
@@ -415,7 +405,6 @@ int TimeLineEditorWidget::frameEndPixel() const {
     return mEditor->frameEndPixel();
 }
 
-#if defined(AE_CANVAS_PAINTER) && AE_CANVAS_PAINTER
 void TimeLineEditorWidget::paint(QCanvasPainter* aPainter) {
     if (!mCamera)
         return;
@@ -441,48 +430,6 @@ void TimeLineEditorWidget::paint(QCanvasPainter* aPainter) {
 
     pushEasingChipState();
 }
-#else
-void TimeLineEditorWidget::paintEvent(QPaintEvent* aEvent) {
-    QPainter painter;
-    painter.begin(this);
-    if (mCamera) {
-        // The surface is viewport-fixed; the content translates by the view
-        // origin. Everything then lands at its viewport position — fixed UI
-        // included — and nothing is clipped by the frame range.
-        const QPoint origin = mCamera->leftTopPos().toPoint();
-        painter.translate(origin);
-        mEditor->render(painter, *mCamera, mTimelineTheme, aEvent->rect().translated(-origin));
-        // The hairline under the ruler separates it from the track area. It
-        // sits on the first track row (y = kHeaderHeight), below the ruler
-        // widget, and stays fixed like the strip it frames.
-        //
-        // THE HINT IS SET HERE, NOT INHERITED. This pen is 1px on an integer
-        // row whose upper edge is the band's boundary, and the rule is meant
-        // to be one opaque row; the renderer's last pass (renderKeys) leaves
-        // Antialiasing ON, so a painter that just carried the hint split the
-        // stroke 0.5/0.5 across the boundary - the band's half is repainted
-        // opaquely by TimeRuler's own widget, leaving a half-tone row. Turning
-        // it off here states the rule's rasterisation where the rule is drawn,
-        // instead of making this widget's ink depend on the editor's last hint
-        // (restoring the hint inside renderLines alone would not help: the
-        // passes after it set the hint again).
-        painter.translate(-origin);
-        painter.setRenderHint(QPainter::Antialiasing, false);
-        painter.setPen(QPen(QBrush(mTimelineTheme.rulerLineColor()), 1));
-        painter.drawLine(0, ctrl::TimeLineEditor::kHeaderHeight, this->width(), ctrl::TimeLineEditor::kHeaderHeight);
-    }
-    painter.end();
-
-    // The paint is where this widget re-reads the selection it renders, and the
-    // header's chip names that same selection - so the repaint is a cheap
-    // RECONCILIATION of the chip's state, not its only source: the set announces
-    // every change itself (ctrl::time::Selection::onChanged, connected in the
-    // constructor), whichever view made it, and a document modification pushes too
-    // (see onTimeLineModified). The chip ignores a state equal to the one it holds,
-    // so a repaint that changed nothing costs one compare.
-    pushEasingChipState();
-}
-#endif // AE_CANVAS_PAINTER
 
 void TimeLineEditorWidget::onTimeLineModified(core::TimeLineEvent& aEvent, bool aUndo) {
     if (!mOnPasting) {
