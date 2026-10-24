@@ -3,6 +3,14 @@
 # sections can silently not run is a test that reads as coverage.
 ae_enable_warnings()
 
+# The shared edge-autoscroll rule (ctrl/AutoScroll.h) used by the timeline and
+# the graph panel's marquee drags. Pure geometry, no widget and no GL.
+add_executable(autoscroll autoscroll.cpp)
+target_include_directories(autoscroll PRIVATE .. ../src)
+target_compile_definitions(autoscroll PRIVATE
+    AE_MAJOR_VERSION=1 AE_MINOR_VERSION=7 AE_MICRO_VERSION=1 USE_GL_CORE_PROFILE)
+target_link_libraries(autoscroll PRIVATE Qt6::Core Qt6::Gui)
+
 # Regression test for the BoneKey::deserialize use-after-free (dangling
 # &mBindingCaches.back() captured into a deferred IDSolver lambda that runs
 # after the QList reallocates). Self-contained; see bonekey_regression.cpp.
@@ -1399,10 +1407,12 @@ target_link_libraries(frame_ruler_canvas PRIVATE
 # Canvas port is SHORT"). Registered so the remaining gap has a number to close.
 add_executable(time_body_canvas time_body_canvas.cpp
     ../src/gui/TimeBodyCanvas.cpp
+    ../src/gui/InkCanvas.cpp
     ../src/gui/theme/TimeLine.cpp)
 target_include_directories(time_body_canvas PRIVATE .. ../src)
 target_compile_definitions(time_body_canvas PRIVATE
-    AE_MAJOR_VERSION=1 AE_MINOR_VERSION=7 AE_MICRO_VERSION=1 USE_GL_CORE_PROFILE)
+    AE_MAJOR_VERSION=1 AE_MINOR_VERSION=7 AE_MICRO_VERSION=1 USE_GL_CORE_PROFILE
+    AE_CANVAS_PAINTER=1)
 target_link_libraries(time_body_canvas PRIVATE
     Qt6::Core Qt6::Core5Compat Qt6::Widgets Qt6::Gui Qt6::OpenGL Qt6::OpenGLWidgets
     Qt6::Svg Qt6::Xml Qt6::Concurrent Qt6::Multimedia Qt6::CanvasPainter

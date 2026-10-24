@@ -1,7 +1,5 @@
 #include "gui/FrameRulerCanvas.h"
 
-#include <QFont>
-#include <QFontMetrics>
 #include <QCanvasPainter>
 #include <QRectF>
 
@@ -47,12 +45,12 @@ void paintRulerCanvas(QCanvasPainter& aPainter, const Model& aModel, const Paint
     // row - the convention both hosts state, and the one the graph panel's `LabelVAlign::
     // Top` exists for (the two rasterizers' glyph bearings differ, so the run is placed by
     // its ink row rather than centred).
+    // The FONT is the host's (TimeRuler sets the widget's own before calling), so a themed
+    // font size cannot apply to the raster ruler and not to this one.
     if (!aModel.labels.isEmpty()) {
-        aPainter.setFont(QFont());
         aPainter.setTextAlign(QCanvasPainter::TextAlign::Left);
         aPainter.setTextBaseline(QCanvasPainter::TextBaseline::Top);
     }
-    const QFontMetrics metrics = QFontMetrics(QFont());
     for (const Label& label : aModel.labels) {
         QColor colour = aInk.content;
         if (!label.inActiveRange)
@@ -82,8 +80,18 @@ void paintRulerCanvas(QCanvasPainter& aPainter, const Model& aModel, const Paint
             if (!aPill.isValid())
                 return;
             aPainter.setFillStyle(aInk.windowEdge);
+            // A PILL IS ITS OWN PATH, and it is SMOOTH. Both halves are load-bearing and both
+            // were missing: fill() does not reset the current path, so the ticks' subpaths were
+            // still current and the roundRect was appended to them - the fill then inked none of
+            // the pill's body (measured: the ruler showed the stems and the label text on the
+            // bare band, with no pill at all, while the raster host's pills are one opaque
+            // rounded rect). And the ticks leave antialiasing OFF, which a filled rounded rect
+            // must state for itself or its corners are stair-stepped.
+            aPainter.beginPath();
+            aPainter.setAntialias(1);
             aPainter.roundRect(QRectF(aPill.rect), float(kPillRadius));
             aPainter.fill();
+            aPainter.setAntialias(0);
             // The faces against the stems stay square, so the bracket joint reads
             // continuous (the QPainter renderer overdraws the same corners).
             const int r = kPillRadius;

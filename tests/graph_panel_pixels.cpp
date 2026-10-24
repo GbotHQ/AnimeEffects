@@ -218,15 +218,14 @@ std::pair<core::TimeKey*, core::LayerMesh*> gui::ObjectTreeWidget::getAreaMeshIm
 //         against the same model's empty-rects pass, so each claim is about the
 //         drawing layer and not the fixture.
 //
-//      32 THE PROPORTIONAL MARKER'S FILL: on one channel's absolute/proportional pair,
-//         both selected, the proportional marker's centre is the SAME selected fill at
-//         ctrl::time::kProportionalFillAlpha (115/255) over the panel's floor and
-//         measures a LOWER channel contrast than the absolute marker beside it; its
-//         edge stroke keeps its own ink, strength and coverage (its partial-coverage
-//         sample moves only by the fill beneath it), and its selection ring is
-//         byte-identical, to the same marker in a control pass whose only difference is
-//         keyProportional[1] = false. A build without the alpha factor makes the two
-//         centres equal, which fails here.
+//      32 THE PROPORTIONAL MARKER IS A RING: on one channel's absolute/proportional
+//         pair, both selected, the proportional marker's CENTRE is the panel floor
+//         (a hole), and its hue is a band at ctrl::time::kProportionalRingOuterInset /
+//         kProportionalHoleInset; the absolute marker beside it is a solid selected
+//         dot. The edge stroke keeps its own ink, strength and coverage, and the
+//         selection ring is byte-identical to the same marker in a control pass whose
+//         only difference is keyProportional[1] = false. A build that still lowers the
+//         fill's alpha leaves the proportional centre filled, which fails here.
 //
 // WHAT THIS FILE CANNOT SEE. The key menu is the APPLICATION'S OWN QMenu now
 // (gui::MainDisplayWidget::showGraphKeyMenu -> the timeline's key menu), a
@@ -1022,7 +1021,8 @@ gui::GraphPanelModel makeMarkerModel(const theme::Graph& aTheme, core::ObjectNod
 // The PROPORTIONAL fixture: ONE channel, TWO markers - the first ABSOLUTE, the second
 // PROPORTIONAL - and nothing else that paints. Both markers are SELECTED, so the channel
 // is in play at full strength and each marker carries the same selection ring: the ONLY
-// thing the drawing layer may change for the proportional one is its fill's opacity.
+// thing the drawing layer may change for the proportional one is its BODY - a hollow
+// ring with the panel floor in the hole instead of a filled dot.
 //
 // The two markers are the same channel by construction (one curve), which is what makes
 // the centre comparison a statement about the flag and not about two hues. No polyline is
@@ -2327,25 +2327,23 @@ bool checkMarkerStates(
     return true;
 }
 
-// 32: THE PROPORTIONAL MARKER'S FILL IS THE SAME INK AT A LOWER OPACITY, AND NOTHING
-// ELSE MOVES.
+// 32: THE PROPORTIONAL MARKER IS A RING, AND NOTHING ELSE MOVES.
 //
 // The fixture publishes ONE channel with two SELECTED markers - the first absolute, the
 // second proportional - so both are in play at full strength and both carry the same
 // selection ring. What is asserted, in the order the rule is stated:
 //   * the absolute marker's centre is the selected fill outright (the channel hue mixed
 //     0.45 toward the keyframe highlight, opaque);
-//   * the proportional marker's centre is THE SAME INK at
-//     ctrl::time::kProportionalFillAlpha (115/255) over the panel's floor - the token
-//     the timeline's key pass reads, so the two views cannot diverge;
-//   * its channel contrast against the floor is LOWER, which is the visible statement;
-//   * the EDGE stroke keeps its own token, strength and coverage (its partial-coverage
-//     sample moves only by the fill beneath it), and the SELECTION RING is byte-identical
-//     to the same marker unflagged (a second pass whose only difference is
-//     keyProportional[1] = false) - so the shape, radius, hue, edge and rings are
-//     untouched and only the fill moved.
-// A build that dropped the alpha factor makes the two passes' centres identical, which
-// is what the last pair of assertions catches.
+//   * the proportional marker's centre is the PANEL FLOOR (aTheme.keyEdge()): the body
+//     is hollow, so it cannot be mistaken for a softer copy of the absolute dot;
+//   * the hue is a RING at ctrl::time::kProportionalHoleInset / kProportionalRingOuterInset
+//     (the token the timeline's key pass reads), in the same selected fill ink;
+//   * the EDGE stroke keeps its own token, strength and coverage, and the SELECTION
+//     RING is byte-identical to the same marker unflagged (a second pass whose only
+//     difference is keyProportional[1] = false) - so the radius, hue, edge and rings
+//     are untouched and only the body became a ring.
+// A build that still scales the fill's alpha leaves the proportional centre filled,
+// which is what the last pair of assertions catches.
 bool checkProportionalMarker(
     const Rendered& aProportional, const Rendered& aUnflagged, const gui::GraphPanelModel& aModel,
     const theme::Graph& aTheme
@@ -2370,27 +2368,25 @@ bool checkProportionalMarker(
     REQUIRE(colourDistance(hue, highlight) > kFillTol,
             "precondition: the channel hue rgb=%s is indistinguishable from the highlight rgb=%s",
             hex(hue).c_str(), hex(highlight).c_str());
-    // The selected fill, exactly as the drawing layer mixes it (kKeySelectedFillMix).
+    // The selected ring's ink, exactly as the drawing layer mixes it (kKeySelectedFillMix).
     const QColor selectedFill = mixedToward(hue, highlight, 0.45f);
-    // THE ALPHA IS THE TIMELINE'S EXPORTED TOKEN, not a literal restatement of it.
-    const double proportionalAlpha = double(ctrl::time::kProportionalFillAlpha) / 255.0;
-    REQUIRE(proportionalAlpha > 0.4 && proportionalAlpha < 0.5,
-            "precondition: ctrl::time::kProportionalFillAlpha (%d/255) is not the 45%% the views share",
-            ctrl::time::kProportionalFillAlpha);
-    const QColor proportionalFill = over(withAlpha(selectedFill, float(proportionalAlpha)), kClear);
+    const QColor floorInk = aTheme.keyEdge();
+    const int ringStep = 2; // inside the filled ring band [1.5, 3.25]; the edge is outside
 
     const QPoint absoluteCentre(int(curve.keyDots.at(0).x()), int(curve.keyDots.at(0).y()));
     const QPoint proportionalCentre(int(curve.keyDots.at(1).x()), int(curve.keyDots.at(1).y()));
+    const QPoint ringPixel(proportionalCentre.x() + ringStep, proportionalCentre.y());
     const QColor absoluteInk = pixelAt(aProportional.image, absoluteCentre.x(), absoluteCentre.y());
     const QColor proportionalInk = pixelAt(aProportional.image, proportionalCentre.x(), proportionalCentre.y());
+    const QColor ringInk = pixelAt(aProportional.image, ringPixel.x(), ringPixel.y());
     const QColor unflaggedInk = pixelAt(aUnflagged.image, proportionalCentre.x(), proportionalCentre.y());
     const QColor unflaggedAbsoluteInk = pixelAt(aUnflagged.image, absoluteCentre.x(), absoluteCentre.y());
     std::printf(
-        "MEASURED proportional_marker abs=(%d,%d) rgb=%s d_clear=%d prop=(%d,%d) rgb=%s d_clear=%d"
-        " expected_prop=%s token_alpha=%.3f\n",
+        "MEASURED proportional_marker abs=(%d,%d) rgb=%s d_clear=%d prop_centre=(%d,%d) rgb=%s"
+        " floor=%s ring=(%d,%d) rgb=%s ring_step=%d\n",
         absoluteCentre.x(), absoluteCentre.y(), hex(absoluteInk).c_str(), clearDistance(absoluteInk),
         proportionalCentre.x(), proportionalCentre.y(), hex(proportionalInk).c_str(),
-        clearDistance(proportionalInk), hex(proportionalFill).c_str(), proportionalAlpha
+        hex(floorInk).c_str(), ringPixel.x(), ringPixel.y(), hex(ringInk).c_str(), ringStep
     );
 
     // The absolute marker: the fill's own ink, unsoftened.
@@ -2398,49 +2394,49 @@ bool checkProportionalMarker(
             "the ABSOLUTE marker's centre rgb=%s is not the selected fill rgb=%s (distance %d > %d)",
             hex(absoluteInk).c_str(), hex(selectedFill).c_str(), colourDistance(absoluteInk, selectedFill),
             kFillTol);
-    // The proportional marker: the same ink at the lower alpha, over the panel's floor.
-    REQUIRE(colourDistance(proportionalInk, proportionalFill) <= kFillTol,
-            "the PROPORTIONAL marker's centre rgb=%s is not the selected fill at %d/255 alpha rgb=%s"
-            " (distance %d > %d): the marker does not take ctrl::time::kProportionalFillAlpha",
-            hex(proportionalInk).c_str(), ctrl::time::kProportionalFillAlpha, hex(proportionalFill).c_str(),
-            colourDistance(proportionalInk, proportionalFill), kFillTol);
-    // ...and its ink against the floor is lower, which is what the user sees.
-    REQUIRE(clearDistance(proportionalInk) > kInkMin,
-            "the PROPORTIONAL marker paints no ink at its centre: rgb=%s", hex(proportionalInk).c_str());
-    REQUIRE(clearDistance(proportionalInk) < clearDistance(absoluteInk),
-            "the PROPORTIONAL marker's centre rgb=%s measures %d from the floor against the ABSOLUTE"
-            " marker's %d (rgb=%s): the proportional fill is not lighter",
-            hex(proportionalInk).c_str(), clearDistance(proportionalInk), clearDistance(absoluteInk),
-            hex(absoluteInk).c_str());
+    // The proportional marker: a HOLE at the centre, filled with the panel floor.
+    // The hole is 1.25px radius (the 2px hue band the key body uses), so the centre
+    // pixel is ~90% floor plus the last 10% of hue ink: floor-DOMINANT, not byte-equal
+    // to the floor. kHoleTol states that; a filled marker is 0 from selectedFill and
+    // fails the next assertion.
+    constexpr int kHoleTol = 30;
+    REQUIRE(colourDistance(proportionalInk, floorInk) <= kHoleTol,
+            "the PROPORTIONAL marker's centre rgb=%s is not floor-dominant rgb=%s (distance %d > %d):"
+            " the body is not hollow",
+            hex(proportionalInk).c_str(), hex(floorInk).c_str(), colourDistance(proportionalInk, floorInk),
+            kHoleTol);
+    REQUIRE(colourDistance(proportionalInk, selectedFill) > kInkMin,
+            "the PROPORTIONAL marker's centre rgb=%s is still the filled ink rgb=%s: the ring was not drawn",
+            hex(proportionalInk).c_str(), hex(selectedFill).c_str());
+    // ...and the hue is a ring at the timeline's own inset.
+    REQUIRE(colourDistance(ringInk, selectedFill) <= kFillTol,
+            "the PROPORTIONAL marker's ring pixel rgb=%s is not the selected fill rgb=%s (distance %d > %d)"
+            " at step %d",
+            hex(ringInk).c_str(), hex(selectedFill).c_str(), colourDistance(ringInk, selectedFill),
+            kFillTol, ringStep);
 
-    // THE FLAG IS WHAT MOVES THE FILL, and nothing else in the picture moves with it: in
-    // the pass whose only difference is keyProportional[1] = false, the same marker is
-    // the absolute fill, while its edge and its ring are byte-identical.
+    // THE FLAG IS WHAT MAKES THE RING, and nothing else in the picture moves with it: in
+    // the pass whose only difference is keyProportional[1] = false, the same marker is a
+    // FILLED absolute marker, while its edge and its selection ring are unchanged.
     REQUIRE(colourDistance(unflaggedInk, absoluteInk) <= kFillTol,
             "the same marker with its proportional flag OFF rgb=%s is not the absolute fill rgb=%s: the flag"
-            " no longer controls the fill",
+            " no longer controls the body",
             hex(unflaggedInk).c_str(), hex(absoluteInk).c_str());
     REQUIRE(colourDistance(unflaggedInk, proportionalInk) > kInkMin,
-            "the proportional marker's centre is rgb=%s in BOTH passes: the fill's alpha factor is gone",
+            "the proportional marker's centre is rgb=%s in BOTH passes: the ring is gone",
             hex(proportionalInk).c_str());
     REQUIRE(colourDistance(unflaggedAbsoluteInk, absoluteInk) == 0,
             "the ABSOLUTE marker's own ink changed between the two passes: the proportional flag leaked"
             " into its neighbour");
 
-    // THE EDGE BAND's own sample, at the same step checkKeys measures it with: a key's
-    // centre is an integer and the framebuffer samples at half-integers, so step 3 reads
-    // radius 3.5 - inside the [3.25, 4.25] band.
-    //
-    // The band is a PARTIAL-coverage blend by construction (the 1px stroke straddles
-    // the pixel grid), so its pixel is `coverage * keyEdge + (1 - coverage) * <the fill
-    // beneath>`. The fill beneath is exactly what the proportional flag changes, so the
-    // pixel cannot be byte-identical; what must be identical is the STROKE - the same
-    // token at the same coverage. kEdgeTol is that statement's bound: the fill centres
-    // differ by the alpha step, scaled by the band's minority share. An edge that had
-    // itself taken the fill's alpha (the regression this guards) moves the pixel by the
-    // stroke's whole contribution and fails by a wide margin.
+    // THE EDGE BAND's own sample, at the same place checkKeys measures a key's edge.
+    // The band is a PARTIAL-coverage blend by construction, so its pixel is
+    // `coverage * keyEdge + (1 - coverage) * <the ink beneath>`. The ink beneath is the
+    // hole (the floor) for the proportional marker and the selected fill for the
+    // unflagged one, so the pixel cannot be byte-identical; what must hold is that the
+    // edging itself is untouched. kEdgeTol is that statement's bound.
     constexpr int kEdgeTol = 20;
-    const int edgeStep = int(std::lround(double(ctrl::graph::kKeyDotRadius))) - 1; // 3
+    const int edgeStep = int(std::lround(double(ctrl::graph::kKeyDotRadius))) - 1; // 3 -> radius 3.5
     const QPoint edgePixel(proportionalCentre.x() + edgeStep, proportionalCentre.y());
     const QColor edgeProportional = pixelAt(aProportional.image, edgePixel.x(), edgePixel.y());
     const QColor edgeUnflagged = pixelAt(aUnflagged.image, edgePixel.x(), edgePixel.y());
@@ -2449,48 +2445,142 @@ bool checkProportionalMarker(
     );
     REQUIRE(clearDistance(edgeProportional) > kInkMin,
             "the PROPORTIONAL marker has no ink at its edge pixel (%d,%d)", edgePixel.x(), edgePixel.y());
-    // The stroke still DARKENS the fill it is drawn over, in both markers: the edge
-    // token is the same ink and the same strength it always had.
-    REQUIRE(edgeProportional.red() <= proportionalInk.red() && edgeProportional.green() <= proportionalInk.green()
-                && edgeProportional.blue() <= proportionalInk.blue(),
-            "the PROPORTIONAL marker's edge pixel rgb=%s is not darker than its own fill rgb=%s",
-            hex(edgeProportional).c_str(), hex(proportionalInk).c_str());
+    REQUIRE(edgeProportional.red() <= ringInk.red() && edgeProportional.green() <= ringInk.green()
+                && edgeProportional.blue() <= ringInk.blue(),
+            "the PROPORTIONAL marker's edge pixel rgb=%s is not darker than its ring rgb=%s",
+            hex(edgeProportional).c_str(), hex(ringInk).c_str());
     REQUIRE(edgeAbsolute.red() <= absoluteInk.red() && edgeAbsolute.green() <= absoluteInk.green()
                 && edgeAbsolute.blue() <= absoluteInk.blue(),
             "the ABSOLUTE marker's edge pixel rgb=%s is not darker than its own fill rgb=%s",
             hex(edgeAbsolute).c_str(), hex(absoluteInk).c_str());
     REQUIRE(colourDistance(edgeProportional, edgeUnflagged) <= kEdgeTol,
             "the PROPORTIONAL marker's edge pixel rgb=%s differs from the same marker unflagged rgb=%s by %d"
-            " (bound %d): the edge stroke must not take the fill's alpha",
+            " (bound %d): the edge stroke must not take the ring's body",
             hex(edgeProportional).c_str(), hex(edgeUnflagged).c_str(),
             colourDistance(edgeProportional, edgeUnflagged), kEdgeTol);
 
     QPoint ringPixelProportional;
     QPoint ringPixelUnflagged;
-    const QColor ringProportional = detachedRingInk(aProportional.image, proportionalCentre, ringPixelProportional);
-    const QColor ringUnflagged = detachedRingInk(aUnflagged.image, proportionalCentre, ringPixelUnflagged);
-    REQUIRE(clearDistance(ringProportional) > kInkMin,
+    const QColor selectionRing = detachedRingInk(aProportional.image, proportionalCentre, ringPixelProportional);
+    const QColor selectionRingUnflagged = detachedRingInk(aUnflagged.image, proportionalCentre, ringPixelUnflagged);
+    REQUIRE(clearDistance(selectionRing) > kInkMin,
             "the PROPORTIONAL marker paints nothing at its ring probe (%d,%d): a selected proportional key"
             " must keep the selection ring",
             ringPixelProportional.x(), ringPixelProportional.y());
-    REQUIRE(ringPixelProportional == ringPixelUnflagged && colourDistance(ringProportional, ringUnflagged) == 0,
+    REQUIRE(ringPixelProportional == ringPixelUnflagged
+                && colourDistance(selectionRing, selectionRingUnflagged) == 0,
             "the PROPORTIONAL marker's selection ring rgb=%s at (%d,%d) differs from the same marker unflagged"
-            " rgb=%s at (%d,%d): the ring must not take the fill's alpha",
-            hex(ringProportional).c_str(), ringPixelProportional.x(), ringPixelProportional.y(),
-            hex(ringUnflagged).c_str(), ringPixelUnflagged.x(), ringPixelUnflagged.y());
-    // THE RING IS STILL THE TIMELINE'S TOKEN: the channel's raw hue at
-    // ctrl::time::kSelectRingAlpha, read as a partial-coverage blend over the clear
-    // colour - exactly the ink checkMarkerStates and checkKeys read for the other
-    // markers. Being proportional changes the fill, never the ring.
+            " rgb=%s at (%d,%d): the ring must not take the body's ink",
+            hex(selectionRing).c_str(), ringPixelProportional.x(), ringPixelProportional.y(),
+            hex(selectionRingUnflagged).c_str(), ringPixelUnflagged.x(), ringPixelUnflagged.y());
     const double ringAlpha = double(ctrl::time::kSelectRingAlpha) / 255.0;
-    const double ringCoverage = coverageOfTone(ringProportional, hue);
+    const double ringCoverage = coverageOfTone(selectionRing, hue);
     REQUIRE(ringCoverage > 0.5 * ringAlpha && ringCoverage <= ringAlpha + 0.02
-                && colourDistance(ringProportional, toneAtCoverage(hue, ringCoverage)) <= kCurveTol,
+                && colourDistance(selectionRing, toneAtCoverage(hue, ringCoverage)) <= kCurveTol,
             "the PROPORTIONAL marker's ring pixel rgb=%s is not the channel hue rgb=%s at up to %.3f coverage"
             " (measured %.3f, distance %d > %d): proportional keys keep the timeline's ring ink",
-            hex(ringProportional).c_str(), hex(hue).c_str(), ringAlpha, ringCoverage,
-            colourDistance(ringProportional, toneAtCoverage(hue, ringCoverage)), kCurveTol);
+            hex(selectionRing).c_str(), hex(hue).c_str(), ringAlpha, ringCoverage,
+            colourDistance(selectionRing, toneAtCoverage(hue, ringCoverage)), kCurveTol);
     return true;
+}
+
+// 33: THE FRAME RANGE'S GUIDES ARE INKED, and where the model says. The timeline draws
+// two vertical hairlines at the project's first and last frame and the panel draws the
+// same two marks from the model's columns (GraphPanelModel::rangeGuideX). Three passes
+// of the same model say exactly what is claimed, each a statement the others cannot
+// make: with the guides and without them (is a column inked at all?), with the recede
+// flag on (does an active play window weaken it?), and against the model's own rows
+// (does the ink stop at the plot's top and bottom, where the ruler and the scroll bar
+// own the rows?).
+//
+// The columns are chosen FROM the model's geometry, not from what looks clear: the
+// first is inside the VALUE COLUMN - the state the shared frame mapping puts the
+// project's first frame in at the usual fit, and the reason the guides are panel
+// columns and not plot ones - and the second inside the plot, clear of the fixture's
+// chips (300..371), its keys and its playhead column.
+bool checkRangeGuides(
+    const Rendered& aControl, const Rendered& aGuided, const Rendered& aReceded,
+    const gui::GraphPanelModel& aModel
+) {
+    REQUIRE(aModel.rangeGuideX.size() == 2, "precondition: the guide fixture must publish two columns");
+    const int panelColumn = aModel.rangeGuideX.value(0);
+    const int plotColumn = aModel.rangeGuideX.value(1);
+    REQUIRE(panelColumn < aModel.plot.left() && panelColumn >= aModel.panel.left(),
+            "precondition: the fixture's first guide (%d) must be a PANEL column left of the plot (%d)",
+            panelColumn, aModel.plot.left());
+    REQUIRE(aModel.plot.contains(plotColumn, aModel.plot.center().y()),
+            "precondition: the fixture's second guide (%d) must be inside the plot", plotColumn);
+
+    const int rows = aModel.plot.height();
+    int checked = 0;
+    for (const int x : {panelColumn, plotColumn}) {
+        int inside = 0;
+        int above = 0;
+        int below = 0;
+        int neighbours = 0;
+        for (int y = 0; y < kViewH; ++y) {
+            const bool differs =
+                colourDistance(pixelAt(aGuided.image, x, y), pixelAt(aControl.image, x, y)) > kInkMin;
+            if (!differs)
+                continue;
+            if (y < aModel.plot.top())
+                ++above;
+            else if (y > aModel.plot.bottom())
+                ++below;
+            else
+                ++inside;
+        }
+        // The 1px column is one column: the drawn neighbours are the next contract.
+        for (const int dx : {-1, 1}) {
+            for (int y = aModel.plot.top(); y <= aModel.plot.bottom(); ++y) {
+                if (colourDistance(pixelAt(aGuided.image, x + dx, y), pixelAt(aControl.image, x + dx, y)) > kInkMin)
+                    ++neighbours;
+            }
+        }
+        std::printf(
+            "MEASURED range_guide x=%d rows=%d inked=%d above_plot=%d below_plot=%d neighbour_px=%d"
+            "  panel_left=%d plot=(%d..%d) rows=(%d..%d)\n",
+            x, rows, inside, above, below, neighbours, aModel.panel.left(), aModel.plot.left(),
+            aModel.plot.right(), aModel.plot.top(), aModel.plot.bottom()
+        );
+        // Every row the plot owns, less the few where an OPAQUE mark of the panel covers
+        // the guide (a curve crossing, a glyph) - and never a row outside them.
+        REQUIRE(
+            inside >= rows * 3 / 4,
+            "the guide at x=%d inked %d of the plot's %d rows with the guides published and none without them",
+            x, inside, rows
+        );
+        REQUIRE(
+            above == 0 && below == 0,
+            "the guide at x=%d painted outside the plot's rows: %d above plot.top()=%d, %d below plot.bottom()=%d",
+            x, above, aModel.plot.top(), below, aModel.plot.bottom()
+        );
+        REQUIRE(neighbours == 0, "the guide at x=%d spilled onto its neighbouring columns: %d px", x, neighbours);
+        ++checked;
+    }
+
+    // THE RECESSION: an active play window halves the guides' ink (the timeline's 40%
+    // -> 25%), so the receded column is the SAME column, weaker. Sampled on one row of
+    // the panel-column guide, which no other mark crosses.
+    const int sampleY = aModel.plot.center().y();
+    const QColor clear = pixelAt(aControl.image, panelColumn, sampleY);
+    const QColor plain = pixelAt(aGuided.image, panelColumn, sampleY);
+    const QColor weak = pixelAt(aReceded.image, panelColumn, sampleY);
+    const int plainDistance = colourDistance(plain, clear);
+    const int weakDistance = colourDistance(weak, clear);
+    std::printf(
+        "MEASURED range_guide_recede x=%d y=%d without=%s guided=%s receded=%s  distance=%d -> %d\n",
+        panelColumn, sampleY, hex(clear).c_str(), hex(plain).c_str(), hex(weak).c_str(), plainDistance,
+        weakDistance
+    );
+    REQUIRE(plainDistance > kInkMin, "the guide left no ink at x=%d (distance %d)", panelColumn, plainDistance);
+    REQUIRE(
+        weakDistance > 0 && weakDistance < plainDistance,
+        "the receded guide reads distance %d from the panel, not weaker than the plain guide's %d",
+        weakDistance, plainDistance
+    );
+
+    return checked == 2;
 }
 
 // 4: the label, and the halo behind gui::kDrawTextHalo.
@@ -7926,6 +8016,20 @@ int main(int argc, char** argv) {
     // THE DRAG READOUT (assertion 30) IS GONE, with the ink it read: the panel prints no
     // gesture numbers any more, so there is no box at the pointer to measure.
 
+    // THE FRAME RANGE'S GUIDES (assertion 33): the full model, plus two copies that
+    // differ only in what the guides are - the columns (absent from `full`, so it is the
+    // control) and the recede classification. The fixture's two columns are chosen from
+    // the model's own geometry: one inside the VALUE COLUMN (where the shared mapping
+    // puts the project's first frame at the usual fit) and one inside the plot, clear of
+    // the chips at x 300..371, the keys, the handles and the playhead's column.
+    gui::GraphPanelModel guideModel = full;
+    guideModel.rangeGuideX = {30, 120};
+    const Rendered guideRendered = renderPass(guideModel, palette, focus, "full_model_range_guides");
+    gui::GraphPanelModel recededGuideModel = guideModel;
+    recededGuideModel.rangeGuideRecede = true;
+    const Rendered recededGuideRendered =
+        renderPass(recededGuideModel, palette, focus, "full_model_range_guides_receded");
+
     if (rendered.vtx <= 0) {
         std::printf("FAIL: the full model emitted no vertices at all\n");
         return 1;
@@ -7995,7 +8099,11 @@ int main(int argc, char** argv) {
         return 1;
     }
     if (!checkZeroRule(rendered, noRuleRendered, full)) {
-        std::printf("FAILED: zero rule\n");
+        std::printf("FAILED: the zero rule\n");
+        return 1;
+    }
+    if (!checkRangeGuides(rendered, guideRendered, recededGuideRendered, guideModel)) {
+        std::printf("FAILED: the frame range's guides\n");
         return 1;
     }
     if (!checkHandles(rendered, highlightRendered, full, palette, pointerDot)) {

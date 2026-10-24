@@ -61,12 +61,17 @@
 //     view transform can express, and its gutter is part of the RUNG choice.
 //     The new-project policy (fits on attach, not on a tab switch) is asserted
 //     through the same call.
-//   7 THE PROPORTIONAL KEY'S FILL IS THE SAME HUE, SOFTER. A proportional key
-//     is drawn in its channel's hue like any other key, but its fill's alpha is
-//     ctrl::time::kProportionalFillAlpha (115/255) - the token both this renderer
-//     and the graph panel's marker pass read. The absolute key beside it is the
-//     full hue, and a FOCUSED proportional key still gains the full selection
-//     ring: only the fill's opacity moves, never the shape, radius, hue or ring.
+//   7 THE PROPORTIONAL KEY IS A RING. A proportional key is drawn in its channel's
+//     hue like any other key, but its body is hollow: the hue is a band at
+//     ctrl::time::kProportionalRingOuterInset / kProportionalHoleInset and the centre
+//     shows the lane. The absolute key beside it is a solid hue disc, and a
+//     FOCUSED proportional key still gains the full selection ring: the hole, the
+//     band and the selection ring are three separate rules.
+//   8 THE FOLDER SUMMARY IS A LANE. A collapsed folder with hidden keys owns a
+//     dedicated summary band (below its own lanes, or the whole row when it has
+//     none), with one rounded triangle per frame; the band is a distinct recessed
+//     fill, the hit test and the marquee address that band's centre, and an
+//     expanded folder has no summary at all.
 //
 // The geometry is read off the implementation's own public mapping
 // (TimeLineEditor::timeScale(), kTimeLineMargin) rather than restated, so a
@@ -94,6 +99,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include "XCAssert.h"
+#include "core/BoneKey.h"
 #include "core/MoveKey.h"
 #include "core/ObjectNode.h"
 #include "core/OpaKey.h"
@@ -102,6 +108,8 @@
 // The selected key's ring tokens (alpha/offset) - the same cells the graph panel's
 // marker pass reads, which is what this file and graph_panel_pixels.cpp pin together.
 #include "ctrl/time/time_Renderer.h"
+#include "ctrl/time/time_BodyModel.h"
+#include "ctrl/time/time_Marquee.h"
 #include "cmnd/Stack.h"
 #include "gui/PillInk.h"
 #include "gui/theme/Colors.h"
@@ -313,6 +321,17 @@ public:
     TimeLine* timeLine() override { return &mTimeLine; }
     const TimeLine* timeLine() const override { return &mTimeLine; }
 };
+
+// A folder row with one child layer: the smallest shape a folder summary needs.
+class TestFolder: public TestNode {
+    TestNode mChild;
+
+public:
+    TestFolder() { children().pushBack(&mChild); }
+    ObjectType type() const override { return ObjectType_Folder; }
+    bool canHoldChild() const override { return true; }
+    TestNode& child() { return mChild; }
+};
 } // namespace core
 
 int main(int argc, char** argv) {
@@ -499,6 +518,11 @@ int main(int argc, char** argv) {
         // measurement. Its single type is Opa, whose hue is strongly non-neutral.
         const Rgb bandB = pixelAt(image, kBandProbeX, kRowBTop + 30);
         CHECK(chebyshev(bandB, floor) <= kClean);
+
+        // Display names are not serialization tokens: the lane says "Opacity",
+        // while the project format and clipboard keep "Opa".
+        CHECK(core::TimeLine::getTimeKeyDisplayName(core::TimeKeyType_Opa) == QStringLiteral("Opacity"));
+        CHECK(core::TimeLine::getTimeKeyName(core::TimeKeyType_Opa) == QStringLiteral("Opa"));
 
         const Rgb ink = strongestInk(image, labelB, bandB);
         CHECK(chebyshev(ink, bandB) > 15); // there is ink at all
@@ -761,28 +785,22 @@ int main(int argc, char** argv) {
         CHECK(roundedBlends > 0); // the rule draws an antialiased radius
     }
 
-    // --- 7: THE PROPORTIONAL KEY IS THE SAME HUE AT A LOWER FILL ALPHA.
+    // --- 7: A PROPORTIONAL KEY IS A RING, NOT A SOFTER FILL.
     //
-    // A proportional key is drawn in its channel hue exactly like an absolute one -
-    // same ellipse, same radius, same edge - and ONLY its fill's alpha drops to
-    // ctrl::time::kProportionalFillAlpha (115/255, 0.45). The two keys sit in one
-    // unselected lane, so the pixel under each is that key's own fill over the
-    // floor, and the expectation is built from the exported token rather than a
-    // second copy of the renderer's arithmetic. The focused pass then proves the
-    // selection ring is untouched: a proportional key that is focused keeps the
+    // The key is drawn in its channel hue at the same radius and with the same edge
+    // as an absolute one, but its body is HOLLOW: the hue is a 2px band inside the
+    // edge and the centre shows the lane. The two keys sit in one unselected lane, so
+    // the hole is a clean read of the band beneath it. The focused pass then proves
+    // the selection ring is untouched: a proportional key that is focused keeps the
     // full-strength ring at kSelectRingOffset, in the same raw hue.
     {
-        // A lane of its own: the shared fixtures above are left exactly as the
-        // earlier sections read them.
         core::TestNode nodeP;
         cmnd::Stack stackP;
         auto* absoluteKey = new core::MoveKey();
         auto* proportionalKey = new core::MoveKey();
         stackP.push(nodeP.timeLine()->createPusher(core::TimeKeyType_Move, kKeyFrameA, absoluteKey));
         stackP.push(nodeP.timeLine()->createPusher(core::TimeKeyType_Move, kKeyFrameFocused, proportionalKey));
-        // The document's own flag: the renderer reads nothing else to decide the fill
-        // alpha. The state's bounds are inert here, and that is the point - the DRAWING
-        // of a proportional key never depends on where its bounds currently are.
+        // The document's own flag: the renderer reads nothing else to decide the ring.
         proportionalKey->setProportional(true);
         CHECK(proportionalKey->isProportional());
         CHECK(!absoluteKey->isProportional());
@@ -796,48 +814,39 @@ int main(int argc, char** argv) {
         const int proportionalX = margin + proportionScale.pixelWidth(kKeyFrameFocused);
         const int keyRowPY = kRowATop + (kRowABottom - kRowATop + 1) / 2;
 
-        // The lane is unselected, so its band is the floor: the clean dst both fills
-        // composite onto.
         const QImage unfocused = renderTimeline(proportionEditor, theme);
         const Rgb band = pixelAt(unfocused, kBandProbeX, keyRowPY);
         CHECK(chebyshev(band, floor) <= kClean);
         CHECK(absoluteX != proportionalX);
-        // ...and both keys are left of the lane label, whose ink would otherwise sit
-        // under the proportional fill's translucency.
         CHECK(proportionalX + 9 < labelBox(kRowATop, kRowABottom).left());
 
         const QColor hue = theme::channelColor(colors, core::TimeKeyType_Move, 0);
         const Rgb plainHue = rgbOf(hue);
-        // THE ALPHA IS THE RENDERER'S OWN TOKEN, not a literal: this is the rule
-        // (115/255), read from the header the graph panel reads too.
-        const double proportionalAlpha = double(ctrl::time::kProportionalFillAlpha) / 255.0;
-        const Rgb proportionalFill = over(hue, proportionalAlpha, band);
 
-        // The absolute key: the full channel hue, unsoftened.
+        // The absolute key: the full channel hue, solid.
         CHECK(chebyshev(pixelAt(unfocused, absoluteX, keyRowPY), plainHue) <= 1);
-        // The proportional key: the same hue at the lower alpha - the exact composite,
-        // and far from the absolute key's ink.
-        CHECK(chebyshev(pixelAt(unfocused, proportionalX, keyRowPY), proportionalFill) <= 2);
-        CHECK(chebyshev(pixelAt(unfocused, proportionalX, keyRowPY), plainHue) > 20);
+        // The proportional key: the centre is the LANE (the hole), and the hue is a
+        // ring around it. The ring is sampled at 2px from the centre, inside the
+        // 2px band the model publishes (inset 1.5, width 2 -> [1.25, 3.25]).
+        const Rgb proportionalHole = pixelAt(unfocused, proportionalX, keyRowPY);
+        CHECK(chebyshev(proportionalHole, band) <= 2);
+        CHECK(chebyshev(proportionalHole, plainHue) > 20);
+        CHECK(chebyshev(pixelAt(unfocused, proportionalX + 2, keyRowPY), plainHue) <= 3);
+        CHECK(chebyshev(pixelAt(unfocused, proportionalX - 2, keyRowPY), plainHue) <= 3);
         // Neither carries a ring while nothing is focused.
         CHECK(maxInkIn(unfocused, absoluteX + 5, absoluteX + 9, keyRowPY, band) <= kClean);
         CHECK(maxInkIn(unfocused, proportionalX + 5, proportionalX + 9, keyRowPY, band) <= kClean);
 
-        // THE FOCUSED PROPORTIONAL KEY. Focus changes the fill's MIX (toward the text
-        // colour) but not the ring: the ring is the raw channel hue at
-        // kSelectRingAlpha, on the same 1px band the absolute key uses, so being
-        // proportional cannot cost the selection its mark.
+        // THE FOCUSED PROPORTIONAL KEY. Focus changes the RING's ink (the channel hue
+        // mixed toward the text colour, the same mix section 2 asserts); the hole and
+        // the selection ring keep their own rules.
         util::LifeLink proportionFocus;
         proportionalKey->setFocus(proportionFocus);
         CHECK(proportionalKey->isFocused());
         const QImage focused = renderTimeline(proportionEditor, theme);
-        // The focused fill is the same mix section 2 asserts (hue toward the text
-        // colour at kSelectFillMix), then the proportional alpha on top of it.
-        const Rgb mixedFill = towardText(plainHue, kSelectFillMix);
-        const Rgb focusedFill = over(
-            QColor(mixedFill.r, mixedFill.g, mixedFill.b), proportionalAlpha, band
-        );
-        CHECK(chebyshev(pixelAt(focused, proportionalX, keyRowPY), focusedFill) <= 2);
+        const Rgb mixedRing = towardText(plainHue, kSelectFillMix);
+        CHECK(chebyshev(pixelAt(focused, proportionalX, keyRowPY), band) <= 2);
+        CHECK(chebyshev(pixelAt(focused, proportionalX + 2, keyRowPY), mixedRing) <= 3);
         // The ring's token and offset, read exactly as section 2 reads them.
         const double ringAlpha = double(ctrl::time::kSelectRingAlpha) / 255.0;
         const Rgb fullRing = over(hue, ringAlpha, band);
@@ -854,6 +863,113 @@ int main(int argc, char** argv) {
         }
         // The absolute key beside it is still ringless - the focus did not spread.
         CHECK(maxInkIn(focused, absoluteX + 5, absoluteX + 9, keyRowPY, band) <= kClean);
+    }
+
+    // --- 8: A COLLAPSED FOLDER OWNS A DEDICATED SUMMARY LANE.
+    // The folder has its own keys AND a child with keys: the summary is a second
+    // lane under the folder's own one, never an overlay on a child's lane. The
+    // marker is one rounded polygon per frame, and the marquee/hit test use the
+    // summary band's centre.
+    {
+        core::TestFolder folder;
+        stack.push(folder.timeLine()->createPusher(core::TimeKeyType_Move, kKeyFrameA, new core::MoveKey()));
+        stack.push(folder.child().timeLine()->createPusher(core::TimeKeyType_Move, kKeyFrameA, new core::MoveKey()));
+        stack.push(folder.child().timeLine()->createPusher(core::TimeKeyType_Opa, kKeyFrameA, new core::OpaKey()));
+
+        const QRect rowRect(ctrl::TimeLineEditor::kTimeLineMargin, kRowATop, 1,
+                            ctrl::TimeLineRow::kHeight + ctrl::TimeLineRow::kFolderSummaryHeight);
+        const ctrl::TimeLineRow row(&folder, rowRect, true, false);
+        CHECK(row.summary);
+        CHECK(row.summaryHeight() == ctrl::TimeLineRow::kFolderSummaryHeight);
+        CHECK(row.ownRect().height() == ctrl::TimeLineRow::kHeight);
+        CHECK(row.summaryRect().top() == rowRect.top() + ctrl::TimeLineRow::kHeight);
+        CHECK(row.summaryRect().bottom() == rowRect.bottom());
+
+        ctrl::time::Inks inks;
+        inks.body = theme.trackColor();
+        inks.bodySelected = theme.trackSelectColor();
+        inks.edge = theme.trackEdgeColor();
+        inks.separator = theme.trackSeperatorColor();
+
+        const QRect camera(0, 0, kWidth, kHeight);
+        const ctrl::time::Lines lines =
+            ctrl::time::buildLines(QVector<ctrl::TimeLineRow>{ row }, camera, camera, inks);
+        CHECK(lines.lanes.size() == 2);
+        CHECK(!lines.lanes[0].summary);
+        CHECK(lines.lanes[1].summary);
+        CHECK(lines.lanes[1].rect.top() == row.summaryRect().top());
+        CHECK(lines.lanes[1].rect.bottom() == row.summaryRect().bottom());
+        // The band names what it is; the tree names the folder.
+        CHECK(lines.lanes[1].labels.size() == 1);
+        CHECK(lines.lanes[1].labels[0].text == QStringLiteral("Children"));
+        CHECK(lines.lanes[1].labels[0].box == QRect(
+            camera.center().x() - 50, row.summaryRect().top(), 100, row.summaryRect().height()
+        ));
+
+        ctrl::time::Scaler summaryScale;
+        summaryScale.setFrameEnd(200);
+        const int keyX = ctrl::TimeLineEditor::kTimeLineMargin + summaryScale.pixelWidth(kKeyFrameA);
+        const ctrl::time::KeyPass summary =
+            ctrl::time::buildChildKeys(&folder, row.summaryRect(), ctrl::TimeLineEditor::kTimeLineMargin,
+                                       summaryScale, util::Range(0, 200));
+        // Two hidden keys on ONE frame: one marker, not two overdrawing triangles.
+        CHECK(summary.marks.size() == 1);
+        CHECK(summary.marks[0].shape == ctrl::time::KeyShape::Polygon);
+        CHECK(summary.marks[0].polygon.size() > 3); // rounded corners, not a 3-point triangle
+        CHECK(!summary.stroke); // fill-only: no rim on a 5px neutral marker
+        CHECK(std::abs(summary.marks[0].centre.x() - keyX) <= 1);
+        CHECK(std::abs(summary.marks[0].centre.y() - row.summaryCenterY()) <= 1);
+
+        const QVector<ctrl::TimeLineRow> rows{ row };
+        ctrl::time::Marquee marquee(rows, summaryScale, ctrl::TimeLineEditor::kTimeLineMargin);
+        const ctrl::time::Hit hit = marquee.hitTest(
+            QPoint(keyX, int(row.summaryCenterY())), 1.0f);
+        CHECK(hit.isValid());
+        CHECK(hit.node == &folder.child());
+        CHECK(hit.pos.type() == core::TimeKeyType_Move);
+
+        // THE HOLDER DIAMOND USES THE SAME RADIUS. A Bone key can hold children, so
+        // its marker is the diamond; a rounded corner flattens the four-point shape
+        // into more than four polygon vertices (the pre-rounding marker had exactly 4).
+        core::TestNode holderNode;
+        stack.push(holderNode.timeLine()->createPusher(
+            core::TimeKeyType_Bone, kKeyFrameA, new core::BoneKey()));
+        const ctrl::TimeLineRow holderRow(
+            &holderNode, QRect(ctrl::TimeLineEditor::kTimeLineMargin, kRowATop, 1, ctrl::TimeLineRow::kHeight),
+            false, false);
+        const ctrl::time::KeyPass holder = ctrl::time::buildKeys(
+            &holderNode, holderRow, summaryScale, util::Range(0, 200), ctrl::TimeLineEditor::kTimeLineMargin,
+            inks.body);
+        CHECK(holder.marks.size() == 1);
+        CHECK(holder.marks[0].shape == ctrl::time::KeyShape::Polygon);
+        CHECK(holder.marks[0].polygon.size() > 4);
+
+        // A folder with no own keys uses the whole row for the summary: no empty
+        // lane above it. The tree height and TimeLineRow agree on the same 22px.
+        core::TestFolder summaryOnly;
+        stack.push(summaryOnly.child().timeLine()->createPusher(
+            core::TimeKeyType_Move, kKeyFrameA, new core::MoveKey()));
+        const ctrl::TimeLineRow summaryRow(
+            &summaryOnly, QRect(ctrl::TimeLineEditor::kTimeLineMargin, kRowATop, 1,
+                                ctrl::TimeLineRow::kFolderSummaryHeight),
+            true, false);
+        CHECK(summaryRow.summary);
+        CHECK(summaryRow.ownRect().height() == 0);
+        CHECK(summaryRow.summaryRect().height() == ctrl::TimeLineRow::kFolderSummaryHeight);
+        const ctrl::time::Lines summaryLines =
+            ctrl::time::buildLines(QVector<ctrl::TimeLineRow>{ summaryRow }, camera, camera, inks);
+        CHECK(summaryLines.lanes.size() == 1);
+        CHECK(summaryLines.lanes[0].summary);
+
+        // An expanded folder has no summary lane: its children are rows of their own.
+        const ctrl::TimeLineRow openRow(
+            &folder, QRect(ctrl::TimeLineEditor::kTimeLineMargin, kRowATop, 1, ctrl::TimeLineRow::kHeight),
+            false, false);
+        CHECK(!openRow.summary);
+        const ctrl::time::Lines openLines =
+            ctrl::time::buildLines(QVector<ctrl::TimeLineRow>{ openRow }, camera, camera, inks);
+        CHECK(openLines.lanes.size() == 1);
+        CHECK(!openLines.lanes[0].summary);
     }
 
     std::printf("timeline_visuals: all checks passed\n");

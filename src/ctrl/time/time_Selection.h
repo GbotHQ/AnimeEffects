@@ -1,6 +1,7 @@
 #ifndef CTRL_TIME_SELECTION_H
 #define CTRL_TIME_SELECTION_H
 
+#include <functional>
 #include <QVector>
 #include "util/LifeLink.h"
 #include "util/Signaler.h"
@@ -117,6 +118,12 @@ namespace time {
         bool refresh();
 
         const QVector<Item>& items() const { return mItems; }
+
+        // Keep only the entries aKeep accepts. Used when the view stops showing a
+        // layer (an expand/collapse rebuild): the rest of the set is untouched, and
+        // entries keep their identity, so no key is re-resolved from an unstable id.
+        // Fires onChanged exactly when something was dropped.
+        bool retain(const std::function<bool(const Item&)>& aKeep);
 
     private:
         // Identity of a target is (line, type, frame); the map is unique per

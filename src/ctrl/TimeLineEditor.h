@@ -124,8 +124,25 @@ public:
     void updateProjectAttribute();
 
     void clearRows();
+    // Empty the row set but KEEP the selection (its keys are still in the document).
+    // The caller rebuilds the rows and then calls retainSelectionInRows(), which
+    // drops only entries whose layer the rebuilt rows no longer show. This is the
+    // expand/collapse path: collapsing a folder is a view change, not a document
+    // change, so it must not clear unrelated keys.
+    void resetRows();
     void pushRow(core::ObjectNode* aNode, util::Range aWorldTB, bool aClosedFolder);
+    // Drop selection entries whose node no longer has a row (or, for a closed
+    // folder, no summary representation). Returns whether the set changed.
+    bool retainSelectionInRows();
     void updateRowSelection(const core::ObjectNode* aRepresent);
+    // True while a marquee drag is in flight: the host's edge autoscroll timer uses
+    // this to start and stop without asking the editor's private gesture state.
+    bool isMarqueeActive() const { return mState == State_EncloseKeys && mMarquee.isActive(); }
+    // Extend the live marquee to a WORLD point (the host recomputes it after it has
+    // scrolled the view). False when no marquee is active, so a timer that races a
+    // release can do nothing instead of starting an edit. Commits the new box through
+    // the same applyMarquee() the drag path uses.
+    bool extendMarquee(const QPoint& aWorldPoint);
     void render(QPainter& aPainter, const core::CameraInfo& aCamera, theme::TimeLine& aTheme, const QRect& aCullRect) const;
 
     // THE BODY AS A VALUE: every pass the surface draws, in paint order, with no QPainter and no

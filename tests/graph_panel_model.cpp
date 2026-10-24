@@ -101,6 +101,11 @@
 //     of (lane, run, orientation) cases, the pill gui::AppStyle's CC_ScrollBar
 //     PAINTS for them (read off a transparent QImage), and the pill the panel's
 //     published lane/run rects produce - the same function both painters use
+//  18 the FRAME RANGE'S GUIDES: the project's first and last frame as two COLUMNS
+//     through the same scaler the ticks and the playhead use - PANEL columns (the
+//     first frame of the range sits inside the value column and is still published),
+//     ONE column when both ends round onto the same pixel, the recede flag following
+//     the play window without moving either column, and none at all without a project
 // plus a read-only probe: building a model must not move the editor's scaler,
 // its targets, the project's dirty flag or the document's keys.
 //
@@ -1258,11 +1263,12 @@ int main(int argc, char** argv) {
             CHECK(model.channels.at(3).channel == ctrl::graph::Channel(core::TimeKeyType_Opa, 0));
 
             // ONE GROUP PER (layer, key type), naming the property and every
-            // component - the design's "line · Move [X][Y]" / "line · Opa [Opacity]".
+            // component - the design's "Move [X][Y]"; a one-component type carries
+            // its own name ("Rotate", "Opacity") and needs no bracketed repeat.
             CHECK(model.channels.at(0).group == QStringLiteral("Move [X][Y]"));
             CHECK(model.channels.at(1).group == QStringLiteral("Move [X][Y]"));
-            CHECK(model.channels.at(2).group == QStringLiteral("Rotate [Angle]"));
-            CHECK(model.channels.at(3).group == QStringLiteral("Opa [Opacity]"));
+            CHECK(model.channels.at(2).group == QStringLiteral("Rotate"));
+            CHECK(model.channels.at(3).group == QStringLiteral("Opacity"));
             // A group's rows are contiguous: the same (layer, type) never returns
             // after another group has started, or the menu's boundary walk would
             // open a second heading for one property.
@@ -4241,6 +4247,107 @@ int main(int argc, char** argv) {
             CHECK(vPill.rect.top() == bars.vThumb.top() && vPill.rect.bottom() == bars.vThumb.bottom());
             CHECK(bars.hTrack.contains(hPill.rect) && bars.vTrack.contains(vPill.rect));
         }
+    }
+
+    // -------------------------------------------------------------------------
+    // 18. THE FRAME RANGE'S GUIDES. The timeline draws two vertical hairlines at the
+    // project's first and last frame, continuing the ruler's boundary ticks down the
+    // body (ctrl/time/time_BodyModel.cpp's buildRangeMarkers); the graph publishes the
+    // same two marks as COLUMNS. What the model can be held to is their mapping and
+    // their classification: each column is the frame's pixel through the SAME scaler the
+    // ticks and the playhead use, they are PANEL columns (the shared mapping puts the
+    // project's first frame inside the value column, so a guide clipped to the plot
+    // would vanish exactly at the start of the range), a range whose two ends round onto
+    // one column is ONE guide (the timeline's degenerate-range rule), and the recede
+    // flag follows the play window. The rows, the ink and the two alphas are the drawing
+    // layer's (asserted in tests/graph_panel_pixels.cpp).
+    {
+        editor.setProject(&project);
+        editor.setTargets({ &nodeA, &nodeB });
+        editor.setPlayWindow(ctrl::TimeLineEditor::PlayWindow());
+
+        // (a) the mapping: the two ends of the project's range, in the project's order.
+        editor.setFrameWindow(0.0, 130.0);
+        editor.syncFrameWindowFor(viewport);
+        ctrl::graph::Scaler guideScale = editor.scale();
+        guideScale.setRect(panel);
+        const gui::GraphPanelModel ranged = gui::buildGraphPanelModel(editor, viewport, palette);
+        const int firstX = guideScale.pixelX(core::Frame(project.attribute().frameRange().min()));
+        const int lastX = guideScale.pixelX(core::Frame(project.attribute().frameRange().max()));
+        std::printf(
+            "[18] range %d..%d -> guides=%d [%d, %d]  oracle (%d, %d)  plot.left=%d  panel.left=%d\n",
+            project.attribute().frameRange().min(), project.attribute().frameRange().max(),
+            isz(ranged.rangeGuideX), ranged.rangeGuideX.value(0), ranged.rangeGuideX.value(1), firstX, lastX,
+            ranged.plot.left(), ranged.panel.left()
+        );
+        CHECK(ranged.rangeGuideX.size() == 2);
+        CHECK(ranged.rangeGuideX.value(0) == firstX);
+        CHECK(ranged.rangeGuideX.value(1) == lastX);
+        // PANEL COLUMNS: the first frame of the range sits at the panel's left edge here -
+        // left of the plot, inside the value column - and the model still publishes it.
+        CHECK(ranged.rangeGuideX.value(0) < ranged.plot.left());
+        CHECK(ranged.rangeGuideX.value(0) >= ranged.panel.left());
+        CHECK(ranged.plot.contains(ranged.rangeGuideX.value(1), ranged.plot.top()));
+
+        // (b) the classification: an active play window is what makes the guides recede
+        // (the timeline drops them from 40% to 25% then), and it moves neither column -
+        // the guides mark the PROJECT's range, which a temporary window does not change.
+        ctrl::TimeLineEditor::PlayWindow window;
+        window.set(project.attribute().frameRange().min() + 5, project.attribute().frameRange().max() - 5);
+        editor.setPlayWindow(window);
+        const gui::GraphPanelModel windowed = gui::buildGraphPanelModel(editor, viewport, palette);
+        std::printf(
+            "[18] play window %d..%d -> recede=%d  guides=[%d, %d]\n", window.start, window.end,
+            int(windowed.rangeGuideRecede), windowed.rangeGuideX.value(0), windowed.rangeGuideX.value(1)
+        );
+        CHECK(!ranged.rangeGuideRecede);
+        CHECK(windowed.rangeGuideRecede);
+        CHECK(windowed.rangeGuideX == ranged.rangeGuideX);
+        editor.setPlayWindow(ctrl::TimeLineEditor::PlayWindow());
+
+        // (c) a range wider than the panel: the columns leave the panel, and the model
+        // still states them (the drawing layer clips; a mark whose frame is off-screen is
+        // a coordinate, not an omission).
+        editor.setFrameWindow(0.0, 60.0);
+        editor.syncFrameWindowFor(viewport);
+        ctrl::graph::Scaler wideScale = editor.scale();
+        wideScale.setRect(panel);
+        const gui::GraphPanelModel wide = gui::buildGraphPanelModel(editor, viewport, palette);
+        std::printf(
+            "[18] window 0..60: guides=[%d, %d]  oracle (%d, %d)  panel.right=%d\n",
+            wide.rangeGuideX.value(0), wide.rangeGuideX.value(1),
+            wideScale.pixelX(core::Frame(project.attribute().frameRange().min())),
+            wideScale.pixelX(core::Frame(project.attribute().frameRange().max())), wide.panel.right()
+        );
+        CHECK(wide.rangeGuideX.value(1) == wideScale.pixelX(core::Frame(project.attribute().frameRange().max())));
+        CHECK(wide.rangeGuideX.value(1) > wide.panel.right());
+
+        // (d) the DEGENERATE range: a window so wide that both ends round onto one column
+        // is ONE guide - the timeline's own rule, so nothing overdraws one pixel.
+        editor.setFrameWindow(0.0, 1.0e6);
+        editor.syncFrameWindowFor(viewport);
+        ctrl::graph::Scaler degenerateScale = editor.scale();
+        degenerateScale.setRect(panel);
+        const gui::GraphPanelModel degenerate = gui::buildGraphPanelModel(editor, viewport, palette);
+        std::printf(
+            "[18] window 0..1e6: guides=%d [%d]  oracle (%d, %d)\n", isz(degenerate.rangeGuideX),
+            degenerate.rangeGuideX.value(0),
+            degenerateScale.pixelX(core::Frame(project.attribute().frameRange().min())),
+            degenerateScale.pixelX(core::Frame(project.attribute().frameRange().max()))
+        );
+        CHECK(degenerateScale.pixelX(core::Frame(project.attribute().frameRange().min()))
+              == degenerateScale.pixelX(core::Frame(project.attribute().frameRange().max())));
+        CHECK(degenerate.rangeGuideX.size() == 1);
+        CHECK(degenerate.rangeGuideX.value(0) == degenerateScale.pixelX(core::Frame(project.attribute().frameRange().min())));
+
+        // (e) no project: no range, no guides - and no stale column left from (d).
+        editor.setProject(nullptr);
+        const gui::GraphPanelModel orphaned = gui::buildGraphPanelModel(editor, viewport, palette);
+        std::printf("[18] no project: guides=%d\n", isz(orphaned.rangeGuideX));
+        CHECK(orphaned.rangeGuideX.isEmpty());
+        editor.setProject(&project);
+        editor.setTargets({ &nodeA, &nodeB });
+        editor.clearFrameAxis();
     }
 
     // -------------------------------------------------------------------------

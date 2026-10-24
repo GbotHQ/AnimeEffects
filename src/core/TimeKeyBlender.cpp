@@ -314,7 +314,14 @@ float getEasingRateFromTwoKeys(const TimeKeyGatherer& aGatherer, int aComponent)
     auto p1 = aGatherer.point(1);
     XC_ASSERT(p0 && p1);
     const float frame = p1.relativeFrame - p0.relativeFrame;
-    XC_ASSERT(frame != 0.0f);
+    // A frame OUTSIDE the project range can make the loop's two neighbours the
+    // SAME position: the key at the range's end and the key at its start share a
+    // relative frame once the loop span is added. There is no interval to solve;
+    // use the earlier key instead of aborting the whole application (the crash a
+    // drag that leaves keys past the frame range used to cause).
+    if (frame == 0.0f) {
+        return 0.0f;
+    }
 
     const tKey* k0 = static_cast<const tKey*>(p0.key);
     const tKey* k1 = static_cast<const tKey*>(p1.key);

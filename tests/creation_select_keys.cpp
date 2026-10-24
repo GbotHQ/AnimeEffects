@@ -422,6 +422,52 @@ int main(int argc, char** argv) {
         CHECK(singleTargetIs(after, newKey));
     }
 
+    // --- C7: A ROW REBUILD PRUNES ONLY WHAT IT NO LONGER SHOWS. Expand/collapse is a
+    // view change: the selection's identity is (TimeLine map, type, frame), which a
+    // row rebuild does not touch, so it must survive. A collapsed folder's summary lane
+    // still draws its descendants' keys - those stay selected - while rows that vanish
+    // completely (the root collapsed) take their keys with them.
+    {
+        core::TestNode parent;
+        core::TestNode child;
+        core::TestNode leaf;
+        parent.children().pushBack(&child);
+
+        auto* childKey = new core::MoveKey();
+        stack.push(child.timeLine()->createPusher(core::TimeKeyType_Move, 10, childKey));
+        auto* leafKey = new core::MoveKey();
+        stack.push(leaf.timeLine()->createPusher(core::TimeKeyType_Move, 20, leafKey));
+
+        ctrl::TimeLineEditor editor;
+        editor.setProject(&project);
+
+        core::TimeLineEvent selected;
+        selected.pushTarget(child, core::TimeKeyType_Move, 10);
+        selected.pushTarget(leaf, core::TimeKeyType_Move, 20);
+        CHECK(editor.selection().set(selected));
+
+        // The folder is collapsed, but its summary row represents `child`; `leaf` has
+        // its own row. Both entries stay, and neither key is re-resolved.
+        editor.pushRow(&parent, util::Range(100, 160), true);
+        editor.pushRow(&leaf, util::Range(160, 200), false);
+        CHECK(!editor.retainSelectionInRows());
+        CHECK(editor.selection().items().size() == 2);
+        CHECK(editor.selection().items().front().key == childKey);
+        CHECK(editor.selection().items().back().key == leafKey);
+
+        // The folder's row is gone (the root collapsed): only the leaf's key survives.
+        editor.resetRows();
+        editor.pushRow(&leaf, util::Range(160, 200), false);
+        CHECK(editor.retainSelectionInRows());
+        CHECK(editor.selection().items().size() == 1);
+        CHECK(editor.selection().items().front().key == leafKey);
+
+        // Nothing visible: the set empties, and the notification fires.
+        editor.resetRows();
+        CHECK(editor.retainSelectionInRows());
+        CHECK(editor.selection().empty());
+    }
+
     std::printf("creation_select_keys: all checks passed\n");
     return 0;
 }

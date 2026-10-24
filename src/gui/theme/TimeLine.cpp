@@ -38,7 +38,10 @@ void TimeLine::reset() {
     // overlays from.
     mTrackSelectColor = c.accentBright;
     mTrackSelectColor.setAlphaF(0.06);
-    mTrackSeperatorColor = c.hairlineHover;
+    // Same hue as the row seams (hairline), so the LOWER alpha really is a lower
+    // contrast. hairlineHover was a brighter token, and at 40% it could match the
+    // 70% row seam - the "no opacity difference" report.
+    mTrackSeperatorColor = c.hairline;
     shade();
 }
 
@@ -46,8 +49,11 @@ void TimeLine::shade() {
     mTrackColor = QColor(mTrackColor.red(), mTrackColor.green(), mTrackColor.blue(), 180);
     mTrackEdgeColor = QColor(mTrackEdgeColor.red(), mTrackEdgeColor.green(), mTrackEdgeColor.blue(), 180);
     mTrackTextColor = QColor(mTrackTextColor.red(), mTrackTextColor.green(), mTrackTextColor.blue(), 180);
+    // The fine type separators inside a lane: a 4-on/4-off dash at 40%. The dash is
+    // what tells them apart from the SOLID 70% seams between rows/layers; solid at
+    // both levels made the two concepts look the same.
     mTrackSeperatorColor =
-        QColor(mTrackSeperatorColor.red(), mTrackSeperatorColor.green(), mTrackSeperatorColor.blue(), 180);
+        QColor(mTrackSeperatorColor.red(), mTrackSeperatorColor.green(), mTrackSeperatorColor.blue(), 102);
 }
 
 QColor TimeLine::headerContentColor() const { return mHeaderContentColor; }

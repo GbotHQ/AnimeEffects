@@ -25,6 +25,22 @@ int weightComponentCount(core::TimeKeyType aType) {
     return qMin(ctrl::graph::Channel::componentCount(aType), core::TimeKey::kMaxProportionalComponents);
 }
 
+// True when component aComponent's pre-edit value span is flat AND the key sits on
+// that flat value, i.e. the key has no value fraction of its own but its TIME
+// fraction is a meaningful stand-in (see rebaseState's flat-span rule). Used both
+// by rebaseState and by ValueReflow's migration of states written before that rule.
+bool flatValueOnKey(const core::TimeKey& aKey, const Bounds& aBounds, int aComponent) {
+    if (!aBounds.left || !aBounds.right)
+        return false;
+    const graph::Channel channel(aKey.type(), aComponent);
+    const double leftValue = static_cast<double>(channel.value(*aBounds.left));
+    const double rightValue = static_cast<double>(channel.value(*aBounds.right));
+    if (qAbs(rightValue - leftValue) > static_cast<double>(kSpanEpsilon))
+        return false;
+    return qAbs(static_cast<double>(channel.value(aKey)) - leftValue)
+        <= static_cast<double>(kSpanEpsilon);
+}
+
 double frameOf(const core::TimeKey& aKey) { return static_cast<double>(aKey.frame()); }
 
 } // namespace
@@ -97,13 +113,26 @@ core::TimeKey::Proportional rebaseState(const core::TimeKey& aKey, const Bounds&
         const graph::Channel channel(aKey.type(), component);
         const double leftValue = static_cast<double>(channel.value(*aBounds.left));
         const double rightValue = static_cast<double>(channel.value(*aBounds.right));
+        const double keyValue = static_cast<double>(channel.value(aKey));
         const double valueSpan = rightValue - leftValue;
-        if (qAbs(valueSpan) <= static_cast<double>(kSpanEpsilon))
-            continue; // a zero pre-edit span freezes this coordinate
+        if (qAbs(valueSpan) <= static_cast<double>(kSpanEpsilon)) {
+            // A FLAT pre-edit segment has no value fraction of its own. When the
+            // key sits ON that flat value - the ordinary case of marking a run of
+            // equal-valued keys proportional, then dragging one bound - the time
+            // fraction is the only fraction the key has, so it becomes the value
+            // fraction: the key then follows the first bound edit instead of
+            // staying inert forever. A key that holds a DIFFERENT value (a
+            // deliberately offset key on a flat segment) still freezes, because
+            // there is no fraction to preserve and inventing one would move it.
+            if (state.timeValid && flatValueOnKey(aKey, aBounds, component)) {
+                state.valueValid[component] = true;
+                state.valueWeight[component] = state.timeWeight;
+            }
+            continue;
+        }
 
         state.valueValid[component] = true;
-        state.valueWeight[component] =
-            static_cast<float>((static_cast<double>(channel.value(aKey)) - leftValue) / valueSpan);
+        state.valueWeight[component] = static_cast<float>((keyValue - leftValue) / valueSpan);
     }
 
     return state;
@@ -225,7 +254,26 @@ void ValueReflow::capture(core::TimeLine& aLine, core::TimeKeyType aType,
         // is normalized here, ONCE, and the result is never re-derived by
         // apply(): the fixed weights are what keeps the gesture drift-free.
         const Bounds bounds = findBounds(map, *key);
-        entry.nextState = boundsChanged(*key, bounds) ? rebaseState(*key, bounds) : entry.baseState;
+        const bool stale = boundsChanged(*key, bounds);
+        entry.nextState = stale ? rebaseState(*key, bounds) : entry.baseState;
+
+        // MIGRATION for a state written before the flat-span rule: the key sits
+        // on a flat value (so it has no fraction of its own), its time weight
+        // exists, and the old state froze the value. Adopt the time fraction for
+        // that component ONCE, exactly as a fresh rebase would, without touching
+        // the stored pair or the other components. Without this, a project
+        // authored before the rule keeps the value axis inert until the key is
+        // re-marked.
+        if (!stale) {
+            const int count = weightComponentCount(aType);
+            for (int component = 0; component < count; ++component) {
+                if (!entry.nextState.valueValid[component] && entry.nextState.timeValid
+                    && flatValueOnKey(*key, bounds, component)) {
+                    entry.nextState.valueValid[component] = true;
+                    entry.nextState.valueWeight[component] = entry.nextState.timeWeight;
+                }
+            }
+        }
 
         group->entries.append(entry);
     }

@@ -21,9 +21,11 @@ namespace gui {
 // The panel used to own this list as a QMenu (gui::MainDisplayWidget::
 // showGraphChannelMenu). The design moved the CONTROL into the dock's header - it is
 // a view action, so it belongs with the view controls - and the design's list is not
-// a menu: 22px rows, a 12x12 rounded swatch 8px from its name, 10px group titles at
-// the SWATCH's own left padding (so a title aligns with the swatch column and not
-// with the names), no checkbox anywhere. gui::AppStyle sizes every QMenu row to 24px
+// a menu: a LAYER section heading (10px muted), then self-describing 22px rows with a
+// 12x12 rounded swatch at the heading's left edge and the name 8px after it
+// ("Move X", "Move Y", "Rotate", "Opacity"); the swatch is the row's indent.
+// There is NO group heading (the rows already carry the property and component), no
+// "layer · group" separator and no bold for the sticky focus. gui::AppStyle sizes every QMenu row to 24px
 // and QSS cannot reach the rest (see AppStyle::sizeFromContents), so the list is its
 // own painted widget rather than a QMenu with a stylesheet.
 //
@@ -68,10 +70,13 @@ protected:
     void leaveEvent(QEvent*) override;
 
 private:
-    // One painted line: a group heading (row == -1) or a channel row (the index into
-    // mRows), with the box the layout gave it (this widget's pixels).
+    // One painted line: a LAYER section heading or a channel row (the index into
+    // mRows), with the box the layout gave it (this widget's pixels). There is no
+    // group heading: "Move X"/"Move Y" already name themselves, and a group title
+    // above them only obscured where the group ended.
+    enum class EntryKind { Layer, Row };
     struct Entry {
-        bool heading = false;
+        EntryKind kind = EntryKind::Row;
         int row = -1;
         QString text;
         QRect rect;

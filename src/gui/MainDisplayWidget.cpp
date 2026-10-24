@@ -277,7 +277,7 @@ void MainDisplayWidget::syncGraphPanelSharedState() {
 
     // ONE selection: the panel writes the timeline's live set, which is what the
     // timeline renders its highlights from and what its own gestures (and its
-    // Delete key, its key menu) read - so a key selected in either view is
+    // Delete, its key menu) read - so a key selected in either view is
     // selected and highlighted in both.
     editor->setSelectionSource(&timelineEditor->selection());
 

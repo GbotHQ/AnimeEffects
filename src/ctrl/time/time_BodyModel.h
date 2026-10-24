@@ -45,6 +45,11 @@ struct Label {
 struct Lane {
     QRect rect;
     bool selected = false;
+    // A folder's summary band: a strip under the folder's own lanes carrying one
+    // rounded triangle per frame that has a hidden descendant key. It uses the
+    // lane's own surface - the separation and the marker shape are the signal,
+    // not a second colour.
+    bool summary = false;
     QVector<Separator> separators;
     QVector<Label> labels;
 };
@@ -68,6 +73,17 @@ struct KeyMark {
     double radiusY = 0.0;
     QPolygonF polygon;
     QColor fill;
+    // A PROPORTIONAL key is a RING: `hollow` says so, and the geometry is published
+    // here so the QPainter and Canvas hosts fill the same two shapes without either
+    // re-deriving them. The hue disc ends `radius - kProportionalRingOuterInset`; the
+    // hole (filled with holeInk, the LANE's own ink) is `hollowRadius` for an ellipse
+    // and hollowHolePolygon for a polygon; hollowPolygon is the hue polygon's inset
+    // copy. The outer `polygon`/radiusX/Y and the edge are the ordinary key's.
+    bool hollow = false;
+    double hollowRadius = 0.0;
+    QColor holeInk;
+    QPolygonF hollowPolygon;
+    QPolygonF hollowHolePolygon;
     bool hasRing = false;
     double ringRadius = 0.0;
     QColor ring;
@@ -79,6 +95,9 @@ struct KeyPass {
     QVector<KeyMark> marks;
     QColor edge;
     bool child = false;
+    // Summary triangles are FILL-ONLY: a 1px edge on a 5px neutral marker reads
+    // as a dirty rim, not as definition.
+    bool stroke = true;
 };
 
 // THE FRAME RANGE'S GUIDES: two vertical hairlines at the project's first and last frame,
@@ -90,8 +109,8 @@ struct RangeMarker {
     QColor ink;
 };
 
-// THE MARQUEE: the drag selection's box - a rounded, dashed edge in the accent ink over a
-// light accent wash.
+// THE MARQUEE: the drag selection's box - a rounded SOLID edge in the accent ink over a
+// light accent wash, the same treatment as the graph panel's box select.
 struct SelectionBox {
     bool visible = false;
     QRectF rect;
@@ -99,6 +118,12 @@ struct SelectionBox {
     QColor fill;
     double radius = 6.0;
 };
+
+// The OPAQUE result of painting aTop over aBottom, for a key's hole: the lane inks are
+// translucent (body is base; the selection tint is 6% accent), so filling a hole with the
+// raw lane ink would let the hue disc under it show through at 30%. The lane band is the
+// composite, and the hole must be the composite too.
+QColor opaqueOver(const QColor& aTop, const QColor& aBottom);
 
 // The four lane inks, read from theme::TimeLine once so the painter takes no palette.
 struct Inks {
@@ -137,14 +162,15 @@ Lines buildLines(
 void paintLines(QPainter& aPainter, const Lines& aLines);
 
 // THE KEYS: a lane's own markers (shaped by the lane's slimmed state and the key's ability to
-// hold children) and, for a closed folder, the summary triangles under it.
+// hold children) and, for a closed folder, one rounded summary triangle per frame in its
+// dedicated summary band.
 KeyPass buildKeys(
     const core::ObjectNode* aNode, const TimeLineRow& aRow, const ctrl::time::Scaler& aScale,
-    const util::Range& aRange, int aMargin
+    const util::Range& aRange, int aMargin, const QColor& aLaneInk
 );
 KeyPass buildChildKeys(
-    const core::ObjectNode* aNode, const QPoint& aPos, const ctrl::time::Scaler& aScale,
-    const util::Range& aRange
+    const core::ObjectNode* aNode, const QRect& aSummaryRect, int aMargin,
+    const ctrl::time::Scaler& aScale, const util::Range& aRange
 );
 void paintKeys(QPainter& aPainter, const KeyPass& aPass);
 

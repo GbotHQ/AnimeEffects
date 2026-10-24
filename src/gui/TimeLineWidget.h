@@ -12,6 +12,7 @@
 #include "core/AbstractCursor.h"
 #include "core/Animator.h"
 #include "core/TimeLineEvent.h"
+#include "ctrl/AutoScroll.h"
 #include "gui/TimeLineEditorWidget.h"
 #include "gui/ViaPoint.h"
 #include "gui/GUIResources.h"
@@ -128,6 +129,7 @@ private:
     virtual void wheelEvent(QWheelEvent* aEvent);
     virtual void keyPressEvent(QKeyEvent* aEvent);
     virtual void resizeEvent(QResizeEvent* aEvent);
+    virtual void hideEvent(QHideEvent* aEvent);
     virtual QSize minimumSizeHint() const;
     virtual QSize sizeHint() const;
     virtual bool eventFilter(QObject* aObject, QEvent* aEvent);
@@ -145,6 +147,15 @@ private:
     void endScrollbarDrag();
     void scrollViewBy(int aValueDelta);
     void onPlayBackUpdated();
+    // Edge autoscroll for a marquee drag: the shared ctrl::autoscroll step is
+    // applied to the horizontal view and the object tree's vertical scroll, then
+    // the box is extended to the pointer's new world position (the pointer stays
+    // still while the content moves under it).
+    void updateMarqueeAutoScroll();
+    void autoScrollMarquee();
+    // The lanes' viewport, not the whole surface: the ruler/header above them is
+    // not a scroll edge, so a box dragged along the top row is near the LANE edge.
+    QRect marqueeScrollViewport() const;
     void syncAudioTracks();
     void onThemeUpdated(theme::Theme&);
     // Emits onViewRangeChanged when the visible frame window moved since the last
@@ -210,6 +221,12 @@ private:
 
     // for animation
     QTimer mTimer;
+    // The marquee's edge autoscroll (see updateMarqueeAutoScroll): one timer while a
+    // box drag is in flight, and the pointer's last SCREEN position, which stays put
+    // while the view scrolls under it.
+    QTimer mMarqueeScrollTimer;
+    QPoint mMarqueePointer;
+    ctrl::autoscroll::EdgeDwell mMarqueeDwell;
     QElapsedTimer mElapsed;
     core::Frame mBeginFrame;
     core::Frame mLastFrame;

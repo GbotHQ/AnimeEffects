@@ -362,13 +362,51 @@ int main(int argc, char** argv) {
         // THE PLAYHEAD'S PILL IS EXCUSED FROM PIXEL COMPARISON (its outline is one
         // antialiasing kernel against another), so - exactly as with a number - its BODY
         // must be shown to carry ink in BOTH renderings, or a missing pill would pass.
+        //
+        // "CARRIES INK" MEANS CARRIES ITS FILL, not "has some non-modal pixel": a box whose
+        // fill vanished still holds its LABEL text, so a modal-colour count would agree on
+        // both sides while one had no pill at all. Counting the fill TOKEN is what makes the
+        // assertion about the body. (Measured 2026-10-23: the Canvas ruler inked none of a
+        // window pill's body - fill() left the ticks' subpaths current, so the roundRect was
+        // appended to them - and this gate stayed green because no window pill was checked.)
+        const auto fillCount = [](const QImage& aImage, const QRect& aBox, const QColor& aFill) {
+            const QRect clip = aBox.intersected(aImage.rect());
+            if (clip.isEmpty() || !aFill.isValid())
+                return 0;
+            int n = 0;
+            for (int y = clip.top(); y <= clip.bottom(); ++y)
+                for (int x = clip.left(); x <= clip.right(); ++x) {
+                    const QColor px = aImage.pixelColor(x, y);
+                    if (std::abs(px.red() - aFill.red()) <= 2 && std::abs(px.green() - aFill.green()) <= 2 &&
+                        std::abs(px.blue() - aFill.blue()) <= 2)
+                        ++n;
+                }
+            return n;
+        };
         if (fixture.model.playhead.isValid()) {
             const QRect box =
                 fixture.model.playhead.rect.adjusted(2, 2, -2, -2).translated(-origin.x(), -origin.y());
-            const int a = inkCount(raster, box);
-            const int b = inkCount(canvasAt, box);
+            const int a = fillCount(raster, box, fixture.ink.playheadFill);
+            const int b = fillCount(canvasAt, box, fixture.ink.playheadFill);
             const bool ok = (a == 0) == (b == 0) && (a == 0 || std::abs(a - b) * 2 <= std::max(a, b));
             std::printf("    playhead pill  raster=%3d px canvas=%3d px %s\n", a, b, ok ? "ok" : "MISSING/DIFFERS");
+            if (!ok)
+                ++failures;
+        }
+
+        // AND THE TEMPORARY PLAYBACK WINDOW'S PILLS, the same way. Their bodies are excused
+        // from pixel comparison (rounded corners are two AA kernels), so each one's FILL is
+        // asserted to be present in both renderings.
+        for (const gui::frameRuler::Pill* eachPill :
+             {&fixture.model.window.start, &fixture.model.window.end, &fixture.model.window.merged}) {
+            if (!eachPill->isValid())
+                continue;
+            const QRect box = eachPill->rect.adjusted(2, 2, -2, -2).translated(-origin.x(), -origin.y());
+            const int a = fillCount(raster, box, fixture.ink.windowEdge);
+            const int b = fillCount(canvasAt, box, fixture.ink.windowEdge);
+            const bool ok = (a == 0) == (b == 0) && (a == 0 || std::abs(a - b) * 2 <= std::max(a, b));
+            std::printf("    window pill %-5s raster=%3d px canvas=%3d px %s\n", qPrintable(eachPill->text), a, b,
+                        ok ? "ok" : "MISSING/DIFFERS");
             if (!ok)
                 ++failures;
         }

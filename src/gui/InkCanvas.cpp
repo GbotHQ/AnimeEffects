@@ -156,20 +156,21 @@ void InkCanvas::text(
         x = double(aBox.left() + aBox.width()) - advance - std::min(double(aRightGap), spare);
     }
     const double snappedX = std::floor(x);
-    const double inkTop = aVAlign == VAlign::Top
-        ? double(aBox.top() + kRulerNumberInkTop)
-        : double(aBox.top()) + std::max((double(aBox.height()) - metrics.height()) * 0.5, 0.0);
-    // THE BASELINE PUTS THE RUN'S INK ON `inkTop`, and it is the INK BOX that says how far the
-    // ink sits above the baseline - not the ascent, which carries the font's own headroom.
-    // MEASURED in the app: with `inkTop + ascent` this backend drew the frame numbers TWO ROWS
-    // below the ImGui host's (glyph rows 412..420 against 410..417, over their ticks), because the
-    // ascent is ~3px more than a digit's ink height at 12px. `tightBoundingRect` is the run's own
-    // ink box, so the row is exact for any face and size.
-    const double inkAboveBaseline = -QFontMetricsF(mFont).tightBoundingRect(aText).top();
-    const double baseline = std::floor(inkTop + (aVAlign == VAlign::Top ? inkAboveBaseline : metrics.ascent()));
-
+    // TOP MEANS THE BOX'S TOP IS THE LINE BOX'S TOP - the rule the TIMELINE's own ruler draws
+    // with (gui::frameRuler::paintRulerCanvas: TextBaseline::Top at the box's top row), so the
+    // panel's frame numbers and the timeline's land on the same rows instead of one apart.
+    // MEASURED 2026-10-23 (probe_graph_parity): the previous spelling placed the run by its INK
+    // box (`inkTop + tightBoundingRect().top()`, i.e. box.top() + kRulerNumberInkTop) and read
+    // rows 242..250 against the timeline's 243..252 for the same string and the same box top;
+    // the engine's own top baseline reads 243..252. The ink-row arithmetic is GONE from this
+    // backend (kRulerNumberInkTop stays for gui::InkImGui, whose line box is its own).
+    const bool topAligned = aVAlign == VAlign::Top;
+    const double anchorY = topAligned ? double(aBox.top())
+        : std::floor(double(aBox.top()) + std::max((double(aBox.height()) - metrics.height()) * 0.5, 0.0)
+                     + metrics.ascent());
     mPainter.setTextAlign(QCanvasPainter::TextAlign::Left);
-    mPainter.setTextBaseline(QCanvasPainter::TextBaseline::Alphabetic);
+    mPainter.setTextBaseline(topAligned ? QCanvasPainter::TextBaseline::Top
+                                        : QCanvasPainter::TextBaseline::Alphabetic);
     if (kDrawTextHalo && aHalo.isValid()) {
         static const int kOffsets[8][2] = {{-1, 0}, {1, 0}, {0, -1}, {0, 1}, {-1, -1}, {1, -1}, {-1, 1}, {1, 1}};
         QColor haloInk = aHalo;
@@ -177,10 +178,10 @@ void InkCanvas::text(
         mPainter.setFillStyle(haloInk);
         for (int radius = kHaloRadius; radius >= 1; --radius)
             for (const int* offset : kOffsets)
-                mPainter.fillText(aText, QPointF(snappedX + offset[0] * radius, baseline + offset[1] * radius));
+                mPainter.fillText(aText, QPointF(snappedX + offset[0] * radius, anchorY + offset[1] * radius));
     }
     mPainter.setFillStyle(aColor);
-    mPainter.fillText(aText, QPointF(snappedX, baseline));
+    mPainter.fillText(aText, QPointF(snappedX, anchorY));
 }
 
 } // namespace ink

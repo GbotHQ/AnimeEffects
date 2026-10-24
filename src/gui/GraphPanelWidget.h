@@ -14,10 +14,12 @@ class QCanvasPainter;
 #endif
 #include <QPoint>
 #include <QScopedPointer>
+#include <QTimer>
 #include <QVariant>
 
 #include "core/AbstractCursor.h"
 #include "core/CameraInfo.h"
+#include "ctrl/AutoScroll.h"
 #include "gui/GraphPanelFrame.h"
 #include "util/SlotId.h"
 
@@ -123,6 +125,16 @@ using PanelHostBase = QOpenGLWidget;
 class GraphPanelWidget: public PanelHostBase {
     Q_OBJECT
 public:
+    // THE SHOWN CHANNELS CHANGED. refresh() is the dock's one "this page's content has
+    // already changed" call - a new project, a tree selection, a key edit from beside the
+    // dock - and every one of those can change WHICH channels the panel draws, so the
+    // notification is emitted there once. The header's channels control subscribes: it is
+    // the panel's one control, but it lives in the dock's bar, so without this it only ever
+    // re-read the count when the TAB changed. MEASURED 2026-10-23: selecting a layer with
+    // three keyed channels while the Graph tab was already up left the control reading
+    // "0 channel(s)" over three drawn curves.
+    Q_SIGNAL void channelsChanged(const QVector<PanelChannelRow>& aRows);
+
     GraphPanelWidget(GUIResources& aResources, QWidget* aParent = nullptr);
     ~GraphPanelWidget() override;
 
@@ -161,6 +173,11 @@ public:
     // asks for the repaint its command's notification would ask for again) are free: Qt
     // coalesces them into one paint, and a request for a hidden page is dropped.
     void refresh();
+
+    // THE ROWS THE PAGE LAST DREW, published when they change: the header's control names
+    // what the panel shows, and the panel is the only place that knows it before the dock
+    // hands a new target over (see publishChannels).
+    void publishChannels(const QVector<PanelChannelRow>& aRows);
 
     // THE CHANNEL LIST'S ROWS, for the dock header's channels control: the panel's OWN
     // model rows (gui::PanelChannelRow - layer, legend group, name, hue, visibility and
@@ -258,6 +275,12 @@ private:
     // scroll-bar LANE under the pointer (gui::panelBarAt - its pill turns
     // theme::Colors::hover), so those are what this compares.
     void updateHoverRepaint();
+    // The marquee's edge autoscroll: the shared ctrl::autoscroll rule is applied by
+    // ctrl::GraphEditor::autoScrollMarquee (the panel owns the frame/value windows),
+    // while this host owns the 60 Hz timer and the repaint. Started on a marquee
+    // drag's movement, stopped on release, hide, or a tick that moved nothing.
+    void updateMarqueeAutoScroll();
+    void autoScrollMarquee();
     // The viewport widget the application's menus live in (see the class comment):
     // MainDisplayWidget owns the channel list, and it is the handle on the timeline
     // (timeLineWidget()), so the key menu is opened through it. Asked for through the
@@ -309,6 +332,8 @@ private:
     QPoint mPointer;
     QPoint mPressPointer;
     bool mLeftDown = false;
+    QTimer mMarqueeScrollTimer;
+    ctrl::autoscroll::EdgeDwell mMarqueeDwell;
 
     // THE HOVERED TARGET, in the panel's pointer-driven marks: the key under the
     // pointer, the tangent handle nearest it, and the scroll-bar lane the pointer is
@@ -339,6 +364,10 @@ private:
         bool operator!=(const HoverTarget& aRhs) const { return !(*this == aRhs); }
     };
     HoverTarget mHover;
+    // What channelsChanged last published: the page draws a frame per repaint, so the
+    // emission is gated on the ROW SET actually changing (a playback tick repaints 60
+    // times a second and must not rewrite the bar's label each time).
+    QVector<PanelChannelRow> mPublishedChannels;
     bool mReady;
 };
 

@@ -116,6 +116,21 @@ public:
     ) = 0;
 };
 
+// THE BOX-SELECT MARQUEE, ONE DECISION FOR BOTH VIEWS.
+//
+// `aRect` is the gesture's RAW rect (graph: GraphEditor::marqueeRect; timeline:
+// SelectionBox::rect). The half-pixel inset is not cosmetic: a 1px stroke centred on an
+// INTEGER edge straddles two device columns and reads as 2px of grey. Insetting by half a
+// pixel puts the stroke on one column, which is why the graph's marquee looked 2px while
+// the timeline's looked 1px even though both asked for width 1.
+inline void paintMarquee(
+    Ink& aInk, const QRectF& aRect, const QColor& aFill, const QColor& aEdge, double aRadius
+) {
+    const QRectF box = aRect.adjusted(0.5, 0.5, -0.5, -0.5);
+    aInk.fillRect(box, aFill, aRadius);
+    aInk.strokeRect(box, aEdge, aRadius, 1.0);
+}
+
 } // namespace ink
 } // namespace gui
 

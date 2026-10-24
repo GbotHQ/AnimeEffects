@@ -5921,6 +5921,30 @@ The log is available below.</source>
         <source> key(s), due to the following reasons: </source>
         <translation>개를 이동할 수 없습니다. 이유는 다음과 같습니다: </translation>
     </message>
+    <message>
+        <source>Copy</source>
+        <translation>복사</translation>
+    </message>
+    <message>
+        <source>Copy to clipboard</source>
+        <translation>클립보드에 복사</translation>
+    </message>
+    <message>
+        <source>Delete</source>
+        <translation>삭제</translation>
+    </message>
+    <message>
+        <source>Paste</source>
+        <translation>붙여넣기</translation>
+    </message>
+    <message>
+        <source>Make proportional</source>
+        <translation>비례 키로 만들기</translation>
+    </message>
+    <message>
+        <source>Make absolute</source>
+        <translation>절대 키로 만들기</translation>
+    </message>
 </context>
 <context>
     <name>gui::TimeLineHeader</name>

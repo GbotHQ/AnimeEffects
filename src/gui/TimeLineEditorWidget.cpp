@@ -133,16 +133,16 @@ TimeLineEditorWidget::TimeLineEditorWidget(ViaPoint& aViaPoint, QWidget* aParent
     this->connect(this, &QWidget::customContextMenuRequested, this, &TimeLineEditorWidget::onContextMenuRequested);
 
     {
-        mCopyKey = new QAction(tr("Copy key"), this);
+        mCopyKey = new QAction(tr("Copy"), this);
         mCopyKey->connect(mCopyKey, &QAction::triggered, this, &TimeLineEditorWidget::onCopyKeyTriggered);
 
-        mPasteKey = new QAction(tr("Paste key"), this);
+        mPasteKey = new QAction(tr("Paste"), this);
         mPasteKey->connect(mPasteKey, &QAction::triggered, this, &TimeLineEditorWidget::onPasteKeyTriggered);
 
-        mDeleteKey = new QAction(tr("Delete key"), this);
+        mDeleteKey = new QAction(tr("Delete"), this);
         mDeleteKey->connect(mDeleteKey, &QAction::triggered, this, &TimeLineEditorWidget::onDeleteKeyTriggered);
 
-        mCopyToClipboard = new QAction(tr("Copy key to clipboard"), this);
+        mCopyToClipboard = new QAction(tr("Copy to clipboard"), this);
         mCopyToClipboard->connect(
             mCopyToClipboard, &QAction::triggered, this, &TimeLineEditorWidget::onCopyCBTriggered
         );
@@ -288,15 +288,19 @@ void TimeLineEditorWidget::keyPressEvent(QKeyEvent* aEvent) {
 }
 
 void TimeLineEditorWidget::updateLines(QTreeWidgetItem* aTopNode) {
-    mEditor->clearRows();
+    // A collapse/expand rebuilds the rows, not the document. Clear the ROWS only,
+    // then drop just the selection entries whose layer the rebuilt rows no longer
+    // show (a closed folder's summary still represents its descendants).
+    mEditor->resetRows();
 
-    if (!aTopNode || !aTopNode->isExpanded())
-        return;
-
-    for (int i = 0; i < aTopNode->childCount(); ++i) {
-        updateLinesRecursive(aTopNode->child(i));
+    if (aTopNode && aTopNode->isExpanded()) {
+        for (int i = 0; i < aTopNode->childCount(); ++i) {
+            updateLinesRecursive(aTopNode->child(i));
+        }
     }
+    mEditor->retainSelectionInRows();
     updateSize();
+    this->update();
 }
 
 void TimeLineEditorWidget::updateLinesRecursive(QTreeWidgetItem* aItem) {
@@ -531,6 +535,30 @@ void TimeLineEditorWidget::onContextMenuRequested(const QPoint& aPos) {
 }
 
 //-------------------------------------------------------------------------------------------------
+bool TimeLineEditorWidget::setSelectionProportional(bool aEnabled) {
+    if (!mProject || !mEditor)
+        return false;
+
+    core::TimeLineEvent targets;
+    if (!mEditor->retrieveSelectionTargets(targets) || targets.targets().isEmpty())
+        return false;
+
+    this->applyProportionalForTargets(targets, aEnabled);
+    return true;
+}
+
+void TimeLineEditorWidget::applyProportionalForTargets(const core::TimeLineEvent& aTargets, bool aEnabled) {
+    if (!mProject)
+        return;
+
+    ctrl::TimeLineUtil::setProportionalKeys(*mProject, aTargets, aEnabled);
+    // The weights live on the keys, not on the selection, so the selection's own
+    // signal cannot report this. The header's control (and anything else that
+    // mirrors the flags) listens here.
+    emit keyProportionalChanged();
+}
+
+//-------------------------------------------------------------------------------------------------
 void TimeLineEditorWidget::buildKeyMenu(QMenu& aMenu) {
     // ONE BUILDER, TWO CALLERS: the timeline's own right-click above and the
     // animation graph panel's (openKeyMenu, reached through gui::TimeLineWidget and
@@ -543,18 +571,22 @@ void TimeLineEditorWidget::buildKeyMenu(QMenu& aMenu) {
     // THE ITEMS ACT ON THE SET. Every action below reads mTargets - the selection the
     // caller set - and not the one key a press landed on, so with N keys selected an
     // activation is one edit over all N of them:
-    //   * Copy key: mCopyTargets = mTargets, the whole selection (plus the clipboard
+    //   * Copy: mCopyTargets = mTargets, the whole selection (plus the clipboard
     //     write when the user's "auto copy to clipboard" setting is on).
-    //   * Copy key to clipboard: the clipboard write over mCopyTargets, which the item
+    //   * Copy to clipboard: the clipboard write over mCopyTargets, which the item
     //     above has just filled with the whole selection. A STANDALONE activation keeps
     //     whatever was copied last - onCopyCBTriggered's own long-standing rule, the
     //     same in the timeline's menu.
-    //   * Paste key: drops mCopyTargets at mPastePos, the frame this menu was opened on
+    //   * Paste: drops mCopyTargets at mPastePos, the frame this menu was opened on
     //     (the selection supplies the anchor here; what is written is the copied set).
     //   * Select spacing between keys: one dialog, then every target of mTargets moves.
-    //   * Delete key: one deleteCheckedKeys(mTargets) command over the whole set.
+    //   * Delete: one deleteCheckedKeys(mTargets) command over the whole set.
     // Easing is deliberately absent: it lives in the dock header's own chip
     // (openEasingPicker), so a menu entry would be a second route to one edit.
+    // ACTIONS ARE INVARIANT VERBS. Unlike a count ("1 key"/"3 keys"), a command does
+    // not change with the selection: "Copy", "Paste", "Delete" read the same for one
+    // key or twenty and never inflect, which is the convention most software follows.
+    // The count is the chip/ruler's job; the menu names the action.
     mPasteKey->setEnabled(mCopyTargets.hasAnyTargets());
 
     if (mTargets.targets().isEmpty()) {
@@ -581,13 +613,16 @@ void TimeLineEditorWidget::buildKeyMenu(QMenu& aMenu) {
             }
         }
         aMenu.addSeparator();
-        QAction* proportional = aMenu.addAction(tr("Proportional"));
-        proportional->setCheckable(true);
-        proportional->setChecked(allProportional);
+        // NOT a checkable action: one QAction with a check mark makes QMenu reserve
+        // the indicator column for EVERY item in the menu, which is the extra
+        // left indent this menu had and the other context menus do not. The command
+        // names the change instead ("Make proportional" / "Make absolute"), so no
+        // state glyph is needed and the item aligns with Copy/Paste/Delete.
+        QAction* proportional = aMenu.addAction(
+            allProportional ? tr("Make absolute") : tr("Make proportional")
+        );
         proportional->connect(proportional, &QAction::triggered, [this, allProportional]() {
-            if (!mProject)
-                return;
-            ctrl::TimeLineUtil::setProportionalKeys(*mProject, mTargets, !allProportional);
+            this->applyProportionalForTargets(mTargets, !allProportional);
         });
     }
     aMenu.addSeparator();

@@ -6103,6 +6103,30 @@ The log is available below.</source>
         <source> key(s), due to the following reasons: </source>
         <translation> を移動できません </translation>
     </message>
+    <message>
+        <source>Copy</source>
+        <translation>コピー</translation>
+    </message>
+    <message>
+        <source>Copy to clipboard</source>
+        <translation>クリップボードにコピー</translation>
+    </message>
+    <message>
+        <source>Delete</source>
+        <translation>削除</translation>
+    </message>
+    <message>
+        <source>Paste</source>
+        <translation>貼り付け</translation>
+    </message>
+    <message>
+        <source>Make proportional</source>
+        <translation>プロポーショナルにする</translation>
+    </message>
+    <message>
+        <source>Make absolute</source>
+        <translation>絶対にする</translation>
+    </message>
 </context>
 <context>
     <name>gui::TimeLineHeader</name>

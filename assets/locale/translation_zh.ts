@@ -6070,6 +6070,30 @@ The log is available below.</source>
         <source> key(s), due to the following reasons: </source>
         <translation>由于以下原因，无法移动关键帧：</translation>
     </message>
+    <message>
+        <source>Copy</source>
+        <translation>复制</translation>
+    </message>
+    <message>
+        <source>Copy to clipboard</source>
+        <translation>复制到剪贴板</translation>
+    </message>
+    <message>
+        <source>Delete</source>
+        <translation>删除</translation>
+    </message>
+    <message>
+        <source>Paste</source>
+        <translation>粘贴</translation>
+    </message>
+    <message>
+        <source>Make proportional</source>
+        <translation>设为比例</translation>
+    </message>
+    <message>
+        <source>Make absolute</source>
+        <translation>设为绝对</translation>
+    </message>
 </context>
 <context>
     <name>gui::TimeLineHeader</name>

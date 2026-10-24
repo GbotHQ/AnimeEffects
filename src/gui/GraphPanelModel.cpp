@@ -205,6 +205,31 @@ void buildFrameAxis(
     aModel.playWindow = out;
 }
 
+// THE FRAME RANGE'S TWO GUIDES, in the panel's own columns: the project's first and
+// last frame mapped through the SAME scaler the frame ticks and the playhead use, so a
+// guide lands on the tick of its frame (and on the timeline's column for it while the
+// timeline owns the frame axis).
+//
+// THE RULE IS THE TIMELINE'S (ctrl/time/time_BodyModel.cpp's buildRangeMarkers): two
+// columns, one for each end of the range, and a DEGENERATE range - both ends on one
+// column - is ONE line rather than two overdrawn at the same pixel. A reversed range
+// (min > max) marks nothing: it names no span.
+void buildRangeGuides(
+    gui::GraphPanelModel& aModel, const ctrl::graph::Scaler& aScale, const util::Range& aProjectRange,
+    bool aPlayWindowActive
+) {
+    aModel.rangeGuideX.clear();
+    aModel.rangeGuideRecede = aPlayWindowActive;
+    if (aProjectRange.min() > aProjectRange.max())
+        return;
+
+    const int first = aScale.pixelX(core::Frame(aProjectRange.min()));
+    const int last = aScale.pixelX(core::Frame(aProjectRange.max()));
+    aModel.rangeGuideX.append(first);
+    if (last != first)
+        aModel.rangeGuideX.append(last);
+}
+
 // The value axis: the window's max / midpoint / min, right-aligned in the left
 // column, each on the pixel its value maps to. Two of the three rounding to the
 // same string would draw one number on top of itself, so the duplicate is
@@ -304,16 +329,23 @@ void buildChannels(
 
             // The rows of one type are one LEGEND GROUP (design section 7): the
             // type names the property and each component gets its own bracket -
-            // "Move [X][Y]", "Opa [Opacity]" - the form the design's legend uses.
+            // "Move [X][Y]"; a one-component type is simply "Opacity" or "Rotate".
             // Built from the same Channel table the rows are enumerated by, so the
             // heading and its entries cannot disagree, and written once per
             // (layer, type) as PanelChannelRow::group.
             const QVector<ctrl::graph::Channel> channels = ctrl::graph::Channel::channelsOf(type);
-            QString group = core::TimeLine::getTimeKeyName(type) + QLatin1Char(' ');
-            for (int i = 0; i < channels.size(); ++i) {
-                group += QLatin1Char('[');
-                group += channels.at(i).componentName();
-                group += QLatin1Char(']');
+            const QString typeName = core::TimeLine::getTimeKeyDisplayName(type);
+            // A multi-component property needs its components spelled out; a
+            // one-component one is self-describing, so its group text IS its type
+            // name ("Opacity", "Rotate") and the list omits the redundant heading.
+            QString group = typeName;
+            if (channels.size() > 1) {
+                group += QLatin1Char(' ');
+                for (int i = 0; i < channels.size(); ++i) {
+                    group += QLatin1Char('[');
+                    group += channels.at(i).componentName();
+                    group += QLatin1Char(']');
+                }
             }
 
             for (const ctrl::graph::Channel& channel : channels) {
@@ -325,9 +357,7 @@ void buildChannels(
                 // A one-component type has no sibling to be told apart from, so the
                 // component word is noise: "Opa", not "Opa Opacity" (the reference
                 // draws exactly this chip, mock-graph.js's _curveLabels).
-                row.name = channels.size() > 1
-                               ? channel.name()
-                               : core::TimeLine::getTimeKeyName(type);
+                row.name = channels.size() > 1 ? channel.name() : typeName;
                 // The one channel hue table: axis where the component lies on an
                 // axis, the type's own hue otherwise. The curve, its key markers,
                 // its chip and the list's swatch all read this one answer, and the
@@ -459,8 +489,8 @@ void buildCurves(
                 // The key is asked BY NAME (the channel's type and the frame just
                 // published), which is the timeline's own identity for it; a key the
                 // map does not answer for is not proportional. The model publishes the
-                // flag unmodified - lowering the fill's opacity is the drawing layer's
-                // decision, the same one the timeline's key pass makes.
+                // flag unmodified - drawing a ring instead of a filled dot is the drawing
+                // layer's decision, the same one the timeline's key pass makes.
                 const core::TimeKey* publishedKey = timeLine->timeKey(row.channel.type(), frame.get());
                 out.keyProportional.append(publishedKey && publishedKey->isProportional());
             }
@@ -750,6 +780,11 @@ namespace gui {
             model.playheadX >= 0 ? aEditor.currentFrame().get() : std::numeric_limits<int>::min()
         );
         buildValueAxis(model, scale, metrics);
+        // THE FRAME RANGE'S GUIDES are a DOCUMENT fact like the playhead (the project's own
+        // range), so they are read whether or not the ruler band fits - they are plot-row,
+        // panel-column geometry, not ruler ink. No project, no range, no guides.
+        if (aEditor.hasProject())
+            buildRangeGuides(model, scale, aEditor.frameRange(), aEditor.playWindow().active());
         buildChannels(model, aEditor, aTheme);
         buildCurves(model, aEditor, scale, metrics);
         buildEmptyState(model, aEditor);

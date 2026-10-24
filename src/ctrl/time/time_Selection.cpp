@@ -87,6 +87,21 @@ namespace time {
         return true;
     }
 
+    bool Selection::retain(const std::function<bool(const Item&)>& aKeep) {
+        QVector<Item> next;
+        next.reserve(mItems.size());
+        for (const Item& item : mItems) {
+            if (aKeep(item))
+                next.push_back(item);
+        }
+        if (sameEntries(mItems, next))
+            return false;
+        mItems = next;
+        rebuildFocus();
+        notifyChanged();
+        return true;
+    }
+
     bool Selection::set(const TimeLineEvent& aEvent) {
         // Built BESIDE the live set, so "did this change anything" is answerable
         // before the set is replaced: a re-selection of what is already selected is

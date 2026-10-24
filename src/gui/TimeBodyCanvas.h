@@ -13,7 +13,8 @@ namespace timeBodyCanvas {
 // `SelectionBox`), so the two hosts cannot disagree about geometry.
 //
 // THREE THINGS CANVAS2D CANNOT DO THE WAY QT DOES, and each is drawn the closest honest way:
-//   * no dashed strokes, so a lane separator is a row of 1px marks at Qt's DotLine pitch (1 on,
+//   * no dashed strokes; TYPE separators are 4-on/4-off 1px marks in the lane's 40%
+//     separator ink (the solid 70% row seams are a different concept),
 //     2 off) and the marquee's edge is segmented the same way;
 //   * text is anchored, not boxed: a lane label is centred on its box (`Center`/`Middle`);
 //   * strokes are centred on their coordinates, so every 1px mark is drawn at +0.5 (the ruler's

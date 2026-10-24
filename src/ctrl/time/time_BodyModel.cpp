@@ -1,7 +1,13 @@
 #include "ctrl/time/time_BodyModel.h"
 
+#include <QCoreApplication>
 #include <QFontMetrics>
 #include <QPainter>
+#include <QPainterPath>
+
+#include <algorithm>
+#include <cmath>
+#include <set>
 
 #include "core/TimeKey.h"
 #include "core/TimeLine.h"
@@ -50,8 +56,71 @@ constexpr double kSelectRingRadiusModel = keyRadius + kSelectRingOffset;
 // A folder's holder diamond arm.
 constexpr double kHolderArm = 4.2;
 
+// A POLYGON PROPORTIONAL KEY'S HOLE: the marker's own outline scaled toward its centre.
+// One helper for the lane keys and the closed folder's summaries, and the model stores
+// the result so the QPainter and Canvas hosts stroke the same polygon.
+QPolygonF insetPolygon(const QPolygonF& aPolygon, const QPointF& aCentre, double aScale) {
+    QPolygonF inset;
+    inset.reserve(aPolygon.size());
+    for (const QPointF& point : aPolygon)
+        inset.append(aCentre + (point - aCentre) * aScale);
+    return inset;
+}
+
+// A POLYGON KEY MARKER'S CORNERS: every polygon marker (holder diamond, slimmed
+// rectangle, closed folder's summary triangle) is rounded by the same radius. The
+// corner is flattened through QPainterPath::toFillPolygon, so the model stores ONE
+// polygon for both rasterisers - a path with arcs would be a second geometry.
+QPolygonF roundedPolygon(const QPolygonF& aPolygon, double aRadius) {
+    if (aPolygon.size() < 3 || aRadius <= 0.0)
+        return aPolygon;
+
+    const int count = aPolygon.size();
+    const auto unit = [](const QPointF& aVector) {
+        const double length = std::hypot(aVector.x(), aVector.y());
+        return length > 1e-6 ? aVector / length : QPointF();
+    };
+    QVector<QPointF> in(count);
+    QVector<QPointF> out(count);
+    for (int i = 0; i < count; ++i) {
+        const QPointF current = aPolygon[i];
+        const QPointF previous = aPolygon[(i + count - 1) % count];
+        const QPointF next = aPolygon[(i + 1) % count];
+        const QPointF uPrevious = unit(previous - current);
+        const QPointF uNext = unit(next - current);
+        const double dot = std::clamp(
+            uPrevious.x() * uNext.x() + uPrevious.y() * uNext.y(), -1.0, 1.0
+        );
+        const double angle = std::acos(dot);
+        double distance = angle > 1e-6 ? aRadius / std::tan(angle * 0.5) : 0.0;
+        distance = std::min(
+            distance, 0.45 * std::min(std::hypot((previous - current).x(), (previous - current).y()),
+                                      std::hypot((next - current).x(), (next - current).y()))
+        );
+        in[i] = current + uPrevious * distance;
+        out[i] = current + uNext * distance;
+    }
+
+    QPainterPath path;
+    path.moveTo(in[0]);
+    for (int i = 0; i < count; ++i) {
+        path.quadTo(aPolygon[i], out[i]);
+        path.lineTo(in[(i + 1) % count]);
+    }
+    path.closeSubpath();
+    return path.toFillPolygon();
+}
 
 } // namespace
+
+QColor opaqueOver(const QColor& aTop, const QColor& aBottom) {
+    const double a = aTop.alphaF();
+    const auto mix = [a](double top, double bottom) { return top * a + bottom * (1.0 - a); };
+    QColor out;
+    out.setRgbF(mix(aTop.redF(), aBottom.redF()), mix(aTop.greenF(), aBottom.greenF()),
+                mix(aTop.blueF(), aBottom.blueF()), 1.0);
+    return out;
+}
 
 Lines buildLines(
     const QVector<ctrl::TimeLineRow>& aRows, const QRect& aCameraRect, const QRect& aCullRect, const Inks& aInks
@@ -59,6 +128,12 @@ Lines buildLines(
     Lines lines;
     lines.inks = aInks;
     const int textLeft = aCameraRect.center().x() - kLabelWidth / 2;
+
+    const auto bandOver = [&aCameraRect](const QRect& aRect) {
+        return QRect(
+            QPoint(aCameraRect.left(), aRect.top()), QPoint(aCameraRect.right(), aRect.bottom())
+        );
+    };
 
     for (const ctrl::TimeLineRow& row : aRows) {
         const QRect rect = row.rect;
@@ -68,41 +143,67 @@ Lines buildLines(
         if (rect.bottom() < aCullRect.top() || aCullRect.bottom() < rect.top())
             continue;
 
-        // The fill spans the visible width (the camera rect), not the frame range: when the
-        // content is narrower than the viewport the lanes reach the panel edges.
-        const QRect band(QPoint(aCameraRect.left(), rect.top()), QPoint(aCameraRect.right(), rect.bottom()));
-        Lane lane;
-        lane.rect = band;
-        lane.selected = row.selecting;
+        // The folder's own lanes. A summary-only row has no own lane: the whole row is
+        // the summary band (see TimeLineRow), so it is not drawn twice.
+        const QRect own = row.ownRect();
+        if (own.height() > 0) {
+            // The fill spans the visible width (the camera rect), not the frame range: when
+            // the content is narrower than the viewport the lanes reach the panel edges.
+            const QRect band = bandOver(own);
+            Lane lane;
+            lane.rect = band;
+            lane.selected = row.selecting;
 
-        if (row.node && row.node->timeLine() && !row.node->isSlimmedDown()) {
-            const core::TimeLine& timeLine = *(row.node->timeLine());
-            const int sepa = timeLine.validTypeCount();
-            const float h = sepa > 0 ? static_cast<float>(rect.height()) / sepa : 0.0f;
+            if (row.node && row.node->timeLine() && !row.node->isSlimmedDown()) {
+                const core::TimeLine& timeLine = *(row.node->timeLine());
+                const int sepa = timeLine.validTypeCount();
+                const float h = sepa > 0 ? static_cast<float>(own.height()) / sepa : 0.0f;
 
-            for (int i = 1; i < sepa; ++i) {
-                const QPointF v0(band.left(), rect.top() + i * h);
-                const QPointF v1(band.right(), rect.top() + i * h);
-                lane.separators.append({int(v0.x()), int(v1.x()), v0.y()});
+                for (int i = 1; i < sepa; ++i) {
+                    const QPointF v0(band.left(), own.top() + i * h);
+                    const QPointF v1(band.right(), own.top() + i * h);
+                    lane.separators.append({int(v0.x()), int(v1.x()), v0.y()});
+                }
+
+                int i = 0;
+                for (int typei = 0; typei < core::TimeKeyType_TERM; ++typei) {
+                    const core::TimeKeyType type = core::TimeLine::getTimeKeyTypeInOrderOfOperations(typei);
+                    if (timeLine.isEmpty(type))
+                        continue;
+                    Label label;
+                    label.box = QRect(
+                        textLeft, own.top() + static_cast<int>(i * h), kLabelWidth, static_cast<int>(h)
+                    );
+                    label.text = core::TimeLine::getTimeKeyDisplayName(type);
+                    label.ink = withAlpha(keyColor(type), kLabelAlpha);
+                    lane.labels.append(label);
+                    ++i;
+                }
             }
 
-            int i = 0;
-            for (int typei = 0; typei < core::TimeKeyType_TERM; ++typei) {
-                const core::TimeKeyType type = core::TimeLine::getTimeKeyTypeInOrderOfOperations(typei);
-                if (timeLine.isEmpty(type))
-                    continue;
-                Label label;
-                label.box = QRect(
-                    textLeft, rect.top() + static_cast<int>(i * h), kLabelWidth, static_cast<int>(h)
-                );
-                label.text = core::TimeLine::getTimeKeyName(type);
-                label.ink = withAlpha(keyColor(type), kLabelAlpha);
-                lane.labels.append(label);
-                ++i;
-            }
+            lines.lanes.append(lane);
         }
 
-        lines.lanes.append(lane);
+        // The dedicated folder-summary band. It is a lane of its own, so the summary can
+        // never paint over a child's lane - the reason it exists.
+        const QRect summary = row.summaryRect();
+        if (summary.height() > 0) {
+            Lane lane;
+            lane.rect = bandOver(summary);
+            lane.selected = row.selecting;
+            lane.summary = true;
+            // The band names WHAT it is: the keys of the folder's CHILDREN. It is
+            // an ordinary lane label, in the same centred column and at the same
+            // size as a channel name. Paint order puts the key passes AFTER the
+            // labels, so a marker draws IN FRONT of this label exactly as it does
+            // in front of "Move" or "Scale" - the label is behind the marker.
+            Label label;
+            label.box = QRect(textLeft, summary.top(), kLabelWidth, summary.height());
+            label.text = QCoreApplication::translate("TimeLine", "Children");
+            label.ink = withAlpha(theme::Colors::current().textMuted, kLabelAlpha);
+            lane.labels.append(label);
+            lines.lanes.append(lane);
+        }
     }
 
     // 1px borders: one hairline per seam (each ROW's top) plus the LAST ROW's bottom, so
@@ -114,6 +215,10 @@ Lines buildLines(
         if (row.rect.bottom() < aCullRect.top() || aCullRect.bottom() < row.rect.top())
             continue;
         lines.seams.append({aCameraRect.left(), aCameraRect.right(), row.rect.top()});
+        // The own-lane / summary-lane divider. A summary-only row's top IS this seam,
+        // so it must not be pushed twice.
+        if (row.summaryHeight() > 0 && row.ownRect().height() > 0)
+            lines.seams.append({aCameraRect.left(), aCameraRect.right(), row.summaryRect().top()});
     }
     if (!aRows.isEmpty()) {
         const ctrl::TimeLineRow& last = aRows.back();
@@ -126,7 +231,7 @@ Lines buildLines(
 
 KeyPass buildKeys(
     const core::ObjectNode* aNode, const TimeLineRow& aRow, const ctrl::time::Scaler& aScale,
-    const util::Range& aRange, int aMargin
+    const util::Range& aRange, int aMargin, const QColor& aLaneInk
 ) {
     KeyPass pass;
     pass.edge = theme::Colors::current().outline;
@@ -151,12 +256,12 @@ KeyPass buildKeys(
         auto itr = map.lowerBound(aRange.min());
         while (itr != map.end() && itr.key() <= aRange.max()) {
             const bool isFocused = itr.value()->isFocused();
+            const bool isProportional = itr.value()->isProportional();
             const QColor hue = keyColor(itr.value()->type());
-            // A focused key mixes its fill toward the text colour; a PROPORTIONAL one only
-            // lowers the fill's opacity (the shape, radius and hue are untouched).
-            QColor fill = isFocused ? mixTowardText(hue) : hue;
-            if (itr.value()->isProportional())
-                fill.setAlpha(kProportionalFillAlpha);
+            // A focused key mixes its ink toward the text colour. A PROPORTIONAL key is
+            // HOLLOW: its hue becomes the RING's ink (no alpha), with the hole published
+            // below so both hosts stroke the same band.
+            const QColor fill = isFocused ? mixTowardText(hue) : hue;
 
             const QPointF pos(left + aScale.attribute(itr.key()).pos + 0.5, height + 0.5f);
             KeyMark mark;
@@ -164,18 +269,34 @@ KeyPass buildKeys(
             mark.fill = fill;
             if (isSlimmed) {
                 mark.shape = KeyShape::Polygon;
-                mark.polygon << pos + QPointF(keyRadius * -1, keyRadiusSlim * -1)
-                             << pos + QPointF(keyRadius, keyRadiusSlim * -1)
-                             << pos + QPointF(keyRadius, keyRadiusSlim)
-                             << pos + QPointF(keyRadius * -1, keyRadiusSlim);
+                QPolygonF base;
+                base << pos + QPointF(keyRadius * -1, keyRadiusSlim * -1)
+                     << pos + QPointF(keyRadius, keyRadiusSlim * -1)
+                     << pos + QPointF(keyRadius, keyRadiusSlim)
+                     << pos + QPointF(keyRadius * -1, keyRadiusSlim);
+                mark.polygon = roundedPolygon(base, kKeyCornerRadius);
             } else if (itr.value()->canHoldChild()) {
                 mark.shape = KeyShape::Polygon;
-                mark.polygon << pos + QPointF(0.0, -kHolderArm) << pos + QPointF(kHolderArm, 0.0)
-                             << pos + QPointF(0.0, kHolderArm) << pos + QPointF(-kHolderArm, 0.0);
+                QPolygonF base;
+                base << pos + QPointF(0.0, -kHolderArm) << pos + QPointF(kHolderArm, 0.0)
+                     << pos + QPointF(0.0, kHolderArm) << pos + QPointF(-kHolderArm, 0.0);
+                mark.polygon = roundedPolygon(base, kKeyCornerRadius);
             } else {
                 mark.shape = KeyShape::Ellipse;
                 mark.radiusX = keyRadius;
                 mark.radiusY = keyRadius;
+            }
+            if (isProportional) {
+                mark.hollow = true;
+                mark.holeInk = aLaneInk;
+                if (mark.shape == KeyShape::Ellipse) {
+                    mark.hollowRadius = mark.radiusX - kProportionalHoleInset;
+                } else {
+                    mark.hollowPolygon =
+                        insetPolygon(mark.polygon, mark.centre, kProportionalPolygonInset);
+                    mark.hollowHolePolygon =
+                        insetPolygon(mark.polygon, mark.centre, kProportionalPolygonHoleInset);
+                }
             }
             if (isFocused) {
                 mark.hasRing = true;
@@ -190,15 +311,21 @@ KeyPass buildKeys(
 }
 
 KeyPass buildChildKeys(
-    const core::ObjectNode* aNode, const QPoint& aPos, const ctrl::time::Scaler& aScale,
-    const util::Range& aRange
+    const core::ObjectNode* aNode, const QRect& aSummaryRect, int aMargin,
+    const ctrl::time::Scaler& aScale, const util::Range& aRange
 ) {
     KeyPass pass;
-    pass.edge = theme::Colors::current().baseKey;
+    pass.edge = theme::Colors::current().outline;
     pass.child = true;
-    if (!aNode)
+    pass.stroke = false;
+    if (!aNode || aSummaryRect.height() <= 0)
         return pass;
 
+    // ONE MARKER PER FRAME: several hidden channels landing on the same frame used to
+    // overdraw the same triangle, which hid the multiplicity and made the antialiased
+    // edges compound. The summary is an overview of WHEN, not of how many.
+    std::set<int> frames;
+    std::set<int> focusedFrames;
     for (auto child : aNode->children()) {
         core::ObjectNode::ConstIterator treeItr(child);
         while (treeItr.hasNext()) {
@@ -213,22 +340,30 @@ KeyPass buildChildKeys(
 
                 auto itr = map.lowerBound(aRange.min());
                 while (itr != map.end() && itr.key() <= aRange.max()) {
-                    QColor fill = pass.edge;
-                    if (itr.value()->isProportional())
-                        fill.setAlpha(kProportionalFillAlpha);
-                    const QPointF pos(aPos.x() + aScale.attribute(itr.key()).pos + 0.5, aPos.y());
-                    KeyMark mark;
-                    mark.shape = KeyShape::Polygon;
-                    mark.centre = pos;
-                    mark.fill = fill;
-                    mark.polygon << pos
-                                 << pos + QPointF(keyRadiusChild, keyRadiusChildPoly * -1)
-                                 << pos + QPointF(keyRadiusChild * -1, keyRadiusChildPoly * -1);
-                    pass.marks.append(mark);
+                    frames.insert(itr.key());
+                    if (itr.value()->isFocused())
+                        focusedFrames.insert(itr.key());
                     ++itr;
                 }
             }
         }
+    }
+
+    const float y = aSummaryRect.top() + 0.5f * aSummaryRect.height();
+    for (int frame : frames) {
+        const QPointF centre(aMargin + aScale.attribute(frame).pos + 0.5, y);
+        KeyMark mark;
+        mark.shape = KeyShape::Polygon;
+        mark.centre = centre;
+        QPolygonF base;
+        base << centre + QPointF(-4.2, -3.1) << centre + QPointF(4.2, -3.1)
+             << centre + QPointF(0.0, 3.1);
+        mark.polygon = roundedPolygon(base, kKeyCornerRadius);
+        // A frame holding a selected hidden key brightens its summary mark, so a
+        // click on the band has a visible answer even though the child lane is hidden.
+        mark.fill = focusedFrames.count(frame) ? mixTowardText(theme::Colors::current().baseKey)
+                                               : theme::Colors::current().baseKey;
+        pass.marks.append(mark);
     }
     return pass;
 }
@@ -239,12 +374,38 @@ void paintKeys(QPainter& aPainter, const KeyPass& aPass) {
     // hairlines leaves the rings faceted and the ring's coverage profile wrong.
     aPainter.setRenderHint(QPainter::Antialiasing);
     for (const KeyMark& mark : aPass.marks) {
-        aPainter.setPen(QPen(aPass.edge, 1));
-        aPainter.setBrush(mark.fill);
-        if (mark.shape == KeyShape::Ellipse)
-            aPainter.drawEllipse(mark.centre, mark.radiusX, mark.radiusY);
-        else
-            aPainter.drawConvexPolygon(mark.polygon);
+        if (mark.hollow) {
+            // A PROPORTIONAL KEY: a filled hue disc, the LANE's ink over its centre,
+            // then the ordinary edge. Fills (not strokes) are what keep this pass and
+            // the Canvas one byte-identical.
+            aPainter.setPen(Qt::NoPen);
+            aPainter.setBrush(mark.fill);
+            if (mark.shape == KeyShape::Ellipse) {
+                aPainter.drawEllipse(mark.centre, mark.radiusX - kProportionalRingOuterInset,
+                                     mark.radiusY - kProportionalRingOuterInset);
+            } else {
+                aPainter.drawConvexPolygon(mark.hollowPolygon);
+            }
+            aPainter.setBrush(mark.holeInk);
+            if (mark.shape == KeyShape::Ellipse) {
+                aPainter.drawEllipse(mark.centre, mark.hollowRadius, mark.hollowRadius);
+            } else {
+                aPainter.drawConvexPolygon(mark.hollowHolePolygon);
+            }
+            aPainter.setPen(aPass.stroke ? QPen(aPass.edge, 1) : QPen(Qt::NoPen));
+            aPainter.setBrush(Qt::NoBrush);
+            if (mark.shape == KeyShape::Ellipse)
+                aPainter.drawEllipse(mark.centre, mark.radiusX, mark.radiusY);
+            else
+                aPainter.drawConvexPolygon(mark.polygon);
+        } else {
+            aPainter.setPen(aPass.stroke ? QPen(aPass.edge, 1) : QPen(Qt::NoPen));
+            aPainter.setBrush(mark.fill);
+            if (mark.shape == KeyShape::Ellipse)
+                aPainter.drawEllipse(mark.centre, mark.radiusX, mark.radiusY);
+            else
+                aPainter.drawConvexPolygon(mark.polygon);
+        }
         if (mark.hasRing) {
             aPainter.setPen(QPen(mark.ring, 1));
             aPainter.setBrush(Qt::NoBrush);
@@ -279,9 +440,9 @@ SelectionBox buildMarquee(const QRect& aRect) {
     if (aRect.width() < 2 || aRect.height() < 2)
         return marquee;
     marquee.visible = true;
-    // Inset by half a pixel so the 1px pen is centred inside the rect rather than straddling
-    // its edge; the AA'd edge is intentionally soft to keep the rounded corners smooth.
-    marquee.rect = QRectF(aRect).adjusted(0.5, 0.5, -0.5, -0.5);
+    // The RAW gesture rect; gui::ink::paintMarquee applies the half-pixel inset that
+    // puts the 1px stroke on one device column (the graph panel uses the same helper).
+    marquee.rect = QRectF(aRect);
     marquee.edge = withAlpha(theme::Colors::current().accentBright, 230);
     marquee.fill = withAlpha(theme::Colors::current().accentBright, 24);
     return marquee;
@@ -297,10 +458,15 @@ void paintGuides(QPainter& aPainter, const QVector<RangeMarker>& aMarkers, const
         }
     }
     if (aMarquee.visible) {
+        // ONE BOX TREATMENT for both views: rounded, accent wash, 1px SOLID edge.
+        // The old dashed edge made the timeline's box a different gesture from the
+        // graph panel's solid one; the fill carries the selection, not a dash pattern.
         aPainter.setRenderHint(QPainter::Antialiasing, true);
-        aPainter.setPen(QPen(aMarquee.edge, 1, Qt::DashLine));
+        aPainter.setPen(QPen(aMarquee.edge, 1));
         aPainter.setBrush(aMarquee.fill);
-        aPainter.drawRoundedRect(aMarquee.rect, aMarquee.radius, aMarquee.radius);
+        aPainter.drawRoundedRect(
+            aMarquee.rect.adjusted(0.5, 0.5, -0.5, -0.5), aMarquee.radius, aMarquee.radius
+        );
     }
 }
 
@@ -319,10 +485,16 @@ BodyScene buildBodyScene(
             continue;
         if (!row.node || !row.node->timeLine())
             continue;
-        const QPoint cpos(aMargin, rect.bottom());
-        if (row.closedFolder)
-            scene.keyPasses.append(buildChildKeys(row.node, cpos, aScale, aRange));
-        scene.keyPasses.append(buildKeys(row.node, row, aScale, aRange, aMargin));
+        // A hollow key's hole is the LANE's own fill, so the ring reads on the
+        // selected and the plain lane alike (the body model already knows both inks).
+        const QColor laneInk = opaqueOver(
+            row.selecting ? aInks.bodySelected : aInks.body, theme::Colors::current().base
+        );
+        if (row.closedFolder && row.summaryHeight() > 0)
+            scene.keyPasses.append(
+                buildChildKeys(row.node, row.summaryRect(), aMargin, aScale, aRange)
+            );
+        scene.keyPasses.append(buildKeys(row.node, row, aScale, aRange, aMargin, laneInk));
     }
     return scene;
 }
@@ -343,15 +515,25 @@ void paintLines(QPainter& aPainter, const Lines& aLines) {
     const QBrush separator(aLines.inks.separator);
 
     for (const Lane& lane : aLines.lanes) {
-        // fill only; the 1px border is the separate seam pass below
+        // fill only; the 1px border is the separate seam pass below. A summary
+        // band is the same surface as any lane: its 1px divider and its marker
+        // shape are the distinction.
         aPainter.setPen(Qt::NoPen);
         aPainter.setBrush(lane.selected ? bodySelected : body);
         aPainter.drawRect(lane.rect);
 
         if (!lane.separators.isEmpty()) {
-            aPainter.setPen(QPen(separator, 1, Qt::DotLine));
+            // TYPE separators inside one lane: dashed 4-on/4-off at the lane's 40%
+            // separator ink. The dash is the visual difference from the SOLID 70%
+            // row seams (different layers); the longer dash than the old dots keeps
+            // it legible at 1x. Snapped to its row with AA off so it is one crisp row.
+            aPainter.setRenderHint(QPainter::Antialiasing, false);
+            QPen pen(separator, 1, Qt::CustomDashLine);
+            pen.setDashPattern(QVector<qreal>{4.0, 4.0});
+            aPainter.setPen(pen);
             for (const Separator& each : lane.separators)
-                aPainter.drawLine(QPointF(each.x0, each.y), QPointF(each.x1, each.y));
+                aPainter.drawLine(each.x0, int(each.y), each.x1, int(each.y));
+            aPainter.setRenderHint(QPainter::Antialiasing, true);
         }
 
         for (const Label& label : lane.labels) {

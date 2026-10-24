@@ -103,9 +103,8 @@ public:
     // how a menu's Edit/Delete could end up editing a key the user was not looking at.
     //
     // With NO selection the menu is paste-only (buildKeyMenu's empty-targets shape):
-    // one "Paste key" item, enabled when something has been copied. With a selection it
-    // offers Copy key, Copy key to clipboard, Paste key, Select spacing between keys and
-    // Delete key. "Fit graph" is always last and runs ctrl::GraphEditor::fitAll() - the
+    // one "Paste" item, enabled when something has been copied. With a selection it
+    // offers Copy, Copy to clipboard, Paste, Select spacing between keys and Delete. "Fit graph" is always last and runs ctrl::GraphEditor::fitAll() - the
     // panel's explicit fit, which replaced the plot's double-click. False when there is
     // no timeline wired (or no surface to build the menu on).
     bool showGraphBackgroundMenu(const QPoint& aGlobalPos);

@@ -49,13 +49,18 @@ namespace time {
             if (!row.node || !row.node->timeLine())
                 continue;
 
-            const QPoint cpos(mMargin, rect.bottom());
             // THE KEY PASS IS A MODEL NOW (ctrl/time/time_BodyModel.h): the marks are stated as
             // data and painted through the shared QPainter rendering, in the same order the pass
             // always used (a closed folder's summary first).
-            if (row.closedFolder)
-                paintKeys(mPainter, buildChildKeys(row.node, cpos, *mScale, mRange));
-            paintKeys(mPainter, buildKeys(row.node, row, *mScale, mRange, mMargin));
+            const QColor laneInk = opaqueOver(
+                row.selecting ? mTheme.trackSelectColor() : mTheme.trackColor(),
+                theme::Colors::current().base
+            );
+            if (row.closedFolder && row.summaryHeight() > 0)
+                paintKeys(
+                    mPainter, buildChildKeys(row.node, row.summaryRect(), mMargin, *mScale, mRange)
+                );
+            paintKeys(mPainter, buildKeys(row.node, row, *mScale, mRange, mMargin, laneInk));
         }
     }
 

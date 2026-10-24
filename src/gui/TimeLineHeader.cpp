@@ -1,5 +1,4 @@
 #include "gui/TimeLineHeader.h"
-#include "gui/IconButton.h"
 #include "gui/MainDisplayWidget.h"
 #include "gui/PlayBackWidget.h"
 #include "gui/TimeLineWidget.h"
@@ -8,6 +7,7 @@
 #include "gui/prop/prop_Items.h"
 #include "gui/theme/Colors.h"
 #include "core/KeyEasing.h"
+#include "core/TimeKey.h"
 #include "ctrl/TimeLineEditor.h"
 #include "ctrl/graph/graph_Channel.h"
 #include "ctrl/graph/graph_Curve.h"
@@ -18,6 +18,7 @@
 #include <QHBoxLayout>
 #include <QKeyEvent>
 #include <QPainter>
+#include <QSet>
 #ifdef AE_ENABLE_IMGUI
 #include "gui/GraphPanelWidget.h"
 #include <QTabBar>
@@ -29,8 +30,7 @@ namespace {
 // The header's geometry, all from the design's own numbers: a 40px bar, 8px of
 // inset at both ends, 6px between the groups, and a 1x16 rule between two of them
 // (the mock's .tl-head / .tl-hairline). The transport's own 28px/20px grid belongs
-// to PlayBackWidget; the zoom group's buttons are the same 28px box with an 18px
-// icon.
+// to PlayBackWidget; the bar's other buttons use the same 28px box.
 const int kHeaderHeight = 40;
 const int kHeaderPad = 8;
 const int kGroupGap = 6;
@@ -39,7 +39,6 @@ const int kHairlineHeight = 16;
 // own grid uses. setFixedSize, not the QSS pin alone: a layout takes the size hint
 // a restyle rewrites, while a fixed size is min = max = 28.
 const int kButtonSize = 28;
-const int kZoomIconSize = 18;
 // The easing chip's reserved width. Fixed on purpose: the chip's content changes
 // with the key selection, and a control that resizes re-flows the bar beside it.
 const int kEaseSlotWidth = 196;
@@ -49,10 +48,13 @@ const int kEaseSlotWidth = 196;
 const int kTextButtonSize = 10;
 const int kTextButtonPadX = 6;
 const int kTextButtonRadius = 4;
-// The quick easings: the glyph's 18px box inside the bar's 28px button (the
-// same proportion the zoom group uses) and the 2px between the four.
+// The quick easings: the glyph's 18px box inside the bar's 28px button and the 2px
+// between the four.
 const int kQuickEaseGlyphSize = 18;
 const int kQuickEaseGap = 2;
+// The proportional toggle's glyph is larger than an easing glyph: it carries three
+// marks (anchor / ring / anchor), and at 18px the side key bodies read as dust.
+const int kProportionalGlyphSize = 22;
 
 // The Auto preview context the quick-easing Auto button draws with is the SAME
 // one the picker's Auto tile uses - gui::prop::autoPreviewContext() (defined in
@@ -69,15 +71,25 @@ const int kQuickEaseGap = 2;
 // 3px/8px of padding, a 4px radius) and the bar it sits in (a 2px gap between the
 // two tabs, and the 1x16 rule the mock's border-right draws between the strip and
 // the transport is the header's own Hairline widget, as for every other group).
+// THE INK IS NOT THE MOCK'S (user's ruling, 2026-10-23: "the accent color in the
+// Timeline/Graph segmented control is rough ... accent fill is too much there").
+// The mock paints the current tab as a solid accent chip; here the two tabs are a
+// SEGMENTED FIELD in the header's own vocabulary - the ease chip's recipe
+// (recessed surface + hairline edge, prop::EasingChip::paintEvent) with the
+// current segment raised out of it as a knob (raised fill + outline edge). The
+// accent is left to the document's own marks (the playhead, the keys, the
+// selection ring); chrome does not compete with them.
 const int kTabFontSize = 11;
 const int kTabPadX = 8;
-const int kTabPadY = 3;
-const int kTabRadius = 4;
+// 1px less than the mock's 3px because the tab now carries a 1px border of its
+// own on BOTH states (transparent when unselected), so its inked height is the
+// same as before and selecting a tab cannot resize it.
+const int kTabPadY = 2;
+const int kTabRadius = 4;      // the knob
+const int kTroughRadius = 6;   // the field the knob sits in
+const int kTabMargin = 2;      // knob inset inside the field
+const int kTabEdge = 1;        // border width, both states
 #endif
-// One wheel notch, in the units ctrl::time::Scaler::update() is called with: the
-// angleDelta of one detent, which is the scaler's own kWheelValue. A press is one
-// notch, so a button and a wheel step land on the same rung.
-const int kZoomNotch = 120;
 
 // The mock's .tl-hairline: the 1x16 rule between two of the bar's groups. Painted
 // rather than styled - QSS box rules do not render on plain widget surfaces (the
@@ -104,9 +116,10 @@ protected:
 class HeaderTextButton: public QAbstractButton {
 public:
     explicit HeaderTextButton(QWidget* aParent): QAbstractButton(aParent) {
-        // Keyboard reachable: Tab moves between the bar's focusable buttons and
-        // Space (or Return, handled below) activates one. The focus ring is painted.
-        this->setFocusPolicy(Qt::StrongFocus);
+        // Keyboard reachable by TAB, never by a mouse click: a click must not leave a
+        // focus outline behind (the rest of the app's bar buttons are not
+        // mouse-focusable either). The focus ring is the keyboard affordance.
+        this->setFocusPolicy(Qt::TabFocus);
         this->setFixedHeight(kButtonSize);
     }
 
@@ -192,9 +205,9 @@ public:
             mParam.handleOut = util::Easing::kAutoPresetHandleMode;
         }
         mAuto = gui::prop::autoPreviewContext();
-        // Keyboard reachable: Tab moves between the bar's buttons and Space (or
-        // Return, handled below) activates one, exactly as the text button is.
-        this->setFocusPolicy(Qt::StrongFocus);
+        // Keyboard reachable by TAB, never by a mouse click (see HeaderTextButton):
+        // a click must not leave a focus outline on a glyph button.
+        this->setFocusPolicy(Qt::TabFocus);
         this->setFixedSize(kButtonSize, kButtonSize);
         this->setCheckable(true);
     }
@@ -215,8 +228,7 @@ protected:
             painter.drawRoundedRect(box, kTextButtonRadius, kTextButtonRadius);
         }
 
-        // The glyph: the bar's 18px icon box, centered in the 28px button (the
-        // zoom group's own proportion).
+        // The glyph: the bar's 18px icon box, centered in the 28px button.
         const QRectF glyph((this->width() - kQuickEaseGlyphSize) / 2.0,
                            (this->height() - kQuickEaseGlyphSize) / 2.0,
                            kQuickEaseGlyphSize, kQuickEaseGlyphSize);
@@ -250,23 +262,115 @@ private:
     bool mAutoPreset = false;
 };
 
-// A bar button (the mock's .ib): the glyph-hover pair the transport's buttons use,
-// at the group's own icon size. The type is gui::IconButton, not QPushButton: the
-// resting/hover glyph pair is that class's API (see refreshZoomIcons).
-gui::IconButton* makeBarButton(gui::GUIResources& aResources, QWidget* aParent, const QString& aName,
-                               int aIconSize) {
-    auto* button = new gui::IconButton(aParent);
-    button->setObjectName(aName);
-    button->setRestIcon(aResources.icon(aName));
-    button->setHoverIcon(aResources.iconActive(aName));
-    button->setIconSize(QSize(aIconSize, aIconSize));
-    button->setFixedSize(kButtonSize, kButtonSize);
-    button->setFocusPolicy(Qt::NoFocus);
-    return button;
-}
 } // namespace
 
 namespace gui {
+
+// THE PROPORTIONAL TOGGLE. The glyph is a PROPORTIONAL KEY IN ITS CONTEXT, not just
+// a circle: two solid key bodies (the absolute anchors on either side, the timeline's
+// filled circles) joined by a short line to a hollow ring in the middle (the key that
+// follows them). That is the relationship the flag means, and it cannot be read as an
+// easing. The ring is
+// always a ring; the TOGGLE STATE is the ink - textMutedDim when every selected key
+// is absolute, text when every one is proportional, textMuted plus a dash through
+// the ring when the set is mixed - which is the same checked/unchecked language the
+// quick easings use. A filled-disc variant would invert the key bodies: a filled
+// key is the ABSOLUTE one, so filling the glyph to mean "on" would say the opposite.
+class ProportionalButton: public QAbstractButton {
+public:
+    enum class State { None, Mixed, All };
+
+    explicit ProportionalButton(QWidget* aParent): QAbstractButton(aParent) {
+        // TAB-only focus: a mouse click must not leave the keyboard ring behind.
+        this->setFocusPolicy(Qt::TabFocus);
+        this->setFixedSize(kButtonSize, kButtonSize);
+        this->setCheckable(true); // the checked state is exposed to assistive technology
+        this->setAccessibleName(tr("Proportional keys"));
+    }
+
+    State proportionalState() const { return mState; }
+
+    void setProportionalState(State aState) {
+        mState = aState;
+        this->setChecked(aState == State::All);
+        this->update();
+    }
+
+protected:
+    void paintEvent(QPaintEvent*) override {
+        const theme::Colors& colors = theme::Colors::current();
+        QPainter painter(this);
+        painter.setRenderHint(QPainter::Antialiasing, true);
+
+        const QRectF box = QRectF(this->rect()).adjusted(0.5, 0.5, -0.5, -0.5);
+        const bool hovered = this->isEnabled() && this->underMouse();
+        if (hovered) {
+            painter.setPen(Qt::NoPen);
+            painter.setBrush(colors.raised);
+            painter.drawRoundedRect(box, kTextButtonRadius, kTextButtonRadius);
+        }
+
+        const QColor ink = !this->isEnabled() ? colors.textDisabled
+            : this->isChecked() || hovered     ? colors.text
+            : mState == State::Mixed           ? colors.textMuted
+                                               : colors.textMutedDim;
+
+        // The glyph, in the bar's 22px icon box: ANCHOR -- KEY -- ANCHOR. Larger
+        // than the 18px easing glyphs because it has three marks to carry.
+        const QRectF glyph(
+            (this->width() - kProportionalGlyphSize) / 2.0,
+            (this->height() - kProportionalGlyphSize) / 2.0,
+            kProportionalGlyphSize, kProportionalGlyphSize
+        );
+        const QPointF centre = glyph.center();
+        const QPointF left(glyph.left() + 3.4, centre.y());
+        const QPointF right(glyph.right() - 3.4, centre.y());
+        constexpr qreal kAnchor = 2.4;
+        constexpr qreal kRingOuter = 4.0;
+
+        // The chain: absolute key to relative key, both sides.
+        painter.setPen(QPen(ink, 1.2));
+        painter.drawLine(left + QPointF(kAnchor, 0.0), QPointF(centre.x() - kRingOuter, centre.y()));
+        painter.drawLine(QPointF(centre.x() + kRingOuter, centre.y()), right - QPointF(kAnchor, 0.0));
+
+        // The absolute anchors: the timeline's filled key body, at the icon's scale.
+        painter.setPen(Qt::NoPen);
+        painter.setBrush(ink);
+        painter.drawEllipse(left, kAnchor, kAnchor);
+        painter.drawEllipse(right, kAnchor, kAnchor);
+
+        // The relative key: a hollow ring at the timeline's 2px body weight.
+        painter.setPen(QPen(ink, 2.0));
+        painter.setBrush(Qt::NoBrush);
+        painter.drawEllipse(centre, kRingOuter - 1.0, kRingOuter - 1.0);
+
+        if (mState == State::Mixed) {
+            // A mixed set: the ring alone cannot say "some"; a short dash inside it
+            // is the same cue the old toggle used.
+            painter.setPen(QPen(ink, 1.2));
+            painter.drawLine(QPointF(centre.x() - 1.5, centre.y()), QPointF(centre.x() + 1.5, centre.y()));
+        }
+
+        if (this->hasFocus()) {
+            painter.setPen(QPen(colors.text, 1.0));
+            painter.setBrush(Qt::NoBrush);
+            painter.drawRoundedRect(box, kTextButtonRadius, kTextButtonRadius);
+        }
+    }
+
+    void keyPressEvent(QKeyEvent* aEvent) override {
+        if (aEvent->key() == Qt::Key_Return || aEvent->key() == Qt::Key_Enter) {
+            this->click();
+            aEvent->accept();
+            return;
+        }
+        QAbstractButton::keyPressEvent(aEvent);
+    }
+
+private:
+    State mState = State::None;
+};
+
 
 TimeLineHeader::TimeLineHeader(GUIResources& aResources, PlayBackWidget* aTransport, QWidget* aParent):
     QWidget(aParent),
@@ -278,13 +382,15 @@ TimeLineHeader::TimeLineHeader(GUIResources& aResources, PlayBackWidget* aTransp
     mTimeLine(nullptr),
     mInner(nullptr),
     mSelectionSlot(),
+    mProportionalConnection(),
+    mProportionalButton(nullptr),
     mEaseSlot(nullptr),
     mEasing(),
     mQuickEases(),
 #ifdef AE_ENABLE_IMGUI
-    mChannelsButton(nullptr),
+    mChannelsButton(nullptr)
 #endif
-    mZoomButtons() {
+    {
     // The bar is one fixed 40px row; the surface below keeps its own geometry
     // whatever the bar holds.
     this->setFixedHeight(kHeaderHeight);
@@ -381,20 +487,24 @@ TimeLineHeader::TimeLineHeader(GUIResources& aResources, PlayBackWidget* aTransp
         }
         const QString name = util::Easing::getParamName(quickParam);
         // A glyph-only control has no text for assistive technology to read, so
-        // the easing's name IS its accessible text; the tooltip keeps naming the
-        // action for the pointer. THE AUTO PRESET'S ACTION IS THE SEGMENT AFTER
-        // THE KEY, not a pair on one key: it makes that segment automatic (the
-        // key's type and outgoing side, the next key's incoming side - see
-        // ctrl::TimeLineEditor::assignSelectionAutoHandles), so both its
-        // accessible text and its tooltip say that.
+        // the easing's name IS its accessible text. THE AUTO PRESET'S ACTION IS THE
+        // SEGMENT AFTER THE KEY, not a pair on one key: it makes that segment
+        // automatic (the key's type and outgoing side, the next key's incoming side -
+        // see ctrl::TimeLineEditor::assignSelectionAutoHandles), so its ACCESSIBLE
+        // NAME carries that longer action. The tooltip stays one recipe for all four
+        // (the pointer reads the same sentence); only the screen reader needs the
+        // segment explanation.
         if (quick.autoPreset) {
             const QString action = tr("Make the segment after each selected key automatic");
             button->setAccessibleName(tr("%1 (%2)").arg(action, name));
-            button->setToolTip(tr("%1 - %2 handles").arg(action, name));
         } else {
             button->setAccessibleName(name);
-            button->setToolTip(tr("Set the selected keys' easing to %1").arg(name));
         }
+        // ONE TOOLTIP RECIPE for the four: the pointer reads the same sentence
+        // whether the entry is a type or the Auto preset. The accessible name keeps
+        // the preset's longer action wording (a screen reader needs it; a tooltip
+        // does not explain the segment).
+        button->setToolTip(tr("Set the selected keys' easing to %1").arg(name));
         button->setEnabled(false); // until a selection names a key that carries an easing
         quickLay->addWidget(button);
         mQuickEases.push_back({button, quick.type, quick.autoPreset});
@@ -425,9 +535,21 @@ TimeLineHeader::TimeLineHeader(GUIResources& aResources, PlayBackWidget* aTransp
     mEasing->chip()->connect(mEasing->chip(), &QAbstractButton::clicked, this,
                              [this]() { this->onEasingChipClicked(); });
 
-    // The mock's .tl-spacer: the zoom group is the bar's right end, whatever the
-    // chip's content and the quick easings' widths do.
+    // The mock's .tl-spacer: the key-property and channels controls are the bar's
+    // right end, whatever the chip's content and the quick easings' widths do.
     lay->addStretch(1);
+
+    // THE PROPORTIONAL TOGGLE, on the right and NOT inside the easing group: it
+    // changes a key's relative flag, which is a different property from its easing.
+    // Its glyph is the relationship itself (two absolute anchors joined to a ring in
+    // the middle); the checked state is its ink and the mixed state adds a dash.
+    mProportionalButton = new ProportionalButton(this);
+    mProportionalButton->setProportionalState(ProportionalButton::State::None);
+    mProportionalButton->setEnabled(false);
+    lay->addWidget(mProportionalButton, 0, Qt::AlignVCenter);
+    connect(mProportionalButton, &QAbstractButton::clicked, this, [this]() {
+        this->onProportionalClicked();
+    });
 
 #ifdef AE_ENABLE_IMGUI
     // THE CHANNELS TRIGGER: the panel's ONE control, in the dock's header (the mock's
@@ -465,34 +587,10 @@ TimeLineHeader::TimeLineHeader(GUIResources& aResources, PlayBackWidget* aTransp
     lay->addWidget(mChannelsButton, 0, Qt::AlignVCenter);
 #endif
 
-    // The mock's second rule: between the channels trigger and the zoom group. (The
-    // channel chips the mock puts on this side of it are not built yet.)
-    this->addHairline(*lay);
-
-    auto* zoomBox = new QWidget(this);
-    auto* zoomLay = new QHBoxLayout(zoomBox);
-    zoomLay->setContentsMargins(0, 0, 0, 0);
-    zoomLay->setSpacing(0); // the mock's .tl-zoom carries no gap of its own
-    gui::IconButton* zoomOut = makeBarButton(aResources, zoomBox, QStringLiteral("minus-bold"), kZoomIconSize);
-    zoomOut->setToolTip(tr("Zoom out"));
-    gui::IconButton* zoomIn = makeBarButton(aResources, zoomBox, QStringLiteral("plus-bold"), kZoomIconSize);
-    zoomIn->setToolTip(tr("Zoom in"));
-    // THE FRAME AXIS' OWN FIT (the action fits the frames, not the value axis): the
-    // horizontal-only expand, not the cardinal one, so the button says which axis it
-    // fits.
-    gui::IconButton* zoomFit = makeBarButton(aResources, zoomBox, QStringLiteral("arrows-out-line-horizontal"),
-                                             kZoomIconSize);
-    zoomFit->setToolTip(tr("Fit the frame range"));
-    mZoomButtons.push_back({zoomOut, QStringLiteral("minus-bold")});
-    mZoomButtons.push_back({zoomIn, QStringLiteral("plus-bold")});
-    mZoomButtons.push_back({zoomFit, QStringLiteral("arrows-out-line-horizontal")});
-    for (gui::IconButton* button : {zoomOut, zoomIn, zoomFit})
-        zoomLay->addWidget(button);
-    lay->addWidget(zoomBox, 0, Qt::AlignVCenter);
-
-    connect(zoomOut, &QPushButton::clicked, this, [this]() { this->zoomByNotch(false); });
-    connect(zoomIn, &QPushButton::clicked, this, [this]() { this->zoomByNotch(true); });
-    connect(zoomFit, &QPushButton::clicked, this, [this]() { this->fitFrameRange(); });
+    // The bar's right end is the channels trigger (on the Graph tab); the zoom
+    // group that used to hang here was redundant - the timeline's wheel and its
+    // scroll bar own zooming and fitting - so the spacer above is the last flexible
+    // item before it.
 
     // The glyphs are tinted per theme, so they are re-read on a theme change - the
     // same route the transport takes for its own buttons.
@@ -509,6 +607,8 @@ TimeLineHeader::~TimeLineHeader() {
         mInner->setEasingItemHost(nullptr);
         if (mInner->editor() && mSelectionSlot.isValid())
             mInner->editor()->selection().onChanged.disconnect(mSelectionSlot);
+        if (mProportionalConnection)
+            disconnect(mProportionalConnection);
     }
 }
 
@@ -519,8 +619,12 @@ void TimeLineHeader::setTimeLineWidget(TimeLineWidget* aTimeLine) {
         mInner->setEasingItemHost(nullptr);
         if (mInner->editor() && mSelectionSlot.isValid())
             mInner->editor()->selection().onChanged.disconnect(mSelectionSlot);
+        if (mProportionalConnection)
+            disconnect(mProportionalConnection);
     }
     mSelectionSlot = util::SlotId();
+    if (mProportionalConnection)
+        disconnect(mProportionalConnection);
 
     mTimeLine = aTimeLine;
 
@@ -539,6 +643,12 @@ void TimeLineHeader::setTimeLineWidget(TimeLineWidget* aTimeLine) {
         if (mInner->editor())
             mSelectionSlot =
                 mInner->editor()->selection().onChanged.connect(this, &TimeLineHeader::refreshQuickEasings);
+        // The flags live on the keys, not on the selection: the menu's toggle (or
+        // any other edit) reports through this signal, and the button re-reads.
+        mProportionalConnection = connect(
+            mInner, &TimeLineEditorWidget::keyProportionalChanged,
+            this, &TimeLineHeader::refreshProportional
+        );
     }
 
     this->refreshFrame();
@@ -674,6 +784,68 @@ void TimeLineHeader::refreshQuickEasings() {
                                  : (!mixedType && active == quick.type))
         );
     }
+
+    // The proportional control reads the SAME selection (the selection's onChanged
+    // is one of its two update routes; the other is the key flags' own signal).
+    this->refreshProportional();
+}
+
+void TimeLineHeader::refreshProportional() {
+    if (!mProportionalButton)
+        return;
+
+    ctrl::TimeLineEditor* editor = mTimeLine ? mTimeLine->editor() : nullptr;
+    QSet<core::TimeKey*> keys;
+    int proportional = 0;
+    if (editor) {
+        for (const ctrl::time::Selection::Item& item : editor->selection().items()) {
+            // The selection's stored key pointer is only ever compared; resolve the
+            // key from the document, as the chip and quick easings do, and count
+            // each key once (its two markers are one flag).
+            core::TimeKeyPos pos = item.target.pos;
+            core::TimeKey* key = pos.key();
+            if (!key || key->isDefaultKey() || keys.contains(key))
+                continue;
+            keys.insert(key);
+            if (key->isProportional())
+                ++proportional;
+        }
+    }
+
+    const int total = keys.size();
+    const ProportionalButton::State state =
+        total == 0 ? ProportionalButton::State::None
+        : proportional == total ? ProportionalButton::State::All
+        : proportional == 0     ? ProportionalButton::State::None
+                                : ProportionalButton::State::Mixed;
+    mProportionalButton->setProportionalState(state);
+    mProportionalButton->setEnabled(total > 0);
+
+    const QString action = state == ProportionalButton::State::All
+        ? tr("Make the selected keys absolute")
+        : tr("Make the selected keys proportional");
+    mProportionalButton->setToolTip(
+        total > 0 ? action : tr("Select keys to make them proportional")
+    );
+    mProportionalButton->setAccessibleDescription(
+        total == 0 ? tr("No keys selected")
+        : state == ProportionalButton::State::All ? tr("The selected keys are proportional")
+        : state == ProportionalButton::State::Mixed ? tr("Some selected keys are proportional")
+                                                   : tr("The selected keys are absolute")
+    );
+}
+
+void TimeLineHeader::onProportionalClicked() {
+    if (!mInner || !mProportionalButton)
+        return;
+
+    // A mixed or absolute set becomes proportional; an all-proportional set becomes
+    // absolute. The surface pushes the edit (one undo step) and reports it, which
+    // re-reads this control through keyProportionalChanged; the explicit refresh
+    // also covers a refused edit (no key to act on).
+    const bool enable = mProportionalButton->proportionalState() != ProportionalButton::State::All;
+    mInner->setSelectionProportional(enable);
+    this->refreshProportional();
 }
 
 void TimeLineHeader::addHairline(QHBoxLayout& aLayout) {
@@ -694,52 +866,6 @@ void TimeLineHeader::refreshFrame() {
 #endif
 }
 
-void TimeLineHeader::zoomByNotch(bool aZoomIn) {
-    if (!mTimeLine)
-        return;
-
-    // The timeline's own anchored zoom, which is the one its wheel and the graph
-    // panel both drive: a notch from the buttons and a notch from the wheel are the
-    // same call on the same ladder, so the two cannot disagree about where a rung is.
-    // A button has no cursor over the lanes, so it anchors on the frame the playhead
-    // names and that frame keeps its place while the ladder moves one rung: x1.1 a
-    // notch, the scaler's own step.
-    //
-    // The SIGN is the application's own, not the arrow's: Scaler::update SUBTRACTS
-    // its argument, so a positive delta is one rung OUT (the same sense the timeline
-    // wheel and CanvasMover use - see tests/time_scaler.cpp's notchIn/notchOut).
-    // The mouse setting that inverts the timeline's own wheel sense is deliberately
-    // NOT applied here: it is a wheel preference, and a + button that zoomed out
-    // would not be readable.
-    //
-    // The panel that draws this frame window is repainted by the window's own report:
-    // the zoom moves the timeline's view transform, TimeLineWidget::notifyViewRange
-    // fires onViewRangeChanged, and MainDisplayWidget::syncGraphPanelSharedState -
-    // which is what pushes the window into the panel's editor - refreshes the dock's
-    // Graph page with it.
-    mTimeLine->zoomFramesAbout(aZoomIn ? -kZoomNotch : kZoomNotch,
-                               static_cast<double>(mTimeLine->currentFrame().get()));
-}
-
-void TimeLineHeader::fitFrameRange() {
-    // ONE FIT IMPLEMENTATION: the composition of the ladder's inverse, the anchored
-    // zoom and the view scroll lives on the timeline widget now
-    // (gui::TimeLineWidget::fitFrameRange), because the new-project path needs the
-    // same fit and two implementations would drift. It centres the frame range with
-    // an equal gutter at each end (see ctrl::TimeLineEditor::fitFrameRange) and
-    // reports the new window through onViewRangeChanged, which is what repaints the
-    // docked panel with it.
-    if (mTimeLine)
-        mTimeLine->fitFrameRange();
-}
-
-void TimeLineHeader::refreshZoomIcons() {
-    for (const ZoomButton& zoom : mZoomButtons) {
-        zoom.button->setRestIcon(mGUIResources.icon(zoom.icon));
-        zoom.button->setHoverIcon(mGUIResources.iconActive(zoom.icon));
-    }
-}
-
 #ifdef AE_ENABLE_IMGUI
 GraphPanelWidget* TimeLineHeader::graphPanelWidget() const {
     // The dock's Graph page, through the WINDOW: the header is constructed with a
@@ -750,9 +876,21 @@ GraphPanelWidget* TimeLineHeader::graphPanelWidget() const {
     return top ? top->findChild<GraphPanelWidget*>() : nullptr;
 }
 
+void TimeLineHeader::connectChannels() {
+    if (mChannelsConnected)
+        return;
+    GraphPanelWidget* panel = this->graphPanelWidget();
+    if (!panel)
+        return; // the page is not built yet; the next update asks again
+    connect(panel, &GraphPanelWidget::channelsChanged, this,
+            [this](const QVector<PanelChannelRow>& aRows) { this->updateChannelsButton(aRows); });
+    mChannelsConnected = true;
+}
+
 void TimeLineHeader::updateChannelsButton(const QVector<PanelChannelRow>& aRows) {
     if (!mChannelsButton)
         return;
+    this->connectChannels();
 
     // The button's words are its own: the total while every channel is shown, "shown of
     // total" once one is hidden - the count IS the state the button changes. The panel no
@@ -826,38 +964,56 @@ void TimeLineHeader::onTabChanged(int aIndex) {
 void TimeLineHeader::refreshTabStyle() {
     // The strip's own ink, built from the application's LIVE tokens rather than from
     // a stylesheet asset (the header owns none: playbackwidget.ssa styles the bar's
-    // buttons, not a QTabBar, and this bar is not the place to add one). The roles
-    // are the ones the application's own tab bar is written against (ProjectTabBar's
-    // modetabbar.ssa): muted text at rest, `raised` under the pointer, and the ACCENT
-    // fill - with the accent's own content colour - for the selected tab; the strip
-    // itself is transparent, because it sits on the header's own floor (the dock's
-    // base) and not on a surface of its own. The numbers are the mock's .tl-tabs.
+    // buttons, not a QTabBar, and this bar is not the place to add one).
+    //
+    // A SEGMENTED FIELD, in the header's own vocabulary - the easing chip beside it
+    // is the same object (prop::EasingChip::paintEvent: `recessed` surface with a
+    // `hairline` edge). The current segment is the KNOB raised out of that field:
+    // `raised` fill and an `outline` edge. Three states, three steps, no accent:
+    //   muted label at rest -> `text` label under the pointer -> the knob.
+    // NO FILL ON HOVER, deliberately: `raised` IS the knob's fill in both themes (the
+    // light table's `raised` and `hairline` are the same column, and so are the dark
+    // table's), so a hover fill would paint a second knob and the pointer could not be
+    // told from the selection. The label's own brightness is the hover feedback, as it
+    // is on the bar's icon buttons.
+    //
+    // WHY NOT THE MOCK'S ACCENT CHIP. The mock (.tl-tabs button.on) paints the current
+    // tab as a solid accent fill; at 11px in a 40px bar beside a row of muted icon
+    // buttons that chip was the loudest thing in the dock, and the accent belongs to
+    // the document's own marks - the playhead pill, the keys, the selection ring - not
+    // to the chrome that names which page is up. Tokens are substituted by name rather
+    // than by %N because QString::arg stops being readable (and %1 starts colliding
+    // with %10) once a sheet carries this many.
     const theme::Colors& colors = theme::Colors::current();
-    mTabs->setStyleSheet(
-        QStringLiteral(
-            "QTabBar { background: transparent; }"
-            "QTabBar::tab { color: %1; background: transparent; border: none;"
-            " border-radius: %2px; padding: %3px %4px; margin: 0; font-size: %5px; }"
-            "QTabBar::tab:selected { color: %6; background: %7; }"
-            "QTabBar::tab:hover:!selected { color: %8; background: %9; }"
-        )
-            .arg(colors.textMuted.name())
-            .arg(kTabRadius)
-            .arg(kTabPadY)
-            .arg(kTabPadX)
-            .arg(kTabFontSize)
-            .arg(colors.accentText.name())
-            .arg(colors.accent.name())
-            .arg(colors.text.name())
-            .arg(colors.raised.name())
-    );
+    QString sheet = QStringLiteral(
+        "QTabBar { background: @field@; border: @edge@px solid @fieldEdge@;"
+        " border-radius: @fieldRadius@px; }"
+        "QTabBar::tab { color: @rest@; background: transparent;"
+        " border: @edge@px solid transparent; border-radius: @knobRadius@px;"
+        " padding: @padY@px @padX@px; margin: @knobInset@px; font-size: @fontSize@px; }"
+        "QTabBar::tab:selected { color: @on@; background: @knob@;"
+        " border: @edge@px solid @knobEdge@; }"
+        "QTabBar::tab:hover:!selected { color: @on@; }");
+    sheet.replace(QLatin1String("@field@"), colors.recessed.name());
+    sheet.replace(QLatin1String("@fieldEdge@"), colors.hairline.name());
+    sheet.replace(QLatin1String("@fieldRadius@"), QString::number(kTroughRadius));
+    sheet.replace(QLatin1String("@rest@"), colors.textMuted.name());
+    sheet.replace(QLatin1String("@on@"), colors.text.name());
+    sheet.replace(QLatin1String("@knob@"), colors.raised.name());
+    sheet.replace(QLatin1String("@knobEdge@"), colors.outline.name());
+    sheet.replace(QLatin1String("@knobRadius@"), QString::number(kTabRadius));
+    sheet.replace(QLatin1String("@knobInset@"), QString::number(kTabMargin));
+    sheet.replace(QLatin1String("@edge@"), QString::number(kTabEdge));
+    sheet.replace(QLatin1String("@padY@"), QString::number(kTabPadY));
+    sheet.replace(QLatin1String("@padX@"), QString::number(kTabPadX));
+    sheet.replace(QLatin1String("@fontSize@"), QString::number(kTabFontSize));
+    mTabs->setStyleSheet(sheet);
     mTabs->update();
 }
 #endif
 
 void TimeLineHeader::onThemeUpdated(theme::Theme& aTheme) {
     this->setStyleSheet(aTheme.loadStylesheet("playbackwidget.ssa"));
-    this->refreshZoomIcons();
 #ifdef AE_ENABLE_IMGUI
     // The strip's ink is built from the tokens, not from a sheet: re-build it here so
     // an accent change (which re-applies the app's palette) re-inks the tabs too.

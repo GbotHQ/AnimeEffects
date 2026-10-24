@@ -137,6 +137,10 @@ void TimeRuler::paint(QCanvasPainter* aPainter) {
 
     aPainter->save();
     aPainter->translate(float(origin.x()), float(origin.y()));
+    // THE HOST'S FONT. The raster ruler draws with its own widget font, so the Canvas one
+    // must too - the numbers' size is a widget property, and Qt's default QFont() is not
+    // necessarily what a themed widget was given.
+    aPainter->setFont(this->font());
     // The band's own floor. The strip covers its rows completely, so this is opaque; the
     // host's clear colour carries the same value for the frame's first row.
     aPainter->setFillStyle(mTimelineTheme.headerBackgroundColor());

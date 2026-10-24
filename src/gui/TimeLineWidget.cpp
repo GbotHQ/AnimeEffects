@@ -4,8 +4,11 @@
 #include <QMouseEvent>
 #include <QPainter>
 #include <QSettings>
+#include <QDateTime>
 #include <cmath>
 #include "gui/TimeLineWidget.h"
+
+#include "ctrl/AutoScroll.h"
 #include "gui/theme/Colors.h"
 #include "ctrl/graph/graph_ScrollBarGeometry.h"
 
@@ -128,6 +131,8 @@ TimeLineWidget::TimeLineWidget(
     mPanGrabPos(),
     mPanStartTransform(),
     mTimer(),
+    mMarqueeScrollTimer(),
+    mMarqueePointer(),
     mElapsed(),
     mBeginFrame(),
     mLastFrame(),
@@ -141,6 +146,9 @@ TimeLineWidget::TimeLineWidget(
     this->setMouseTracking(true);
     this->setFocusPolicy(Qt::StrongFocus);
     this->connect(&mTimer, &QTimer::timeout, this, &TimeLineWidget::onPlayBackUpdated);
+    mMarqueeScrollTimer.setInterval(ctrl::autoscroll::kIntervalMs);
+    mMarqueeScrollTimer.setTimerType(Qt::PreciseTimer);
+    this->connect(&mMarqueeScrollTimer, &QTimer::timeout, this, &TimeLineWidget::autoScrollMarquee);
 
     // The horizontal scrollbar is a one-way projection of the free offset:
     // user interactions (track click, wheel, keyboard) emit a slider action,
@@ -249,6 +257,14 @@ void TimeLineWidget::setPlayBackActivity(bool aIsActive, std::vector<audioConfig
 void TimeLineWidget::setPlayBackLoop(bool aDoesLoop) { mDoesLoop = aDoesLoop; }
 
 void TimeLineWidget::setFrame(core::Frame aFrame) {
+    // A frame that did not move changes nothing: the playhead, the ruler's pill and
+    // the document's blended state are all already at it. Returning here is what keeps
+    // a playback tick that lands inside the CURRENT frame from pushing a whole-tree
+    // re-blend and a full viewport repaint (measured: 78 ticks/s ran for a 60 fps
+    // project, i.e. ~20% of the frames painted were the same frame twice).
+    if (mInner->currentFrame() == aFrame) {
+        return;
+    }
     mInner->setFrame(aFrame);
     onFrameUpdated();
 }
@@ -548,9 +564,16 @@ void TimeLineWidget::onPlayBackUpdated() {
                 const double elapsedFrame = elapsedTime / oneFrameTime;
                 nextFrame = static_cast<double>(mBeginFrame.getDecimal()) + elapsedFrame;
 
+                // ARM FOR THE NEXT FRAME BOUNDARY, ROUNDED UP. Truncating the interval
+                // woke the timer up to a millisecond BEFORE the boundary, which could not
+                // advance the frame: that tick re-armed for the remaining fraction (1 ms)
+                // and fired again at the boundary, so a 60 fps project got ~78 ticks/s
+                // - 30 % of them painting a frame that had not changed. Rounding up means
+                // one tick per frame, and `nextFrame` above still catches up from the
+                // wall clock if a tick is late.
                 const double nextUpdateTime = oneFrameTime * (static_cast<int>(elapsedFrame) + 1);
                 const double intervalTime = nextUpdateTime - elapsedTime;
-                mTimer.setInterval(std::max(static_cast<int>(intervalTime), 1));
+                mTimer.setInterval(std::max(static_cast<int>(std::ceil(intervalTime)), 1));
             } else {
                 mBeginFrame = curFrame;
                 mElapsed.restart();
@@ -602,6 +625,75 @@ void TimeLineWidget::syncAudioTracks() {
     AudioPlaybackWidget::syncTracks(mProject.get(), currentFrame().get(), mLastFrame.get(), getFps());
 }
 
+QRect TimeLineWidget::marqueeScrollViewport() const {
+    if (!mInner)
+        return QRect();
+    const int top = ctrl::TimeLineEditor::kHeaderHeight;
+    return QRect(0, top, mInner->width(), std::max(0, mInner->height() - top));
+}
+
+//-------------------------------------------------------------------------------------------------
+void TimeLineWidget::updateMarqueeAutoScroll() {
+    ctrl::TimeLineEditor* ed = editor();
+    if (!ed || !ed->isMarqueeActive() || !mAbstractCursor.isPressedLeft() || !mInner) {
+        mMarqueeScrollTimer.stop();
+        mMarqueeDwell.reset();
+        return;
+    }
+    // Direction is part of the gate: a drag along the top edge must not scroll up.
+    // `observe` arms only an axis the pointer is moving TOWARD (or is already outside
+    // the viewport on), so no timer is needed for a horizontal pass at the top.
+    mMarqueeDwell.observe(
+        mMarqueePointer, marqueeScrollViewport(), QDateTime::currentMSecsSinceEpoch()
+    );
+    if (!mMarqueeDwell.inEdge()) {
+        mMarqueeScrollTimer.stop();
+    } else if (!mMarqueeScrollTimer.isActive()) {
+        mMarqueeScrollTimer.start();
+    }
+}
+
+void TimeLineWidget::autoScrollMarquee() {
+    ctrl::TimeLineEditor* ed = editor();
+    if (!ed || !ed->isMarqueeActive() || !mAbstractCursor.isPressedLeft() || !mInner) {
+        mMarqueeScrollTimer.stop();
+        mMarqueeDwell.reset();
+        return;
+    }
+
+    const ctrl::autoscroll::Step step = mMarqueeDwell.update(
+        mMarqueePointer, marqueeScrollViewport(), QDateTime::currentMSecsSinceEpoch()
+    );
+    if (step.isNull()) {
+        // A dwell tick is not a reason to stop; a pointer that left the band resets
+        // the dwell in update() and updateMarqueeAutoScroll stops the timer.
+        if (!mMarqueeDwell.inEdge())
+            mMarqueeScrollTimer.stop();
+        return;
+    }
+
+    const int oldX = mHorizontalOffset;
+    const int oldY = mVerticalScrollValue;
+    if (step.x != 0)
+        scrollViewBy(step.x); // positive reveals later frames
+    if (step.y != 0)
+        onVerticalScrollRequested(mVerticalScrollValue + step.y); // positive scrolls down
+
+    // At a content bound the request changes nothing; stop until the pointer moves
+    // so a held edge does not keep a 60 Hz timer alive for a no-op.
+    if (oldX == mHorizontalOffset && oldY == mVerticalScrollValue) {
+        mMarqueeScrollTimer.stop();
+        mMarqueeDwell.reset();
+        return;
+    }
+
+    // The pointer did not move; the WORLD point under it did. Extend the box to the
+    // new world position through the editor's own gesture (it applies the new box).
+    const QPoint world = mCameraInfo.toWorldPos(QPointF(mMarqueePointer)).toPoint();
+    if (ed->extendMarquee(world))
+        mInner->update();
+}
+
 //-------------------------------------------------------------------------------------------------
 void TimeLineWidget::mouseMoveEvent(QMouseEvent* aEvent) {
     if (mIsPanning) {
@@ -609,9 +701,11 @@ void TimeLineWidget::mouseMoveEvent(QMouseEvent* aEvent) {
         aEvent->accept();
         return;
     }
+    mMarqueePointer = aEvent->position().toPoint();
     if (mAbstractCursor.setMouseMove(aEvent, mCameraInfo)) {
         updateCursor(mAbstractCursor, aEvent->modifiers());
     }
+    updateMarqueeAutoScroll();
 }
 
 void TimeLineWidget::mousePressEvent(QMouseEvent* aEvent) {
@@ -621,6 +715,8 @@ void TimeLineWidget::mousePressEvent(QMouseEvent* aEvent) {
     const bool panPress =
         aEvent->button() == Qt::MiddleButton || (mPanByKey && aEvent->button() == Qt::LeftButton);
     if (panPress) {
+        mMarqueeScrollTimer.stop();
+        mMarqueeDwell.reset();
         mPanGrabPos = aEvent->position().toPoint();
         mPanStartTransform = viewportTransform();
         mIsPanning = true;
@@ -629,12 +725,24 @@ void TimeLineWidget::mousePressEvent(QMouseEvent* aEvent) {
         aEvent->accept();
         return;
     }
+    mMarqueePointer = aEvent->position().toPoint();
+    mMarqueeDwell.reset();
+    if (mInner) {
+        // Seed the direction baseline. A press on an edge is NOT a move toward it.
+        mMarqueeDwell.observe(
+            mMarqueePointer, marqueeScrollViewport(), QDateTime::currentMSecsSinceEpoch()
+        );
+    }
     if (mAbstractCursor.setMousePress(aEvent, mCameraInfo)) {
         updateCursor(mAbstractCursor, aEvent->modifiers());
     }
+    // A press only arms the marquee. Autoscroll starts on the first move: a
+    // press-and-hold on an edge must not scroll before a box exists.
 }
 
 void TimeLineWidget::mouseReleaseEvent(QMouseEvent* aEvent) {
+    mMarqueeScrollTimer.stop();
+    mMarqueeDwell.reset();
     // Only the button that STARTED the pan ends it. The old test accepted
     // either button, so a middle-drag pan in flight ate the release of a left
     // button the editor had already turned into a marquee (see mPanButton).
@@ -697,6 +805,14 @@ void TimeLineWidget::wheelEvent(QWheelEvent* aEvent) {
 
     setViewTransform(viewTrans);
     aEvent->accept();
+}
+
+void TimeLineWidget::hideEvent(QHideEvent* aEvent) {
+    // Switching the dock to the Graph page hides this surface mid-gesture: the
+    // release may never reach it, so the marquee's autoscroll must not keep ticking.
+    mMarqueeScrollTimer.stop();
+    mMarqueeDwell.reset();
+    QWidget::hideEvent(aEvent);
 }
 
 void TimeLineWidget::resizeEvent(QResizeEvent* aEvent) {

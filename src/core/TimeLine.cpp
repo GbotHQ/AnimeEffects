@@ -35,6 +35,13 @@ namespace core {
 //---------------------------------------------------------------------------------------
 QString TimeLine::getTimeKeyName(const TimeKeyType aType) { return {kTimeKeyNames.at(aType)}; }
 
+QString TimeLine::getTimeKeyDisplayName(const TimeKeyType aType) {
+    if (aType == TimeKeyType_Opa) {
+        return QStringLiteral("Opacity");
+    }
+    return getTimeKeyName(aType);
+}
+
 TimeKeyType TimeLine::getTimeKeyType(const QString& aName) {
     for (int i = 0; i < TimeKeyType_TERM; ++i) {
         if (getTimeKeyName(static_cast<TimeKeyType>(i)) == aName) {

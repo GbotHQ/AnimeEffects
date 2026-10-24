@@ -33,6 +33,9 @@ public:
     typedef QMap<int, TimeKey*> MapType;
 
     static QString getTimeKeyName(TimeKeyType aType);
+    // The name a UI should print. Serialization keeps the compact token ("Opa");
+    // a label reads "Opacity".
+    static QString getTimeKeyDisplayName(TimeKeyType aType);
     static TimeKeyType getTimeKeyType(const QString& aName);
     static TimeKeyType getTimeKeyTypeInOrderOfOperations(int aIndex);
 

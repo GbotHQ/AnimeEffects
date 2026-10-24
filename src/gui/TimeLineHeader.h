@@ -30,6 +30,7 @@ class IconButton;
 class PlayBackWidget;
 class TimeLineWidget;
 class TimeLineEditorWidget;
+class ProportionalButton;
 #ifdef AE_ENABLE_IMGUI
 class GraphPanelWidget;
 #endif
@@ -42,27 +43,30 @@ class EasingItem;
 // surface, replacing the fixed-width PlayBackWidget column that used to sit
 // beside the lanes. Left to right it holds
 //
-//   tabs | transport | quick easings | chip | stretch | channels | zoom
+//   tabs | transport | quick easings | chip | stretch | proportional | channels
 //
-// with a 1x16 rule after the tabs, after the transport and before the zoom group (the
-// mock's .tl-hairline). The TABS are the dock's two views (design section 5, "one
+// with a 1x16 rule after the tabs and after the transport (the mock's .tl-hairline). The TABS are the dock's two views (design section 5, "one
 // dock, two tabs"): Timeline is the lanes' surface (this bar's own surface) and Graph
 // is the animation graph panel drawn on the same dock floor, with the object tree
-// still beside it - the bar keeps ONE transport, ONE chip and ONE zoom group for both,
+// still beside it - the bar keeps ONE transport and ONE chip for both,
 // and the tab is what says which view the dock's body is showing. In a build without
 // the graph panel (AE_ENABLE_IMGUI off) the strip, the channels button and their rules
 // do not exist at all: the bar keeps the transport, the chip, the quick easings and the
-// zoom group. The transport is the existing eight-button PlayBackWidget group, moved
+// view. The transport is the existing eight-button PlayBackWidget group, moved
 // out of its column and laid out horizontally; the easing chip is the picker's only
 // home (design section 2) and names the timeline's key selection; the four QUICK
 // EASINGS to its left apply one easing TYPE to that same selection in one click (a
 // shortcut for the picker's four common tiles, disabled while nothing is selected and
 // lit on the one the selection agrees on, drawn with the picker's own curve glyphs);
+// the PROPORTIONAL toggle at the right is NOT part of the easing group: its glyph is
+// a relative key in context (two absolute anchors joined to a ring in the middle),
+// and it changes the selection's relative flag through the same edit the key menu's
+// item makes (a mixed selection reads as a dash through the ring);
 // the CHANNELS button (Graph tab only) opens the panel's channel list, which the
-// design keeps out of the panel's own chrome because it is a view action - the same
-// reason the zoom group is here; and the zoom group drives the timeline's own scale
-// ladder (ctrl::time::Scaler) - in for one rung, out for one rung, and fit for the
-// whole frame range.
+// design keeps out of the panel's own chrome because it is a view action. There is NO
+// zoom or fit group here: the timeline's wheel, its scroll bar and the graph panel's
+// wheel own that, so a row of buttons for the same ladder was redundant (the bar's
+// right end is the channels trigger on the Graph tab).
 //
 // The frame readout that used to sit between the transport and the chip is GONE: the
 // current frame is in the playhead pill and the end frame is in the ruler, so a third
@@ -88,10 +92,9 @@ public:
     TimeLineHeader(GUIResources& aResources, PlayBackWidget* aTransport, QWidget* aParent = nullptr);
     ~TimeLineHeader() override;
 
-    // The timeline the zoom group drives, the quick easings apply to and the easing
-    // chip names the selection of. Null (or a timeline with no project behind it)
-    // leaves the zoom buttons inert, the quick easings disabled and the chip disabled
-    // rather than acting on a stale surface.
+    // The timeline the quick easings apply to and the easing chip names the selection
+    // of. Null (or a timeline with no project behind it) leaves the quick easings
+    // disabled and the chip disabled rather than acting on a stale surface.
     void setTimeLineWidget(TimeLineWidget* aTimeLine);
 
     // The 196px area between the quick easings and the stretch, which the easing chip
@@ -122,9 +125,6 @@ protected:
 
 private:
     void addHairline(QHBoxLayout& aLayout);
-    void zoomByNotch(bool aZoomIn);
-    void fitFrameRange();
-    void refreshZoomIcons();
 #ifdef AE_ENABLE_IMGUI
     // The tab strip's own ink: the mock's .tl-tabs numbers (11px, 3px/8px padding,
     // a 4px radius) on the application's tokens - muted text at rest, the ACCENT
@@ -149,6 +149,11 @@ private:
     // the definition), in one undo step.
     void onQuickEasingClicked(util::Easing::Type aType, bool aAutoPreset);
     void refreshQuickEasings();
+    // The proportional toggle's state: all selected keys proportional (bright glyph),
+    // all absolute (dim glyph) or a mix (medium ink plus a dash), disabled with no key
+    // to act on. Re-read on every selection change and after its own edit.
+    void refreshProportional();
+    void onProportionalClicked();
     // Attaches the state the quick easings read: the one picker lives in the timeline's
     // surface, so the host is bound (setEasingItemHost) and the picker's own commit is
     // composed with this bar's re-read - the one easing write that does NOT move the
@@ -170,6 +175,9 @@ private:
     // to the dock's body, so the page is asked for through the window - the same route
     // gui::GraphPanelWidget uses for the application's menus).
     GraphPanelWidget* graphPanelWidget() const;
+    // Subscribe to the page's own "the shown channels changed" - once, the first time the
+    // page can be found (it is a sibling page that may not exist when this bar is built).
+    void connectChannels();
 #endif
     void onThemeUpdated(theme::Theme& aTheme);
 
@@ -192,6 +200,15 @@ private:
     // onChanged, off the timeline's editor), which is what re-reads the quick easings
     // whichever view moved the selection - the same source the chip is pushed from.
     util::SlotId mSelectionSlot;
+    // The KEY FLAGS' own notification (the menu's and this bar's proportional
+    // edit): the selection does not move when a key becomes proportional, so its
+    // onChanged cannot carry this state.
+    QMetaObject::Connection mProportionalConnection;
+    // The proportional toggle: a single glyph on the bar's right - two absolute key
+    // bodies joined to a ring (the relative key) - with the toggle state in its ink
+    // and a dash through the ring for a mixed selection. Disabled while nothing is
+    // selected.
+    ProportionalButton* mProportionalButton;
     QWidget* mEaseSlot;
     // The easing control: the chip in the slot above and the single picker
     // popover it opens (see prop::EasingItem).
@@ -216,17 +233,13 @@ private:
     // (the widest three-digit label) and its size policy retains it while hidden, so
     // the header's minimum width - and with it the dock's - is the same on both tabs.
     QAbstractButton* mChannelsButton;
+    // The rows this control names come from the panel, which is a SIBLING page that may
+    // not exist yet when this bar is built, so the subscription is made the first time the
+    // page can be found (see connectChannels). Without it the words are re-read only when
+    // the TAB changes, and a layer picked while the Graph tab is already up leaves the
+    // count stale (measured: "0 channel(s)" over three drawn curves).
+    bool mChannelsConnected = false;
 #endif
-    // The zoom group, with the icon each button carries: the glyphs are tinted per
-    // theme at runtime, so every one of them is re-read on a theme change (the same
-    // reason PlayBackWidget re-sets the transport's). gui::IconButton is the
-    // glyph-hover button these are built from (see makeBarButton), so the pair of
-    // icons is reachable by name.
-    struct ZoomButton {
-        IconButton* button;
-        QString icon;
-    };
-    std::vector<ZoomButton> mZoomButtons;
 };
 
 } // namespace gui

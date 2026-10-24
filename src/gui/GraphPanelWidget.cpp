@@ -1,5 +1,8 @@
 #include "gui/GraphPanelWidget.h"
 
+#include "ctrl/AutoScroll.h"
+
+#include <QDateTime>
 #include <QFocusEvent>
 #include <QHideEvent>
 #include <QInputMethodEvent>
@@ -61,6 +64,9 @@ GraphPanelWidget::GraphPanelWidget(GUIResources& aResources, QWidget* aParent):
     // what the timeline page beside it uses (TimeLineWidget), so the dock's two pages
     // take the keyboard the same way.
     this->setFocusPolicy(Qt::StrongFocus);
+    mMarqueeScrollTimer.setInterval(ctrl::autoscroll::kIntervalMs);
+    mMarqueeScrollTimer.setTimerType(Qt::PreciseTimer);
+    this->connect(&mMarqueeScrollTimer, &QTimer::timeout, this, &GraphPanelWidget::autoScrollMarquee);
     // The panel's own hover states need moves with no button down: the hovered curve
     // gets its chip, the tangent handle nearest the pointer is the one drawn
     // highlighted, and the scroll-bar lane under the pointer paints its pill hot (all
@@ -127,7 +133,11 @@ void GraphPanelWidget::setDriver(ctrl::Driver* aDriver) {
     refresh();
 }
 
-void GraphPanelWidget::refresh() { this->update(); }
+void GraphPanelWidget::refresh() {
+    // The page's content has changed, and the channel SET is part of that content: the
+    // header's channels control is a widget of another host, so it has to be told.
+    this->update();
+}
 
 void GraphPanelWidget::onThemeUpdated(theme::Theme&) {
 #if defined(AE_CANVAS_PAINTER) && AE_CANVAS_PAINTER
@@ -288,11 +298,20 @@ void GraphPanelWidget::paint(QCanvasPainter* aPainter) {
     gui::drawPanel(ink, frame.model, frame.palette, frame.focus, inkPointerOf(mPointer, mPressPointer, mLeftDown));
 
     publishAccessibility();
+    // WHAT THE PAGE DREW IS WHAT THE BAR MAY NAME. The dock header's channels control is a
+    // widget of another host, so it cannot read this page's model; it is told here, from the
+    // frame that was just composed. Measured 2026-10-23: asking the editor at refresh() time
+    // is too EARLY - a tree selection requests the repaint before the dock hands the new
+    // targets over, so the count came out 0 over three drawn curves, and only the next tab
+    // switch corrected it.
+    this->publishChannels(frame.model.channels);
 }
 
 #endif // AE_CANVAS_PAINTER
 
 void GraphPanelWidget::hideEvent(QHideEvent* aEvent) {
+    mMarqueeScrollTimer.stop();
+    mMarqueeDwell.reset();
 #if !defined(AE_CANVAS_PAINTER) || !AE_CANVAS_PAINTER
     PanelHostBase::hideEvent(aEvent);
 #else
@@ -391,7 +410,61 @@ void GraphPanelWidget::mouseMoveEvent(QMouseEvent* aEvent) {
     // changed which of those is lit has to be painted, and a move that did not must not
     // be (see updateHoverRepaint).
     this->updateHoverRepaint();
+    updateMarqueeAutoScroll();
     aEvent->accept();
+}
+
+void GraphPanelWidget::updateMarqueeAutoScroll() {
+    ctrl::GraphEditor* editor = graphEditor();
+    if (!mLeftDown || !editor || !editor->hasMarquee()) {
+        mMarqueeScrollTimer.stop();
+        mMarqueeDwell.reset();
+        return;
+    }
+    if (editor->marqueeRect().isEmpty()) {
+        // A press arms the marquee but has not dragged yet. It is still the baseline
+        // for "did the pointer move TOWARD an edge?", so record it without scrolling.
+        mMarqueeScrollTimer.stop();
+        mMarqueeDwell.reset();
+        mMarqueeDwell.observe(mPointer, editor->scrollViewport(), QDateTime::currentMSecsSinceEpoch());
+        return;
+    }
+    // Direction is part of the gate: a horizontal drag along the top edge does not
+    // scroll the value axis. `observe` arms only the axes moving toward their edge.
+    mMarqueeDwell.observe(mPointer, editor->scrollViewport(), QDateTime::currentMSecsSinceEpoch());
+    if (!mMarqueeDwell.inEdge()) {
+        mMarqueeScrollTimer.stop();
+        return;
+    }
+    if (!mMarqueeScrollTimer.isActive())
+        mMarqueeScrollTimer.start();
+}
+
+void GraphPanelWidget::autoScrollMarquee() {
+    ctrl::GraphEditor* editor = graphEditor();
+    if (!mLeftDown || !editor || !editor->hasMarquee()) {
+        mMarqueeScrollTimer.stop();
+        mMarqueeDwell.reset();
+        return;
+    }
+    // THE DWELL: the first ticks in an edge only arm it, so a drag that STARTS on
+    // an edge (or merely crosses it) does not jump the view. The graph's own edge
+    // test is still the editor's; this gate only decides when it may act.
+    const ctrl::autoscroll::Step step =
+        mMarqueeDwell.update(mPointer, editor->scrollViewport(), QDateTime::currentMSecsSinceEpoch());
+    if (step.isNull()) {
+        if (!mMarqueeDwell.inEdge())
+            mMarqueeScrollTimer.stop();
+        return;
+    }
+    // The editor owns the two window mappings (shared frame axis included); this
+    // host only paints what it changed. False means "already at the content bound".
+    if (!editor->autoScrollMarquee()) {
+        mMarqueeScrollTimer.stop();
+        mMarqueeDwell.reset();
+        return;
+    }
+    this->update();
 }
 
 void GraphPanelWidget::mousePressEvent(QMouseEvent* aEvent) {
@@ -399,6 +472,7 @@ void GraphPanelWidget::mousePressEvent(QMouseEvent* aEvent) {
     if (aEvent->button() == Qt::LeftButton) {
         mPressPointer = mPointer;
         mLeftDown = true;
+        mMarqueeDwell.reset();
     }
     if (mBridge)
         mBridge->handleMouseButton(*aEvent);
@@ -429,10 +503,14 @@ void GraphPanelWidget::mousePressEvent(QMouseEvent* aEvent) {
     editor->setModifiers(aEvent->modifiers());
     mCursor.setMousePress(aEvent, panelCamera());
     routeCursor();
+    if (editor->hasMarquee())
+        updateMarqueeAutoScroll();
     aEvent->accept();
 }
 
 void GraphPanelWidget::mouseReleaseEvent(QMouseEvent* aEvent) {
+    mMarqueeScrollTimer.stop();
+    mMarqueeDwell.reset();
     mPointer = aEvent->position().toPoint();
     if (aEvent->button() == Qt::LeftButton)
         mLeftDown = false;
@@ -793,6 +871,25 @@ void GraphPanelWidget::onAccessibilityAction(int aId) {
 }
 
 //-------------------------------------------------------------------------------------------------
+void GraphPanelWidget::publishChannels(const QVector<PanelChannelRow>& aRows) {
+    const auto same = [](const QVector<PanelChannelRow>& aLhs, const QVector<PanelChannelRow>& aRhs) {
+        if (aLhs.size() != aRhs.size())
+            return false;
+        for (int i = 0; i < aLhs.size(); ++i) {
+            const PanelChannelRow& l = aLhs.at(i);
+            const PanelChannelRow& r = aRhs.at(i);
+            if (l.layer != r.layer || l.group != r.group || l.name != r.name || l.visible != r.visible ||
+                l.focused != r.focused || l.color != r.color)
+                return false;
+        }
+        return true;
+    };
+    if (same(mPublishedChannels, aRows))
+        return;
+    mPublishedChannels = aRows;
+    emit channelsChanged(aRows);
+}
+
 QVector<PanelChannelRow> GraphPanelWidget::channelRows() const {
     // THE PANEL'S OWN MODEL, built for the LIST rather than for a frame: the rows carry
     // (layer, legend group, name, hue, visibility, sticky focus) and NOTHING about

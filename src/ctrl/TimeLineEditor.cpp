@@ -2,6 +2,7 @@
 #include "ctrl/time/time_BodyModel.h"
 #include <algorithm>
 #include <climits>
+#include <QSet>
 #include "core/BlurKey.h"
 #include "core/KeyEasing.h"
 #include "core/KeyEasingAccess.h"
@@ -97,8 +98,46 @@ void TimeLineEditor::clearRows() {
     clearSelection();
 }
 
+void TimeLineEditor::resetRows() {
+    // A row rebuild is a VIEW change (an expand/collapse, a scroll sync, a tree
+    // reshuffle). The selection belongs to the document, so it survives; the caller
+    // prunes only what the new rows do not show (retainSelectionInRows).
+    mRows.clear();
+    clearState();
+}
+
+bool TimeLineEditor::retainSelectionInRows() {
+    // A closed folder's descendants are drawn in its summary lane, so they are still
+    // visible: the predicate inserts every node the rebuilt rows REPRESENT, not only
+    // the rows' own nodes. That is what makes "collapse the folder that contains the
+    // selected layer" keep the selection while its summary shows the keys, and makes
+    // "collapse the root" (no rows at all) clear it.
+    QSet<core::ObjectNode*> visible;
+    for (const TimeLineRow& row : mRows) {
+        if (!row.node)
+            continue;
+        visible.insert(row.node);
+        if (!row.closedFolder)
+            continue;
+        ObjectNode::Iterator itr(row.node);
+        while (itr.hasNext())
+            visible.insert(itr.next());
+    }
+    return mSelection.retain([&visible](const time::Selection::Item& aItem) {
+        return aItem.target.node && visible.contains(aItem.target.node);
+    });
+}
+
 // Gesture state only — the selection survives (it is the visual anchor of
 // what is selected; the marquee box is transient).
+bool TimeLineEditor::extendMarquee(const QPoint& aWorldPoint) {
+    if (mState != State_EncloseKeys || !mMarquee.isActive())
+        return false;
+    mMarquee.update(aWorldPoint);
+    applyMarquee();
+    return true;
+}
+
 void TimeLineEditor::clearState() {
     mState = State_Standby;
     mMoveRef = nullptr;

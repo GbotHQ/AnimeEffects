@@ -11,8 +11,11 @@
 //     alternative - reading the weight back off the rounded frame - is computed
 //     below too, so the test proves the two answers differ instead of
 //     re-stating the same arithmetic;
-//   * each graphable component follows its own weight, a zero pre-edit span
-//     freezes its coordinate, and a key outside its bounds extrapolates;
+//   * each graphable component follows its own weight; a FLAT pre-edit span
+//     freezes a coordinate whose key holds a different value, while a key ON the
+//     flat value inherits the time fraction (the authoring order in which every
+//     value is still equal when the key is marked); a key outside its bounds
+//     extrapolates;
 //   * bound identity: ids, not frames or values, decide when weights must be
 //     rebased; a one-sided or missing bound is inert;
 //   * ValueReflow capture/apply/restore over a real TimeLine, a directly edited
@@ -268,7 +271,7 @@ int main(int argc, char** argv) {
             std::printf("[2] frame projection: stored weight is drift-free across bound moves\n");
     }
 
-    // --- 3. Component projections: per-component weights, zero-span freeze,
+    // --- 3. Component projections: per-component weights, the flat-span rules,
     //        extrapolation, and the inert cases ---
     {
         const int before = failures;
@@ -366,7 +369,7 @@ int main(int argc, char** argv) {
         check(nearly(valueOf(stray, TimeKeyType_Move, 0), -100.0f), "no bounds leaves the value alone");
 
         if (failures == before)
-            std::printf("[3] value projection: per-component weights, zero-span freeze, extrapolation\n");
+            std::printf("[3] value projection: per-component weights, flat-span rules, extrapolation\n");
     }
 
     // --- 4. Bound identity: ids, not frames or values, decide rebasing ---
@@ -614,8 +617,10 @@ int main(int argc, char** argv) {
         reflow.capture(line, TimeKeyType_Blur, QVector<core::TimeKey*> { ba, bb });
         check(!reflow.empty(), "one reflow holds both types");
 
-        // Blur has three components, but only its X span is non-zero, so the
-        // other two stay frozen at their authored values.
+        // Blur has three components. Its X span is non-zero; Y and angle are
+        // flat, and the key sits ON those flat values, so they inherit the TIME
+        // fraction (1/2) and can follow the first edit of either bound. A key
+        // with a DISTINCT value on a flat span still freezes - section 3's 999.
         check(ctrl::graph::Channel::componentCount(TimeKeyType_Blur) == 3, "Blur has three components");
         check(!bp->proportionalState()->timeValid, "capture does not install the weights");
         mb->setPos(QVector2D(200, 200));
@@ -625,8 +630,10 @@ int main(int argc, char** argv) {
         check(nearly(valueOf(*mp, TimeKeyType_Move, 0), 100.0f), "the Move group follows its bounds");
         check(nearly(valueOf(*bp, TimeKeyType_Blur, 0), 100.0f), "the Blur group follows its bounds");
         check(bp->proportionalState()->valueValid[0], "Blur X has a weight");
-        check(!bp->proportionalState()->valueValid[1], "Blur Y has a zero span and stays frozen");
-        check(!bp->proportionalState()->valueValid[2], "Blur angle has a zero span and stays frozen");
+        check(bp->proportionalState()->valueValid[1], "Blur Y sits on a flat value and inherits the time fraction");
+        check(bp->proportionalState()->valueValid[2], "Blur angle does the same");
+        check(nearly(bp->proportionalState()->valueWeight[1], 0.5f, 1e-6f), "the inherited Y fraction is 1/2");
+        check(nearly(bp->proportionalState()->valueWeight[2], 0.5f, 1e-6f), "the inherited angle fraction is 1/2");
 
         reflow.restore();
         check(nearly(valueOf(*mp, TimeKeyType_Move, 0), 50.0f), "restore returns the Move group");

@@ -34,11 +34,11 @@ const int kSwatchRadius = 3;
 const int kSwatchGap = 8;     // .gp-chrow's gap
 const int kBodyRadius = 6;    // .gp-chanpop's border-radius
 const int kMinWidth = 150;    // .gp-chanpop's min-width
-const int kHeadingPadTop = 4; // .gp-chlayer's "4px 10px 2px"
-const int kHeadingPadBottom = 2;
-const int kHeadingGap = 4;    // the air above a FOLLOWING (layer, group) heading
+const int kLayerPadTop = 6;
+const int kLayerPadBottom = 3;
+const int kLayerGap = 6;      // air above a new layer section
 const int kRowFontSize = 11;  // .gp-chname
-const int kHeadingFontSize = 10;
+const int kLayerFontSize = 10;
 // The shadow's own margin inside this widget (the body does not fill the window):
 // .gp-chanpop's 0 10px 24px, approximated by a few rounded layers because a
 // QGraphicsDropShadowEffect on a translucent top-level popup costs a render target
@@ -96,49 +96,48 @@ void GraphChannelPopup::setRows(const QVector<PanelChannelRow>& aRows) {
 void GraphChannelPopup::rebuildLayout() {
     QFont rowFont = this->font();
     rowFont.setPixelSize(kRowFontSize);
-    QFont headingFont = this->font();
-    headingFont.setPixelSize(kHeadingFontSize);
+    QFont layerFont = this->font();
+    layerFont.setPixelSize(kLayerFontSize);
     const QFontMetrics rowMetrics(rowFont);
-    const QFontMetrics headingMetrics(headingFont);
+    const QFontMetrics layerMetrics(layerFont);
 
     mEntries.clear();
     int width = kMinWidth;
     int contentHeight = 0;
-    QString heading; // the (layer, group) text drawn last
+    QString lastLayer;
     for (int i = 0; i < mRows.size(); ++i) {
         const PanelChannelRow& row = mRows.at(i);
-        const QString rowHeading =
-            row.group.isEmpty() ? row.layer : row.layer + QStringLiteral(" · ") + row.group;
 
-        // THE MODEL'S OWN GROUPING: rows of one (layer, group) are contiguous, so the
-        // heading is drawn exactly where the text changes (the same rule
-        // MainDisplayWidget's menu followed).
-        if (rowHeading != heading) {
-            heading = rowHeading;
+        // A LAYER is a SECTION: its own small, muted heading, once per contiguous
+        // block of that layer. There is NO group heading: the rows are already
+        // self-describing ("Move X", "Move Y", "Rotate", "Opacity"), and a second
+        // "Move [X][Y]" title above them only raised the question of where it ended.
+        // Rows are NOT additionally indented: their swatch already sets the label in,
+        // and the swatch aligns with the layer heading's left edge.
+        if (row.layer != lastLayer) {
+            lastLayer = row.layer;
             Entry entry;
-            entry.heading = true;
-            entry.row = -1;
-            entry.text = rowHeading;
+            entry.kind = EntryKind::Layer;
+            entry.text = row.layer;
             entry.rect = QRect(
-                0, contentHeight,
-                kMinWidth,
-                (mEntries.isEmpty() ? 0 : kHeadingGap) + kHeadingPadTop + headingMetrics.height()
-                    + kHeadingPadBottom
+                0, contentHeight, kMinWidth,
+                (mEntries.isEmpty() ? 0 : kLayerGap) + kLayerPadTop + layerMetrics.height() + kLayerPadBottom
             );
             contentHeight += entry.rect.height();
             mEntries.append(entry);
-            width = std::max(width, kRowPadX + headingMetrics.horizontalAdvance(rowHeading) + kRowPadX);
+            width = std::max(width, kRowPadX + layerMetrics.horizontalAdvance(row.layer) + kRowPadX);
         }
 
         Entry entry;
-        entry.heading = false;
+        entry.kind = EntryKind::Row;
         entry.row = i;
         entry.text = row.name;
         entry.rect = QRect(0, contentHeight, kMinWidth, kRowHeight);
         contentHeight += entry.rect.height();
         mEntries.append(entry);
         width = std::max(
-            width, kRowPadX + kSwatchSide + kSwatchGap + rowMetrics.horizontalAdvance(row.name) + kRowPadX
+            width, kRowPadX + kSwatchSide + kSwatchGap + rowMetrics.horizontalAdvance(row.name)
+                + kRowPadX
         );
     }
 
@@ -157,7 +156,7 @@ void GraphChannelPopup::rebuildLayout() {
 
 int GraphChannelPopup::rowAt(const QPoint& aPos) const {
     for (const Entry& entry : mEntries) {
-        if (!entry.heading && entry.rect.contains(aPos))
+        if (entry.kind == EntryKind::Row && entry.rect.contains(aPos))
             return entry.row;
     }
     return -1;
@@ -249,18 +248,16 @@ void GraphChannelPopup::paintEntry(QPainter& aPainter, int aIndex) const {
     const theme::Colors& colors = theme::Colors::current();
     const Entry& entry = mEntries.at(aIndex);
 
-    if (entry.heading) {
-        // A heading is structure, not a control. It separates the groups ON ITS OWN:
-        // the 1px seam the mock drew above a following group was removed (it landed
-        // in the gap above the heading and read as a broken rule; a title needs no
-        // second separator).
+    if (entry.kind == EntryKind::Layer) {
+        // Hierarchy is TYPE and whitespace, not a dot or a group title: the layer is
+        // a small muted section label, and the self-describing rows follow it.
         QFont font = this->font();
-        font.setPixelSize(kHeadingFontSize);
+        font.setPixelSize(kLayerFontSize);
         aPainter.setFont(font);
         aPainter.setPen(colors.textMuted);
         const QRect textBox(
-            mBody.left() + kRowPadX, entry.rect.top() + kHeadingPadTop, mBody.width() - 2 * kRowPadX,
-            entry.rect.height() - kHeadingPadTop - kHeadingPadBottom
+            mBody.left() + kRowPadX, entry.rect.top() + kLayerPadTop,
+            mBody.width() - 2 * kRowPadX, entry.rect.height() - kLayerPadTop - kLayerPadBottom
         );
         aPainter.drawText(textBox, Qt::AlignLeft | Qt::AlignVCenter, entry.text);
         return;
@@ -275,9 +272,9 @@ void GraphChannelPopup::paintEntry(QPainter& aPainter, int aIndex) const {
     // a 1px INNER line in the neutral floater edge - the surface's own border ink, never
     // a hue. It cannot be mistaken for a selected channel: the list has no selection,
     // the only channel state it paints is the swatch's hue (filled = shown, hollow =
-    // hidden), and the focused channel's own mark is the BOLD NAME, a document state
-    // that stays whether or not this list is up. The line therefore means "the keyboard
-    // is here", not "this channel is selected".
+    // hidden). The sticky focus is NOT marked here: it is the panel's tangent-handle
+    // state, and a bold row that survived the pointer read as a random emphasis. The
+    // line therefore means "the keyboard is here", not "this channel is selected".
     aPainter.save();
     QPainterPath clip;
     clip.addRoundedRect(QRectF(mBody), kBodyRadius, kBodyRadius);
@@ -302,8 +299,8 @@ void GraphChannelPopup::paintEntry(QPainter& aPainter, int aIndex) const {
     // shown, the same hue as a 1px outline while it is hidden (mock.css's
     // .gp-chrow.off .gw). No second control sits beside it - the row is the toggle.
     const QRectF swatch(
-        qreal(mBody.left() + kRowPadX), qreal(entry.rect.center().y()) - kSwatchSide / 2.0, qreal(kSwatchSide),
-        qreal(kSwatchSide)
+        qreal(mBody.left() + kRowPadX), qreal(entry.rect.center().y()) - kSwatchSide / 2.0,
+        qreal(kSwatchSide), qreal(kSwatchSide)
     );
     aPainter.setPen(row.visible ? QPen(Qt::NoPen) : QPen(row.color, 1.0));
     aPainter.setBrush(row.visible ? QBrush(row.color) : QBrush(Qt::NoBrush));
@@ -313,7 +310,9 @@ void GraphChannelPopup::paintEntry(QPainter& aPainter, int aIndex) const {
 
     QFont font = this->font();
     font.setPixelSize(kRowFontSize);
-    font.setBold(row.focused);
+    // NO BOLD FOR THE STICKY FOCUS. The focused channel is shown by the panel's
+    // tangent handles; a bold row that stayed after the pointer left read as a
+    // random emphasized item. The list's only row mark is the hover/keyboard fill.
     aPainter.setFont(font);
     aPainter.setPen(row.visible ? colors.text : colors.textMuted);
     const QRect textBox(

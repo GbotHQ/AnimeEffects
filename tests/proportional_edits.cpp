@@ -41,11 +41,13 @@
 #include "cmnd/ScopedMacro.h"
 #include "cmnd/Stack.h"
 #include "core/MoveKey.h"
+#include "core/OpaKey.h"
 #include "core/ObjectNode.h"
 #include "core/Project.h"
 #include "core/TimeKey.h"
 #include "core/TimeKeyType.h"
 #include "core/TimeLine.h"
+#include "core/TimeKeyBlender.h"
 #include "core/TimeLineEvent.h"
 #include "ctrl/TimeLineUtil.h"
 #include "ctrl/proportional/prop_Keys.h"
@@ -124,6 +126,13 @@ core::MoveKey* pushMove(core::TimeLine& aLine, cmnd::Stack& aStack, int aFrame, 
     auto* key = new core::MoveKey();
     key->setPos(QVector2D(aX, 0.0f));
     aStack.push(aLine.createPusher(TimeKeyType_Move, aFrame, key));
+    return key;
+}
+
+core::OpaKey* pushOpa(core::TimeLine& aLine, cmnd::Stack& aStack, int aFrame, float aOpacity) {
+    auto* key = new core::OpaKey();
+    key->setOpacity(aOpacity);
+    aStack.push(aLine.createPusher(core::TimeKeyType_Opa, aFrame, key));
     return key;
 }
 
@@ -389,6 +398,164 @@ int main(int argc, char** argv) {
             std::printf("[3] assignMoveKeyData: value reflow is one undo step with the edit\n");
     }
 
+    // --- 3b. THE OTHER BOUND AND THE OTHER COMPONENT. The reflow must not be a
+    // special case of "the right bound's X": editing the LEFT bound moves the
+    // proportional key against the unchanged right one, and Y is an independent
+    // coordinate with its own weight. Weights are NOT 1/2 here, so a projection
+    // that ignored the stored fraction cannot pass by symmetry.
+    {
+        const int before = failures;
+        NullAnimator animator;
+        core::Project project("proportional_edits.anie", animator, nullptr);
+        core::TestNode node;
+        core::TimeLine& line = *node.timeLine();
+        cmnd::Stack setup;
+
+        core::MoveKey* left = pushMove(line, setup, 0, 0.0f);
+        left->setPos(QVector2D(0.0f, 0.0f));
+        core::MoveKey* middle = pushMove(line, setup, 2, 10.0f);
+        middle->setPos(QVector2D(10.0f, 30.0f));
+        core::MoveKey* right = pushMove(line, setup, 4, 40.0f);
+        right->setPos(QVector2D(40.0f, 60.0f));
+
+        makeProportional(line, middle);
+        check(nearly(middle->proportionalState()->valueWeight[0], 0.25f), "X is one quarter of 0..40");
+        check(nearly(middle->proportionalState()->valueWeight[1], 0.5f), "Y is half of 0..60");
+
+        // The LEFT bound: X 0 -> 20 and Y 0 -> 10. The proportional key follows
+        // against the UNCHANGED right bound.
+        core::MoveKey::Data leftData = left->data();
+        leftData.setPos(QVector2D(20.0f, 10.0f));
+        ctrl::TimeLineUtil::assignMoveKeyData(project, node, 0, leftData);
+        check(nearly(middle->pos().x(), 25.0f), "the middle X follows the left bound by its 1/4 weight");
+        check(nearly(middle->pos().y(), 35.0f), "the middle Y follows the left bound by its 1/2 weight");
+
+        project.commandStack().undo();
+        check(nearly(middle->pos().x(), 10.0f), "undo restores the middle X");
+        check(nearly(middle->pos().y(), 30.0f), "undo restores the middle Y");
+        project.commandStack().redo();
+        check(nearly(middle->pos().x(), 25.0f), "redo re-applies the left-bound reflow");
+
+        // THE RIGHT BOUND'S Y, with X left alone: only the Y coordinate may
+        // change on the companion, and it must be 1/2 of 0..100.
+        core::MoveKey::Data rightData = right->data();
+        rightData.setPos(QVector2D(40.0f, 100.0f));
+        ctrl::TimeLineUtil::assignMoveKeyData(project, node, 4, rightData);
+        check(nearly(middle->pos().x(), 25.0f), "an Y-only edit leaves the companion X where it was");
+        check(nearly(middle->pos().y(), 55.0f), "the companion Y follows the right bound's 1/2 from the LEFT bound's new Y");
+        check(
+            nearly(middle->proportionalState()->valueWeight[1], 0.5f),
+            "the Y weight is still the stored one"
+        );
+
+        project.commandStack().undo();
+        check(nearly(middle->pos().y(), 35.0f), "undo restores the companion Y");
+        check(nearly(right->pos().y(), 60.0f), "undo restores the edited Y");
+
+        if (failures == before)
+            std::printf("[3b] value reflow: the left bound and the Y component follow their own weights\n");
+    }
+
+    // --- 3c. A FLAT VALUE SEGMENT. The common authoring order is: add keys while
+    // the object does not move, mark the middle one proportional, THEN animate and
+    // drag a bound. Every pre-edit value span is zero there, so a solver that
+    // stored "no value weight" would follow the time axis and never the value one -
+    // exactly "the proportional calculation only works on the time axis". A key
+    // that sits ON the flat value inherits the TIME fraction, and the first bound
+    // edit then projects it; a key with a different value stays frozen (covered by
+    // proportional_keys [3]).
+    {
+        const int before = failures;
+        NullAnimator animator;
+        core::Project project("proportional_edits.anie", animator, nullptr);
+        core::TestNode node;
+        core::TimeLine& line = *node.timeLine();
+        cmnd::Stack setup;
+
+        core::MoveKey* flatLeft = pushMove(line, setup, 0, 0.0f);
+        flatLeft->setPos(QVector2D(0.0f, 0.0f));
+        core::MoveKey* flatMiddle = pushMove(line, setup, 2, 0.0f);
+        flatMiddle->setPos(QVector2D(0.0f, 0.0f));
+        core::MoveKey* flatRight = pushMove(line, setup, 4, 0.0f);
+        flatRight->setPos(QVector2D(0.0f, 0.0f));
+
+        makeProportional(line, flatMiddle);
+        check(
+            flatMiddle->proportionalState()->valueValid[0]
+                && flatMiddle->proportionalState()->valueValid[1],
+            "a key sitting on a flat value inherits the time fraction, so both components are usable"
+        );
+        check(
+            nearly(flatMiddle->proportionalState()->valueWeight[0], 0.5f)
+                && nearly(flatMiddle->proportionalState()->valueWeight[1], 0.5f),
+            "the inherited value fraction is the time fraction (1/2 here)"
+        );
+
+        core::MoveKey::Data flatData = flatRight->data();
+        flatData.setPos(QVector2D(100.0f, 100.0f));
+        ctrl::TimeLineUtil::assignMoveKeyData(project, node, 4, flatData);
+        check(nearly(flatMiddle->pos().x(), 50.0f), "the flat-segment X follows the first bound edit");
+        check(nearly(flatMiddle->pos().y(), 50.0f), "the flat-segment Y follows the first bound edit");
+
+        project.commandStack().undo();
+        check(nearly(flatMiddle->pos().x(), 0.0f), "undo restores the flat-segment X");
+        check(nearly(flatMiddle->pos().y(), 0.0f), "undo restores the flat-segment Y");
+        project.commandStack().redo();
+        check(nearly(flatMiddle->pos().x(), 50.0f), "redo re-applies the flat-segment projection");
+
+        if (failures == before)
+            std::printf("[3c] value reflow: a flat value segment inherits the time fraction and follows\n");
+    }
+
+    // --- 3d. A STATE WRITTEN BEFORE THE FLAT-SPAN RULE. Existing projects carry
+    // proportional keys whose valueValid bits are false because the value span was
+    // flat at marking time. The first value edit must upgrade that state once,
+    // without re-deriving the stored pair, so the value axis starts following
+    // instead of staying inert until the key is re-marked.
+    {
+        const int before = failures;
+        core::TestNode node;
+        core::TimeLine& line = *node.timeLine();
+        cmnd::Stack setup;
+
+        core::MoveKey* oldLeft = pushMove(line, setup, 0, 0.0f);
+        oldLeft->setPos(QVector2D(0.0f, 0.0f));
+        core::MoveKey* oldMiddle = pushMove(line, setup, 2, 0.0f);
+        oldMiddle->setPos(QVector2D(0.0f, 0.0f));
+        core::MoveKey* oldRight = pushMove(line, setup, 4, 0.0f);
+        oldRight->setPos(QVector2D(0.0f, 0.0f));
+
+        oldMiddle->setProportional(true);
+        core::TimeKey::Proportional legacy;
+        legacy.leftId = oldLeft->id();
+        legacy.rightId = oldRight->id();
+        legacy.timeValid = true;
+        legacy.timeWeight = 0.5f;
+        oldMiddle->setProportionalState(legacy);
+        check(!oldMiddle->proportionalState()->valueValid[0], "the legacy state has no value weight");
+
+        ctrl::proportional::ValueReflow reflow;
+        reflow.capture(line, TimeKeyType_Move, QVector<core::TimeKey*> { oldRight });
+        oldRight->setPos(QVector2D(100.0f, 100.0f));
+        reflow.apply();
+        check(nearly(oldMiddle->pos().x(), 50.0f), "the migrated state follows the first X edit");
+        check(nearly(oldMiddle->pos().y(), 50.0f), "the migrated state follows the first Y edit");
+        check(
+            nearly(oldMiddle->proportionalState()->timeWeight, 0.5f),
+            "migration keeps the stored time weight"
+        );
+
+        reflow.restore();
+        check(nearly(oldMiddle->pos().x(), 0.0f), "restore returns the legacy value");
+        check(
+            !oldMiddle->proportionalState()->valueValid[0],
+            "restore returns the legacy state exactly"
+        );
+
+        if (failures == before)
+            std::printf("[3d] value reflow: a pre-flat-rule state migrates on its first edit\n");
+    }
+
     // --- 4. setProportionalKeys: one step, announced, undo/redo restore state ---
     {
         const int before = failures;
@@ -448,6 +615,42 @@ int main(int argc, char** argv) {
 
         if (failures == before)
             std::printf("[4] setProportionalKeys: one announced step with undo/redo\n");
+    }
+
+    // --- 5. THE GRAPH-DRAG CRASH: a frame outside the project range can make the
+    // loop's two neighbours share a relative frame (the key at the range's end and
+    // the key at its start coincide once the loop span is added). `getEasingRate` used
+    // to abort on the zero span - the reported crash while dragging a key in the Graph
+    // tab. The gatherer still reports the degenerate pair (asserted here), and the
+    // blender must use the earlier key instead of aborting.
+    {
+        const int before = failures;
+        core::TestNode node;
+        cmnd::Stack setup;
+        pushOpa(*node.timeLine(), setup, 0, 1.0f);
+        pushOpa(*node.timeLine(), setup, 70, 0.5f);
+        pushOpa(*node.timeLine(), setup, 151, 0.2f);
+
+        core::TimeInfo info;
+        info.fps = 60;
+        info.frameRange = util::Range(0, 150);
+        info.loop = true;
+        info.frame = core::Frame(-4);
+
+        core::TimeKeyGatherer gatherer(node.timeLine()->map(core::TimeKeyType_Opa), info);
+        check(gatherer.point(0) && gatherer.point(1), "the degenerate loop reports both neighbours");
+        check(
+            gatherer.point(1).relativeFrame == gatherer.point(0).relativeFrame,
+            "the two neighbours share a relative frame (the zero span the crash hit)"
+        );
+
+        core::TimeKeyBlender blender(node, false);
+        blender.updateCurrents(&node, info);
+        const float opacity = node.timeLine()->current().opa().opacity();
+        check(opacity >= 0.0f && opacity <= 1.0f, "the blend completes with a key's opacity instead of aborting");
+
+        if (failures == before)
+            std::printf("[5] TimeKeyBlender: a zero-span loop seam does not abort\n");
     }
 
     if (failures == 0)

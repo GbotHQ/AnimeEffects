@@ -84,6 +84,11 @@ public:
     // notification when the gesture lands - the frame window's onViewRangeChanged is
     // not emitted by a window drag that moves no frame.
     Q_SIGNAL void playWindowChanged();
+    // THE SELECTION'S PROPORTIONAL FLAGS CHANGED (the key menu, the header
+    // control, or any other caller of setSelectionProportional). The flags live
+    // on the keys, not on the selection, so the selection's own onChanged does
+    // not fire for this edit; the header's button re-reads through this signal.
+    Q_SIGNAL void keyProportionalChanged();
 
     void setProject(core::Project* aProject);
     void setFrame(core::Frame aFrame);
@@ -146,6 +151,16 @@ public:
     // False when nothing opened (no host, no targets, or no key of a type that
     // carries an easing).
     bool openEasingPicker(const core::TimeLineEvent& aTargets, const QPoint& aGlobalAnchor);
+    // THE HEADER'S PROPORTIONAL CONTROL, in the timeline's own currency: make
+    // every key the live selection names proportional (aEnabled) or absolute, as
+    // ONE undo step. This is the same edit the key menu's "Proportional" item
+    // makes; the header owns the control, so it lives here beside the other
+    // selection actions rather than duplicating the toggle in the bar.
+    //
+    // FALSE when there is nothing to act on: no project/editor, an empty
+    // selection, or only default keys (which have no authored position).
+    bool setSelectionProportional(bool aEnabled);
+
     // THE BACKGROUND MENU, for a caller whose pointer is in ANOTHER view's space: the
     // animation graph panel's right-click on the plot's background. It offers exactly
     // what the timeline's own empty-space menu offers - buildKeyMenu over the SHARED
@@ -299,6 +314,9 @@ private:
     // is the paste-only menu the timeline shows when a right-click names no key and
     // nothing is selected.
     void buildKeyMenu(QMenu& aMenu);
+    // The one path both the menu and the header control use: push the
+    // proportional edit for aTargets and report it (see keyProportionalChanged).
+    void applyProportionalForTargets(const core::TimeLineEvent& aTargets, bool aEnabled);
     void onCopyKeyTriggered(bool);
     void onCopyCBTriggered(bool);
     void onPasteKeyTriggered(bool);

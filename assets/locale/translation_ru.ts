@@ -5973,6 +5973,30 @@ The log is available below.</source>
         <source> key(s), due to the following reasons: </source>
         <translation> ключ(ей) по следующим причинам: </translation>
     </message>
+    <message>
+        <source>Copy</source>
+        <translation>Копировать</translation>
+    </message>
+    <message>
+        <source>Copy to clipboard</source>
+        <translation>Копировать в буфер обмена</translation>
+    </message>
+    <message>
+        <source>Delete</source>
+        <translation>Удалить</translation>
+    </message>
+    <message>
+        <source>Paste</source>
+        <translation>Вставить</translation>
+    </message>
+    <message>
+        <source>Make proportional</source>
+        <translation>Сделать пропорциональным</translation>
+    </message>
+    <message>
+        <source>Make absolute</source>
+        <translation>Сделать абсолютным</translation>
+    </message>
 </context>
 <context>
     <name>gui::TimeLineHeader</name>

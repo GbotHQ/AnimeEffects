@@ -80,6 +80,15 @@ two, which is what "this colour, within the antialiasing" means in practice).
       lane (every row of it is off the plain surface) and a ruler's tick band (a few rows
       carrying many marks) are told from the quiet rows around them. A row of width w needs
       frac*w matching pixels.
+  rowruns <raw> <w> <h> <r> <g> <b> <tol> <mincols>
+      The y-runs of rows holding at least mincols pixels within tol of the colour: one
+      "y0 y1 n" per run (n = the run's total such pixels), ascending; "none". The fill-sense
+      mirror of `inkcols`, and the way a SOLID shape's rows are found: a row of the shape
+      carries many of its columns, so a COUNT threshold separates it both from the marks
+      that carry one column (the playhead line under the ruler pill) and from a glyph that
+      splits a row's middle - without ever assuming a particular column is the shape for
+      its whole height, which is what a single-column test does and what the digits on a
+      pill make false.
   cols <raw> <w> <h> <y0> <y1> <r> <g> <b> <tol> <min>
       The x-runs of columns holding at least `min` pixels within tol of the colour anywhere
       in rows y0..y1: "x0 x1 n" per run, n the run's total over those rows; "none" when no
@@ -273,7 +282,7 @@ def main():
         print(n)
         return
 
-    if mode in ("far", "neutral", "rows", "cols", "inkcols"):
+    if mode in ("far", "neutral", "rows", "rowruns", "cols", "inkcols"):
         raw = a[1]
         w, h = int(a[2]), int(a[3])
         data = load(raw, w, h)
@@ -326,6 +335,29 @@ def main():
                     hits.append(yy)
             got = runs_of(hits)
             print("none" if not got else "\n".join("%d %d" % (r[0], r[1]) for r in got))
+            return
+
+        if mode == "rowruns":
+            if len(a) != 9:
+                sys.exit(__doc__)
+            want = (int(a[4]), int(a[5]), int(a[6]))
+            tol = float(a[7])
+            mn = int(a[8])
+            n_of = {}
+            for yy in range(h):
+                n = 0
+                for xx in range(w):
+                    if dist(pixel(data, w, xx, yy), want) <= tol:
+                        n += 1
+                if n >= mn:
+                    n_of[yy] = n
+            got = runs_of(sorted(n_of))
+            if not got:
+                print("none")
+                return
+            for r in got:
+                print("%d %d %d" % (r[0], r[1],
+                                    sum(n_of[y] for y in range(r[0], r[1] + 1))))
             return
 
         y0, y1 = int(a[4]), int(a[5])

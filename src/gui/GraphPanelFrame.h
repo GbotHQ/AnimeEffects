@@ -195,20 +195,23 @@ constexpr int kValueLabelGap = 8;
 
 // THE ROW THE RULER'S NUMBERS INK FROM: how many rows below its box's TOP row the
 // first row of a frame number (or of a playhead/window-pill number) carries ink - on
-// BOTH views. TimeRuler and TimeCursor draw their numbers with Qt's TOP-ALIGNED
-// drawText in a box whose top is `rulerTop + kNumberTop`, and on the application's own
-// capture that puts the digits' ink three rows below the box's top (Geist at the
-// panel's 12px: Qt's ascent 11.6px minus the digits' cap top 3.3px -> row 3).
+// BOTH views. The box top is `rulerTop + kNumberTop`, and at this face and size the
+// digits' ink starts three rows below it (Qt's ascent 11.6px minus the digits' cap
+// top 3.3px -> row 3).
 //
-// WHY IT IS A ROW AND NOT AN ALIGNMENT. Dear ImGui places text by its LINE BOX top,
-// and the same face baked for ImGui carries its ink one row deeper (4) than Qt's
-// layout - so simply starting the line box on the box's top row still left every
-// number one row below the timeline's (measured: rows 244..251 against 243..250 after
-// the centring was removed). The panel therefore aligns the INK: drawLabel's
-// LabelVAlign::Top subtracts the font's OWN top bearing at the drawing size and puts
-// the run's first inked row on `box.top() + kRulerNumberInkTop`, which is the
-// timeline's row whatever size the layer draws at (the pixel gate renders it at 10px
-// and reads the same row).
+// WHO NEEDS THE NUMBER. The Qt and Canvas backends (gui::InkQPainter, gui::InkCanvas -
+// the SHIPPED path) get that row from the engine itself: `VAlign::Top` puts the LINE
+// BOX'S top on the box's top row, exactly as the timeline's rulers draw their numbers,
+// and the ink follows three rows down. MEASURED 2026-10-23 by probe_graph_parity: with
+// that rule the panel's numbers ink rows 243..251 against the timeline's 243..252, i.e.
+// the same rows - the ink-row arithmetic this constant expresses read 242..250, one row
+// high, and that was the last parity failure the probe had.
+//
+// gui::InkImGui still needs it: ImGui places text by its own line box, whose ink sits
+// one row deeper, so drawLabel subtracts the font's own top bearing and pins the run's
+// first inked row to `box.top() + kRulerNumberInkTop` (whatever size the layer draws
+// at - the pixel gate renders it at 10px and reads the same row). That backend is the
+// GATE's reference now, not the application's.
 //
 // Declared here rather than in the .cpp because tests/graph_panel_pixels.cpp asserts
 // the drawn row against THIS number, so the placement and the assertion cannot drift

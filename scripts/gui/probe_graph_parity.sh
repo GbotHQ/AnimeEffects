@@ -36,9 +36,12 @@
 #     (the dock's stylesheet font, the one TimeCursor measures with), so its start and
 #     width are asserted EQUAL - there is no AA band left in that comparison.
 #
-# WHAT IS COMPARED AND WHAT IS NOT, when the two engines rasterise differently: the
-# timeline's ruler is Qt and the panel's is ImGui, so a glyph's edge pixels and a 1px
-# rule's coverage are antialiasing artefacts. Where only AA can explain a difference the
+# WHAT IS COMPARED AND WHAT IS NOT, when the two engines rasterise differently: both rulers
+# are Canvas Painter on this tree, but they reach it through two TEXT paths (TimeRuler's own
+# canvas pass and the panel's gui::InkCanvas), so a glyph's edge pixels and a 1px rule's
+# coverage are still artefacts - and so is a glyph run's ROW, by up to 2 rows: measured
+# 2026-10-23, the same frame number inks rows 243..252 on the timeline against 242..250 on
+# the graph, which is the one property this probe still fails on (see the two FAIL lines). Where only AA can explain a difference the
 # probe asserts the ROW RUN, COLUMN RUN or BOX (a one-row tolerance) and not the pixel
 # value - the log says so beside those numbers. The two tokens that are NOT AA - the
 # pill's solid fill and the glyph's core ink, both read as the colour farthest/most
@@ -52,9 +55,11 @@
 # capture. In the page's top rows the only chromatic ink on a keyless project is the
 # playhead (ColorAccent), so `inkhues` names it; the pill's column run is the widest
 # column run of that colour (the 1px line is inside it, and the line starts UNDER the
-# pill), and its row run is the run of rows whose pixel in the pill's own padding column
-# IS that fill colour (the column is kPillPadding in from the pill edge, where the fill
-# is alone, so no surface tone can stand in for the pill).
+# pill), and its row run is the run of rows that carry that fill colour in at least
+# PILL_MIN_COLS of the pill's own columns (ae_ink rowruns) - NOT a single padding column,
+# which reads a digit's stem as the pill's height, and NOT a column maximum, which reads
+# the playhead line hanging under the pill as pill+line. The colour test is
+# PILL_FILL_TOL: the pill's outer row is a 93%-coverage blend, not the token.
 #
 # THE PILL'S ROW RUN IS FOUND TWICE, AND THE SECOND TIME OVER THE WHOLE STRIP. The dock's
 # AT-SPI rectangle starts ABOVE the header it contains (the dock's own title bar), so the
@@ -97,7 +102,7 @@
 # three byte-identical captures of one page. `ae extents "Graph" "page tab"` and
 # `ae click ... "page tab"` press the BUTTON, and the press is proven by the CAPTURES, not
 # by the tab geometry: on this build the two tabs keep their own slots and measure the
-# same width whichever is current (the selected tab is INKED with the accent, not
+# same width whichever is current (the selected segment is INKED as a raised knob, not
 # inflated - TimeLineHeader::refreshTabStyle), so a width comparison asserts nothing. The
 # probe therefore asserts that the two tab buttons exist and were pressed in the order
 # Timeline then Graph, and that the two captures differ by PAGES_CHANGE_MIN pixels (a
@@ -167,12 +172,31 @@ PILL_ROWS=4
 # whole strip (BAND_HEIGHT) plus that slack, or the run is read clipped (measured: the
 # timeline's 14-row pill read as 6 rows when the window was BAND_HEIGHT rows from there).
 PILL_SEARCH_ROWS=$((BAND_HEIGHT + 28))
+# HOW THE PILL ROWS ARE READ, and why the tolerance is not the obvious one (measured
+# 2026-10-23, on the Canvas-rendered ruler this tree draws - see docs/verification/
+# graph-panel/pill-probe-step.png).
+#
+# PILL_FILL_TOL. The pill's own outermost row is a 93%-coverage blend of the token,
+# (163,136,244), distance 7.8 from #a78bfa; its interior rows are exact, and the row
+# above/below the pill is the band, 260 away. So a test for "equals the token" (tol 1)
+# throws the pill's own first and last rows away and can never count more than 12 of the
+# 14 rows the model draws. 40 sits in the middle of the 7.8..260 gap, so it admits the
+# pill's coverage and nothing else.
+PILL_FILL_TOL=40
+# PILL_MIN_COLS. A row is the pill when at least this many of the pill own columns carry
+# the fill. THREE, and the number is structural, not a taste: the only 1px thing in that
+# colour near the pill is the playhead LINE, which hangs from the pill own bottom row, so
+# a column-maximum test counts pill+line as one 23-row run at the pill centre while a
+# count threshold counts the pill 14. A glyph splits a row middle but never down to three
+# columns (measured on "281": the densest row of the pill kept 9 of its 28).
+PILL_MIN_COLS=3
 # The least number of changed pixels inside the pages that two DIFFERENT pages must
 # produce. A stale/unsuitable click repaints none of them (byte-identical captures), and
 # a page change redraws the ruler, the content and (on the graph) the whole floor.
 PAGES_CHANGE_MIN=1000
 export GEOM SCRATCH STEPS INK APPLOG BAND_HEIGHT PILL_TOP NUMBER_HEIGHT TICK_ROWS \
-       ZOOM_NOTCHES LANE_ROWS PILL_ROWS PILL_SEARCH_ROWS PAGES_CHANGE_MIN
+       ZOOM_NOTCHES LANE_ROWS PILL_ROWS PILL_SEARCH_ROWS PILL_FILL_TOL \
+       PILL_MIN_COLS PAGES_CHANGE_MIN
 
 xvfb-run -a --server-args="-screen 0 1440x900x24" bash -c '
   set -u
@@ -356,44 +380,43 @@ xvfb-run -a --server-args="-screen 0 1440x900x24" bash -c '
     [ -n "$px0" ] || abort "the $tag page has no pill column run of its fill colour"
     local absx0=$((pl + px0))
     # ---- THE PILL ROW RUN, part 1: WHERE THE STRIP IS ----
-    # The run is the rows whose pixel in the pill own padding column IS the fill. The
-    # column is px0+4 - the number text starts at kPillPadding (5) from the pill edge, so
-    # this column holds the fill alone, and it is outside the 3px corner radius, so it is
-    # fill for the pill whole height. The test is against the LEARNED fill colour
-    # (tol 1), not against a band/floor reference, so no surface colour can stand in for
-    # the pill and the pill top row cannot be lost to the band base.
+    # The pill is a filled ROUNDED rect with the frame number drawn on it, so its rows are
+    # the rows of its own columns that carry the fill in at least PILL_MIN_COLS places
+    # (ae_ink rowruns). Three spellings were measured on 2026-10-23 before this one
+    # (docs/verification/graph-panel/pill-probe-step.png); the first two are what the step
+    # got wrong:
+    #   * ONE column (px0+4, "the padding column") - a column can run down a digit stem,
+    #     which read a 30px pill as 3 rows tall;
+    #   * a column MAXIMUM - the playhead LINE hangs from the pill own bottom row in the
+    #     pill own colour, so at the pill centre pill+line is ONE 23-row run, longer than
+    #     the pill, and the maximum picks it;
+    #   * a row MAJORITY - a row through the number is mostly NOT the token, so the pill
+    #     read as two runs with a 3-row longest.
+    # The colour test is PILL_FILL_TOL, not "equals the token": the pill outer row is a
+    # 93%-coverage blend 7.8 away from the token and the band is 260 away.
     # THE WINDOW IS PILL_SEARCH_ROWS, NOT BAND_HEIGHT: the page-top estimate can sit
     # above the strip (the AT-SPI rectangle named Animation includes a title bar, above
     # the header own 40 rows), and a BAND_HEIGHT-row window from there cut the timeline
-    # 14-row pill to the 6 rows it had in the window - a clipped box compared against the
-    # full pill. The runs below are the rows that are NOT the fill, inverted to
-    # the fill runs, which is one inkpx call rather than one process per row.
+    # 14-row pill to the 6 rows it had in the window.
     local search=$PILL_SEARCH_ROWS avail=$((pbot - btop + 1))
     [ "$avail" -ge "$search" ] || search=$avail
     [ "$search" -ge "$((BAND_HEIGHT + 8))" ] \
       || abort "the $tag page has ${avail} rows below ${btop}: too few to hold the ruler strip and find the pill in it"
-    raw "$s" "1x${search}+$((absx0 + 4))+${btop}" "$SCRATCH/$tag.pillcol.raw"
-    inkpx rows "$SCRATCH/$tag.pillcol.raw" 1 "$search" "$hr" "$hg" "$hb" 1 0.5 \
-               > "$SCRATCH/$tag.pillnot.txt"
-    : > "$SCRATCH/$tag.fillruns.txt"
-    local prev=0 r0 r1
-    while read -r r0 r1; do
-      case "$r0" in ""|none) continue ;; esac
-      [ "$r0" -gt "$prev" ] && echo "$prev $((r0 - 1))" >> "$SCRATCH/$tag.fillruns.txt"
-      prev=$((r1 + 1))
-    done < "$SCRATCH/$tag.pillnot.txt"
-    [ "$prev" -lt "$search" ] && echo "$prev $((search - 1))" >> "$SCRATCH/$tag.fillruns.txt"
-    local sr0="" sr1="" sh=0
-    while read -r r0 r1; do
+    # (its own file: $tag.pillbox.raw is the EXACT pill box, cropped further down)
+    raw "$s" "${pw}x${search}+${absx0}+${btop}" "$SCRATCH/$tag.pillsearch.raw"
+    local pillruns sr0="" sr1="" sh=0 r0 r1 rn
+    pillruns=$(inkpx rowruns "$SCRATCH/$tag.pillsearch.raw" "$pw" "$search" \
+                        "$hr" "$hg" "$hb" "$PILL_FILL_TOL" "$PILL_MIN_COLS")
+    while read -r r0 r1 rn; do
       case "$r0" in ""|none) continue ;; esac
       local len=$((r1 - r0 + 1))
       if [ "$len" -gt "$sh" ]; then sh=$len; sr0=$r0; sr1=$r1; fi
-    done < "$SCRATCH/$tag.fillruns.txt"
+    done <<< "$pillruns"
     [ -n "$sr0" ] \
-      || abort "the $tag page shows no run of its own fill colour in rows ${btop}..$((btop + search - 1)): the playhead pill was not found"
+      || abort "the $tag page shows no row carrying ${PILL_MIN_COLS} of its own fill colour in rows ${btop}..$((btop + search - 1)): the playhead pill was not found"
     local sd=$((sh - NUMBER_HEIGHT)); [ "$sd" -ge 0 ] || sd=$((0 - sd))
     [ "$sd" -le 1 ] \
-      || abort "the longest fill run of the $tag page is ${sh} rows (rows $((btop + sr0))..$((btop + sr1))) in the pill padding column, not the ${NUMBER_HEIGHT}-row pill: another fill-coloured mark was read, or the window clipped it"
+      || abort "the pill-coloured band of the $tag page is ${sh} rows (rows $((btop + sr0))..$((btop + sr1)) of the search window) over the ${pw} columns of the pill own fill run, not the ${NUMBER_HEIGHT}-row pill: another fill-coloured mark was read, or the window clipped it"
     local band_top=$((btop + sr0 - PILL_TOP))
     [ "$band_top" -ge "$btop" ] \
       || abort "the pill run of the $tag page starts at row $((btop + sr0)), above the page-top estimate ${btop}: the pill cannot be the first thing on the page"
@@ -401,28 +424,20 @@ xvfb-run -a --server-args="-screen 0 1440x900x24" bash -c '
     local hair_y=$((band_bottom + 1))
 
     # ---- THE PILL ROW RUN, part 2: over the strip own rows ----
-    # The strip is the model own 22 rows, so the pill is the fill run at kPillTop,
-    # NUMBER_HEIGHT tall. Reading it HERE, in a window that starts above the pill and is
-    # derived from it, is what makes the box trustworthy: the whole pill is inside the
-    # window by construction, and a run that is not the model box aborts with its rows
-    # instead of being compared.
-    raw "$s" "1x${BAND_HEIGHT}+$((absx0 + 4))+${band_top}" "$SCRATCH/$tag.stripcol.raw"
-    inkpx rows "$SCRATCH/$tag.stripcol.raw" 1 "$BAND_HEIGHT" "$hr" "$hg" "$hb" 1 0.5 \
-               > "$SCRATCH/$tag.stripnot.txt"
-    : > "$SCRATCH/$tag.stripruns.txt"
-    prev=0
-    while read -r r0 r1; do
-      case "$r0" in ""|none) continue ;; esac
-      [ "$r0" -gt "$prev" ] && echo "$prev $((r0 - 1))" >> "$SCRATCH/$tag.stripruns.txt"
-      prev=$((r1 + 1))
-    done < "$SCRATCH/$tag.stripnot.txt"
-    [ "$prev" -lt "$BAND_HEIGHT" ] && echo "$prev $((BAND_HEIGHT - 1))" >> "$SCRATCH/$tag.stripruns.txt"
-    local py0="" py1="" ph=0
-    while read -r r0 r1; do
+    # The strip is the model own 22 rows, so the pill is the run at kPillTop, NUMBER_HEIGHT
+    # tall. Reading it HERE, in a window that starts above the pill and is derived from it,
+    # is what makes the box trustworthy: the whole pill is inside the window by
+    # construction, and a run that is not the model box aborts with its rows instead of
+    # being compared. Same measurement as part 1 (maxrun over the pill own columns).
+    raw "$s" "${pw}x${BAND_HEIGHT}+${absx0}+${band_top}" "$SCRATCH/$tag.stripcol.raw"
+    local stripruns py0="" py1="" ph=0
+    stripruns=$(inkpx rowruns "$SCRATCH/$tag.stripcol.raw" "$pw" "$BAND_HEIGHT" \
+                         "$hr" "$hg" "$hb" "$PILL_FILL_TOL" "$PILL_MIN_COLS")
+    while read -r r0 r1 rn; do
       case "$r0" in ""|none) continue ;; esac
       local len=$((r1 - r0 + 1))
       if [ "$len" -gt "$ph" ]; then ph=$len; py0=$r0; py1=$r1; fi
-    done < "$SCRATCH/$tag.stripruns.txt"
+    done <<< "$stripruns"
     [ -n "$py0" ] \
       || abort "the $tag page shows no fill run in its own ruler strip (rows ${band_top}..${band_bottom})"
     local pd=$((py0 - PILL_TOP)); [ "$pd" -ge 0 ] || pd=$((0 - pd))
@@ -747,7 +762,8 @@ dist3() { awk -v r1="$1" -v g1="$2" -v b1="$3" -v r2="$4" -v g2="$5" -v b2="$6" 
 
 # ---- 0. THE ROUTE: THE PAGE TAB BUTTONS, AND TWO DIFFERENT PAGES ----
 # THE TAB BAR'S GEOMETRY IS NOT THE WITNESS of the page change: TimeLineHeader inks the
-# selected tab (refreshTabStyle's accent fill) and leaves both tabs in their own slots, so
+# selected segment (refreshTabStyle's raised knob inside its segmented field) and leaves
+# both tabs in their own slots, so
 # on this build they measure the same width whichever is current - a width comparison
 # asserted nothing and failed a correct layout. The press is proven by the probe's route
 # (the tab is addressed BY NAME WITH THE ROLE page tab, and the dock opens on the Timeline

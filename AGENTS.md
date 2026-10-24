@@ -325,6 +325,21 @@ When tearing a manual run down: `pkill -f "<pattern>"` **matches the shell runni
 because that pattern is in its own command line — it SIGTERMs the command before the message it
 would print. Kill by PID (`pkill -a Xvfb`, then `kill <pid>`), or match on the process name only.
 
+## Counts are pluralized, not written `key(s)` (2026-10-24)
+
+The UI's count strings are Qt NUMERUS messages (`%n key(s)`, `%n channel(s)`), and the
+English catalog (`translation_en.ts/.qm`) already carries the proper forms ("1 key", "2 keys";
+"1 channel", "3 channels"). What the user saw was the SOURCE string: `LocaleDecider` loaded no
+translator for English, and an untranslated numerus message falls back to its source text verbatim.
+English now loads `translation_en` too (explicit "English" and an English system locale), so the
+header reads `3 channels` and the selection chip `2 keys`; the source strings and the other five
+catalogs are untouched.
+
+THE CONVENTION, for new UI: never print `(s)`. Use the singular for one and the plural for zero and
+more ("0 channels", "1 channel", "3 channels"); for an empty state a word form ("No channels") is
+fine. Actions are not counts: prefer the plain plural "Copy selected keys" (or just "Copy") over
+"Copy selected key(s)". `(s)` is a developer shorthand, not a UI convention.
+
 ## Translations (`assets/locale/*.ts`)
 
 Extraction runs through the build, never by hand — lupdate renumbers every `<location>` in a
@@ -1077,6 +1092,11 @@ on the same rung, and the fit composes the timeline's own primitives (`indexForR
 `zoomFramesAbout`, `scrollFramesBy`) because the frame axis has no fit of its own. The DOCK gains the
 bar's height rather than the lanes losing it: 296 instead of the old 256 (`MainWindow.cpp:165-175`),
 with the ruler at 22px, a lane band at 22px and the tree column unchanged.
+SUPERSEDED 2026-10-24: the frame readout is gone (the playhead pill and the ruler name both numbers)
+and the zoom/fit group is REMOVED as redundant - the wheel, the timeline's scroll bar and the graph's
+wheel own zooming and fitting. The current row is `tabs | transport | quick easings | chip | stretch |
+proportional | channels`; the proportional toggle is on the right (not in the easing group), and the
+channels trigger follows it on the Graph tab.
 
 **What the header deliberately does NOT hold**: the panel's channel chips (the mock's first draft put
 them beside the zoom group) and any graph toggle - the toggle would repeat the dock's own tab and the
@@ -1087,7 +1107,7 @@ not here either: the docked panel draws it in its own ruler band (`TimeLineHeade
 **`Timeline | Graph` is a real `QTabBar`** in the header's first group, whose tab order IS
 `Surface`'s own (Timeline, Graph), so an index maps back by position and the two cannot drift
 (`TimeLineHeader.cpp:120-133`): keyboard left/right, hover and the selected state all come from Qt.
-ONE dock, two tabs, ONE header - the transport, readout, chip and zoom stay put in both, and the tab
+ONE dock, two tabs, ONE header - the transport, chip, quick easings and proportional control stay put in both, and the tab
 names the page, so the Graph page carries no title and no header row of its own. `TargetWidget` keeps
 `ObjectTree | QStackedWidget` (`TargetWidget.cpp:44-57`): the TREE stays in both tabs, because it
 names the layers and picks whose channels the graph draws. Becoming visible is the one moment the
@@ -1213,12 +1233,17 @@ drawing layer inks each row, curve, marker and chip with it. Consequence the pix
 absorb: two FIRST components are both red now, so its fixture was rebuilt from channels the hue CAN
 tell apart (Move X against Scale Y - `tests/graph_panel_pixels.cpp:564,578,589`), which is section
 7's own point. The channel list is the GROUPED legend section 7 describes: one group per (layer, key
-type) - `PanelChannelRow::group`, e.g. `Move [X][Y]`, `Opa [Opacity]` (`GraphPanelModel.h:107-114`,
-built in `GraphPanelModel.cpp:257-276`) - with one heading row and one row per component beneath it
-in its axis hue, the group carrying which PROPERTY it is and the hue only which axis, so two red X
-curves are told apart by their headings. The heading is a disabled row in the application's own
-`QMenu` (`MainDisplayWidget::showGraphChannelMenu`, `MainDisplayWidget.cpp:316`), so it is structure
-and not a control, and every row keeps its visibility toggle and its hover-to-focus. One DELETION
+type) - `PanelChannelRow::group`, e.g. `Move [X][Y]` for a multi-component type and just
+`Opacity`/`Rotate` for a one-component one (`GraphPanelModel.h:107-114`, built in
+`GraphPanelModel.cpp:257-276`) - with one heading row and one row per component beneath it in its axis
+hue, the group carrying which PROPERTY it is and the hue only which axis, so two red X curves are
+told apart by their headings. The popup is `gui::GraphChannelPopup` (not a `QMenu`); its headings are
+a LAYER section heading only, then self-describing rows ("Move X", "Move Y", "Rotate", "Opacity")
+whose swatches start at the heading's left edge (the swatch is the row's indent; no extra
+indent). There is NO group heading and no `layer · group` string: the rows already name the property and its
+component, and a `Move [X][Y]` title above them made the group's end ambiguous. No row is bolded for
+the sticky focus - the panel's tangent handles show that. Every row keeps its visibility toggle and
+its hover-to-focus. One DELETION
 came with the rule: the panel's copy of the table dropped its four unreachable entries -
 Bone/Pose/Mesh/FFD, because `componentCount()` is 0 for them and `graphableTypes()` filters on that,
 so a row could never be published - while `theme::Colors` keeps their tokens and `keyTypeColor()`
@@ -1406,6 +1431,46 @@ Each of these cost a defect that was invisible in the code that caused it.
   byte-identical to the original at `HEAD` with `git show`. The nesting at HEAD puts `outline` and
   `stroke` at `namespace gui`'s own scope, each inside its own anonymous-namespace helpers rather
   than the other way round (`GraphPanelFrame.cpp:48-49, 409, 551, 1029`).
+
+## Marquee auto-scroll, and what a collapse is allowed to clear (2026-10-24)
+
+**Edge auto-scroll is ONE rule for both marquee surfaces.** `ctrl/AutoScroll.h` owns the
+geometry both views used to need separately: a 24px edge band, a 16px-per-tick maximum
+(one pixel at the band's inner boundary), a 16ms timer, a 150ms DIRECTION-AWARE DWELL, and
+one sign convention - `x > 0` reveals content to the right (later frames), `y > 0` content
+below (later rows / lower values). The dwell arms an axis only when the pointer MOVES
+TOWARD that edge (or is already outside the viewport): a box dragged HORIZONTALLY along the
+top edge does not scroll up merely because it started in the top band. Once armed, holding
+still keeps scrolling; moving back inward or leaving the band disarms that axis. The
+timeline's edge viewport excludes the ruler/header (`marqueeScrollViewport`), so the top
+edge is the first lane, not the top of the dock. The timeline applies `x` through `scrollViewBy` and `y` through the object tree's
+vertical scrollbar; the graph applies `x` through `scrollFramesByBarPixels` (the shared
+frame delegate included) and `y` through `panValue(-step)`. The pointer stays at its
+screen position while the content moves under it: the timeline recomputes the world point
+from its camera and calls `TimeLineEditor::extendMarquee`; the graph re-runs
+`applyMarquee` against the moved curves. Both hosts own a 60 Hz timer and stop it on
+release, on a tick that moved nothing (a content bound), and on the page hiding (a tab
+switch can swallow the release).
+
+The timing/lifecycle is deliberately split: `ctrl::autoscroll` is pure math, the editors
+own the application (`extendMarquee` / `autoScrollMarquee`), and the widgets only decide
+when to tick. A unit gate, `tests/autoscroll.cpp`, pins the band, the acceleration, the
+signs, the outside-the-viewport clamp and the dwell/re-entry rule; `tests/graph_drag.cpp` section 30 drives a real
+graph marquee at the plot's bottom-right and asserts both windows moved while the box
+stayed live.
+
+**A row rebuild is a VIEW change, so it no longer clears the selection.** Every
+expand/collapse used to call `TimeLineEditor::clearRows`, which cleared the set. Now
+`TimeLineEditorWidget::updateLines` calls `resetRows` (rows and transient gesture state
+only) and then `retainSelectionInRows`, which keeps every entry whose node is represented
+by the rebuilt rows. "Represented" includes a CLOSED FOLDER's descendants: its summary
+lane still draws their keys, so they stay selected; collapsing the ROOT leaves no rows
+and clears the set. This is also the answer to the "unstable id" concern: a selection
+entry is `(TimeLine map, type, frame)` plus a stored key pointer, and neither is
+recreated by expanding or collapsing, so `Selection::retain` only filters the existing
+entries - it never re-resolves a key from a new id. `tests/creation_select_keys.cpp` C7
+pins the four states (collapsed summary keeps, vanished folder drops only its key, no
+rows clears).
 
 ## How to verify this area now (2026-10-18)
 
@@ -1751,8 +1816,10 @@ screen reader still hears what the plot no longer prints.
 (its two facts are the pill's number and the ruler's forced last label); the channels button moved out
 of the panel's ruler band into the header, shown while the Graph tab is current, and its popup is a
 hand-painted `gui::GraphChannelPopup` with the mockup's numbers (22px rows, 12x12 swatch at 10px, an
-8px swatch-to-name gap, names at 30px, group titles at the same 10px padding so they align with the
-SWATCH column) on the application's sunken body colour - the user ruled that better than the mockup's.
+8px swatch-to-name gap, names at 30px) on the application's sunken body colour - the user ruled that
+better than the mockup's. Its hierarchy is LAYER (10px muted section) -> self-describing rows (11px) whose swatch aligns
+with the layer heading: no group title, no extra row indent, no `layer · group` dot, and no bold for
+the sticky focus.
 The four quick easings (Linear/Floor/Round/Auto) sit beside the chip and act on the selection in one
 undoable step. The fit button now wears `arrows-out-line-horizontal`, because it fits the FRAME axis
 and the four-arrow cardinal glyph says "fit everything". And the easing vocabulary is ONE: the chip's
@@ -2063,6 +2130,44 @@ delete the target and the file before the gate. And a test fixture sized against
 to grow with it: the narrow-viewport fixture was 80px "to keep a plot narrower than 16px", and the
 scroll bars' 10px reserve made that plot negative, so the fixture is 90 and the assertion is unchanged.
 
+## The frame range's guides: PANEL columns, PLOT rows (2026-10-24)
+
+The timeline draws two vertical hairlines at the project's first and last frame
+(`ctrl::time::buildRangeMarkers`/`paintGuides`), continuing the ruler's boundary ticks down through
+the lanes. The graph panel drew neither, so the two views disagreed about where the range ends. It
+now draws the same two marks from two new model fields: `GraphPanelModel::rangeGuideX` (the columns;
+one entry when both ends round onto the same pixel, empty with no project) and `rangeGuideRecede`
+(a temporary playback window is active, which is the timeline's 40% -> 25% rule).
+
+**The columns are PANEL columns and the rows are the PLOT's, and both halves are measured facts.**
+The shared frame mapping puts a frame on the TIMELINE's pixel (`Scaler::applyFrameWindow` maps the
+pushed window across the panel), so at the usual fit the project's first frame lands INSIDE the value
+column the plot is inset by: MEASURED in the running application (`running through one_s head.anie`,
+panel 648x256, plot x 75..635), `rangeGuides = [50, 587]` - the first guide is 25px LEFT of the plot's
+first column. A guide clipped to the plot therefore vanishes exactly when the view is at the start of
+the range, which is the state it is most useful in; this is the same reason the playhead spans the
+panel's columns. The ROWS stay the plot's alone - the ruler band above already carries the boundary
+tick and the scroll bar's lane belongs to the bar - so the drawing layer pushes a clip of
+`(panel.left(), plot.top(), panel.width(), plot.height())`, draws both guides there BEFORE the plot's
+own clip (so the value ticks, the zero rule, the curves, the keys and the handles all sit on top), and
+the value labels, painted last, cover the guide where it crosses their column.
+
+**The ink is the timeline's, token for token**: `theme::Graph::rulerLine()` (which IS
+`theme::Colors::hairline`) at `kRangeGuideAlpha` 0.40 / `kRangeGuideWindowAlpha` 0.25 - the
+timeline's 102/255 and 64/255. MEASURED live: the guide column reads `rgb(49,49,49)` against the
+panel's `rgb(38,38,38)` floor over 218 of 218 plot rows at BOTH columns, with 0 differing pixels in
+either neighbouring column (the 1px non-AA path, drawn with the half-pixel inset the playhead's line
+uses).
+
+Gates: `tests/graph_panel_model.cpp` section 18 (the columns are the scaler's own pixels, the first
+one is left of the plot and still published, a window so wide that both ends round onto one pixel
+publishes ONE guide, the recede flag follows the play window without moving either column, and no
+project publishes none) and `tests/graph_panel_pixels.cpp` check 33 (three passes of one model: the
+guide column inked on 240 of 240 plot rows at a column INSIDE the value column and at one inside the
+plot, NOTHING above `plot.top()` or below `plot.bottom()`, nothing in the neighbouring columns, and
+the receded pass weaker than the plain one - `distance 76 -> 48` from the clear colour).
+`AE_PANEL_MODEL_DUMP` now publishes `rangeGuides` too, which is how the live columns above were read.
+
 ## Proportional keys (2026-10-22)
 
 A `core::TimeKey` can be **proportional**. It is an authoring flag only: playback reads the stored
@@ -2080,10 +2185,27 @@ accumulates frame quantization (project 0/3/10 onto 0/4/10 and back, and the key
 frame each round; `tests/proportional_keys.cpp` computes both answers to prove the difference). A
 weight is re-derived only when the nearest absolute pair CHANGES - identified by stable key ids, not
 frames or values - or when a proportional key is edited directly (its own weight is rebased from the
-new position). X and each graphable component are independent. A zero pre-edit span freezes that
-coordinate; a key without both bounds is inert (it is still marked proportional and can be moved
-directly). Structural types (Bone/Pose/Mesh/FFD) have no graphable components, so only their frame
-follows.
+new position). X and each graphable component are independent. A key without both bounds is inert (it
+is still marked proportional and can be moved directly). Structural types (Bone/Pose/Mesh/FFD) have no
+graphable components, so only their frame follows.
+
+**A FLAT VALUE SEGMENT is the ordinary first step, not a dead axis.** Marking a key proportional
+while the object has not moved yet leaves every bounds' value equal, so the value fraction is 0/0 and
+a literal "freeze" makes the value axis inert forever - the reported "the proportional calculation
+only works on the time axis". A key that SITS ON the flat value therefore inherits the TIME fraction
+as its value fraction (the only fraction it has), and the first bound edit projects it. A key holding
+a DIFFERENT value on a flat segment still freezes: there is no fraction to preserve, and inventing
+one would move a deliberately offset key. `ValueReflow::capture` upgrades a state written before this
+rule once, without touching the stored pair, so an existing project starts following on its next
+value edit instead of requiring the key to be re-marked.
+
+**The graph-drag crash, fixed (2026-10-24).** A frame OUTSIDE the project range can make the loop's
+two neighbours the same position: with range `0..150`, loop on and frame `-4`, the gatherer returns a
+key at `151` and the key at `0` with the same `relativeFrame` (4). `getEasingRateFromTwoKeys` asserted
+`frame != 0`, so a graph drag that left the playhead/keys outside the range aborted the application
+(core: `TimeKeyBlender.cpp:317`, reached from `GraphEditor::updateKeyMove`). It now returns the earlier
+key for a zero span; `proportional_edits` section [5] constructs that exact gatherer and runs the real
+`TimeKeyBlender`, so the regression is a gate rather than a core dump.
 
 **Persistence.** Format **0.16** (`core/FormatVersion.h`) writes every key's id (`int`, from a
 file-local counter, `reserveId` on load) and, when proportional, its bound ids plus the time/value
@@ -2105,25 +2227,65 @@ every step, and the SRT Move/Rotate/Scale live commands do the same through
 is rebased. The timeline's Select-spacing dialog still moves keys directly (it predates this work and
 is outside the projection/undo path) - do not assume proportional companions follow it.
 
-**Marking and visuals.** The shared key menu (timeline right-click and graph panel, `buildKeyMenu`)
-has a checkable **Proportional** item: checked only when the whole selection is proportional; a
-mixed/absolute selection becomes proportional in one undo step via
-`TimeLineUtil::setProportionalKeys` (one command per key, one `Type_ChangeKeyProportional` event).
+**Marking and visuals.** The dock header carries a **Proportional** TOGGLE at the RIGHT, not inside the easing group
+(`gui::TimeLineHeader`): its glyph is the RELATIONSHIP itself - two solid key bodies (filled circles)
+joined by a line to a hollow ring in the middle (`*--o--*`), i.e. the relative key between its
+absolute neighbours
+- so it cannot be read as an easing or as a plain dot. The ring is always a ring; the toggle state is
+the ink (bright when all selected keys are proportional, dim when all are absolute, medium plus a dash
+through the ring when mixed), the same checked language the quick easings use. Clicking writes the
+whole selection in one undo step through `TimeLineEditorWidget::setSelectionProportional`. The shared key menu (timeline
+right-click and graph panel, `buildKeyMenu`) keeps the same edit as a checkable item: checked only
+when the whole selection is proportional; a mixed/absolute selection becomes proportional in one undo
+step via `TimeLineUtil::setProportionalKeys` (one command per key, one
+`Type_ChangeKeyProportional` event). The menu's indicator is the APPLICATION's check box (raised
+field, hairline edge, radius, phosphor check/minus - the `QCheckBox::indicator` recipe), not the
+square `checkbox_*` border-images it used before: a popup belongs to the same application as the
+docks.
 The clipboard JSON carries the flag only - never the weights or bound ids, which name keys that may
-not exist at the destination; a pasted flag starts with empty weights and resolves lazily. Visuals are
-opacity only, per the user's ruling: the existing circle/per-channel hue is kept and the FILL is
-drawn at `ctrl::time::kProportionalFillAlpha` = 115/255 in the timeline, and at
-`kKeyProportionalFillAlpha` = 0.45 in the graph panel; edges and the selection ring keep their full
-tokens. `PanelCurve::keyProportional` publishes the flag beside the marker geometry.
+not exist at the destination; a pasted flag starts with empty weights and resolves lazily.
+`PanelCurve::keyProportional` publishes the flag beside the marker geometry.
 
-**Gates (all green on the tree that added this section).** `proportional_keys` (solver + drift),
-`proportional_edits` (frame/value/toggle one-undo), `timekey_proportional` (ids/state/atomic
-`moveKeys`), `timekey_roundtrip` (0.16 id + weights survive `TimeLine` serialize/deserialize),
-`graph_drag` sections 29a/29b (frame and value drags carry the companion in one undo),
-`timeline_visuals` section 7 (fill alpha 115/255, focused ring intact), `graph_panel_model`
-section 15 (`keyProportional` parallel to the marker vectors), `graph_panel_pixels` check 32
-(proportional centre lower contrast; edge/ring unchanged). `scripts/run_suites.sh Debug` reports
-**50 pass / 0 fail**, and the `AnimeEffects:Debug` target links.
+**A proportional key is a RING, not a softer fill** (the user rejected the lower-opacity key body:
+"the proportional keys are just lower opacity regular keys"). `ctrl::time::kProportionalRingOuterInset` =
+0.5 and `kProportionalHoleInset` = 2.5 make a hue disc that reaches 0.5px inside the marker's radius
+and a 1.25px-radius hole at the timeline's 3.75px key - a 2px hue band (the user's "a bit thicker,
+2px instead of 1px"); the selection/focus ring outside is untouched.
+Both hosts build the ring from FILLS (a stroked ring put the two AA kernels 69px apart on the Canvas
+parity gate): the TIMELINE fills the hole with the LANE's own ink (passed into `buildKeys`), and the
+GRAPH fills it with `theme::Graph::keyEdge()` (the panel floor), so a curve of the same hue cannot
+read through the marker. Polygon markers (slimmed lanes, holder diamonds, closed-folder summaries)
+use two copies of their outline, `kProportionalPolygonInset` = 0.62 (hue) and
+`kProportionalPolygonHoleInset` = 0.32 (hole). `KeyMark` publishes `hollow`, `hollowRadius`,
+`holeInk`, `hollowPolygon` and `hollowHolePolygon`, so the QPainter and Canvas paths cannot derive
+two geometries.
+
+**Gates (all green on the tree that added this section).** `proportional_keys` (solver + drift, the
+flat-span rule, the distinct-value freeze), `proportional_edits` (frame/value/toggle one-undo,
+including [3b] the LEFT bound and the Y component, [3c] a flat value segment inheriting the time
+fraction, [3d] a pre-flat-rule state migrating on its first edit, and [5] the zero-span loop seam
+whose blend used to abort the app during a Graph drag), `timekey_proportional` (ids/state/atomic `moveKeys`), `timekey_roundtrip` (0.16 id +
+weights survive `TimeLine` serialize/deserialize), `graph_drag` sections 29a/29b (frame and value
+drags carry the companion in one undo), `timeline_visuals` section 7 (the hole is the lane, the 2px
+band is the hue, the focused ring is intact), `graph_panel_model` section 15 (`keyProportional`
+parallel to the marker vectors), `graph_panel_pixels` check 32 (centre is floor-DOMINANT - the
+1.25px hole leaves a 10% hue tint on the centre pixel - the band is the fill ink, the edge and
+selection ring unchanged), `time_body_canvas` (the Canvas host paints the same ring, GEOMETRY 0).
+`scripts/run_suites.sh Debug` reports **53 pass / 0 fail**, and the `AnimeEffects:Debug` target
+links. The header control and the menu's check box were also driven live under Xvfb on
+`I_think_its_cursed_honestly.anie`: the toggle appears named `Proportional keys`, becomes enabled
+with a selection, and the key menu's check box renders the application field.
+
+**The bar's custom buttons are TAB-focus only.** `HeaderTextButton` (channels), `QuickEaseButton`
+(the four easings) and `ProportionalButton` set `Qt::TabFocus`, not `Qt::StrongFocus`: a mouse click
+must not leave a focus ring behind (the user's report: the toggle, the quick easings and the channels
+button each kept an "ugly outline" after being clicked). Tab still reaches them and paints the ring;
+the transport is NoFocus and the easing chip is NoFocus, so the bar now behaves like the rest of the
+chrome.
+The header's zoom and fit buttons are REMOVED (2026-10-24): the timeline wheel, its scroll bar and the
+graph wheel own zooming and fitting, so the bar ends at the channels trigger on the Graph tab. The
+four quick-easing tooltips share one recipe (`Set the selected keys' easing to %1`); only the Auto
+preset's ACCESSIBLE NAME keeps its longer action wording.
 
 ## Would ImGui make the TIMELINE faster? Measured 2026-10-22, and the answer depends on the GL driver
 
@@ -2474,7 +2636,7 @@ system does not know is now a SKIP (`not-configured`), decided by `grep "^build 
 build/build-<cfg>.ninja`; a target the build system KNOWS and did not produce is still a failure.
 Result on the default tree: **51 pass / 0 fail, skipped: frame_ruler_canvas(not-configured)**.
 
-NEXT for the body: the keys (markers, rings, proportional fills), the range markers and the marquee
+NEXT for the body: the keys (markers, rings, proportional markers - later the ring rule), the range markers and the marquee
 into the same model, then the `QCanvasPainterWidget` host behind `AE_CANVAS_PAINTER` and the
 raster-vs-canvas comparison across the state matrix.
 
@@ -2485,7 +2647,8 @@ equivalence harness reported **48 of 48 cases differing** by 5-95 px. The number
 is drawn too soft" (#fb7185 vs #a2606a at the essential key pixels), and the cause was my BASELINE:
 I generated the oracle from `git show HEAD:src/ctrl/time/time_Renderer.cpp`, but this file carries
 **uncommitted work** - the proportional-key fills (`if (isProportional) fill.setAlpha(
-kProportionalFillAlpha)`) - which HEAD does not have. So the "old" side drew full-strength fills and
+kProportionalFillAlpha)`; since replaced by the RING rule, see the proportional section) - which HEAD
+does not have. So the "old" side drew full-strength fills and
 the new side the proportional ones: the model was right and the oracle was stale.
 
 The cost: I then "reverted" the extraction by re-inserting HEAD's two functions, which DELETED the
@@ -2503,11 +2666,11 @@ RESOLVED the same day: with the oracle copied from the WORKING TREE, the SAME mo
 **48 of 48 cases pixel-identical** (`buildKeys`/`buildChildKeys`/`paintKeys` in
 `ctrl/time/time_BodyModel.{h,cpp}`, `Renderer::drawKeys`/`drawChildKeys` gone,
 `renderKeys` delegating). The model needed no change at all - only the baseline was wrong.
-`timeline_visuals` passes (it covers the proportional fill, the focused fill and the ring) and the
+`timeline_visuals` passes (it covers the proportional marker, the focused fill and the ring; the proportional marker is now the ring rule) and the
 suite is 51 pass / 0 fail.
 
 The key pass is therefore: bands/seams/labels (lane pass) + keys (markers, holder diamonds, slimmed
-diamonds, folder summaries, focused ring, proportional alpha) - all modelled in ctrl and drawn by one
+diamonds, folder summaries, focused ring, proportional ring) - all modelled in ctrl and drawn by one
 QPainter adapter. Left: the range markers, the marquee, the Canvas host and the body comparison.
 
 ### The whole body is modelled; its Canvas port is SHORT and the gate says so (2026-10-22)
@@ -2518,7 +2681,7 @@ oracle copied from the WORKING TREE:
 | pass | equivalence |
 |---|---|
 | lanes: fills, separators, lane labels, seam hairlines | 48 / 48 |
-| keys: markers, holder/slim diamonds, folder summaries, focused ring, proportional alpha | 48 / 48 |
+| keys: markers, holder/slim diamonds, folder summaries, focused ring, proportional ring | 48 / 48 |
 | frame-range guides + marquee | 78 / 78 |
 
 `renderRangeMarkers`/`renderSelectionRange` are adapters over `buildRangeMarkers`/`buildMarquee` +
@@ -2594,6 +2757,91 @@ QWidget - but the swap changes the class's construction and composes through a t
 a live run (Xvfb screenshots) to be called done. Qt 6.12 is installed durably at
 `~/Qt/6.12.0/gcc_64` (aqt; `-O ~/Qt -m qtcanvaspainter qtmultimedia qt5compat`), and both Canvas
 gates were re-run from it: 9/9 and 2/2.
+
+## Folder children lanes (2026-10-24)
+
+A COLLAPSED folder whose descendants have keys now gets a **dedicated summary lane** under its own
+lanes, instead of drawing the descendant triangles on the bottom of whichever lane happened to be
+last. The old overlay had two defects worth recording: several hidden channels at one frame drew the
+same triangle over itself, and the summary's y was the folder row's bottom, so it shared a lane with
+the folder's own keys (or with a child's, depending on height).
+
+**Geometry.** `ctrl::TimeLineRow` carries `summary` (computed once from `closedFolder &&
+hasDescendantKeys`) and splits its rect into `ownRect()` and `summaryRect()`, both 22px high when both
+exist. A folder with no own timeline types and a summary uses the WHOLE row for the summary (22px):
+an empty lane above it would be dead height, and there is no own content to overlap. A folder with
+own lanes is `base + 22`. Expanded folders have no summary - their child keys are rows of their own.
+`kFolderSummaryHeight == kHeight == 22`.
+
+The TREE has to grow with it or the columns desynchronise: `ObjectTreeWidget`'s display height uses
+the same rule (`base + 22` for a collapsed folder with own lanes, `22` for summary-only, base when
+expanded), re-measures on `itemExpanded`/`itemCollapsed`, and on every key add/remove
+(`onTimeLineModified`). The tree cell and the timeline row are both read through `visualRect`, so one
+height formula feeds both.
+
+**Ink and hit geometry.** The summary band uses the **same lane surface** as every other lane:
+there is no second colour. Its own 1px seam above it and the marker shape are the distinction - the
+user's ruling was that a dedicated recessed fill was an invented surface. It carries a **"Children" label** in `textMuted` at the lane-label alpha, in the same centred column
+and at the same size as every channel name (the tree already names the folder). Lane names use
+`core::TimeLine::getTimeKeyDisplayName` ("Opacity", not "Opa"); serialization and the clipboard keep
+the compact `getTimeKeyName` token, so the file format is untouched. The label says
+"Children", not "Summary": the band lists the keys of the folder's child layers. It is an ordinary
+lane label. The key passes are painted AFTER the labels, so a marker draws IN FRONT of the label
+(the label is behind it) exactly as it does for "Move" or "Scale"; that is not a defect. A left-anchored label was the first attempt and read as a floating mess across the frame-zero
+marker; centring it like a channel label was the fix. The markers are **one
+rounded triangle per frame**, not per key - the summary is about WHEN, and per-key marks overdraw -
+built as a 4.2px half-width / 6.2px tall triangle, flattened through
+`QPainterPath::toFillPolygon`. They are **fill-only** (`KeyPass::stroke == false`): a 1px `outline`
+edge on a 5px neutral marker read as a dirty rim, not as definition. All polygon key markers - the holder diamond, the slimmed rectangle and this triangle -
+share `ctrl::time::kKeyCornerRadius = 2.0px`; at that radius the triangle is visibly rounded at
+1x, the diamond still reads as a diamond, and the slimmed rectangle is not yet a pill. A 1.4px
+radius was invisible at 1x; 2.5 collapsed the diamond toward a circle. Fill `baseKey`; a frame holding
+a selected hidden key mixes that fill toward the text colour. `Marquee::hitTest`/`gather` use
+`summaryCenterY()` for a closed folder's descendants (the folder's own keys keep their own lane
+heights), so clicking a summary triangle selects the hidden key under it and a marquee over the band
+gathers those keys.
+
+**Where it was verified.** `tests/timeline_visuals.cpp` section 8 (registered; suite green): a
+folder with own keys and a child with two keys on one frame produces TWO lanes, the summary lane
+below, one rounded polygon, and a hit on the summary centre resolves to the child key; a summary-only
+folder produces ONE summary lane; an expanded folder produces none. Live on
+`Canette.anie` (nested folders `shootttt`, `small bandito`, `Whole bis`): collapsed rows show the
+band and triangles, expanding `small bandito` removes its summary and puts its three child lanes in
+place, and collapsing it restores the band; the tree and timeline stay aligned. Screenshots:
+`/tmp/summary_collapsed_folder.png`, `/tmp/summary_expanded_folder.png` (throwaway captures, not
+repo assets). The top document root is not a timeline row in this tree, so it has no summary lane;
+only nested folders do.
+
+### Box-select marquee: one rounded solid box in both views (2026-10-24)
+
+The timeline's marquee had drifted from the graph panel's: a dashed edge, and on the Canvas host
+straight manual dash runs that could not follow the rounded corners (the fill depended on the
+current path, too). Both views now draw the SAME box: `SelectionBox`/`theme::Graph`'s accentBright
+body at 24/255, radius 6, and a 1px SOLID accentBright edge at 230/255. The fill is what marks the
+selection; the dash carried no information and made the timeline's gesture look like a different
+feature. `gui::ink::paintMarquee` is the ONE placement both hosts call: it insets the raw gesture rect by
+0.5px, fills the rounded body, then strokes a 1px edge. The half-pixel inset is what makes the edge
+one device column; without it (the graph's previous raw integer rect) a 1px stroke straddled two
+columns and read as 2px. `paintGuides` is the QPainter adapter with the same inset;
+`paintGuidesCanvas` calls `paintMarquee` over `InkCanvas`, the same vocabulary and backend the graph
+panel uses. `time_body_canvas` compares the two renderings.
+
+### Two separator concepts: solid row seams, dashed type separators (2026-10-24)
+
+There are TWO different lines in the timeline, and they must not look alike:
+
+- **Row/layer seams** - the 1px lines between one row and the next (different layers, folders,
+  summary bands): **SOLID**, `trackEdgeColor` at 70% (`trackSeperatorColor` is not used here).
+- **Type separators** - the lines between the key-type bands INSIDE one row (e.g. Scale above
+  Opacity in the `line` lane): **DASHED 4-on/4-off**, `trackSeperatorColor` at 40%
+  (`theme::TimeLine.cpp`, alpha 102).
+
+The old type separators were 1-on/1-off dots (Canvas: 1px every 3), which vanished at 1x. A solid
+40% line was tried and was wrong for a different reason: it made the two concepts look the same.
+4-on/4-off is legible at 1x and still visibly lighter than the 70% solid row seams. Both renderings
+snap the fractional split to its row (`int(each.y)`); `paintLines` uses a custom dash pattern with AA
+off for that row, Canvas draws the same 4-on/4-off runs as 1px filled rects, and
+`time_body_canvas` still reports GEOMETRY 0.
 
 ### The dock host is SWAPPED: the timeline surface is a QCanvasPainterWidget (2026-10-22)
 
@@ -2907,7 +3155,7 @@ No mark is missing, none is in the wrong place by more than 2px, and nothing dif
 All three, on the docked Canvas page under cage (`docs/verification/graph-panel/`), with the app log at 0 errors:
 - **hover on a key** changes 744 px in the plot (the marker brightens and its chip appears - the Xvfb
   captures show the `Scale Y` chip at the curve's end);
-- **right-click** opens the panel's menu ("Paste key" disabled, "Fit graph") - 0 px inside the panel
+- **right-click** opens the panel's menu ("Paste" disabled, "Fit graph") - 0 px inside the panel
   because a Qt popup is its own window; it appears at 0,0 with no WM (kiosk artifact);
 - **marquee drag** changes 4027 px while the button is down and the release takes all 4027 away
   (transient state cleared, the class this tree has been bitten by);
@@ -3090,6 +3338,58 @@ line into the body's paint would repaint every key on every frame step (measured
 with the pixmap cache, 19.1 ms without). A 1px opaque child widget keeps the repaint the size of the
 thing that changed and needs no transparent RHI overlay - which nothing here has verified.
 
+**The temporary playback window's PILLS were invisible on the Canvas host, and the gate excused them
+(measured 2026-10-23).** A live A/B against the pre-migration binary (`e1fd8393`, raster host) showed
+the window's two label pills reduced to their stems plus light-on-dark TEXT on the bare band, where the
+raster host paints an opaque rounded pill with dark text. Two state bugs in one lambda
+(`FrameRulerCanvas.cpp`'s `pill`): it called `roundRect()` + `fill()` with the TICKS' subpaths still
+current (`fill()` does not reset the path - the same trap that cost 1923 px on the body's markers), and
+it inherited the ticks' `setAntialias(0)`, so a filled rounded rect had stair-stepped corners. Measured
+after the fix: the pill body goes 0 -> 1270 px of its own fill against the raster host's 1281, and the
+whole-band difference against the old binary drops 2651 -> 2092 px (the remainder is glyph AA, below).
+
+WHY THE GATE WAS GREEN, which is the part worth keeping: `frame_ruler_canvas` excused every pill's
+interior from pixel comparison (two AA kernels) and asserted OCCUPANCY only for the PLAYHEAD's pill -
+and it counted occupancy as "pixels differing from the box's modal colour". A pill whose FILL never
+landed still holds its LABEL TEXT, so the modal colour becomes the band and the ink count is the
+glyphs, which both sides have: the same numbers, one pill missing. The assertion now counts the box's
+pixels that match the pill's FILL TOKEN (`fillCount` in that gate, for the playhead's `playheadFill`
+and for `window.start`/`end`/`merged`'s `windowEdge`), so a body that is not painted fails: measured
+with the bug restored by hand, `window pill 100 raster=165 px canvas=2 px MISSING/DIFFERS`, `failures=6`
+of 9 cases; with the fix, `canvas=156` and 0 failures, on llvmpipe. Lesson, the file's own idiom:
+excusing a REGION is fine only when the thing that must be inside it is asserted by its own token, not
+by "something non-background is here".
+
+**What else the same A/B measured, so nobody re-opens it** (HEAD vs `e1fd8393`, both Release, same
+project/layer/frame, under Xvfb): the ruler's ticks, tick tiers, number positions, boundary and merged
+labels, the playhead pill and its line, the lanes with their keys/labels/seams, and the graph page's
+curves, keys, value labels, playhead and both scroll bars all match. The ONE remaining difference on
+these surfaces is the glyph rasteriser: Canvas2D's `fillText` covers one row and one column MORE than
+Qt's raster `drawText` for the same 12px string (ink rows 8..16 against 8..15, tops identical), which
+the ruler gate's own `textDiff` counts as 1138..3372 px per state. That is text-engine truth, not a
+layout or rule difference, and it is why "the numbers look different" is a real report about ink while
+every position matches. The other visible delta in that comparison - the dock header shifting ~12px -
+is the segmented `Timeline | Graph` tab restyle, which was uncommitted work in the same tree, not the
+migration.
+
+**The header's channels control read `0 channel(s)` over three drawn curves (fixed 2026-10-23).** The
+control is the panel's, but its HOST is the dock's bar (`TimeLineHeader`), so it has to be told. It was
+re-read only when the TAB changed (`setSurface`) and at `refreshFrame`, and neither fires when the
+object tree picks a layer while the Graph tab is already up: measured on `Canette.anie`, three curves
+drawn, button at `0 channel(s)`, and a `Timeline -> Graph` toggle corrected it to `3 channel(s)`.
+
+THE FIX IS NOT "EMIT FROM refresh()", and that is the part worth keeping. `TargetWidget`'s selection
+lambda calls `mGraphPanel->refresh()` from the tree's own `onSelectionChanged`, and the dock hands the
+new TARGETS over later in that same notification chain - so a count read at refresh() time answers
+from the PREVIOUS target: instrumented with a file write (qWarning never reached either the rerouted
+stderr file OR the journal in this build, so the probe was a `QFile` append), nine refreshes all
+reported `0 rows` while the page drew three curves. The panel now publishes what it DREW:
+`GraphPanelWidget::publishChannels(frame.model.channels)` runs right after `drawPanel` in the Canvas
+paint, gated on the row set actually changing (a playback tick repaints 60x/s and must not rewrite a
+label each time), and `TimeLineHeader` connects that signal with `mChannelsConnected` lazily - the page
+is a sibling that may not exist when the bar is built. Verified live: the same rig now reads
+`3 channel(s)` as soon as the layer is selected, and `scripts/run_suites.sh Debug` stays green.
+
 ## The Qt floor is 6.12 now, and the old timeline host is deleted (2026-10-23)
 
 **`find_package(Qt6 6.12 REQUIRED ... CanvasPainter)`** in the root `CMakeLists.txt`: a tree
@@ -3129,3 +3429,292 @@ the context/atlas refcount, `stroke`/`outline`), `InkQPainter` (0 callers), `Ink
 whose 192 claims are measured THROUGH ImGui. That gate is the only reason `ae_imgui` is still a
 dependency: it must be re-hosted on Canvas with its expectations re-derived before the ImGui
 deletion can land, and it cannot be split from it without leaving the tree unbuildable.
+
+## What one viewport frame costs, and what a pan contends with (2026-10-23)
+
+Measured on the R9 380 through `scripts/gui/gpu_headless.sh` (cage + wlroots headless, radeonsi),
+Release, `Canette.anie` (37 render units, 60 fps, range [0,200]), driven by xdotool: play, then a
+middle-drag pan. The instrumentation was temporary (`AE_PERF_TRACE` scopes) and is gone.
+
+**The scene was the cost, and most of it was per-layer waste.** `ObjectTree::render` split as
+(per frame) accessor 0.003 ms, `prerender` 2.8-3.1, collect+sort 0.015, `render` 2.1-2.4 - 4.9-5.5 total.
+Inside `MeshTransformer::callGL` (33 calls/frame): attribute uploads 0.025, transform-feedback draw
+0.0022, the three `glCopyBufferSubData` 0.0023, `glFlush` 0.005 and **`XC_ASSERT(glGetError())` 0.023**
+- 0.77 ms/frame asking the driver a pipeline question once per layer. Inside `LayerNode::renderLayer`
+(26 calls/frame): shader/uniform/attribute setup 0.036, `drawElements` 0.012, `glFlush` 0.005. The
+drawing itself was 0.4 ms of a 5 ms frame; the rest was submission overhead.
+
+Four changes, each measured on the same probe:
+1. `MeshTransformer::callGL` and `LayerNode::renderLayer` no longer `glFlush()` per layer - GL orders a
+   context's commands itself and the frame submits once at the end of `paintGL`.
+2. The per-layer `glGetError` probe is OPT-IN (`AE_GL_STRICT=1`); it cost 0.77 ms/frame. The frame-level
+   `GL_CHECK_ERROR()` still reports every error in any build.
+3. `TimeLineWidget::setFrame` returns early when the frame did not move (no whole-tree re-blend, no
+   viewport repaint for a no-op tick).
+4. `TimeLineWidget::onPlayBackUpdated` ROUNDS THE INTERVAL UP instead of truncating it. Truncation woke
+   the timer up to a millisecond before the frame boundary, that tick could not advance the frame, and it
+   re-armed for the remaining fraction - so a 60 fps project ran **78 ticks/s** with ~30 % of them
+   painting a frame that had not changed. After the fix: **60 ticks/s, 1.00 frames per tick**.
+
+Result: `Tree::render` **2.2-2.6 ms** (was 4.9-5.5), playback paints **60.0/s at 16.67 ms** with our
+paint taking **1.9 ms**, and a pan (which drives 115 requests/s: 60 ticks + ~55 moves) paints **66/s at
+15.0 ms**.
+
+**What the rest of a painted frame is, and the thing NOT to build.** ~15 ms of every 16.7 ms cycle is
+Qt's window composition, not our code: a stack sample during a pan sits in
+`QWidgetRepaintManager::paintAndFlush()` -> `MainDisplayWidget::paintEvent`, and a 1 ms watchdog cannot
+fire across it. The Qt docs say exactly this: `QOpenGLWidget::frameSwapped()` is "emitted after the
+widget's top-level window has finished composition and returned from its potentially blocking
+QOpenGLContext::swapBuffers() call", and `QOpenGLWindow` + `QWidget::createWindowContainer()` is
+"faster than QOpenGLWidget due to the lack of the additional composition step". `QWidget::update()` is
+documented to coalesce "when Qt returns to the main event loop" - i.e. per event-loop pass, NOT per
+display frame - which is why input events and timers can each produce their own paint.
+
+**A timer-based frame gate was implemented, measured and REMOVED** (do not re-add it): book the next
+paint on a single-shot timer at the screen's refresh, let every request re-evaluate against the clock,
+keep the timer only as a retry for a dropped tail. A/B on the same pan: **51-53 paints/s with the gate,
+66/s without**, and playback identical at 60/s either way - Qt already coalesces per pass, and a retry
+that fires ~9-14 ms late (the composition is uninterruptible) stretches the cycle past the period. So the
+pacing must come from presentation or a cheaper paint, never from an app timer.
+
+**Debug is not the story.** Debug differs only in the render share (blend 0.72 vs 0.24 ms, tick 0.77 vs
+0.29); the frame cadence, the composition cost and the paint rate are the same in both builds.
+
+**Two harness traps met while measuring this** (both looked like product bugs): killing the app leaves a
+recovery copy, and the next launch opens a modal "Recover unsaved project?" that swallows every click -
+launch probes with a fresh `XDG_CACHE_HOME`. And a project that moved on disk (the owner renamed the
+folder) makes the app start with an EMPTY project, silently, with no argv-project load and no error
+dialog - a probe must assert that the project is open, not just that a window exists.
+
+## The Timeline/Graph switch is a segmented FIELD, not an accent chip (2026-10-23)
+
+Every line measured on the running application (Xvfb, dark and light, `test.anie`).
+
+**The user's ruling beats the mock, and this is the second time it has.** The mock
+(`~/dev/graph-timeline-redesign/assets/mock.css:239`, `.tl-tabs button.on { color:
+var(--accent-text); background: var(--accent); }`) paints the current page tab as a solid accent
+chip. The user's report: *"the accent color in the Timeline/Graph segmented control is rough, could
+be better designed, accent fill is too much there."* At 11px in a 40px bar beside a row of muted
+icon buttons that chip was the loudest thing in the dock - and the accent belongs to the DOCUMENT's
+own marks (the playhead pill, the keys, the selection ring), not to the chrome that names which page
+is up.
+
+**What it is now** (`TimeLineHeader::refreshTabStyle`, tokens only, no stylesheet asset): the two
+tabs are one SEGMENTED FIELD in the header's own vocabulary - the ease chip's recipe
+(`prop::EasingChip::paintEvent`: `recessed` surface + `hairline` edge, and it is the header's only
+other filled control) - and the current segment is the KNOB raised out of it:
+
+|part|token|dark|light|
+|---|---|---|---|
+|trough|`recessed` + 1px `hairline`, radius 6|`#171717` + `#404040`|`#f5f5f5` + `#e5e5e5`|
+|knob (current)|`raised` + 1px `outline`, radius 4, inset 2|`#404040` + `#525252`|`#e5e5e5` + `#d4d4d4`|
+|label at rest|`textMuted`|`#a3a3a3`|`#737373`|
+|label hover / current|`text`|`#f5f5f5`|`#171717`|
+
+**NO FILL ON HOVER, and that is structural: `raised` IS the knob's fill in both themes** (dark
+`raised` == `hairline` == neutral 7; light `raised` == `hairline` == neutral 2), so a hover fill
+would paint a second knob and the pointer could not be told from the selection. Measured: hovering
+"Graph" took its glyph peak 156 -> 234 with the trough pixel unchanged at `#171717` - label-only
+feedback, the same signal the bar's icon buttons give.
+
+**Light theme is the weak one, and it is the app's weakness, not this control's.** Light `raised`
+(`#e5e5e5`) against light `recessed` (`#f5f5f5`) is 1.1:1; the knob's `outline` edge and the label
+ink (`#171717` against `#737373`) carry the state. `modetabbar.ssa`'s own selected tab has exactly
+the same fill contrast on `base`, so the segmented field is consistent with the application rather
+than inventing a stronger rule for one control.
+
+The capture of all four states - before, dark on each page, light - is
+`docs/verification/graph-panel/header-tabs-segmented.png`.
+
+**Size, and why the dock widens by 12px.** Tabs measure 60x21 -> **66x25** (both states), so the
+dock's minimum width went 895 -> 907 and the window with it. It is CONSTANT across the two tabs, so
+the "a tab-scoped control grows the dock" trap (the channels button) does not apply here.
+
+**Two QSS facts this cost:**
+- **Tokens are substituted by NAME (`replace`), not by `%N`.** The sheet carries 13 values and
+  `QString::arg`'s `%1` collides with `%10` - and a mis-ordered chain reported nothing, it just
+  rendered the wrong colour.
+- **A widget's own sheet beats `standard.ssa`'s `QTabBar::tab:top:!selected`** even though that
+  selector has one more pseudo-state: the measured rest ink is `textMuted`, as the sheet asks, not
+  the app sheet's `text`.
+
+**`probe_graph_parity.sh`'s PILL STEP was wrong, and it is fixed (2026-10-23).** It used to read
+ONE column of the playhead pill (`px0+4`, "the padding column") and require the longest run of
+pixels EQUAL to the token in that column to be the model's `NUMBER_HEIGHT` (14) +-1. Three things
+made that unusable on a Canvas-rendered ruler, in the order they were measured
+(`docs/verification/graph-panel/pill-probe-step.png`):
+
+1. **The column can be a digit's stem.** `px0` is the first column of a tol-2 run, so it starts one
+   column INSIDE the drawn edge and `px0+4` is 5 columns in - exactly where a frame number begins
+   after `kPillPadding`. The 3-digit pill ("281", 30px) read **3 rows** and the probe aborted with
+   that number; the 1-digit pill ("1", 17px) read 12.
+2. **`tol 1` is "equals the token", and the pill's own outer row is not the token.** The top and
+   bottom rows are 93%-coverage blends, `(163,136,244)`, **distance 7.8**, while the band is 260
+   away - so no column could ever count 14 and the guard was unsatisfiable at ANY column.
+3. **A column MAXIMUM is wrong too, for a reason that is not obvious until it bites:** the playhead
+   LINE hangs from the pill's own bottom row in the pill's own colour, so at the pill's centre
+   pill+line is ONE 23-row run - the tallest column is the line, not the pill. A row MAJORITY is
+   wrong from the other side: a row through the number is mostly NOT the token (the densest row of
+   "281" kept 9 of its 28 columns), so the pill read as two runs with a 3-row longest.
+
+**The fix, and its shape.** The pill is measured by ROWS over its own columns:
+`scripts/gui/ae_ink.py` gained **`rowruns <raw> <w> <h> <r> <g> <b> <tol> <mincols>`** - the
+y-runs of rows holding at least `mincols` pixels within `tol` of the colour, the fill-sense mirror
+of `inkcols`. The probe crops the pill's own fill-run columns once and asks for rows carrying
+`PILL_MIN_COLS = 3` (structural: the only 1px thing in that colour is the playhead line) with
+`PILL_FILL_TOL = 40` (mid-gap: the rim is 7.8 away, the band 260). Both the search-window read and
+the strip read use it, and the polarity inversions they used to need are gone. Measured after the
+fix: the pill is **rows 241..254, 14 tall**, at `kPillTop` 2 of a 22-row strip, on BOTH pages, from
+the same fill run (page-relative `284+28`) - and the probe now runs end to end instead of aborting
+at 47 s.
+
+**The 2 failures it found are FIXED, by adopting the engine's own rule.** Once the probe could run,
+the one property failing was the frame number's glyph rows: **243..252 on the timeline against
+242..250 on the graph** - the panel's numbers one row HIGH. Measured across every number in the band,
+both pages' glyph HEIGHTS were identical (same histogram, modal 9 rows) and only the TOPS differed,
+so it was placement, not size. The two spellings:
+
+- `gui::InkCanvas` / `gui::InkQPainter` placed the run by its INK box (`box.top() +
+  kRulerNumberInkTop`, baseline from `tightBoundingRect().top()`): hand-derived, and one row above
+  where the timeline inks.
+- The TIMELINE's rulers place it with the ENGINE's own top baseline (`Canvas TextBaseline::Top` /
+  Qt's `AlignTop` on the box's top row), and the digits' ink follows three rows down (ascent 11.6
+  minus cap top 3.3) with no constant at all.
+
+THE ENGINE'S RULE WON - it is what the application already draws the ruler with, on the same face
+and size. Both portable backends now do `VAlign::Top` = "the box's top row is the line box's top".
+Measured after: panel rows **243..251** against the timeline's 243..252, `probe_graph_parity.sh`
+**OK / 0 failures** on the same tree (band, hairline, ticks, pill box/column/fill, playhead column
+and both scroll-bar lanes still agreeing), and `scripts/run_suites.sh Debug` **53 pass / 0 fail**
+(including `graph_panel_pixels`' backend matrix and `frame_ruler_canvas`). `gui::kRulerNumberInkTop`
+survives for `gui::InkImGui` alone - ImGui's line box is its own, and the pixel gate, its only
+remaining consumer, still pins the row against that constant.
+
+Both ruler bands after the change are `docs/verification/graph-panel/ruler-number-rows.png`
+(timeline above, graph below, 2x point-sampled): `0 / 12 / 24 / 36 / 48 / 60` land on the same rows
+in both, which is the property the probe was measuring when it failed.
+
+## Shift's axis snap measures from the PRESS, on BOTH axes (2026-10-24)
+
+Shift during a key move locks the dominant axis (the pointer's absolute pixel displacement from the
+press decides which one, `GraphEditor::updateKeyMove`). The VALUE half was always absolute - the
+pointer's row minus the row the press went down on - so the axis the pointer stopped dominating
+returned to the value it held at the press. The FRAME half was not: it accumulated
+`pointerFrame - mMovePointerFrame` from the last accepted step, so an axis the snap had left kept the
+part of the drag that had moved it.
+
+Measured on the report "holding shift and dragging left and then a bit down drags it on the X axis
+and then switches to the Y axis, but from the latest X axis position rather than the starting
+position": a 40px left step moved the key frame 12 -> 10, and the following predominantly-down step
+(value dominant) left it at 10 instead of returning it to 12. Both halves are now ABSOLUTE under the
+snap: `target = pressKeyFrame + (pointerFrame - pressPointerFrame)` while the frame axis is active,
+`pressKeyFrame` otherwise, and the step is the distance from `mMoveFrame` (where the key is NOW, so a
+clamp or a refusal is absorbed) to that target. The gesture stays ONE command rewritten in place, so
+a switch is still one undo step.
+
+The two new press fields are `mMovePressPointerFrame` and `mMovePressKeyFrame`, and
+`mMovePointerFrame` keeps advancing by every accepted step in BOTH branches - that invariant (the
+key's frame delta equals this pointer frame's delta) is what makes releasing Shift mid-drag put the
+key under the pointer instead of jumping it.
+
+Gate: `tests/graph_drag.cpp` section 21's switch block (press, 40px left, 40px down at 5px left:
+`frame 12 -> 10 -> 12`, the value following its own row, and the four-gesture undo count proving the
+switch did not push a second command). Verified discriminating: with the old relative reading
+restored by hand it fails at `d0->frame() == 12` (`FAIL 3449`). `scripts/run_suites.sh Debug` =
+**53 pass / 0 fail**. Not driven live - the host hands the same `QMouseEvent`s to the same
+`GraphEditor::updateCursor`, which is what the gate exercises, but no probe drags a key on the
+Canvas host yet.
+
+## A key's components are independent channels: the press names the MARKER (2026-10-24)
+
+The user's report: "in the graph editor the keys from different channels like Move X and Y are fixed
+on the value axis ... dragging one moves the sibling linked on both axes, they should obviously only
+be on the time axis, not the value axis, they are independent channels."
+
+**What was wrong.** A press on a marker wrote a WHOLE-KEY selection entry (`markerTarget` names
+`(line, type, frame)`, no component), and `beginKeyMove` expanded a whole-key entry to one VALUE member
+per graphable component. So a plain press + vertical drag wrote Move X's AND Move Y's value with the
+same delta - the sibling moved behind the user's back. (`time::Selection` has always had the marker
+level, and the design section above claims "a plain press selects the marker under the pointer"; the
+code did not.)
+
+**The rule now, in three places.**
+
+- *The press writes the MARKER* (`GraphEditor::updateCursor`'s key branch): a plain press replaces the
+  selection with `(key, channel.component())` unless that marker is already covered, in which case it
+  GRABS the group; Shift and Ctrl both toggle THAT marker (`containsMarker` +
+  `addMarker`/`subtractMarker`). The click collapse on release is the marker too
+  (`mClickCollapseComponent`), so a click keeps exactly what the press named.
+- *The value half reads markers* (`beginKeyMove`): a marker entry writes its own component. A WHOLE-KEY
+  entry - what a marquee, ctrl+A and every timeline gesture write - names the TIME axis only, so its
+  value half is the component the PRESS GRABBED (`mMoveComponent`), applied to every key the entry
+  names: a marquee over several keys still moves the channel under the pointer on all of them, and no
+  sibling channel is touched.
+- *The frame half is unchanged*: one target per KEY, deduplicated, so the shared frame still moves once
+  per gesture whatever the selection's level - which is why a marker entry loses nothing on the time
+  axis (`Selection::assign` still emits one target per key for the timeline's own commands).
+
+**Gates.** `tests/graph_drag.cpp` section 23e was re-derived: (a) a plain press selects X alone and Y
+wears the sibling ring, (b) Shift adds Y / Ctrl removes it / Ctrl puts it back, (d2) NEW - the reported
+gesture from an empty selection (press on X, drag up: X follows, `scale().y()` bit-identical, one undo),
+(e) a whole-key marquee selection dragged vertically moves the grabbed channel on BOTH keys and leaves
+every Y untouched (it used to move all four components). Section 20's entry-level assertion and 23g's
+cross-view parity now read the marker level (component 0) while still comparing the same KEYS with the
+timeline, and 29b's proportional value drag writes X only (`Y == 20` / companion `Y == 10`).
+
+**Verified discriminating, both halves separately** (each patch restored by hand, run, reverted):
+restoring the whole-key PRESS fails `graph_drag` at `FAIL 4670: editor.selection().count() == 2`;
+restoring the whole-key VALUE expansion (keeping the marker press) fails at
+`FAIL 4836: mk0->scale().y() == 30.0f`. `scripts/run_suites.sh Debug` = 53 pass / 0 fail.
+
+Not driven live: the panel host hands the same `QMouseEvent`s to `GraphEditor::updateCursor`, and no
+probe drags a key on the docked page yet.
+
+## A stored tangent keeps its offset from ITS OWN key (2026-10-24)
+
+The user's second report on the same round: "the Y of free handles seems to be relative on the value
+axis, so when I move the keys on the value axis the handles scale strangely. The Y should be relative
+to the key they're visually connected to."
+
+**What was wrong.** The bezier's control point is stored as a FRACTION of the segment's value span
+(`handlePointAt`, `ctrl/graph/graph_Geometry.h:177`: `value = fromValue + ny * (toValue - fromValue)`).
+That is the right storage for playback - it is the curve's shape - but it made the DRAWN handle rescale
+with the span: move the `to` key up and the `from` key's own handle (whose key did not move) slid up by
+`ny * dv`, so its stem grew and its angle changed under the user's hand. `tests/graph_drag.cpp` 23f
+(d) used to PIN that ("both params stayed byte-identical ... its pair N deg off the through-line").
+
+**The rule now: the MODE is document state, the GEOMETRY is key-relative.** `KeyMoveCommand`'s fourth
+half (`buildTangents`/`applyTangents`, `ctrl/GraphEditor.cpp`) captures, before the first value write,
+every STORED side - `HandleMode_Free` or `HandleMode_Aligned` on a `Type_Custom` param - of the two
+segments adjacent to a moved key: the param, which side (0 = `x1,y1`, the from key's outgoing; 1 =
+`x2,y2`, the to key's incoming), the segment's two keys, the anchor key the handle is drawn from, and
+the handle's VALUE offset from that anchor. Every step then re-derives
+`ny = (anchorValue + offset - fromValue) / (toValue - fromValue)`, so the handle keeps its offset from
+its key; `x` and both modes are never written, and derived sides (Vector/Auto/AutoClamped) are left to
+their own derivation. The step is an absolute function of the document's values, so a rewritten step
+and a redo reproduce it; `undo()` restores each captured param and the values, and the whole gesture is
+still ONE command.
+
+Two consequences worth stating. The EASING SHAPE changes when a key's value moves - that is what
+absolute handles mean (Blender's model) - so the curve can bulge where it used to keep its proportions.
+And an ALIGNED pair stays collinear IN PIXELS across such a move (both offsets are preserved and the
+frame spans do not move), which is why the mode can keep being a stored fact rather than an inference.
+
+**Measured.** `graph_drag` 23f (d) is re-derived around the new rule: moving B on the value axis only
+(90.0 -> 79.4) leaves every mode and every X byte-identical, re-derives all four stored Ys, keeps each
+handle's pixel offset from its key within 1px, and leaves the pair `0.000 deg` off the through-line
+(it was `0.000` before the move; the old pin expected it to go OFF it). One undo restores both params
+byte-identically (`fA == keepAB`, `fB == keepBC`) and the key's value. `scripts/run_suites.sh Debug` =
+**53 pass / 0 fail**, `AnimeEffects:Debug` links.
+
+**NOT wired, stated rather than implied:** only the GRAPH's value gesture re-derives. Other value
+writes (the timeline's key panels, the SRT live commands, the bone/mesh/FFD tools) still leave the
+fraction alone, because each of those is a direct `cmnd::ModifiableAssign` on key data rather than a
+span-aware command - wiring them means teaching each its own reflow, and a live 3D drag would rewrite
+easings on every step. A user editing values there will still see a handle rescale.
+
+Also worth recording, because it was asked and answered: the SIBLING MARKER's ink was never the
+regression. A marker whose key is selected on another component keeps the mock's faint 1px hue ring at
+0.35 and no fill change (`mock-graph.js` `_keys`, `kKeySiblingRingAlpha`), and it has been that way
+since `a9dd0fbc`; what changed in this round is only that the state now ARISES from a plain press,
+which names one marker instead of the whole key.

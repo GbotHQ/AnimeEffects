@@ -141,6 +141,19 @@ int main(int argc, char** argv) {
             ellipse.fill = theme::channelColor(theme::Colors::current(), core::TimeKeyType_Move, 0);
             f.keys.marks.append(ellipse);
 
+            // A PROPORTIONAL key is a ring in both hosts: the hue band inside the
+            // ordinary edge, with a hole (transparent here; the lane fill is already
+            // on the texture). The fixture must contain it or the Canvas pass's
+            // hollow branch has no gate.
+            ctrl::time::KeyMark hollow = ellipse;
+            hollow.centre = QPointF(170.5, 30.5);
+            hollow.hollow = true;
+            hollow.holeInk = ctrl::time::opaqueOver(
+                theme.trackSelectColor(), theme::Colors::current().base
+            );
+            hollow.hollowRadius = hollow.radiusX - ctrl::time::kProportionalHoleInset;
+            f.keys.marks.append(hollow);
+
             ctrl::time::KeyMark ringed = ellipse;
             ringed.centre = QPointF(220.5, 30.5);
             ringed.hasRing = true;
@@ -158,6 +171,29 @@ int main(int argc, char** argv) {
             diamond.polygon << QPointF(320.5, 26.3) << QPointF(324.7, 30.5) << QPointF(320.5, 34.7)
                             << QPointF(316.3, 30.5);
             f.keys.marks.append(diamond);
+
+            // The same polygon rule in its hollow form: the model publishes the inset
+            // outline, and both hosts stroke it with the hue.
+            ctrl::time::KeyMark hollowDiamond = diamond;
+            hollowDiamond.centre = QPointF(370.5, 30.5);
+            hollowDiamond.hollow = true;
+            hollowDiamond.holeInk = ctrl::time::opaqueOver(
+                theme.trackSelectColor(), theme::Colors::current().base
+            );
+            hollowDiamond.polygon.clear();
+            for (const QPointF& point : diamond.polygon)
+                hollowDiamond.polygon.append(point + QPointF(50.0, 0.0));
+            for (const QPointF& point : hollowDiamond.polygon) {
+                hollowDiamond.hollowPolygon.append(
+                    hollowDiamond.centre
+                    + (point - hollowDiamond.centre) * ctrl::time::kProportionalPolygonInset
+                );
+                hollowDiamond.hollowHolePolygon.append(
+                    hollowDiamond.centre
+                    + (point - hollowDiamond.centre) * ctrl::time::kProportionalPolygonHoleInset
+                );
+            }
+            f.keys.marks.append(hollowDiamond);
 
             ctrl::time::KeyMark triangle;
             triangle.shape = ctrl::time::KeyShape::Polygon;
@@ -221,6 +257,11 @@ int main(int argc, char** argv) {
                     QRectF box(mark.centre, QSizeF(0.0, 0.0));
                     if (mark.shape == ctrl::time::KeyShape::Polygon)
                         box = mark.polygon.boundingRect();
+                    if (mark.hollow && mark.shape == ctrl::time::KeyShape::Ellipse)
+                        box = QRectF(
+                            mark.centre.x() - mark.radiusX, mark.centre.y() - mark.radiusY,
+                            mark.radiusX * 2.0, mark.radiusY * 2.0
+                        );
                     if (mark.hasRing)
                         box = box.united(QRectF(
                             mark.centre.x() - mark.ringRadius, mark.centre.y() - mark.ringRadius,

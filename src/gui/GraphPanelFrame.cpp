@@ -144,6 +144,16 @@ bool tickInActiveRange(const GraphPanelModel& aModel, int aIndex) {
 // gestures are the same shape.
 constexpr float kMarqueeRounding = 6.0f;
 
+// THE FRAME RANGE'S GUIDES' ink: the timeline's section-separator tone at the
+// timeline's own two alphas (ctrl/time/time_BodyModel.cpp's buildRangeMarkers, whose
+// 102/255 and 64/255 these are), so the guides recede behind the graph exactly as they
+// recede behind the lanes - and drop further while a temporary playback window is
+// active, because the window's brackets carry the boundary reading then. The token is
+// theme::Graph::rulerLine() - the palette's hairline, the same cell the timeline's
+// guides use - so the two views cannot drift to different guide colours.
+constexpr float kRangeGuideAlpha = 0.40f;
+constexpr float kRangeGuideWindowAlpha = 0.25f;
+
 // The label halo: the same glyphs drawn at the eight compass offsets of radius 1
 // and radius 2, so the ring reaches 2px past the glyph ink in every direction.
 // Read only while gui::kDrawTextHalo is on (shipped off: see addHaloedText).
@@ -367,12 +377,6 @@ constexpr float kKeySelectedFillMix = 0.45f;   // 0.45 of the way to the text co
 constexpr float kKeyHoverFillMix = 0.4f;       // mock-graph.js lighten(hue, 0.4)
 constexpr float kKeySiblingRingAlpha = 0.35f;  // mock-graph.js hexA(hue, 0.35)
 constexpr float kKeyRingWidth = 1.0f;          // the 1px ring of the design's sentence
-// THE PROPORTIONAL MARKER'S FILL: the same fill (channel hue, hovered mix or selected
-// mix) at 45% of its ALPHA - ctrl::time::kProportionalFillAlpha, 115/255, the
-// timeline's own token. Only the opacity moves: the marker's radius, its hue, its
-// edge stroke and both rings keep the exact ink every other marker gets, so one
-// proportional key reads as the same dot, softer, in either view.
-constexpr float kKeyProportionalFillAlpha = 0.45f;
 
 // TANGENT-HANDLE CHROMA (see the handle pass below). A handle sits ON its own
 // curve, so at the curve's full chroma its stem and dot disappear into the stroke
@@ -1433,11 +1437,11 @@ void drawPanel(
     // glyph's first column is the reserve's left edge on both views; what overflows the
     // slot does so on the right, exactly as the timeline's own numbers do.
     //
-    // TOP-ALIGNED ON THE TIMELINE'S INK ROW: the box is the RULER's, and
-    // Labelink::VAlign::Top lands the run's first inked row on kRulerNumberInkTop rows
-    // below its top - the row TimeRuler's own numbers ink. Centring in the same box is
-    // what put the panel's numbers below the timeline's; aligning the line box alone
-    // still left them one row low (the two rasterizers' bearings differ).
+    // TOP-ALIGNED ON THE TIMELINE'S INK ROW: the box is the RULER's, and VAlign::Top puts
+    // the run's LINE BOX top on the box's top row - the rule the timeline's own rulers draw
+    // their numbers with, so the digits' ink lands three rows down on both (see
+    // gui::kRulerNumberInkTop; the ImGui backend is the one that still needs the ink-row
+    // correction, because its line box is its own).
     for (const PanelLabel& label : aModel.frameLabels)
         aInk.text(label.rect, label.text, ink::HAlign::Left, ink::VAlign::Top, label.inActiveRange ? axisText : withStrength(aTheme.axisText(), kOutsideActiveRangeAlpha), halo, 0);
 
@@ -1501,6 +1505,44 @@ void drawPanel(
         } else {
             drawWindowPill(aModel.playWindow.startPill, aModel.playWindow.startText, true, false);
             drawWindowPill(aModel.playWindow.endPill, aModel.playWindow.endText, false, true);
+        }
+        aInk.popClip();
+    }
+
+    // THE FRAME RANGE'S GUIDES, behind every curve: the ruler's two boundary ticks
+    // continued down the body - the timeline's own two hairlines
+    // (ctrl::time::buildRangeMarkers / paintGuides), in the timeline's ink.
+    //
+    // THEY ARE PANEL COLUMNS AND PLOT ROWS, and both halves are deliberate. The
+    // columns are the shared frame mapping's (a frame's x is the TIMELINE's x), so the
+    // project's first frame is usually inside the value column the plot is inset by: a
+    // guide clipped to the plot would vanish exactly when the view is at the start of
+    // the range, which is the state it is most useful in. The playhead already draws
+    // over the panel's columns for this reason. The ROWS, by contrast, are the plot's
+    // alone: the ruler band above is the ruler's section (its boundary ticks are already
+    // there) and the horizontal bar's lane below is the bar's, so the guides neither
+    // duplicate a tick nor cross that lane. (A guide whose column falls in the VERTICAL
+    // lane's 12 columns is drawn under it - the bars are painted after, as they are over
+    // the playhead's column - and a frame that far right is outside the plot's window
+    // anyway.)
+    //
+    // The clip is therefore not the plot's, and the guides are drawn BEFORE it is
+    // pushed: the value ticks, the zero rule, the curves, the keys and the handles all
+    // sit on top of them, and the value labels (painted last, over the panel) cover
+    // them where they cross the column's numbers.
+    if (!aModel.rangeGuideX.isEmpty()) {
+        const QColor guide = withStrength(
+            aTheme.rulerLine(), aModel.rangeGuideRecede ? kRangeGuideWindowAlpha : kRangeGuideAlpha
+        );
+        aInk.pushClip(QRect(aModel.panel.left(), plot.top(), aModel.panel.width(), plot.height()));
+        for (int x : aModel.rangeGuideX) {
+            // Half a pixel of inset at each end: the 1px non-AA path is half-open (see the
+            // ruler ticks and the playhead above), so this inks rows plot.top()..plot.bottom()
+            // - the plot's own rows, no more.
+            aInk.line(
+                QPointF(float(x), float(plot.top()) - 0.5f), QPointF(float(x), float(plot.bottom()) + 0.5f),
+                guide, 1.0f
+            );
         }
         aInk.popClip();
     }
@@ -1586,10 +1628,12 @@ void drawPanel(
     // pointer is on it - the pointer never changes a marker's SIZE or its edges.
     //
     // PROPORTIONAL is a fourth, ORTHOGONAL axis (PanelCurve::keyProportional), not a
-    // state: whatever fill the state above gives the marker, a proportional marker
-    // gets that same ink at 45% of its alpha (kKeyProportionalFillAlpha, the
-    // timeline's token). Its radius, hue, edge and both rings are untouched, so the
-    // only difference from an absolute marker is how solid the body reads.
+    // state: a proportional marker is a RING, the same shape the timeline draws
+    // (ctrl::time::kProportionalRingOuterInset / kProportionalHoleInset). The state's ink
+    // becomes the ring's colour, the marker's centre is filled with the panel's floor
+    // (aTheme.keyEdge()) so the curve behind it cannot show through the key, and the
+    // ordinary edge stays outside it. Its radius, hue, edge and both rings keep their
+    // tokens, so the two views cannot ink one proportional key two ways.
     //
     // THE MARKER IS NOT THE PICK AREA, and that is the timeline's own rule for a
     // small element ("hit testing and visuals are two separate things"): the editor
@@ -1654,16 +1698,23 @@ void drawPanel(
                 && curve.node == pick.node && curve.channel == pick.channel
                 && curve.keyFrames.at(k) == pick.frame;
             const QPointF centre(dot.x(), dot.y());
-            // A proportional marker's fill is the SAME ink at 45% of its alpha; the
-            // edge below and both rings keep their own tokens untouched.
+            // A proportional marker's ink is its RING: the same plain/selected/hover
+            // colour, at the curve's strength, but stroked as a band inside the edge.
             QColor fill = plainFill;
             if (selected)
                 fill = selectedFillInk;
             else if (hoveredHere)
                 fill = mixedToward(curve.color, highlightInk, kKeyHoverFillMix);
-            if (proportional)
-                fill.setAlphaF(fill.alphaF() * kKeyProportionalFillAlpha);
-            aInk.circleFill(centre, dotRadius, fill);
+            if (proportional) {
+                // A ring built from FILLS, the geometry the timeline's key pass uses:
+                // the hue disc, then the panel floor in the hole (so the key's own curve
+                // cannot read through its body), then the ordinary edge below.
+                aInk.circleFill(centre, dotRadius - float(ctrl::time::kProportionalRingOuterInset), fill);
+                aInk.circleFill(centre, dotRadius - float(ctrl::time::kProportionalHoleInset),
+                                aTheme.keyEdge());
+            } else {
+                aInk.circleFill(centre, dotRadius, fill);
+            }
             // THE EDGE STROKE IS CENTRED ON THE REFERENCE'S RADIUS. ImGui's AddCircle
             // strokes INWARD from the radius it is given (a 1px circle at r covers
             // [r-1, r]), so r on its own would draw the whole band inside the fill. At
@@ -1803,13 +1854,13 @@ void drawPanel(
     // own gesture and is drawn with the timeline's own colours
     // (theme::Graph::marqueeEdge()/marqueeFill(), ctrl/time/time_Renderer.cpp's
     // renderSelectionRange): a rounded (6px) accent body at low alpha under a 1px
-    // accent edge. ImGui's draw list has no dashed stroke, so the edge is solid -
-    // the one thing about the timeline's box that cannot be reproduced here.
+    // accent edge - the SAME rounded solid treatment as the timeline's box.
     // It is drawn INSIDE the plot clip (pushed above), and the playhead goes on top
     // of it, so a drag never paints over the axes or the value column.
     if (!aModel.marquee.isEmpty()) {
-        aInk.fillRect(QRectF(aModel.marquee), aTheme.marqueeFill(), kMarqueeRounding);
-        aInk.strokeRect(QRectF(aModel.marquee), aTheme.marqueeEdge(), kMarqueeRounding, 1.0f);
+        gui::ink::paintMarquee(
+            aInk, QRectF(aModel.marquee), aTheme.marqueeFill(), aTheme.marqueeEdge(), kMarqueeRounding
+        );
     }
 
     // The name CHIPS: one for every curve IN PLAY - the channels that own a selected
@@ -2724,6 +2775,12 @@ void dumpPanelModel(const PanelFrame& aFrame, const QSize& aViewport) {
     root.insert("valueLabels", values);
     root.insert("playheadX", aFrame.model.playheadX);
     root.insert("zeroY", aFrame.model.zeroY);
+    // THE FRAME RANGE'S GUIDES (see GraphPanelModel.h): the two columns, so a capture can be
+    // measured against the ruler's boundary ticks they continue.
+    QJsonArray rangeGuides;
+    for (int x : aFrame.model.rangeGuideX)
+        rangeGuides.append(x);
+    root.insert("rangeGuides", rangeGuides);
     root.insert("hThumb", QJsonArray{aFrame.model.hThumb.x(), aFrame.model.hThumb.y(), aFrame.model.hThumb.width(),
                                      aFrame.model.hThumb.height()});
     root.insert("vThumb", QJsonArray{aFrame.model.vThumb.x(), aFrame.model.vThumb.y(), aFrame.model.vThumb.width(),

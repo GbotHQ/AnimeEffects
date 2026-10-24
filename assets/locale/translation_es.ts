@@ -6111,6 +6111,30 @@ El registro está disponible a continuación.</translation>
         <source> key(s), due to the following reasons: </source>
         <translation> clave(s), debido a las siguientes razones: </translation>
     </message>
+    <message>
+        <source>Copy</source>
+        <translation>Copiar</translation>
+    </message>
+    <message>
+        <source>Copy to clipboard</source>
+        <translation>Copiar al portapapeles</translation>
+    </message>
+    <message>
+        <source>Delete</source>
+        <translation>Eliminar</translation>
+    </message>
+    <message>
+        <source>Paste</source>
+        <translation>Pegar</translation>
+    </message>
+    <message>
+        <source>Make proportional</source>
+        <translation>Hacer proporcional</translation>
+    </message>
+    <message>
+        <source>Make absolute</source>
+        <translation>Hacer absoluto</translation>
+    </message>
 </context>
 <context>
     <name>gui::TimeLineHeader</name>

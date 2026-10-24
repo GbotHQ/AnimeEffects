@@ -97,13 +97,14 @@ struct PanelChannelRow {
     // it is compared against is const (focusedNode()), and that is a comparison.
     core::ObjectNode* node = nullptr;
     ctrl::graph::Channel channel;
-    QString layer;      // the target's own name: the group heading is layer · group
-                        // ("line · Move [X][Y]"), see MainDisplayWidget::showGraphChannelMenu
+    QString layer;      // the target's own name: a LAYER section heading in the list
     QString name;       // the channel's label for a list row or a chip ("Move X"), or
-                        // the bare type name for a one-component type ("Opa") - see CHIPS
+                        // the display type name for a one-component type ("Opacity")
     // THE LEGEND GROUP this row belongs to (design section 7): one group per
-    // (layer, key type), naming the PROPERTY and its components - "Move [X][Y]",
-    // "Opa [Opacity]". The group carries the structure (which property); the row's
+    // (layer, key type), naming the PROPERTY and its components - "Move [X][Y]";
+    // a one-component type carries just its display name ("Opacity"), which the
+    // list omits as a heading because the row repeats it. The group carries the
+    // structure (which property); the row's
     // `color` carries only the axis, so two red X curves are told apart by their
     // group, not by a hue that cannot encode it. Built once per (layer,type) from
     // the same Channel table that names the components, so the heading and the rows
@@ -210,9 +211,9 @@ struct PanelCurve {
     // `keys`/`keyDots`/`keyFrames`/`keySelected`: core::TimeKey::isProportional() of
     // the key `keyFrames[i]` names. It is the key's own classification, published as
     // the engine states it - the model does not decide what a proportional key looks
-    // like. The drawing layer does: both views lower ONLY the marker's fill opacity
-    // (ctrl::time::kProportionalFillAlpha, 0.45), leaving the shape, the radius, the
-    // hue, the edge stroke and the selection ring untouched. Appended in the same step
+    // like. The drawing layer does: both views draw it as a RING (the timeline's
+    // ctrl::time::kProportionalRingOuterInset / kProportionalHoleInset), leaving the radius,
+    // the hue, the edge stroke and the selection ring untouched. Appended in the same step
     // as the geometry above, so a missing entry means "not proportional" exactly as a
     // missing marker state means "neither state".
     QVector<bool> keyProportional;
@@ -620,7 +621,7 @@ enum class GraphPanelHost {
 //   so the name of a channel cannot be read off the wrong row; that is the whole
 //   difference from the deleted legend.
 //   chipText is "Move X", or the bare type name for a one-component type
-//   ("Opa", not "Opa Opacity"): a channel whose type has one component has no
+//   ("Opacity", not "Opacity Opacity"): a channel whose type has one component has no
 //   sibling to be told apart from, so the component word is noise.
 //   chip is EMPTY when the box would not fit inside the plot - a curve leaving
 //   the window too near the top or the bottom edge, or a plot too narrow for the
@@ -818,6 +819,28 @@ struct GraphPanelModel {
     // alpha by 0.4 - TimeRuler::renderHeader). A classification, never ink: the 0.4
     // factor lives in the drawing layer.
     QVector<bool> frameTickInActiveRange;
+    // THE FRAME RANGE'S TWO GUIDES: the COLUMNS of the project's first and last frame -
+    // the ruler's boundary ticks continued down the body, exactly as the timeline draws
+    // them (ctrl::time::buildRangeMarkers, the pass behind its lanes). Two entries, or
+    // ONE when both ends round onto the same pixel (a one-frame range, or a zoom-out
+    // coarse enough to collapse the span - the timeline's own degenerate-range rule,
+    // which draws one line rather than two overdrawn on one column), and EMPTY when no
+    // project is attached: there is no range to mark.
+    //
+    // THEY ARE PANEL COLUMNS, not plot columns, and that is the shared mapping's
+    // consequence: a frame's x is the TIMELINE's x (graph_Scaler.h: THE SHARED
+    // WINDOW'S MAPPING), so the project's first frame sits wherever the timeline puts
+    // it - which, at the usual fit, is inside the value column the plot is inset by.
+    // The guides are structural chrome like the playhead, so they are drawn over the
+    // panel's columns (the value labels, painted last, cover them) and rise/fall inside
+    // the plot's ROWS only: the ruler band above and the scroll bar's lane below stay
+    // clear. A plot with no room publishes none (the early return above).
+    QVector<int> rangeGuideX;
+    // TRUE when a temporary playback window overrides the project's range: the
+    // timeline drops its guides from 40% to 25% then, because the window's own brackets
+    // carry the boundary reading. A classification, never ink - the two alphas live in
+    // the drawing layer.
+    bool rangeGuideRecede = false;
     // THE PLAYBACK WINDOW'S OVERLAY, as the timeline's ruler lays it out (see
     // PanelPlayWindow): empty/inactive unless the editor carries an active window.
     // It is ruler-band geometry, so the drawing layer paints it inside the band and

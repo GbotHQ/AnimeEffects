@@ -398,6 +398,21 @@ int ObjectTreeWidget::itemHeight(const core::ObjectNode& aNode) const {
     return ctrl::TimeLineRow::calculateHeight(aNode);
 }
 
+namespace {
+// A COLLAPSED folder with keys below it owns a dedicated summary lane. A folder with
+// own animation lanes keeps them and adds the band below; one without any own lane
+// uses the whole row for the summary (an empty lane above would be dead height).
+int folderDisplayHeight(const core::ObjectNode& aNode, bool aExpanded) {
+    const int base = ctrl::TimeLineRow::calculateHeight(aNode);
+    if (aExpanded || !aNode.parent() || !ctrl::TimeLineRow::hasDescendantKeys(aNode)) {
+        return base;
+    }
+    const bool hasOwnLanes = aNode.timeLine() && aNode.timeLine()->validTypeCount() > 0;
+    return hasOwnLanes ? base + ctrl::TimeLineRow::kFolderSummaryHeight
+                       : ctrl::TimeLineRow::kFolderSummaryHeight;
+}
+} // namespace
+
 void ObjectTreeWidget::updateItemVisibilityAppearance(QTreeWidgetItem* aItem, bool aVisible) {
     // The label color is carried by the per-item foreground brush: the
     // stylesheet's ::item rules no longer declare a color (a matching QSS
@@ -452,7 +467,8 @@ void ObjectTreeWidget::updateItemVisibilityAppearance(QTreeWidgetItem* aItem, bo
 obj::Item* ObjectTreeWidget::createFolderItem(core::ObjectNode& aNode) {
 
     obj::Item* item = new obj::Item(*this, aNode);
-    item->setSizeHint(kItemColumn, QSize(kItemSize, itemHeight(aNode)));
+    // A new item is collapsed, so its summary lane (if any) is part of the height.
+    item->setSizeHint(kItemColumn, QSize(kItemSize, folderDisplayHeight(aNode, false)));
     // item->setBackgroundColor(kItemColumn, QColor(235, 235, 235, 255));
     item->setIcon(kItemColumn, mGUIResources.icon("folder"));
     item->setFlags(item->flags() | Qt::ItemIsUserCheckable);
@@ -548,7 +564,9 @@ bool ObjectTreeWidget::updateItemHeights(QTreeWidgetItem* aItem) {
     bool changed = false;
 
     if (objItem && !objItem->isTopNode()) {
-        const int height = itemHeight(objItem->node());
+        const core::ObjectNode& node = objItem->node();
+        const int height = node.canHoldChild() ? folderDisplayHeight(node, aItem->isExpanded())
+                                               : itemHeight(node);
         // update
         if (objItem->sizeHint(kItemColumn).height() != height) {
             objItem->setSizeHint(kItemColumn, QSize(kItemSize, height));
@@ -652,9 +670,12 @@ void ObjectTreeWidget::onTimeLineModified(core::TimeLineEvent& aEvent, bool) {
     }
 
     // update height of items in proportion to the key type count
-    if (updateItemHeights(this->topLevelItem(0))) {
-        notifyViewUpdated();
-    }
+    updateItemHeights(this->topLevelItem(0));
+    // ALWAYS rebuild the timeline rows: a collapsed folder's summary lane depends on
+    // WHETHER its descendants have keys, and for a summary-only row the height does not
+    // change when the first/last key appears or disappears. Height equality is not
+    // "nothing changed" here.
+    notifyViewUpdated();
 }
 
 void ObjectTreeWidget::onItemChanged(QTreeWidgetItem* aItem, int aColumn) {
@@ -692,6 +713,10 @@ void ObjectTreeWidget::onItemCollapsed(QTreeWidgetItem* aItem) {
     (void)aItem;
     endRenameEditor();
 
+    // The collapsed row gains its summary lane (and an expanded one loses it), so the
+    // tree and the timeline must re-measure before the lanes are rebuilt - otherwise
+    // the folder's own keys would be laid out in the summary band's height.
+    updateItemHeights(this->topLevelItem(0));
     notifyViewUpdated();
 }
 
@@ -699,6 +724,7 @@ void ObjectTreeWidget::onItemExpanded(QTreeWidgetItem* aItem) {
     (void)aItem;
     endRenameEditor();
 
+    updateItemHeights(this->topLevelItem(0));
     notifyViewUpdated();
 }
 

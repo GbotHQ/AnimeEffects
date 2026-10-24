@@ -61,7 +61,11 @@ Bounds findBounds(const core::TimeLine::MapType& aMap, const core::TimeKey& aKey
 // keep the result (setProportionalState) rather than calling it per edit.
 // leftId/rightId are the bounds' ids (0 for a missing side); timeValid needs
 // both bounds and a non-zero frame span; valueValid[c] additionally needs c to
-// be a graphable component of the key's type and a non-zero value span.
+// be a graphable component of the key's type. A non-zero value span gives the
+// key its own value fraction; a FLAT span gives it the TIME fraction when the
+// key sits on that flat value (the ordinary "marked while nothing moved" case),
+// and otherwise leaves the coordinate frozen (a deliberately offset value has no
+// fraction to preserve).
 core::TimeKey::Proportional rebaseState(const core::TimeKey& aKey, const Bounds& aBounds);
 // rebaseState() assigned onto the key (enabling it if necessary).
 void rebase(core::TimeKey& aKey, const Bounds& aBounds);
@@ -78,8 +82,8 @@ bool boundsChanged(const core::TimeKey& aKey, const Bounds& aBounds);
 bool projectedFrame(const core::TimeKey& aKey, const Bounds& aBounds, int* aFrame);
 
 // The stored-weight projection of one component. False (and nothing written)
-// when that component's weight is not valid (no bounds, non-graphable, or a
-// zero pre-edit span - the coordinate is frozen).
+// when that component's weight is not valid: no bounds, non-graphable, or a flat
+// pre-edit span whose key held a DIFFERENT value (a frozen coordinate).
 bool projectedValue(const core::TimeKey& aKey, const Bounds& aBounds, int aComponent, float* aValue);
 
 // Writes every valid component projection through graph::Channel::writeValue,

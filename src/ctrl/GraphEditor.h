@@ -103,6 +103,24 @@ public:
     // proportional key of the gesture follow the values just written.
     void modifyValues(float aValueDelta);
 
+    // One key a value half writes, named with the map and component it lives in: the
+    // TANGENT half reads the segments around it.
+    struct TangentTarget {
+        core::TimeLine* line;
+        core::TimeKeyType type;
+        core::TimeKey* key;
+        int component;
+    };
+    // THE TANGENT HALF, built ONCE per gesture and BEFORE the first value write: a
+    // stored (Free/Aligned) control point keeps its offset from the KEY it is drawn
+    // from, in VALUE units, when this gesture changes a segment's value span. The
+    // bezier's y is a fraction of that span, so without this a key dragged up/down
+    // made the neighbouring handles (and its own) rescale with the span - "the Y
+    // should be relative to the key they are visually connected to". Re-derived on
+    // every step from the captured offsets, so the shape stays an absolute function
+    // of the pointer; undo restores the params it wrote.
+    void buildTangents(const QVector<TangentTarget>& aTargets);
+
     // THE PROPORTIONAL HALF, built ONCE per gesture: one ValueReflow per
     // (line, type), each captured over the whole group's edited keys. MUST run
     // before the first value write (buildValueReflows never writes), because the
@@ -125,6 +143,25 @@ private:
     // One per (line, type) the gesture touches, in the order the first target of
     // each group appeared.
     QVector<proportional::ValueReflow> mReflows;
+
+    // One STORED tangent this gesture must keep attached to its key (see
+    // buildTangents): the param it lives in and which side of it, the param's own
+    // value when the gesture began (what undo restores), the segment it normalizes
+    // against, the key the handle is drawn from, and the VALUE offset the handle
+    // held from that key at the press.
+    struct Tangent {
+        util::Easing::Param* param;
+        int side; // 0 = x1,y1 (the from key's outgoing), 1 = x2,y2 (the to key's incoming)
+        util::Easing::Param base;
+        const core::TimeKey* anchor;
+        const core::TimeKey* from;
+        const core::TimeKey* to;
+        core::TimeKeyType type;
+        int component;
+        float offset;
+    };
+    QVector<Tangent> mTangents;
+    void applyTangents();
 };
 
 // ONE HANDLE DRAG'S COMMAND: the two easing params a handle drag writes - the
@@ -627,6 +664,16 @@ public:
 
     // True while a marquee drag is in flight.
     bool hasMarquee() const { return mMarqueeArmed; }
+    // The plot the marquee is clipped to, in this panel's pixels. The host's dwell
+    // gate needs the same edge band the editor's own autoscroll tests, so it is
+    // published rather than guessed from the widget's size.
+    QRect scrollViewport() const;
+    // One edge-autoscroll tick for the marquee. The host owns the timer; this
+    // method owns the mapping, so the graph and the timeline use the same
+    // ctrl::autoscroll step and differ only in which axis each moves. Returns true
+    // when the window actually moved (and the box was re-applied), false at a
+    // content bound or when the pointer is not in an edge band.
+    bool autoScrollMarquee();
     // The marquee's rectangle in viewport pixels, normalized (a positive width
     // and height) and clipped to the plot, or an EMPTY rect while no marquee drag
     // is in flight. A press and release with no movement gives an empty rect:
@@ -1536,14 +1583,17 @@ private:
     // dragged, normalized when it is read (marqueeRect). mMarqueeMode is the
     // timeline's own three-way mode, recorded at the press (plain/Shift/Ctrl), and
     // mPreMarqueeSelection is the selection that press found, which Shift-add is
-    // re-applied to on every step. mClickCollapseTarget is the KEY a plain press
-    // on a key named: it is what the release collapses to when the press never
-    // became a move (the timeline's mPressedTarget/mPressedTargetValid pair).
+    // re-applied to on every step. mClickCollapseTarget is the MARKER a plain press
+    // on a key named - its key, plus mClickCollapseComponent for which of the key's
+    // channels - and it is what the release collapses to when the press never became
+    // a move (the timeline's mPressedTarget/mPressedTargetValid pair, one level
+    // finer: the panel selects the marker).
     QPoint mMarqueeOrigin;
     QPoint mMarqueeCurrent;
     MarqueeMode mMarqueeMode;
     core::TimeLineEvent mPreMarqueeSelection;
     core::TimeLineEvent::Target mClickCollapseTarget;
+    int mClickCollapseComponent;
     bool mClickCollapseValid;
 
     // The middle-button pan: the pointer position the pan last moved to, so each
@@ -1586,12 +1636,26 @@ private:
     core::ObjectNode* mMoveNode;
     core::TimeKeyType mMoveType;
     core::Frame mMoveFrame;
+    // The COMPONENT the press landed on: the marker's own half of the key's name,
+    // and the one channel a value drag is allowed to write when the selection names
+    // its key as a whole (see beginKeyMove's value half).
+    int mMoveComponent;
     // The pointer's frame as of the last accepted step, and the pointer pixels
     // the press went down at: every key follows the pointer's frame DELTA from the
     // last ACCEPTED frame, so a refused step does not accumulate, and the
     // dominant-axis rule under Shift is decided on the pixel displacement from
     // the press - which is the movement the user actually made.
+    //
+    // The PRESS is kept twice as well, because the Shift snap measures its frame
+    // half from there and not from the last step: the pointer's frame under the
+    // press and the pressed key's frame at the press. The axis the snap chooses can
+    // change mid-gesture (a drag left, then down), and the axis it leaves must come
+    // back to the press value rather than keep the part of the gesture that moved
+    // it - on BOTH axes, which is what makes the snap behave the way the value
+    // half already did. See updateKeyMove.
     core::Frame mMovePointerFrame;
+    core::Frame mMovePressPointerFrame;
+    core::Frame mMovePressKeyFrame;
     QPoint mMovePressPos;
     // THE FRAME HALF'S units: ONE entry per KEY the panel's SELECTION named when
     // the press armed the move, deduplicated by the key itself - two selected

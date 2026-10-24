@@ -1,5 +1,7 @@
 #include "gui/TimeBodyCanvas.h"
 
+#include "gui/InkCanvas.h"
+
 #include <QCanvasPainter>
 #include <QFont>
 #include <QRectF>
@@ -10,10 +12,8 @@ namespace timeBodyCanvas {
 namespace {
 
 constexpr float kHalf = 0.5f;
-
-// Qt's DotLine at width 1 inks one pixel every three along the line. Canvas2D has no dashed
-// strokes, so the same pitch is drawn as marks - the closest honest equivalent.
-constexpr int kDotPitch = 3;
+constexpr int kTypeDash = 4;
+constexpr int kTypeGap = 4;
 
 void strokePath(QCanvasPainter& aPainter, const QPolygonF& aPolygon) {
     if (aPolygon.isEmpty())
@@ -33,11 +33,16 @@ void paintLinesCanvas(QCanvasPainter& aPainter, const ctrl::time::Lines& aLines)
         aPainter.setFillStyle(lane.selected ? aLines.inks.bodySelected : aLines.inks.body);
         aPainter.fillRect(QRectF(lane.rect));
         if (!lane.separators.isEmpty()) {
+            // TYPE separators: the same 4-on/4-off dash as QPainter, drawn as 1px
+            // marks because Canvas2D has no dashed stroke. The solid 70% seams
+            // between rows/layers are a different concept and stay solid.
             aPainter.setFillStyle(aLines.inks.separator);
             for (const ctrl::time::Separator& each : lane.separators) {
                 const int y = int(each.y);
-                for (int x = each.x0; x <= each.x1; x += kDotPitch)
-                    aPainter.fillRect(QRectF(x, y, 1, 1));
+                for (int x = each.x0; x < each.x1; x += kTypeDash + kTypeGap) {
+                    const int end = std::min(x + kTypeDash, each.x1);
+                    aPainter.fillRect(QRectF(x, y, end - x, 1));
+                }
             }
         }
         // NOT inside the separator branch: a lane with ONE valid type has no separator, and
@@ -72,20 +77,59 @@ void paintLinesCanvas(QCanvasPainter& aPainter, const ctrl::time::Lines& aLines)
 void paintKeysCanvas(QCanvasPainter& aPainter, const ctrl::time::KeyPass& aPass) {
     aPainter.setAntialias(1.0f);
     for (const ctrl::time::KeyMark& mark : aPass.marks) {
-        aPainter.setFillStyle(mark.fill);
-        aPainter.setStrokeStyle(aPass.edge);
-        aPainter.setLineWidth(1.0f);
         // A path is NOT reset by fill()/stroke(): without beginPath() every marker's shape
         // would be appended to the previous one's and re-inked with the next style.
-        aPainter.beginPath();
-        if (mark.shape == ctrl::time::KeyShape::Ellipse) {
-            aPainter.circle(float(mark.centre.x()), float(mark.centre.y()), float(mark.radiusX));
+        if (mark.hollow) {
+            // A proportional key is a RING, built from two fills and the ordinary edge
+            // (the QPainter pass draws the same geometry). Fills, not strokes: a stroked
+            // ring of this size put the two engines' antialiasing 69 pixels apart on the
+            // parity gate.
+            aPainter.setFillStyle(mark.fill);
+            aPainter.beginPath();
+            if (mark.shape == ctrl::time::KeyShape::Ellipse) {
+                aPainter.circle(
+                    float(mark.centre.x()), float(mark.centre.y()),
+                    float(mark.radiusX - ctrl::time::kProportionalRingOuterInset)
+                );
+            } else {
+                strokePath(aPainter, mark.hollowPolygon);
+            }
             aPainter.fill();
+            aPainter.setFillStyle(mark.holeInk);
+            aPainter.beginPath();
+            if (mark.shape == ctrl::time::KeyShape::Ellipse) {
+                aPainter.circle(float(mark.centre.x()), float(mark.centre.y()), float(mark.hollowRadius));
+            } else {
+                strokePath(aPainter, mark.hollowHolePolygon);
+            }
+            aPainter.fill();
+            aPainter.setStrokeStyle(aPass.edge);
+            aPainter.setLineWidth(1.0f);
+            aPainter.beginPath();
+            if (mark.shape == ctrl::time::KeyShape::Ellipse) {
+                aPainter.circle(float(mark.centre.x()), float(mark.centre.y()), float(mark.radiusX));
+            } else {
+                strokePath(aPainter, mark.polygon);
+            }
             aPainter.stroke();
         } else {
-            strokePath(aPainter, mark.polygon);
-            aPainter.fill();
-            aPainter.stroke();
+            aPainter.setFillStyle(mark.fill);
+            if (aPass.stroke) {
+                aPainter.setStrokeStyle(aPass.edge);
+                aPainter.setLineWidth(1.0f);
+            }
+            aPainter.beginPath();
+            if (mark.shape == ctrl::time::KeyShape::Ellipse) {
+                aPainter.circle(float(mark.centre.x()), float(mark.centre.y()), float(mark.radiusX));
+                aPainter.fill();
+                if (aPass.stroke)
+                    aPainter.stroke();
+            } else {
+                strokePath(aPainter, mark.polygon);
+                aPainter.fill();
+                if (aPass.stroke)
+                    aPainter.stroke();
+            }
         }
         if (mark.hasRing) {
             aPainter.setStrokeStyle(mark.ring);
@@ -116,34 +160,10 @@ void paintGuidesCanvas(
     }
     if (!aMarquee.visible)
         return;
-    aPainter.setAntialias(1.0f);
-    aPainter.setFillStyle(aMarquee.fill);
-    aPainter.roundRect(aMarquee.rect, float(aMarquee.radius));
-    aPainter.fill();
-    // The edge, dashed: Qt's DashLine is a 4-on/4-off pattern at width 1.
-    aPainter.setStrokeStyle(aMarquee.edge);
-    aPainter.setLineWidth(1.0f);
-    const QRectF r = aMarquee.rect;
-    for (double x = r.left(); x < r.right(); x += 8.0) {
-        aPainter.beginPath();
-        aPainter.moveTo(x, r.top() + kHalf);
-        aPainter.lineTo(x + 4.0, r.top() + kHalf);
-        aPainter.stroke();
-        aPainter.beginPath();
-        aPainter.moveTo(x, r.bottom() + kHalf);
-        aPainter.lineTo(x + 4.0, r.bottom() + kHalf);
-        aPainter.stroke();
-    }
-    for (double y = r.top(); y < r.bottom(); y += 8.0) {
-        aPainter.beginPath();
-        aPainter.moveTo(r.left() + kHalf, y);
-        aPainter.lineTo(r.left() + kHalf, y + 4.0);
-        aPainter.stroke();
-        aPainter.beginPath();
-        aPainter.moveTo(r.right() + kHalf, y);
-        aPainter.lineTo(r.right() + kHalf, y + 4.0);
-        aPainter.stroke();
-    }
+    // The SAME code the graph panel's box uses: gui::ink::paintMarquee over InkCanvas.
+    // It owns the half-pixel inset that makes the 1px edge one column instead of two.
+    gui::ink::InkCanvas ink(aPainter, QFont());
+    gui::ink::paintMarquee(ink, aMarquee.rect, aMarquee.fill, aMarquee.edge, aMarquee.radius);
 }
 
 } // namespace timeBodyCanvas

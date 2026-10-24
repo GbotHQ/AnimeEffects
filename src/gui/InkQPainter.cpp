@@ -159,21 +159,18 @@ void InkQPainter::text(
     // its ink disagree by a column.
     const double snappedX = std::floor(x);
     // THE BASELINE, from the vertical alignment: VAlign::Centre centres the line box; VAlign::Top
-    // puts the run's INK on the row the timeline's own labels ink (gui::kRulerNumberInkTop below
-    // the box's top). Qt draws from the baseline, so both are expressed as
-    // `inkTop + ascent` - the ascent being the font's own, so the row holds at any size.
+    // puts the LINE BOX'S TOP on the box's top row, which is Qt's own `AlignTop` and the rule the
+    // timeline's raster ruler uses (gui::frameRuler::paintRuler: drawText(rect, label.text) at a
+    // rect whose top is the number row). Qt draws from the baseline, so both are `y + ascent`.
+    // The ink-row arithmetic (`kRulerNumberInkTop` + `tightBoundingRect`) is NOT used here any
+    // more: it placed the run one row above the timeline's (measured 2026-10-23 through
+    // probe_graph_parity, which read the panel 242..250 against the timeline's 243..252). The
+    // constant survives for gui::InkImGui only, whose line box really is its own.
     const double lineHeight = metrics.height();
-    const double inkTop = aVAlign == VAlign::Top
-        ? double(aBox.top() + kRulerNumberInkTop)
-        : double(aBox.top()) + std::max((double(aBox.height()) - lineHeight) * 0.5, 0.0);
-    // THE BASELINE PUTS THE RUN'S INK ON `inkTop`, and it is the INK BOX that says how far the
-    // ink sits above the baseline - not the ascent, which carries the font's own headroom.
-    // MEASURED in the app: with `inkTop + ascent` this backend drew the frame numbers TWO ROWS
-    // below the ImGui host's (glyph rows 412..420 against 410..417, over their ticks), because the
-    // ascent is ~3px more than a digit's ink height at 12px. `tightBoundingRect` is the run's own
-    // ink box, so the row is exact for any face and size.
-    const double inkAboveBaseline = -QFontMetricsF(mFont).tightBoundingRect(aText).top();
-    const double baseline = std::floor(inkTop + (aVAlign == VAlign::Top ? inkAboveBaseline : metrics.ascent()));
+    const double baseline = aVAlign == VAlign::Top
+        ? std::floor(double(aBox.top()) + metrics.ascent())
+        : std::floor(double(aBox.top()) + std::max((double(aBox.height()) - lineHeight) * 0.5, 0.0)
+                     + metrics.ascent());
 
     // THE HALO, when the caller asks for one (gui::kDrawTextHalo is off in the shipped panel,
     // where the contrast-outline pass does the ringing): the same 8 offsets, two rings, drawn

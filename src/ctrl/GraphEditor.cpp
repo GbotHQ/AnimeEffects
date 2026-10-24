@@ -1,5 +1,7 @@
 #include "ctrl/GraphEditor.h"
 
+#include "ctrl/AutoScroll.h"
+
 #include <algorithm>
 #include <cmath>
 #include <limits>
@@ -217,6 +219,9 @@ namespace ctrl {
         for (int i = 0; i < mReflows.size(); ++i) {
             mReflows[i].modify();
         }
+        // ...and every stored tangent keeps its offset from its key, which is what the
+        // spans just changed.
+        applyTangents();
     }
 
     void KeyMoveCommand::buildValueReflows(const QVector<ValueReflowTarget>& aTargets) {
@@ -267,6 +272,118 @@ namespace ctrl {
         }
     }
 
+    void KeyMoveCommand::buildTangents(const QVector<TangentTarget>& aTargets) {
+        mTangents.clear();
+
+        // A stored side is one a user placed (Free or Aligned); a derived one
+        // (Vector/Auto/AutoClamped) is computed from the neighbours on every read, so
+        // there is nothing stored to keep. Only Custom carries a bezier at all.
+        const auto storedSide = [](const util::Easing::Param& aParam, int aSide) {
+            if (aParam.type != util::Easing::Type_Custom)
+                return false;
+            const util::Easing::HandleMode mode = (aSide == 0) ? aParam.handleOut : aParam.handleIn;
+            return mode == util::Easing::HandleMode_Free || mode == util::Easing::HandleMode_Aligned;
+        };
+
+        for (const TangentTarget& target : aTargets) {
+            if (!target.line || !target.key)
+                continue;
+            const int components = graph::Channel::componentCount(target.type);
+            if (target.component < 0 || target.component >= components)
+                continue;
+
+            const graph::Channel channel(target.type, target.component);
+            const core::TimeLine::MapType& map = target.line->map(target.type);
+            const core::TimeLine::MapType::const_iterator self = map.find(target.key->frame());
+            if (self == map.end() || self.value() != target.key)
+                continue;
+            const core::TimeLine::MapType::const_iterator before = (self == map.begin()) ? map.end() : std::prev(self);
+            const core::TimeLine::MapType::const_iterator after = std::next(self);
+
+            // THE TWO SEGMENTS the key is an end of. Each one's stored pair lives in
+            // its FROM key's param: x1,y1 is that key's OUTGOING handle, x2,y2 the TO
+            // key's INCOMING one - so each side's anchor is a different key, and it is
+            // the anchor the offset is measured from.
+            struct Side {
+                core::TimeKey* owner;  // the key whose param stores the pair
+                int side;              // 0 = (x1,y1), 1 = (x2,y2)
+                const core::TimeKey* anchor;
+                const core::TimeKey* from;
+                const core::TimeKey* to;
+            };
+            QVector<Side> sides;
+            if (before != map.end()) {
+                sides.append(Side { before.value(), 0, before.value(), before.value(), target.key });
+                sides.append(Side { before.value(), 1, target.key, before.value(), target.key });
+            }
+            if (after != map.end()) {
+                sides.append(Side { target.key, 0, target.key, target.key, after.value() });
+                sides.append(Side { target.key, 1, after.value(), target.key, after.value() });
+            }
+
+            for (const Side& side : sides) {
+                util::Easing::Param* param = graph::Curve::easingOf(*side.owner, target.type, target.component);
+                if (!param || !storedSide(*param, side.side))
+                    continue;
+
+                // Deduplicated by (param, side): two moved keys can share a segment,
+                // and a pair captured twice would restore twice.
+                bool captured = false;
+                for (const Tangent& held : mTangents) {
+                    if (held.param == param && held.side == side.side) {
+                        captured = true;
+                        break;
+                    }
+                }
+                if (captured)
+                    continue;
+
+                const double fromValue = channel.value(*side.from);
+                const double toValue = channel.value(*side.to);
+                const double span = toValue - fromValue;
+                if (span == 0.0)
+                    continue; // a constant segment already draws both handles ON the keys
+
+                const double ny = (side.side == 0) ? param->cubicBezier.y1 : param->cubicBezier.y2;
+                const double handleValue = fromValue + ny * span;
+
+                Tangent tangent;
+                tangent.param = param;
+                tangent.side = side.side;
+                tangent.base = *param;
+                tangent.anchor = side.anchor;
+                tangent.from = side.from;
+                tangent.to = side.to;
+                tangent.type = target.type;
+                tangent.component = target.component;
+                tangent.offset = static_cast<float>(handleValue - channel.value(*side.anchor));
+                mTangents.append(tangent);
+            }
+        }
+    }
+
+    void KeyMoveCommand::applyTangents() {
+        // The handle keeps its VALUE offset from its own key, so the bezier's y is
+        // re-derived against the segment's NEW span: y = (anchor + offset - from) /
+        // (to - from). Every value here is read from the document, so the step is an
+        // absolute function of the values the gesture has written and can be repeated
+        // (a rewritten step, a redo) without drifting.
+        for (const Tangent& tangent : mTangents) {
+            const graph::Channel channel(tangent.type, tangent.component);
+            const double fromValue = channel.value(*tangent.from);
+            const double toValue = channel.value(*tangent.to);
+            const double span = toValue - fromValue;
+            if (span == 0.0)
+                continue; // a flat segment can express no offset; keep the stored y
+            const double anchorValue = channel.value(*tangent.anchor);
+            const double ny = (anchorValue + tangent.offset - fromValue) / span;
+            if (tangent.side == 0)
+                tangent.param->cubicBezier.y1 = static_cast<float>(ny);
+            else
+                tangent.param->cubicBezier.y2 = static_cast<float>(ny);
+        }
+    }
+
     void KeyMoveCommand::exec() {
         // The frame half first: the value halves hold a key by POINTER, and
         // TimeLine::move re-keys the same object, so the two orders agree - the
@@ -277,10 +394,12 @@ namespace ctrl {
         for (const Value& value : mValues) {
             value.command->exec();
         }
-        // The values are final for this commit: the proportional keys follow them.
+        // The values are final for this commit: the proportional keys follow them,
+        // and the stored tangents are re-derived against the new spans.
         for (int i = 0; i < mReflows.size(); ++i) {
             mReflows[i].apply();
         }
+        applyTangents();
     }
 
     void KeyMoveCommand::undo() {
@@ -289,6 +408,12 @@ namespace ctrl {
         // exec backwards is the one that is easy to check). The reflow goes FIRST:
         // it wrote the proportional keys' values, and putting them back before the
         // value halves' own undo is the same backwards order.
+        // The tangents were written LAST, so they come back FIRST: each param is
+        // restored to the value the gesture found (two tangents of one param share
+        // that value, so restoring it twice is the same restore).
+        for (int i = mTangents.size() - 1; i >= 0; --i) {
+            *mTangents[i].param = mTangents[i].base;
+        }
         for (int i = mReflows.size() - 1; i >= 0; --i) {
             mReflows[i].restore();
         }
@@ -310,6 +435,7 @@ namespace ctrl {
         for (int i = 0; i < mReflows.size(); ++i) {
             mReflows[i].apply();
         }
+        applyTangents();
     }
 
     //-------------------------------------------------------------------------------------------------
@@ -397,6 +523,7 @@ namespace ctrl {
         mMarqueeMode(Marquee_Replace),
         mPreMarqueeSelection(),
         mClickCollapseTarget(),
+        mClickCollapseComponent(time::Selection::kKeyLevel),
         mClickCollapseValid(false),
         mPanPointer(),
         mScrollBarAxis(ScrollBar_None),
@@ -407,7 +534,10 @@ namespace ctrl {
         mMoveNode(nullptr),
         mMoveType(core::TimeKeyType_TERM),
         mMoveFrame(),
+        mMoveComponent(-1),
         mMovePointerFrame(),
+        mMovePressPointerFrame(),
+        mMovePressKeyFrame(),
         mMovePressPos(),
         mMoveKeys(),
         mMoveMembers(),
@@ -1002,28 +1132,41 @@ namespace ctrl {
                 const core::TimeLineEvent::Target target =
                     markerTarget(*entries[hit.item].node, channel, hit.keyFrame);
                 if (!target.pos.isNull()) {
+                    // THE MARKER IS THE UNIT the pointer writes - time::Selection's
+                    // own second level, a (key, component) pair. The two components of
+                    // one key are INDEPENDENT CHANNELS, and only their FRAME is shared,
+                    // so a press that wrote the whole key made a value drag write the
+                    // sibling's value with the same delta. MEASURED 2026-10-24, the
+                    // user's report: "dragging one moves the sibling linked on both
+                    // axes; they should only be on the time axis, not the value axis".
+                    // The frame half of a move reads every selected KEY (a marker entry
+                    // names its key exactly as a whole-key one does), so nothing is lost
+                    // on the time axis - see beginKeyMove's two halves.
+                    const int component = channel.component();
                     if (mModifiers.testFlag(Qt::ShiftModifier)
                         || mModifiers.testFlag(Qt::ControlModifier)) {
-                        // SHIFT AND CTRL BOTH TOGGLE the key: in when it is out, out
-                        // when it is in - the timeline treats the two alike, and its
-                        // toggle is a KEY's (the whole-key entry comes back).
-                        mSelection->toggle(target);
+                        // SHIFT AND CTRL BOTH TOGGLE the marker: in when it is out, out
+                        // when it is in - the timeline's toggle, one level finer. A
+                        // whole-key entry is what subtractMarker removes for it, the
+                        // set's own rule.
+                        if (mSelection->containsMarker(target, component))
+                            mSelection->subtractMarker(target, component);
+                        else
+                            mSelection->addMarker(target, component);
                     } else {
-                        // A PLAIN PRESS: a key the selection already covers is
+                        // A PLAIN PRESS: a marker the selection already covers is
                         // GRABBED - the selection is left exactly as it is, so the
-                        // drag armed below carries the whole group - while a key
+                        // drag armed below carries the whole group - while a marker
                         // that is out is what the press REPLACES the selection
                         // with. Either way the release of a press that never moved
-                        // collapses to this one key: that is the timeline's
+                        // collapses to this one marker: that is the timeline's
                         // mPressedTarget pair, and it is what makes the group
                         // survive a DRAG but not a CLICK.
                         mClickCollapseTarget = target;
+                        mClickCollapseComponent = component;
                         mClickCollapseValid = true;
-                        if (!mSelection->contains(target)) {
-                            core::TimeLineEvent single;
-                            single.pushTarget(*entries[hit.item].node, channel.type(), hit.keyFrame.get());
-                            mSelection->set(single);
-                        }
+                        if (!mSelection->containsMarker(target, component))
+                            mSelection->setMarker(target, component);
                     }
                 }
                 // The same hit makes this entry the focused channel, which is
@@ -1302,12 +1445,11 @@ namespace ctrl {
                 if (moved) {
                     mSelection->refresh();
                 } else if (mClickCollapseValid && !mClickCollapseTarget.pos.isNull()) {
-                    core::TimeLineEvent single;
-                    single.pushTarget(
-                        *mClickCollapseTarget.node, mClickCollapseTarget.pos.type(),
-                        mClickCollapseTarget.pos.index()
-                    );
-                    mSelection->set(single);
+                    // THE CLICK IS THE MARKER'S: the press wrote the marker under the
+                    // pointer (or found it covered and grabbed the group), and a
+                    // release that never moved keeps exactly that one - the finer
+                    // half of the timeline's mPressedTarget rule.
+                    mSelection->setMarker(mClickCollapseTarget, mClickCollapseComponent);
                 }
                 mClickCollapseValid = false;
                 endDrag();
@@ -1317,14 +1459,8 @@ namespace ctrl {
                 // A key press that armed NO drag at all (Alt+click is the link
                 // action, which moves the key's handles and not the key): its
                 // release is still the CLICK, so the same collapse applies.
-                if (!mClickCollapseTarget.pos.isNull()) {
-                    core::TimeLineEvent single;
-                    single.pushTarget(
-                        *mClickCollapseTarget.node, mClickCollapseTarget.pos.type(),
-                        mClickCollapseTarget.pos.index()
-                    );
-                    mSelection->set(single);
-                }
+                if (!mClickCollapseTarget.pos.isNull())
+                    mSelection->setMarker(mClickCollapseTarget, mClickCollapseComponent);
                 mClickCollapseValid = false;
                 endDrag();
                 return true;
@@ -1635,6 +1771,41 @@ namespace ctrl {
         // the plot, whose rectangle is the only place the panel draws data - so
         // the box a user sees is the box that selects.
         return QRect(mMarqueeOrigin, mMarqueeCurrent).normalized().intersected(mScale.plotRect());
+    }
+
+    QRect GraphEditor::scrollViewport() const { return mScale.plotRect(); }
+
+    bool GraphEditor::autoScrollMarquee() {
+        if (!mMarqueeArmed)
+            return false;
+
+        const QRect plot = mScale.plotRect();
+        const autoscroll::Step step = autoscroll::edgeStep(mMarqueeCurrent, plot);
+        if (step.isNull())
+            return false;
+
+        // Snapshot the window, apply only the axes the pointer is near, then ask
+        // whether anything actually moved. A scroll bar's own primitives are used
+        // (shared frame delegate included), so the directions are the ones every
+        // other pan/scroll in this panel already has.
+        const double frameBefore = mScale.frameAtPixel(plot.left());
+        const float valueMinBefore = mScale.valueMin();
+        const float valueMaxBefore = mScale.valueMax();
+
+        if (step.x != 0)
+            scrollFramesByBarPixels(mScale, step.x); // positive advances the viewport
+        if (step.y != 0)
+            mScale.panValue(-step.y); // positive step reveals lower values
+
+        const bool frameMoved = mScale.frameAtPixel(plot.left()) != frameBefore;
+        const bool valueMoved = mScale.valueMin() != valueMinBefore || mScale.valueMax() != valueMaxBefore;
+        if (!frameMoved && !valueMoved)
+            return false;
+
+        // The pointer stays at its screen position while the content moves under it;
+        // the box is re-evaluated against the moved curves (the timeline's own rule).
+        applyMarquee();
+        return true;
     }
 
     core::TimeLineEvent GraphEditor::marqueeTargets() const {
@@ -2406,12 +2577,21 @@ namespace ctrl {
         mMoveNode = entry.node;
         mMoveType = entry.channel.type();
         mMoveFrame = aHit.keyFrame;
+        // The marker's component: the channel the press landed on, and the ONE channel
+        // a value drag writes when nothing names it as a marker (see the members below).
+        mMoveComponent = entry.channel.component();
         // Where the pointer was, in PIXELS: both axes follow the pointer's own
         // delta from here, so a press up to the key radius off the key's centre
         // does not make the key jump by that offset on the first move. The value
         // is read through the same live scale, so the two conversions always
         // agree about the row the pointer is on.
         mMovePointerFrame = mScale.frameAt(aPressPos.x());
+        // The SNAP's origin, kept beside it: the pointer's frame at the press and
+        // the pressed key's frame at the press. updateKeyMove measures the snapped
+        // frame half from these two, so the axis the snap leaves returns to where
+        // the gesture started instead of keeping the part of the drag that moved it.
+        mMovePressPointerFrame = mMovePointerFrame;
+        mMovePressKeyFrame = mMoveFrame;
         mMovePressPos = aPressPos;
 
         // THE SELECTION the move carries, in the two currencies the two halves of
@@ -2463,18 +2643,34 @@ namespace ctrl {
                 mMoveKeys.append(held);
             }
 
+            // WHICH CHANNEL THIS ENTRY'S VALUE HALF WRITES. A MARKER entry names its
+            // own component - the channel the user selected. A WHOLE-KEY entry names
+            // the key, i.e. the TIME axis (one frame, shared by every component), and
+            // carries no channel of its own: its value half is the component the PRESS
+            // GRABBED, so a marquee over several keys still moves the channel under the
+            // pointer on every one of them, while no sibling channel is touched.
+            //
+            // The components of one key are INDEPENDENT CHANNELS. MEASURED 2026-10-24,
+            // the user's report: a press used to write the whole key, so dragging Move
+            // X's marker moved Move Y's value by the same delta - "they should only be
+            // linked on the time axis, not the value axis".
             const int components = graph::Channel::componentCount(target.pos.type());
-            const int first = item.component < 0 ? 0 : item.component;
-            const int last = item.component < 0 ? components : item.component + 1;
-            for (int c = first; c < last && c < components; ++c) {
-                MoveMember member;
-                member.target = target;
-                member.key = memberKey;
-                member.component = c;
-                member.baseValue = graph::Channel(target.pos.type(), c).value(*memberKey);
-                mMoveMembers.append(member);
-            }
+            const int component = item.component < 0 ? mMoveComponent : item.component;
+            if (component < 0 || component >= components)
+                continue;
+            MoveMember member;
+            member.target = target;
+            member.key = memberKey;
+            member.component = component;
+            member.baseValue = graph::Channel(target.pos.type(), component).value(*memberKey);
+            mMoveMembers.append(member);
         }
+
+        // The pressed marker is always one of these members, and that is a property of
+        // the PRESS rather than of this walk: the press either WROTE the marker it
+        // landed on (setMarker) or found it covered and grabbed the group - and a
+        // whole-key entry's value half above is that same component. So the grabbed
+        // channel can always be moved, including while its key is selected whole.
     }
 
     //-------------------------------------------------------------------------------------------------
@@ -2514,22 +2710,48 @@ namespace ctrl {
         }
 
         // The SHIFT axis snap: the pointer's own pixel displacement from the
-        // press decides which axis is dominant, and the other one is pinned. The
-        // displacement is a gesture-wide quantity (not a per-step one), so the
-        // chosen axis does not flicker while the pointer wiggles: a drag that is
-        // overwhelmingly horizontal does not smear a stray pixel of vertical
-        // movement into the value.
+        // press decides which axis is dominant, and the other one is pinned TO ITS
+        // PRESS VALUE (not merely left wherever an earlier step of the gesture put
+        // it - see the step's comment below). The displacement is a gesture-wide
+        // quantity (not a per-step one), so the chosen axis does not flicker while
+        // the pointer wiggles: a drag that is overwhelmingly horizontal does not
+        // smear a stray pixel of vertical movement into the value.
         const int dx = aPos.x() - mMovePressPos.x();
         const int dy = aPos.y() - mMovePressPos.y();
         const bool snap = mModifiers.testFlag(Qt::ShiftModifier);
         const bool frameAllowed = !snap || (dx < 0 ? -dx : dx) >= (dy < 0 ? -dy : dy);
         const bool valueAllowed = !snap || (dy < 0 ? -dy : dy) > (dx < 0 ? -dx : dx);
 
-        // The FRAME delta from the last ACCEPTED frame: a refused step leaves
-        // mMovePointerFrame where it was, so the next accepted step is measured
-        // from the last accepted place. It is ONE delta for the whole selection.
+        // The FRAME delta.
+        //
+        // WITHOUT the snap it is the step since the last ACCEPTED pointer frame: a
+        // refused step leaves mMovePointerFrame where it was, so the next accepted
+        // step is measured from the last accepted place. It is ONE delta for the
+        // whole selection.
+        //
+        // UNDER the snap it is an ABSOLUTE offset from the PRESS, not an accumulated
+        // one, and that is the only way the two halves can agree. The value half
+        // below is already absolute (the pointer's row minus the press's row), so an
+        // axis that the pointer stops dominating returns to its press value; a frame
+        // half that accumulated its steps instead kept the frame the earlier
+        // horizontal part of the drag gave it, and the key then switched to the value
+        // axis FROM THERE - measured as the report "drag left, then a bit down, and
+        // the X stays at the latest X position instead of the starting one". So while
+        // snapping, the active axis carries the pointer's whole displacement from the
+        // press and the inactive one is its press value. mMoveFrame tracks where the
+        // key is NOW (a clamp or a refusal moves it), so the step is the distance
+        // from there to that absolute target - and a refused step needs no special
+        // case, because the next one recomputes the same target.
         const core::Frame pointerFrame = mScale.frameAt(aPos.x());
-        const int step = frameAllowed ? pointerFrame.get() - mMovePointerFrame.get() : 0;
+        int step = 0;
+        if (snap) {
+            const core::Frame target =
+                frameAllowed ? core::Frame(mMovePressKeyFrame.get() + pointerFrame.get() - mMovePressPointerFrame.get())
+                             : mMovePressKeyFrame;
+            step = target.get() - mMoveFrame.get();
+        } else {
+            step = pointerFrame.get() - mMovePointerFrame.get();
+        }
 
         // The VALUE: the pointer's delta from the row it went down on, added to
         // each member's own value at the press. Both rows go through the SAME live
@@ -2655,6 +2877,25 @@ namespace ctrl {
             });
         }
         command->buildValueReflows(reflowTargets);
+
+        // THE TANGENT HALF, captured with the reflows and for the same reason: it must
+        // read the params and the values the gesture FOUND, so it runs before the first
+        // value write. One target per member, because a tangent normalizes against a
+        // component of a map.
+        QVector<KeyMoveCommand::TangentTarget> tangentTargets;
+        tangentTargets.reserve(mMoveMembers.size());
+        for (const MoveMember& member : mMoveMembers) {
+            // A NON-const copy: pos.line()'s non-const overload is how the map owner
+            // comes back writable (the same copy the reflow loop makes).
+            core::TimeLineEvent::Target memberTarget = member.target;
+            KeyMoveCommand::TangentTarget target;
+            target.line = memberTarget.pos.line();
+            target.type = member.target.pos.type();
+            target.key = member.key;
+            target.component = member.component;
+            tangentTargets.append(target);
+        }
+        command->buildTangents(tangentTargets);
 
         command->modifyValues(valueDelta);
 
@@ -3034,6 +3275,7 @@ namespace ctrl {
         // ended anywhere but its own release (a hide, another press) must not
         // collapse the selection on some later release.
         mClickCollapseTarget = core::TimeLineEvent::Target();
+        mClickCollapseComponent = time::Selection::kKeyLevel;
         mClickCollapseValid = false;
 
         // The key move's command stays on the stack (it IS the gesture's one undo
@@ -3047,7 +3289,10 @@ namespace ctrl {
         mMoveNode = nullptr;
         mMoveType = core::TimeKeyType_TERM;
         mMoveFrame = core::Frame();
+        mMoveComponent = -1;
         mMovePointerFrame = core::Frame();
+        mMovePressPointerFrame = core::Frame();
+        mMovePressKeyFrame = core::Frame();
         mMovePressPos = QPoint();
     }
 
