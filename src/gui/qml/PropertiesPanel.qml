@@ -216,7 +216,7 @@ Rectangle {
                     to: inspector.translateMax
                     step: 1
                     label: inspector.depth.label
-                    prefixIcon: "depth"
+                    prefixIcon: "stack"
                     onValueEdited: (value) => inspector.depth.setDepth(value)
                 }
             }

@@ -47,7 +47,7 @@ const QHash<QString, IconRole>& roleTable() {
         {QStringLiteral("dialog_save"), IconRole::Text},
         {QStringLiteral("arrows-horizontal"), IconRole::MutedDim},
         {QStringLiteral("arrows-vertical"), IconRole::MutedDim},
-        {QStringLiteral("depth"), IconRole::MutedDim},
+        {QStringLiteral("stack"), IconRole::MutedDim},
         {QStringLiteral("circle-half"), IconRole::MutedDim},
         {QStringLiteral("grid-four"), IconRole::MutedDim},
         {QStringLiteral("angle"), IconRole::MutedDim},
