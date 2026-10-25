@@ -65,7 +65,10 @@ Item {
             parts.push('<font color="' + String(theme.textMutedDim) + '">'
                        + segment.label + '</font> ' + segment.value);
         }
-        return parts.join("\u2003");
+        // StyledText does not give U+2003 usable width here; use explicit
+        // non-breaking spaces so item gaps are visibly wider than the one
+        // ordinary space between a label and its value.
+        return parts.join("&nbsp;&nbsp;&nbsp;");
     }
 
     width: parent ? parent.width : 0

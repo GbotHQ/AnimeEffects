@@ -3809,8 +3809,8 @@ SAME `theme.textMutedDim` token and the same opacity (icon roles `MutedDim`). Ev
 summary comes from `FilterRowModel::summarySegments` and is rendered as ONE StyledText line at ONE
 size: the bold title is full ink, labels are `textMutedDim`, values stay the original `textMuted`.
 There is no smaller label, no second row and no full-opacity value. Summary numbers use the same
-`summaryNumber` trim as the fields (so `0` never becomes `0.0`), and the item separator is an em
-space while label/value uses one ordinary space. Blur uses `Amount`, or `X`/`Y`/`Angle` when
+`summaryNumber` trim as the fields (so `0` never becomes `0.0`), and the item separator is three non-breaking spaces while
+label/value uses one ordinary space (Qt StyledText did not give U+2003 a usable width). Blur uses `Amount`, or `X`/`Y`/`Angle` when
 directional. The degree suffix is announced as "Degrees"; no other unit was
 invented. Icons live in `assets/icons/ph/` and are tinted by the existing role table.
 
