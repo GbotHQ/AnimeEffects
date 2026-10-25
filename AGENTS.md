@@ -3778,8 +3778,11 @@ present. Rows inside one key's group stay contiguous. Filter cards keep the old 
 it cannot shift the header; the always-on painted grip dots were removed, while the header itself
 remains the reorder target. An expanded card has no divider line: the header's top corners stay rounded, a 4px square patch
 fills its bottom corners, and the body starts as the same card surface instead of a rounded pill
-floating over a hairline. A 1px `theme.outline` frame now runs around the whole expanded card
-(header and body inset by that stroke), so the body reads as bounded instead of loose.
+floating over a hairline. A 1px `theme.hairline` frame now runs around the whole expanded card
+(header and body inset by that stroke), so the body reads as bounded instead of loose. BOTH the
+header and the body are rounded: the body has a `radius` and a small base-coloured patch covers only
+its top corners. Keeping the body square was what made the bottom corners of the outline disappear -
+the square child covered them. Do not "fix" this by dropping the border again.
 
 **Verified:** `scripts/run_suites.sh Debug` = 57 pass / 0 fail on the tree that removes the widget
 classes; `inspector_view_model` pins model-2 writes, key toggles, filter add/reorder/enable/remove,

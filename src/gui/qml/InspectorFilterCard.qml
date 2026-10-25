@@ -56,8 +56,9 @@ Item {
     Accessible.role: Accessible.Grouping
     Accessible.name: filterRow.name
 
-    // An expanded filter is ONE bordered card: the frame supplies the body's
-    // missing edge, and the header/body are inset by its 1px stroke.
+    // One card, one quiet outline. The frame is INSET by its 1px stroke on both
+    // children, and BOTH the header and the body carry rounded corners; the body
+    // being square was what covered the bottom corners of the border.
     Rectangle {
         id: cardFrame
         anchors.fill: parent
@@ -65,7 +66,7 @@ Item {
         radius: 4
         color: "transparent"
         border.width: 1
-        border.color: theme.outline
+        border.color: theme.hairline
     }
 
     Rectangle {
@@ -206,6 +207,18 @@ Item {
         height: filterRow.expanded ? bodyColumn.implicitHeight + 18 : 0
         visible: filterRow.expanded
         color: theme.base
+        radius: filterRow.expanded ? 3 : 0
+
+        // Round the BOTTOM of the body only: the header joins it squarely and
+        // the header's own bottom patch does the same at the junction.
+        Rectangle {
+            visible: filterRow.expanded
+            anchors.left: parent.left
+            anchors.right: parent.right
+            anchors.top: parent.top
+            height: 4
+            color: body.color
+        }
 
         Column {
             id: bodyColumn
