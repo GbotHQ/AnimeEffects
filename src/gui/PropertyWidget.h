@@ -40,6 +40,8 @@ public:
     void refreshTheme();
 
     util::Signaler<void()> onVisualUpdated;
+    // a filter row asked to paint its mask (see InspectorViewModel)
+    util::Signaler<void(core::TimeKeyType, core::FilterMaskChannel)> onMaskPaintRequested;
 
 private:
     void unlinkProject();

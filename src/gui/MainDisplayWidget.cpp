@@ -18,6 +18,7 @@
 #include "gui/TimeLineEditorWidget.h"
 #include "gui/ViaPoint.h"
 #include "gui/ProjectTabBar.h"
+#include "ctrl/MaskEditor.h"
 #include "gui/KeyCommandMap.h"
 #include "gui/MouseSetting.h"
 #ifdef AE_ENABLE_IMGUI
@@ -74,6 +75,11 @@ MainDisplayWidget::MainDisplayWidget(ViaPoint& aViaPoint, QWidget* aParent):
     mChannelPopup(nullptr),
     mTimeLine(),
     mTimeLineRangeSlot(),
+    mBrushDrag(false),
+    mBrushDragLast(),
+    mBrushDragSize(0.0f),
+    mBrushDragHardness(0.0f),
+    mPlayWindowConnection(),
     mViewportBackground(),
     mUsingTablet(false),
     mViewSetting(),
@@ -511,6 +517,16 @@ void MainDisplayWidget::setViewportBackground(const QColor& aColor) {
     }
 }
 
+bool MainDisplayWidget::brushToolActive() const {
+    if (!mDriver)
+        return false;
+    if (mToolType == ctrl::ToolType_Cursor)
+        return false;
+    // the four painting tools share the brush rows (ctrl/Brush.h)
+    return mDriver->maskEditor() != nullptr || mToolType == ctrl::ToolType_FFD
+        || mToolType == ctrl::ToolType_Bone || mToolType == ctrl::ToolType_Pose;
+}
+
 void MainDisplayWidget::updateRender() { this->update(); }
 
 void MainDisplayWidget::initializeGL() {
@@ -641,6 +657,21 @@ void MainDisplayWidget::paintGL() {
         mRenderInfo->destTexturizer = mDestinationTexturizer.data();
         mRenderInfo->filterFrame = mFilterFrame.data();
         mRenderInfo->opacityScale = 1.0f;
+
+        // THE MASK PREVIEW: while the Mask tool is up, the field it paints is drawn as
+        // a tint over its target's content (the tint is the deviation from the
+        // channel's neutral value, so unpainted areas stay clean).
+        mRenderInfo->maskPreview = nullptr;
+        mRenderInfo->maskPreviewTarget = nullptr;
+        if (mDriver) {
+            if (ctrl::MaskEditor* editor = mDriver->maskEditor()) {
+                mRenderInfo->maskPreview = editor->previewMask();
+                if (mRenderInfo->maskPreview) {
+                    mRenderInfo->maskPreviewTarget = editor->previewTarget();
+                    mRenderInfo->maskPreviewColor = QColor(150, 120, 255, 115);
+                }
+            }
+        }
         XC_ASSERT(mRenderInfo->framebuffer != 0);
         XC_ASSERT(mRenderInfo->dest != 0);
         mRenderInfo->camera.setFlip(mViewSetting.flipCanvas);
@@ -744,6 +775,24 @@ void MainDisplayWidget::applyCanvasMoverDragMode() {
 }
 
 void MainDisplayWidget::mouseMoveEvent(QMouseEvent* aEvent) {
+    if (mBrushDrag) {
+        const QPointF delta = aEvent->position() - mBrushDragLast;
+        mBrushDragLast = aEvent->position();
+        // one step per 8 logical px horizontally, per 40 vertically: a deliberate
+        // drag changes the size, a small wobble does not
+        mBrushDragSize += float(delta.x()) / 8.0f;
+        mBrushDragHardness -= float(delta.y()) / 40.0f;
+        const int sizeSteps = int(mBrushDragSize);
+        const int hardnessSteps = int(mBrushDragHardness);
+        if (sizeSteps != 0 || hardnessSteps != 0) {
+            mBrushDragSize -= float(sizeSteps);
+            mBrushDragHardness -= float(hardnessSteps);
+            onBrushDragAdjusted(sizeSteps, hardnessSteps);
+        }
+        aEvent->accept();
+        return;
+    }
+
     if (mRenderInfo) {
         // The panel's own gestures read the modifier state from here: neither
         // core::AbstractCursor nor the editor's updateCursor carries modifiers, so
@@ -771,6 +820,35 @@ void MainDisplayWidget::mouseMoveEvent(QMouseEvent* aEvent) {
 }
 
 void MainDisplayWidget::mousePressEvent(QMouseEvent* aEvent) {
+    // THE TEMPORARY EYEDROPPER, before anything else can claim the press: Alt + left
+    // click samples the field the mask tool paints and consumes the event, so no
+    // stroke begins. A CLICK, not a drag: the compositor owns Alt+drag (measured, see
+    // AGENTS.md), which is exactly why the eyedropper is the click.
+    if (mRenderInfo && mDriver && mDriver->maskEditor() && aEvent->button() == Qt::MouseButton::LeftButton
+        && (aEvent->modifiers() & Qt::AltModifier)) {
+        ctrl::MaskEditor* editor = mDriver->maskEditor();
+        const QVector2D world = mRenderInfo->camera.toWorldPos(
+            QVector2D(float(aEvent->position().x()), float(aEvent->position().y()))
+        );
+        const float sampled = editor->sampleValue(world);
+        if (0.0f <= sampled)
+            onMaskValueSampled(sampled);
+        aEvent->accept();
+        return;
+    }
+
+    // THE BRUSH SIZE/HARDNESS DRAG claims the press before the tools see it: it is a
+    // viewport gesture over any brush tool, not a tool gesture.
+    if (mRenderInfo && mDriver && aEvent->button() == Qt::MouseButton::RightButton
+        && (aEvent->modifiers() & Qt::AltModifier) && brushToolActive()) {
+        mBrushDrag = true;
+        mBrushDragLast = aEvent->position();
+        mBrushDragSize = 0.0f;
+        mBrushDragHardness = 0.0f;
+        aEvent->accept();
+        return;
+    }
+
     if (mRenderInfo) {
         if (mDriver) {
             mDriver->setGraphModifiers(aEvent->modifiers());
@@ -800,6 +878,13 @@ void MainDisplayWidget::mousePressEvent(QMouseEvent* aEvent) {
 }
 
 void MainDisplayWidget::mouseReleaseEvent(QMouseEvent* aEvent) {
+    if (mBrushDrag) {
+        if (aEvent->button() == Qt::MouseButton::RightButton || !(aEvent->modifiers() & Qt::AltModifier))
+            mBrushDrag = false;
+        aEvent->accept();
+        return;
+    }
+
     if (mRenderInfo) {
         if (mDriver) {
             mDriver->setGraphModifiers(aEvent->modifiers());
@@ -895,6 +980,9 @@ void MainDisplayWidget::focusOutEvent(QFocusEvent* aEvent) { QOpenGLWidget::focu
 void MainDisplayWidget::onVisualUpdated() { updateRender(); }
 
 void MainDisplayWidget::onToolChanged(ctrl::ToolType aType) {
+    // which tool owns the viewport decides whether the brush SIZE/HARDNESS drag
+    // claims a right press (see brushToolActive)
+    mToolType = aType;
     if (aType == ctrl::ToolType_Cursor) {
         this->setCursor(Qt::OpenHandCursor);
         mMovingCanvasByTool = true;

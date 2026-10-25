@@ -208,7 +208,7 @@ inline QColor paletteColor(const char* aHex, double aAlpha = 1.0) {
 // ---------------------------------------------------------------------------
 enum KeyColorToken { kKeyBase, kKeyMove, kKeyRotate, kKeyScale, kKeyDepth,
                      kKeyOpa, kKeyBone, kKeyPose, kKeyMesh, kKeyFFD,
-                     kKeyImage, kKeyHSV, kKeyBlur, kKeyCount };
+                     kKeyImage, kKeyHSV, kKeyBlur, kKeyWave, kKeyCount };
 static constexpr int kKeyColorRow[] = {
     kTailwindNeutralRow, // baseKey  (neutral)
     11,                  // moveKey  (indigo)
@@ -223,6 +223,7 @@ static constexpr int kKeyColorRow[] = {
     9,                   // imageKey (sky)
     11,                  // HSVKey   (indigo)
     14,                  // blurKey  (fuchsia)
+    7,                   // waveKey  (teal)
 };
 static_assert(sizeof(kKeyColorRow) / sizeof(kKeyColorRow[0]) == kKeyCount,
               "kKeyColorRow must have one row per KeyColorToken");
@@ -372,6 +373,7 @@ struct Colors {
     QColor imageKey;
     QColor HSVKey;
     QColor blurKey;
+    QColor waveKey;
     // The channel hue table's axis cells (see THE CHANNEL HUE TABLE): X red,
     // Y green, Z blue. Both views read these through channelColor() below;
     // no widget derives an axis hue of its own.
@@ -437,6 +439,7 @@ struct Colors {
             paletteColor(kTailwindRows[kKeyColorRow[kKeyImage]][kKeyColorColumnLight]), // imageKey
             paletteColor(kTailwindRows[kKeyColorRow[kKeyHSV]][kKeyColorColumnLight]), // HSVKey
             paletteColor(kTailwindRows[kKeyColorRow[kKeyBlur]][kKeyColorColumnLight]), // blurKey
+            paletteColor(kTailwindRows[kKeyColorRow[kKeyWave]][kKeyColorColumnLight]), // waveKey
             // The channel hue table's axis cells, at the same key column as
             // the type hues so an axis channel and a no-axis channel read at
             // one brightness (THE CHANNEL HUE TABLE).
@@ -500,6 +503,7 @@ struct Colors {
             paletteColor(kTailwindRows[kKeyColorRow[kKeyImage]][kKeyColorColumnDark]), // imageKey
             paletteColor(kTailwindRows[kKeyColorRow[kKeyHSV]][kKeyColorColumnDark]), // HSVKey
             paletteColor(kTailwindRows[kKeyColorRow[kKeyBlur]][kKeyColorColumnDark]), // blurKey
+            paletteColor(kTailwindRows[kKeyColorRow[kKeyWave]][kKeyColorColumnDark]), // waveKey
             // The channel hue table's axis cells (THE CHANNEL HUE TABLE): rose,
             // green and sky at the dark key column = #fb7185, #4ade80, #38bdf8,
             // the three cells design section 7 names.
@@ -586,6 +590,7 @@ inline QColor keyTypeColor(const Colors& aColors, core::TimeKeyType aType) {
     case core::TimeKeyType_Image: return aColors.imageKey;
     case core::TimeKeyType_HSV: return aColors.HSVKey;
     case core::TimeKeyType_Blur: return aColors.blurKey;
+    case core::TimeKeyType_Wave: return aColors.waveKey;
     case core::TimeKeyType_TERM: break;
     }
     return aColors.baseKey; // the neutral key

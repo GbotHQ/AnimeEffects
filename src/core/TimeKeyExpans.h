@@ -9,6 +9,7 @@
 #include "core/ScaleKey.h"
 #include "core/OpaKey.h"
 #include "core/HsvKey.h"
+#include "core/WaveKey.h"
 #include "core/BoneKey.h"
 #include "core/PoseKey.h"
 #include "core/MeshKey.h"
@@ -42,6 +43,9 @@ public:
 
     HSVKey::Data& hsv() { return mHSV; }
     const HSVKey::Data& hsv() const { return mHSV; }
+
+    WaveKey::Data& wave() { return mWave; }
+    const WaveKey::Data& wave() const { return mWave; }
 
     void setBlurEllipse(float aBlurX, float aBlurY, float aAngleDeg) {
         mBlurX = aBlurX;
@@ -103,6 +107,7 @@ private:
     SRTExpans mSRT;
     OpaKey::Data mOpa;
     HSVKey::Data mHSV;
+    WaveKey::Data mWave;
     float mBlurX;
     float mBlurY;
     float mBlurAngle;

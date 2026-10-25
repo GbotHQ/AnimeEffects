@@ -8,6 +8,7 @@
 #include <QVector>
 
 #include "core/TimeKeyType.h"
+#include "core/WaveKey.h"
 #include "core/TimeLine.h"
 
 namespace gui {
@@ -36,6 +37,18 @@ class FilterRowModel: public QObject {
     Q_PROPERTY(QString blurXLabel READ blurXLabel CONSTANT)
     Q_PROPERTY(QString blurYLabel READ blurYLabel CONSTANT)
     Q_PROPERTY(QString angleLabel READ angleLabel CONSTANT)
+    Q_PROPERTY(QString strengthLabel READ strengthLabel CONSTANT)
+    Q_PROPERTY(QString wavelengthLabel READ wavelengthLabel CONSTANT)
+    Q_PROPERTY(QString directionLabel READ directionLabel CONSTANT)
+    Q_PROPERTY(QString phaseLabel READ phaseLabel CONSTANT)
+    Q_PROPERTY(QString mixLabel READ mixLabel CONSTANT)
+    Q_PROPERTY(QString speedLabel READ speedLabel CONSTANT)
+    Q_PROPERTY(QString crestLabel READ crestLabel CONSTANT)
+    Q_PROPERTY(QString dualAngleLabel READ dualAngleLabel CONSTANT)
+    Q_PROPERTY(QString dualScaleLabel READ dualScaleLabel CONSTANT)
+    Q_PROPERTY(QString deformLabel READ deformLabel CONSTANT)
+    Q_PROPERTY(QString rippleLabel READ rippleLabel CONSTANT)
+    Q_PROPERTY(QString swayLabel READ swayLabel CONSTANT)
 
     Q_PROPERTY(int hue READ hue NOTIFY changed)
     Q_PROPERTY(int saturation READ saturation NOTIFY changed)
@@ -46,6 +59,31 @@ class FilterRowModel: public QObject {
     Q_PROPERTY(double blurX READ blurX NOTIFY changed)
     Q_PROPERTY(double blurY READ blurY NOTIFY changed)
     Q_PROPERTY(double blurAngle READ blurAngle NOTIFY changed)
+
+    Q_PROPERTY(double waveStrength READ waveStrength NOTIFY changed)
+    Q_PROPERTY(double waveWavelength READ waveWavelength NOTIFY changed)
+    Q_PROPERTY(double waveDirection READ waveDirection NOTIFY changed)
+    Q_PROPERTY(double wavePhase READ wavePhase NOTIFY changed)
+    Q_PROPERTY(double waveMix READ waveMix NOTIFY changed)
+    Q_PROPERTY(double waveSpeed READ waveSpeed NOTIFY changed)
+    Q_PROPERTY(double waveCrest READ waveCrest NOTIFY changed)
+    Q_PROPERTY(double waveDualAngle READ waveDualAngle NOTIFY changed)
+    Q_PROPERTY(double waveDualScale READ waveDualScale NOTIFY changed)
+    Q_PROPERTY(bool waveRipple READ waveRipple NOTIFY changed)
+    // the painted mask's state, per channel: a row offers Paint always and Clear only
+    // when a field exists (a fresh field is neutral and renders like none)
+    Q_PROPERTY(bool hasAmountMask READ hasAmountMask NOTIFY changed)
+    Q_PROPERTY(bool hasTimeMask READ hasTimeMask NOTIFY changed)
+    // The mask rows' texts. They are Q_PROPERTYs like every other label here: a plain
+    // method is not readable from QML, and a binding that reads one evaluates to
+    // `undefined` - which is how these rows were MISSING from the card while the C++
+    // model answered correctly (measured on the running dialog).
+    Q_PROPERTY(QString maskLabel READ maskLabel CONSTANT)
+    Q_PROPERTY(QString timeMaskLabel READ timeMaskLabel CONSTANT)
+    Q_PROPERTY(QString paintMaskLabel READ paintMaskLabel CONSTANT)
+    Q_PROPERTY(QString clearMaskLabel READ clearMaskLabel CONSTANT)
+    Q_PROPERTY(QString paintTimeMaskLabel READ paintTimeMaskLabel CONSTANT)
+    Q_PROPERTY(QString clearTimeMaskLabel READ clearTimeMaskLabel CONSTANT)
 
 public:
     FilterRowModel(core::TimeKeyType aType, InspectorViewModel& aOwner, QObject* aParent = nullptr);
@@ -70,6 +108,28 @@ public:
     QString blurXLabel() const { return QCoreApplication::translate("gui::prop::FilterStackPanel", "Blur X"); }
     QString blurYLabel() const { return QCoreApplication::translate("gui::prop::FilterStackPanel", "Blur Y"); }
     QString angleLabel() const { return QCoreApplication::translate("gui::prop::FilterStackPanel", "Angle"); }
+    QString strengthLabel() const { return QCoreApplication::translate("gui::prop::FilterStackPanel", "Strength"); }
+    QString wavelengthLabel() const { return QCoreApplication::translate("gui::prop::FilterStackPanel", "Wavelength"); }
+    QString directionLabel() const { return QCoreApplication::translate("gui::prop::FilterStackPanel", "Direction"); }
+    QString phaseLabel() const { return QCoreApplication::translate("gui::prop::FilterStackPanel", "Phase"); }
+    QString mixLabel() const { return QCoreApplication::translate("gui::prop::FilterStackPanel", "Dual wave"); }
+    QString speedLabel() const { return QCoreApplication::translate("gui::prop::FilterStackPanel", "Speed"); }
+    QString crestLabel() const { return QCoreApplication::translate("gui::prop::FilterStackPanel", "Crest"); }
+    QString dualAngleLabel() const { return QCoreApplication::translate("gui::prop::FilterStackPanel", "Dual direction"); }
+    QString dualScaleLabel() const { return QCoreApplication::translate("gui::prop::FilterStackPanel", "Dual scale"); }
+    QString deformLabel() const { return QCoreApplication::translate("gui::prop::FilterStackPanel", "Deform"); }
+    QString rippleLabel() const { return QCoreApplication::translate("gui::prop::FilterStackPanel", "Ripple"); }
+    QString swayLabel() const { return QCoreApplication::translate("gui::prop::FilterStackPanel", "Sway"); }
+    QString maskLabel() const { return QCoreApplication::translate("gui::prop::FilterStackPanel", "Mask"); }
+    QString timeMaskLabel() const { return QCoreApplication::translate("gui::prop::FilterStackPanel", "Time mask"); }
+    QString paintMaskLabel() const { return QCoreApplication::translate("gui::prop::FilterStackPanel", "Paint mask"); }
+    QString clearMaskLabel() const { return QCoreApplication::translate("gui::prop::FilterStackPanel", "Clear mask"); }
+    QString paintTimeMaskLabel() const {
+        return QCoreApplication::translate("gui::prop::FilterStackPanel", "Paint time offset mask");
+    }
+    QString clearTimeMaskLabel() const {
+        return QCoreApplication::translate("gui::prop::FilterStackPanel", "Clear time offset mask");
+    }
 
     int hue() const { return mHue; }
     int saturation() const { return mSaturation; }
@@ -80,6 +140,19 @@ public:
     double blurX() const { return mBlurX; }
     double blurY() const { return mBlurY; }
     double blurAngle() const { return mBlurAngle; }
+
+    double waveStrength() const { return mWave.strength(); }
+    double waveWavelength() const { return mWave.wavelength(); }
+    double waveDirection() const { return mWave.angleDeg(); }
+    double wavePhase() const { return mWave.phase(); }
+    double waveMix() const { return mWave.mix(); }
+    double waveSpeed() const { return mWave.speed(); }
+    double waveCrest() const { return mWave.crest(); }
+    double waveDualAngle() const { return mWave.dualAngleDeg(); }
+    double waveDualScale() const { return mWave.dualScale(); }
+    bool waveRipple() const { return mWave.deform() == core::WaveKey::Deform_Ripple; }
+    bool hasAmountMask() const { return mHasAmountMask; }
+    bool hasTimeMask() const { return mHasTimeMask; }
 
     void refresh();
     void refreshTheme();
@@ -100,13 +173,33 @@ public:
     Q_INVOKABLE void setBlurY(double aValue);
     Q_INVOKABLE void setBlurAngle(double aValue);
 
+    Q_INVOKABLE void setWaveStrength(double aValue);
+    Q_INVOKABLE void setWaveWavelength(double aValue);
+    Q_INVOKABLE void setWaveDirection(double aValue);
+    Q_INVOKABLE void setWavePhase(double aValue);
+    Q_INVOKABLE void setWaveMix(double aValue);
+    Q_INVOKABLE void setWaveSpeed(double aValue);
+    Q_INVOKABLE void setWaveCrest(double aValue);
+    Q_INVOKABLE void setWaveDualAngle(double aValue);
+    Q_INVOKABLE void setWaveDualScale(double aValue);
+    Q_INVOKABLE void setWaveRipple(bool aValue);
+
+    // The mask actions hand the lane and channel to the Mask tool through the owner's
+    // signal (the toolbox tool is where painting happens), or clear the field here.
+    Q_INVOKABLE void paintMask(int aChannel);
+    Q_INVOKABLE void clearMask(int aChannel);
+
 signals:
     void changed();
 
 private:
     bool isHSV() const { return mType == core::TimeKeyType_HSV; }
     bool isBlur() const { return mType == core::TimeKeyType_Blur; }
+    bool isWave() const { return mType == core::TimeKeyType_Wave; }
     void writeBlurEllipse();
+    // Writes the row's whole wave data, so every field the user did not touch
+    // keeps the value the document had at this frame.
+    void writeWave();
 
     InspectorViewModel& mOwner;
     core::TimeKeyType mType;
@@ -126,6 +219,9 @@ private:
     double mBlurX = 0.0;
     double mBlurY = 0.0;
     double mBlurAngle = 0.0;
+    core::WaveKey::Data mWave;
+    bool mHasAmountMask = false;
+    bool mHasTimeMask = false;
 };
 
 class FilterStackModel: public QObject {

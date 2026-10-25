@@ -32,6 +32,7 @@ namespace tool {
         addButton(ctrl::ToolType_Pose, "pose", tr("Pose editor"));
         addButton(ctrl::ToolType_Mesh, "triangle", tr("Mesh editor"));
         addButton(ctrl::ToolType_FFD, "ffd", tr("Free-form deformation"));
+        addButton(ctrl::ToolType_Mask, "paint-brush", tr("Filter mask paint"));
 
         mGUIResources.onThemeChanged.connect(this, &ModePanel::onThemeUpdated);
     }

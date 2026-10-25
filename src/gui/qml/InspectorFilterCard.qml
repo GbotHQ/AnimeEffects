@@ -31,6 +31,24 @@ Item {
         property double blurX: 0
         property double blurY: 0
         property double blurAngle: 0
+        property double waveStrength: 0
+        property double waveWavelength: 140
+        property double waveDirection: 0
+        property double wavePhase: 0
+        property double waveMix: 0.35
+        property double waveSpeed: 0.4
+        property double waveCrest: 1
+        property double waveDualAngle: 62
+        property double waveDualScale: 0.61
+        property bool waveRipple: true
+        property bool hasAmountMask: false
+        property bool hasTimeMask: false
+        property string maskLabel: ""
+        property string timeMaskLabel: ""
+        property string paintMaskLabel: ""
+        property string clearMaskLabel: ""
+        property string paintTimeMaskLabel: ""
+        property string clearTimeMaskLabel: ""
         function toggleExpanded() {}
         function toggleKey() {}
         function toggleEnabled() {}
@@ -44,6 +62,18 @@ Item {
         function setBlurX(v) {}
         function setBlurY(v) {}
         function setBlurAngle(v) {}
+        function setWaveStrength(v) {}
+        function setWaveWavelength(v) {}
+        function setWaveDirection(v) {}
+        function setWavePhase(v) {}
+        function setWaveMix(v) {}
+        function setWaveSpeed(v) {}
+        function setWaveCrest(v) {}
+        function setWaveDualAngle(v) {}
+        function setWaveDualScale(v) {}
+        function setWaveRipple(v) {}
+        function paintMask(c) {}
+        function clearMask(c) {}
     }
     property var filterRow: emptyRow
     property int cardIndex: 0
@@ -384,6 +414,223 @@ Item {
                     prefixIcon: "angle"
                     suffix: "°"
                     onValueEdited: (value) => filterRow.setBlurAngle(value)
+                }
+            }
+
+            // Wave Deform. The five graph channels first (they are what the
+            // animation graph draws), then the shape decisions that are
+            // step-held between keys - the same split core::WaveKey documents.
+            InspectorRow {
+                visible: filterRow.kind === "wave"
+                label: filterRow.strengthLabel
+                InspectorNumberField {
+                    Layout.fillWidth: true
+                    value: filterRow.waveStrength
+                    from: inspector.waveStrengthMin
+                    to: inspector.waveStrengthMax
+                    step: 0.5
+                    decimals: 1
+                    label: qsTr("Wave strength")
+                    onValueEdited: (value) => filterRow.setWaveStrength(value)
+                }
+            }
+            InspectorRow {
+                visible: filterRow.kind === "wave"
+                label: filterRow.wavelengthLabel
+                InspectorNumberField {
+                    Layout.fillWidth: true
+                    value: filterRow.waveWavelength
+                    from: inspector.waveWavelengthMin
+                    to: inspector.waveWavelengthMax
+                    step: 1
+                    decimals: 0
+                    label: qsTr("Wave wavelength")
+                    onValueEdited: (value) => filterRow.setWaveWavelength(value)
+                }
+            }
+            InspectorRow {
+                visible: filterRow.kind === "wave"
+                label: filterRow.directionLabel
+                InspectorNumberField {
+                    Layout.fillWidth: true
+                    value: filterRow.waveDirection
+                    from: inspector.blurAngleMin
+                    to: inspector.blurAngleMax
+                    step: 1
+                    decimals: 1
+                    label: qsTr("Wave direction")
+                    prefixIcon: "angle"
+                    suffix: "\u00b0"
+                    onValueEdited: (value) => filterRow.setWaveDirection(value)
+                }
+            }
+            InspectorRow {
+                visible: filterRow.kind === "wave"
+                label: filterRow.phaseLabel
+                InspectorNumberField {
+                    Layout.fillWidth: true
+                    value: filterRow.wavePhase
+                    from: inspector.wavePhaseMin
+                    to: inspector.wavePhaseMax
+                    step: 0.05
+                    decimals: 2
+                    label: qsTr("Wave phase")
+                    onValueEdited: (value) => filterRow.setWavePhase(value)
+                }
+            }
+            InspectorRow {
+                visible: filterRow.kind === "wave"
+                label: filterRow.mixLabel
+                InspectorNumberField {
+                    Layout.fillWidth: true
+                    value: filterRow.waveMix
+                    from: 0
+                    to: inspector.waveMixMax
+                    step: 0.05
+                    decimals: 2
+                    label: qsTr("Dual wave amount")
+                    onValueEdited: (value) => filterRow.setWaveMix(value)
+                }
+            }
+            InspectorRow {
+                visible: filterRow.kind === "wave"
+                label: filterRow.deformLabel
+                AeCheckBox {
+                    Layout.fillWidth: true
+                    Layout.preferredHeight: 23
+                    text: filterRow.rippleLabel
+                    textFont: uiFont
+                    checked: filterRow.waveRipple
+                    onToggled: filterRow.setWaveRipple(checked)
+                }
+            }
+            InspectorRow {
+                visible: filterRow.kind === "wave"
+                label: filterRow.speedLabel
+                InspectorNumberField {
+                    Layout.fillWidth: true
+                    value: filterRow.waveSpeed
+                    from: inspector.waveSpeedMin
+                    to: inspector.waveSpeedMax
+                    step: 0.05
+                    decimals: 2
+                    label: qsTr("Wave speed")
+                    onValueEdited: (value) => filterRow.setWaveSpeed(value)
+                }
+            }
+            InspectorRow {
+                visible: filterRow.kind === "wave"
+                label: filterRow.crestLabel
+                InspectorNumberField {
+                    Layout.fillWidth: true
+                    value: filterRow.waveCrest
+                    from: inspector.waveCrestMin
+                    to: inspector.waveCrestMax
+                    step: 0.05
+                    decimals: 2
+                    label: qsTr("Wave crest")
+                    onValueEdited: (value) => filterRow.setWaveCrest(value)
+                }
+            }
+            InspectorRow {
+                visible: filterRow.kind === "wave"
+                label: filterRow.dualAngleLabel
+                InspectorNumberField {
+                    Layout.fillWidth: true
+                    value: filterRow.waveDualAngle
+                    from: inspector.blurAngleMin
+                    to: inspector.blurAngleMax
+                    step: 1
+                    decimals: 1
+                    label: qsTr("Dual wave direction")
+                    prefixIcon: "angle"
+                    suffix: "\u00b0"
+                    onValueEdited: (value) => filterRow.setWaveDualAngle(value)
+                }
+            }
+            InspectorRow {
+                visible: filterRow.kind === "wave"
+                label: filterRow.dualScaleLabel
+                InspectorNumberField {
+                    Layout.fillWidth: true
+                    value: filterRow.waveDualScale
+                    from: inspector.waveDualScaleMin
+                    to: inspector.waveDualScaleMax
+                    step: 0.01
+                    decimals: 2
+                    label: qsTr("Dual wave scale")
+                    onValueEdited: (value) => filterRow.setWaveDualScale(value)
+                }
+            }
+
+            // MASK: the filter's painted field. Paint hands the lane and channel to the
+            // Mask tool (the toolbox tool is where painting happens - the card only
+            // points at it); Clear returns the field to its neutral value in ONE undo
+            // step and is offered only while a field exists.
+            InspectorRow {
+                visible: filterRow.kind !== ""
+                label: filterRow.maskLabel
+                RowLayout {
+                    spacing: 4
+                    AeIconButton {
+                        Layout.preferredWidth: 20
+                        Layout.preferredHeight: 20
+                        size: 20
+                        iconSize: 16
+                        iconName: "paint-brush"
+                        label: filterRow.paintMaskLabel
+                        showTip: true
+                        opacity: headerMouse.containsMouse ? 1.0 : 0.75
+                        onClicked: filterRow.paintMask(0)
+                    }
+                    AeIconButton {
+                        Layout.preferredWidth: 20
+                        Layout.preferredHeight: 20
+                        size: 20
+                        iconSize: 16
+                        iconName: "eraser"
+                        label: filterRow.clearMaskLabel
+                        showTip: true
+                        enabled: filterRow.hasAmountMask
+                        opacity: filterRow.hasAmountMask ? 0.75 : 0.3
+                        onClicked: filterRow.clearMask(0)
+                    }
+                    Item {
+                        Layout.fillWidth: true
+                    }
+                }
+            }
+            InspectorRow {
+                visible: filterRow.kind === "wave"
+                label: filterRow.timeMaskLabel
+                RowLayout {
+                    spacing: 4
+                    AeIconButton {
+                        Layout.preferredWidth: 20
+                        Layout.preferredHeight: 20
+                        size: 20
+                        iconSize: 16
+                        iconName: "paint-brush"
+                        label: filterRow.paintTimeMaskLabel
+                        showTip: true
+                        opacity: headerMouse.containsMouse ? 1.0 : 0.75
+                        onClicked: filterRow.paintMask(1)
+                    }
+                    AeIconButton {
+                        Layout.preferredWidth: 20
+                        Layout.preferredHeight: 20
+                        size: 20
+                        iconSize: 16
+                        iconName: "eraser"
+                        label: filterRow.clearTimeMaskLabel
+                        showTip: true
+                        enabled: filterRow.hasTimeMask
+                        opacity: filterRow.hasTimeMask ? 0.75 : 0.3
+                        onClicked: filterRow.clearMask(1)
+                    }
+                    Item {
+                        Layout.fillWidth: true
+                    }
                 }
             }
         }

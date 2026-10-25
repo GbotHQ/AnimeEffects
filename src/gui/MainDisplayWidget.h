@@ -150,6 +150,18 @@ public:
     void onViewSettingChanged(const MainViewSetting&);
     void onProjectAttributeUpdated();
 
+    // THE TEMPORARY EYEDROPPER'S RESULT: the mask tool sampled the field under the
+    // cursor (Alt + left click) and hands the value here. The modifier state lives in
+    // this widget, so this is where the gesture is recognised; the panel is the one
+    // that owns the value.
+    util::Signaler<void(float)> onMaskValueSampled;
+
+    // THE BRUSH SIZE/HARDNESS DRAG (Photoshop's Alt + RIGHT drag): horizontal is the
+    // size, vertical the hardness, in whole steps of one notch. Right button on
+    // purpose - the compositor owns Alt + LEFT drag to move windows (measured), so
+    // the familiar gesture survives on this platform.
+    util::Signaler<void(int, int)> onBrushDragAdjusted;
+
 private:
     class GLContextAccessor: public gl::ContextAccessor {
         MainDisplayWidget* mOwner;
@@ -202,6 +214,8 @@ private:
     // without the panel and in a window without the dock.
     void refreshGraphPanel();
     QSize deviceSize() const { return this->size() * mDevicePixelRatio; }
+    // true while a tool that owns the shared brush is active (the brush drags)
+    bool brushToolActive() const;
 
     ViaPoint& mViaPoint;
     gl::DeviceInfo mGLDeviceInfo;
@@ -219,6 +233,7 @@ private:
     core::RenderInfo* mRenderInfo;
     core::AbstractCursor mAbstractCursor;
     ctrl::Driver* mDriver;
+    ctrl::ToolType mToolType;
     ProjectTabBar* mProjectTabBar;
     // The ONE channel list this widget owns (showGraphChannelMenu): created on the
     // first open, parented here, hidden and re-filled for every open after that.
@@ -227,6 +242,12 @@ private:
     // (see setTimeLineWidget), and the connection to its view-range signal.
     TimeLineWidget* mTimeLine;
     util::SlotId mTimeLineRangeSlot;
+    // the Alt+right-drag gesture in flight, and the fractional steps it has banked
+    // so a slow drag still produces whole notches
+    bool mBrushDrag;
+    QPointF mBrushDragLast;
+    float mBrushDragSize;
+    float mBrushDragHardness;
     // The timeline surface's playWindowChanged -> syncGraphPanelSharedState connection
     // (see setTimeLineWidget). Dropped with the old timeline; auto-dropped when this
     // widget dies.

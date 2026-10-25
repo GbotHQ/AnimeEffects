@@ -214,6 +214,9 @@ void TimeKeyBlender::updateCurrents(ObjectNode* aRootNode, const TimeInfo& aTime
             // build blur
             blendBlurKey(pos, aTime);
 
+            // build wave deform
+            blendWaveKey(pos, aTime);
+
             // build mesh
             blendMeshKey(pos, aTime);
 
@@ -648,6 +651,61 @@ void TimeKeyBlender::blendBlurKey(PositionType aPos, const TimeInfo& aTime) {
             d0.blurY() * (1.0f - timeY) + d1.blurY() * timeY,
             d0.angleDeg() * (1.0f - timeAngle) + d1.angleDeg() * timeAngle
         );
+    }
+}
+
+void TimeKeyBlender::blendWaveKey(PositionType aPos, const TimeInfo& aTime) {
+    auto seekData = mSeeker->data(aPos);
+    if (!seekData.objNode || !seekData.expans)
+        return;
+    auto& node = *seekData.objNode;
+    auto& expans = *seekData.expans;
+    if (!node.timeLine())
+        return;
+
+    // set cache frame
+    expans.setKeyCache(TimeKeyType_Wave, aTime.frame);
+
+    // get blend info
+    TimeKeyGatherer blend(node.timeLine()->map(TimeKeyType_Wave), aTime);
+
+    // no key is exists
+    if (blend.isEmpty()) {
+        auto defaultKey = (WaveKey*)node.timeLine()->defaultKey(TimeKeyType_Wave);
+        expans.wave() = defaultKey ? defaultKey->data() : WaveKey::Data();
+    } else if (blend.hasSameFrame()) {
+        // a key is exists
+        expans.wave() = ((const WaveKey*)blend.point(0).key)->data();
+    } else if (blend.isSingle()) {
+        // perfect following
+        expans.wave() = ((const WaveKey*)blend.singlePoint().key)->data();
+    } else {
+        // The five graph channels each follow their own curve; the shape
+        // decisions (speed, crest, the dual wave's angle and scale, the deform
+        // mode) are STEP-HELD from the earlier key - they are not values that
+        // play as a curve, and interpolating `speed` in particular would make
+        // the phase (speed * time) jump at every key.
+        const WaveKey* k0 = (const WaveKey*)blend.point(0).key;
+        const WaveKey* k1 = (const WaveKey*)blend.point(1).key;
+        const auto& d0 = k0->data();
+        const auto& d1 = k1->data();
+        WaveKey::Data data = d0;
+
+        const float timeStrength = getEasingRateFromTwoKeys<WaveKey>(blend, 0);
+        const float timeWavelength = getEasingRateFromTwoKeys<WaveKey>(blend, 1);
+        const float timeAngle = getEasingRateFromTwoKeys<WaveKey>(blend, 2);
+        const float timePhase = getEasingRateFromTwoKeys<WaveKey>(blend, 3);
+        const float timeMix = getEasingRateFromTwoKeys<WaveKey>(blend, 4);
+        const auto lerp = [](float a0, float a1, float aRate) { return a0 * (1.0f - aRate) + a1 * aRate; };
+
+        data.setStrength(lerp(d0.strength(), d1.strength(), timeStrength));
+        data.setWavelength(lerp(d0.wavelength(), d1.wavelength(), timeWavelength));
+        // The angle interpolates linearly like rotate/blur, so an accumulated
+        // multi-turn spin keeps its turns instead of taking the shortest arc.
+        data.setAngleDeg(lerp(d0.angleDeg(), d1.angleDeg(), timeAngle));
+        data.setPhase(lerp(d0.phase(), d1.phase(), timePhase));
+        data.setMix(lerp(d0.mix(), d1.mix(), timeMix));
+        expans.wave() = data;
     }
 }
 

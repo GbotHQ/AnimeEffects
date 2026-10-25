@@ -17,6 +17,18 @@
 
 set -u
 
+# THE OUTER SHELL HAS NO DISPLAY, ON PURPOSE. Every probe runs its application
+# inside `xvfb-run`, which sets DISPLAY (and an XAUTHORITY cookie) for that child
+# only. This script keeps running in the caller's shell, which on a normal desktop
+# HAS a DISPLAY - so any line that escapes the `bash -c` body (the apostrophe trap
+# documented below) would reach the person's real session. Measured 2026-10-25: a
+# leaked `import -window root` under a Wayland session raised a screen-capture
+# permission prompt on the desktop while the probe was supposed to be offscreen.
+# With the variables unset here, a leaked command has no display to reach and
+# fails instead of touching anything.
+unset DISPLAY
+unset WAYLAND_DISPLAY
+
 ROOT=$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)
 APP="$ROOT/build/src/gui/Debug/AnimeEffects"
 SHOTS="${AE_SHOTS:-$ROOT/build/shots}"

@@ -823,9 +823,67 @@ target_link_libraries(filter_stack_model PRIVATE
     cmnd core ctrl gl img thr util pugixml
 )
 
+# The shared brush model (ctrl/Brush.h): the falloff every painting target
+# deposits with and the stroke sampler that turns cursor samples into spaced
+# stamps. Headless. See brush_stroke.cpp.
+add_executable(brush_stroke brush_stroke.cpp
+    ../src/ctrl/Brush.cpp)
+target_include_directories(brush_stroke PRIVATE .. ../src)
+target_compile_definitions(brush_stroke PRIVATE
+    AE_MAJOR_VERSION=1
+    AE_MINOR_VERSION=7
+    AE_MICRO_VERSION=1
+    USE_GL_CORE_PROFILE
+)
+target_link_libraries(brush_stroke PRIVATE
+    Qt6::Core Qt6::Gui
+    util
+)
+
+# The Wave deform filter: the key's data contract and clamps, the five graph
+# channels, playback (each channel eased, the shape step-held, a default key
+# playing), the 0.18 record on disk and the pass mapping. See wave_deform.cpp.
+add_executable(wave_deform wave_deform.cpp)
+target_include_directories(wave_deform PRIVATE ..)
+target_compile_definitions(wave_deform PRIVATE
+    AE_MAJOR_VERSION=1
+    AE_MINOR_VERSION=7
+    AE_MICRO_VERSION=1
+    USE_GL_CORE_PROFILE
+)
+target_link_libraries(wave_deform PRIVATE
+    Qt6::Core Qt6::Core5Compat Qt6::Widgets
+    Qt6::Gui Qt6::OpenGL Qt6::OpenGLWidgets
+    Qt6::Svg Qt6::Xml Qt6::Concurrent Qt6::Multimedia
+    cmnd core ctrl gl img thr util pugixml
+)
+
 # Animation-settings ViewModel session undo/redo: discrete edits record one
 # step, a scrub gesture coalesces into one, and reset() clears history per open.
 # See anim_settings_undo.cpp.
+# The wave deform PASS on a real GL context: identity copy, the sine field, the
+# two deform modes' axes, the content clamp and that every field reaches the
+# shader. Needs a context and its own FBO, so run_suites.sh runs it under Xvfb.
+# See wave_pass_pixels.cpp.
+# assets.qrc: the pass shaders live in :/shaders, exactly as they do in the app
+# (FilterFrame compiles the layer fragment shader for its HSV/present variants).
+add_executable(wave_pass_pixels wave_pass_pixels.cpp
+    ${CMAKE_SOURCE_DIR}/assets/assets.qrc
+)
+target_include_directories(wave_pass_pixels PRIVATE .. ../src)
+target_compile_definitions(wave_pass_pixels PRIVATE
+    AE_MAJOR_VERSION=1
+    AE_MINOR_VERSION=7
+    AE_MICRO_VERSION=1
+    USE_GL_CORE_PROFILE
+)
+target_link_libraries(wave_pass_pixels PRIVATE
+    Qt6::Core Qt6::Core5Compat Qt6::Widgets
+    Qt6::Gui Qt6::OpenGL Qt6::OpenGLWidgets
+    Qt6::Svg Qt6::Xml Qt6::Concurrent Qt6::Multimedia
+    cmnd core ctrl gl img thr util pugixml
+)
+
 add_executable(anim_settings_undo
     anim_settings_undo.cpp
     ../src/gui/qml/AnimationSettingViewModel.cpp

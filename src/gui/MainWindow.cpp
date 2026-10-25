@@ -28,6 +28,44 @@
 #include "ctrl/ExportParams.h"
 
 namespace {
+
+// A Shift binding is SPELLED on the unshifted key ("Shift + ]" is a binding on
+// BracketRight), while Qt DELIVERS the shifted symbol (BraceRight + Shift). Without
+// this mapping every Shift+punctuation binding silently never fires - measured:
+// Shift+] did nothing while ] worked, because the matcher compares the key exactly.
+int unshiftedKeyForShift(int aKey) {
+    switch (aKey) {
+    case Qt::Key_BraceLeft: return Qt::Key_BracketLeft;
+    case Qt::Key_BraceRight: return Qt::Key_BracketRight;
+    case Qt::Key_Exclam: return Qt::Key_1;
+    case Qt::Key_At: return Qt::Key_2;
+    case Qt::Key_NumberSign: return Qt::Key_3;
+    case Qt::Key_Dollar: return Qt::Key_4;
+    case Qt::Key_Percent: return Qt::Key_5;
+    case Qt::Key_AsciiCircum: return Qt::Key_6;
+    case Qt::Key_Ampersand: return Qt::Key_7;
+    case Qt::Key_Asterisk: return Qt::Key_8;
+    case Qt::Key_ParenLeft: return Qt::Key_9;
+    case Qt::Key_ParenRight: return Qt::Key_0;
+    case Qt::Key_Underscore: return Qt::Key_Minus;
+    case Qt::Key_Plus: return Qt::Key_Equal;
+    case Qt::Key_Colon: return Qt::Key_Semicolon;
+    case Qt::Key_QuoteDbl: return Qt::Key_Apostrophe;
+    case Qt::Key_Less: return Qt::Key_Comma;
+    case Qt::Key_Greater: return Qt::Key_Period;
+    case Qt::Key_Question: return Qt::Key_Slash;
+    case Qt::Key_AsciiTilde: return Qt::Key_QuoteLeft;
+    case Qt::Key_Bar: return Qt::Key_Backslash;
+    default: return aKey;
+    }
+}
+
+// The event as a binding, with Shift's symbol folded back onto its key.
+ctrl::KeyBinding eventBinding(const QKeyEvent& aEvent) {
+    const int key = (aEvent.modifiers() & Qt::ShiftModifier) ? unshiftedKeyForShift(aEvent.key()) : aEvent.key();
+    return ctrl::KeyBinding(key, aEvent.modifiers());
+}
+
 class EventSuspender {
     QWriteLocker mRenderingLocker;
 
@@ -277,6 +315,21 @@ MainWindow::MainWindow(ctrl::System& aSystem, GUIResources& aResources, LocalePa
         via.onVisualUpdated.connect(&disp, &MainDisplayWidget::onVisualUpdated);
 
         tool.onToolChanged.connect(&disp, &MainDisplayWidget::onToolChanged);
+
+        // the temporary eyedropper: the viewport recognises it (it owns the modifiers)
+        // and the mask panel takes the value
+        prop.onMaskPaintRequested.connect([this](core::TimeKeyType aLane, core::FilterMaskChannel aChannel) {
+            if (mTool)
+                mTool->beginMaskPaint(aLane, aChannel);
+        });
+        disp.onBrushDragAdjusted.connect([this](int aSizeSteps, int aHardnessSteps) {
+            if (mTool)
+                mTool->adjustBrush(aSizeSteps, aHardnessSteps);
+        });
+        disp.onMaskValueSampled.connect([this](float aValue) {
+            if (mTool)
+                mTool->setMaskValue(aValue);
+        });
         tool.onFinalizeTool.connect(&disp, &MainDisplayWidget::onFinalizeTool);
         tool.onViewSettingChanged.connect(&disp, &MainDisplayWidget::onViewSettingChanged);
 
@@ -663,6 +716,7 @@ void MainWindow::onThemeUpdated(theme::Theme& aTheme) {
 }
 
 #if 0
+
 void MainWindow::keyPressEvent(QKeyEvent* aEvent)
 {
     //qDebug() << "mainwindow: input key =" << aEvent->key() << "text =" << aEvent->text();
@@ -710,7 +764,7 @@ void MainWindow::keyPressEvent(QKeyEvent* aEvent) {
     if (aEvent->isAutoRepeat()) {
         for (auto command : mKeyCommandMap->commands()) {
             if (disallowedRepeats.contains(command->key)) {
-                const ctrl::KeyBinding keyBind(aEvent->key(), aEvent->modifiers());
+                const ctrl::KeyBinding keyBind = eventBinding(*aEvent);
                 if (command->binding.matchesExactlyWith(keyBind)) {
                     return;
                 }
@@ -739,7 +793,7 @@ void MainWindow::keyReleaseEvent(QKeyEvent* aEvent) {
     if (aEvent->isAutoRepeat()) {
         for (auto command : mKeyCommandMap->commands()) {
             if (disallowedRepeats.contains(command->key)) {
-                const ctrl::KeyBinding keyBind(aEvent->key(), aEvent->modifiers());
+                const ctrl::KeyBinding keyBind = eventBinding(*aEvent);
                 if (command->binding.matchesExactlyWith(keyBind)) {
                     return;
                 }

@@ -9,6 +9,7 @@
 #include "core/DepthKey.h"
 #include "core/HsvKey.h"
 #include "core/ImageKey.h"
+#include "core/WaveKey.h"
 #include "core/MoveKey.h"
 #include "core/OpaKey.h"
 #include "core/RotateKey.h"
@@ -70,6 +71,8 @@ float defaultValue(const core::TimeLine& aTimeLine, const Channel& aChannel) {
         return defaultKeyValue<core::BlurKey, core::TimeKeyType_Blur>(aTimeLine, aChannel);
     case core::TimeKeyType_HSV:
         return defaultKeyValue<core::HSVKey, core::TimeKeyType_HSV>(aTimeLine, aChannel);
+    case core::TimeKeyType_Wave:
+        return defaultKeyValue<core::WaveKey, core::TimeKeyType_Wave>(aTimeLine, aChannel);
     case core::TimeKeyType_Image: {
         if (const core::TimeKey* key = aTimeLine.defaultKey(core::TimeKeyType_Image)) {
             XC_ASSERT(key->type() == core::TimeKeyType_Image);

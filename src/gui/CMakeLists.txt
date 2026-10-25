@@ -111,7 +111,9 @@ add_executable(${PROJECT_NAME} WIN32 MACOSX_BUNDLE
     theme/Icons.cpp theme/Icons.h
     theme/TimeLine.cpp theme/TimeLine.h
     tool/tool_BonePanel.cpp tool/tool_BonePanel.h
+    tool/tool_BrushPanel.cpp tool/tool_BrushPanel.h
     tool/tool_FFDPanel.cpp tool/tool_FFDPanel.h
+    tool/tool_MaskPanel.cpp tool/tool_MaskPanel.h
     tool/tool_FlowLayout.cpp tool/tool_FlowLayout.h
     tool/tool_ItemTable.cpp tool/tool_ItemTable.h
     tool/tool_Items.cpp tool/tool_Items.h

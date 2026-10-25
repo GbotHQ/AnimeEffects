@@ -88,7 +88,7 @@ for n in $targets; do
      [ "$n" = psd_layer_identity ] || [ "$n" = asset_remove_layers ] ||
      [ "$n" = overlay_engine_primitives ] || [ "$n" = graph_image_step ] ||
      [ "$n" = graph_panel_pixels ] || [ "$n" = frame_ruler_canvas ] ||
-     [ "$n" = time_body_canvas ]; then
+     [ "$n" = time_body_canvas ] || [ "$n" = wave_pass_pixels ]; then
     # The end-to-end export harness needs a real GL context and a loaded project, so it
     # runs under Xvfb against the COMMITTED fixture (tests/fixtures/e2e_stage.png) rather
     # than being skipped for want of artwork on the machine. It used to be in the SKIP

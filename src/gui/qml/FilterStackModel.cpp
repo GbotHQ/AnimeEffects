@@ -8,6 +8,7 @@
 #include "core/Constant.h"
 #include "core/FilterFrame.h"
 #include "core/HsvKey.h"
+#include "core/WaveKey.h"
 #include "core/TimeKeyExpans.h"
 #include "ctrl/TimeLineUtil.h"
 #include "gui/qml/InspectorViewModel.h"
@@ -24,13 +25,12 @@ QString displayName(core::TimeKeyType aType) {
     switch (aType) {
     case core::TimeKeyType_HSV: return trFilter("HSV");
     case core::TimeKeyType_Blur: return trFilter("Blur");
+    case core::TimeKeyType_Wave: return trFilter("Wave Deform");
     default: return QString();
     }
 }
 
-bool isStackFilter(core::TimeKeyType aType) {
-    return aType == core::TimeKeyType_HSV || aType == core::TimeKeyType_Blur;
-}
+bool isStackFilter(core::TimeKeyType aType) { return core::isFilterType(aType); }
 
 // Same display rule as ScrubSpinBox's trimTrailingZeros: the summary must not
 // show 0.0 when the field shows 0.
@@ -52,6 +52,7 @@ FilterRowModel::FilterRowModel(core::TimeKeyType aType, InspectorViewModel& aOwn
 QString FilterRowModel::kind() const {
     if (isHSV()) return QStringLiteral("hsv");
     if (isBlur()) return QStringLiteral("blur");
+    if (isWave()) return QStringLiteral("wave");
     return QString();
 }
 
@@ -73,9 +74,13 @@ void FilterRowModel::refresh() {
         keyState = QStringLiteral("animated");
 
     const QColor keyColor = theme::keyTypeColor(theme::Colors::current(), mType);
-    const QVariantList before{mEnabled, mKeyState, mKeyColor, mSummary, mSummarySegments, mHue,
+    const QVariantList before{mEnabled, mKeyState, mKeyColor, mSummary, mSummarySegments, mHasAmountMask,
+                              mHasTimeMask, mHue,
                               mSaturation, mValue, mAbsolute, mAmount, mDirectional, mBlurX,
-                              mBlurY, mBlurAngle};
+                              mBlurY, mBlurAngle,
+                              mWave.strength(), mWave.wavelength(), mWave.angleDeg(), mWave.phase(),
+                              mWave.mix(), mWave.speed(), mWave.crest(), mWave.dualAngleDeg(),
+                              mWave.dualScale(), int(mWave.deform())};
     QVariantList summarySegments;
     const auto addSummary = [&summarySegments](const QString& aLabel, const QString& aValue) {
         QVariantMap segment;
@@ -99,6 +104,18 @@ void FilterRowModel::refresh() {
         addSummary(QStringLiteral("H"), QString::number(mHue));
         addSummary(QStringLiteral("S"), QString::number(mSaturation));
         addSummary(QStringLiteral("V"), QString::number(mValue));
+    } else if (isWave()) {
+        // The played data at this frame, blended or from the explicit key; the
+        // row edits a copy and writes the whole Data back.
+        mWave = mOwner.accessor().waveData();
+        const QString strength = summaryNumber(double(mWave.strength()), 1);
+        const QString wavelength = summaryNumber(double(mWave.wavelength()), 0);
+        const QString direction = summaryNumber(double(mWave.angleDeg()), 0);
+        mSummary = trFilter("Strength %1 px  Wavelength %2 px  Direction %3°")
+                       .arg(strength, wavelength, direction);
+        addSummary(trFilter("Strength"), strength + QStringLiteral(" px"));
+        addSummary(trFilter("Wavelength"), wavelength + QStringLiteral(" px"));
+        addSummary(trFilter("Direction"), direction + QStringLiteral("°"));
     } else if (isBlur()) {
         const auto data = mOwner.accessor().blurData();
         const bool hasExplicit = line->hasTimeKey(mType, frame);
@@ -130,9 +147,23 @@ void FilterRowModel::refresh() {
     }
     mSummarySegments = summarySegments;
 
-    const QVariantList after{mEnabled, mKeyState, mKeyColor, mSummary, mSummarySegments, mHue,
+    // whether a field exists per channel (any filter kind can carry one; the time
+    // offset channel is only consumed by the wave today)
+    const bool hasTarget = mOwner.hasTarget();
+    mHasAmountMask = hasTarget && ctrl::TimeLineUtil::hasFilterMask(
+        *mOwner.target(), mType, core::FilterMaskChannel_Amount
+    );
+    mHasTimeMask = hasTarget && ctrl::TimeLineUtil::hasFilterMask(
+        *mOwner.target(), mType, core::FilterMaskChannel_TimeOffset
+    );
+
+    const QVariantList after{mEnabled, mKeyState, mKeyColor, mSummary, mSummarySegments, mHasAmountMask,
+                             mHasTimeMask, mHue,
                              mSaturation, mValue, mAbsolute, mAmount, mDirectional, mBlurX,
-                             mBlurY, mBlurAngle};
+                             mBlurY, mBlurAngle,
+                             mWave.strength(), mWave.wavelength(), mWave.angleDeg(), mWave.phase(),
+                             mWave.mix(), mWave.speed(), mWave.crest(), mWave.dualAngleDeg(),
+                             mWave.dualScale(), int(mWave.deform())};
     if (before != after)
         emit changed();
 }
@@ -164,6 +195,8 @@ void FilterRowModel::toggleKey() {
         mOwner.accessor().knockNewHSV();
     else if (isBlur())
         mOwner.accessor().knockNewBlur();
+    else if (isWave())
+        mOwner.accessor().knockNewWave();
     mOwner.refreshKeys();
 }
 
@@ -236,6 +269,91 @@ void FilterRowModel::setBlurAngle(double aValue) {
     writeBlurEllipse();
 }
 
+void FilterRowModel::setWaveStrength(double aValue) {
+    if (!isWave()) return;
+    mWave.setStrength(float(aValue));
+    writeWave();
+}
+
+void FilterRowModel::setWaveWavelength(double aValue) {
+    if (!isWave()) return;
+    mWave.setWavelength(float(aValue));
+    writeWave();
+}
+
+void FilterRowModel::setWaveDirection(double aValue) {
+    if (!isWave()) return;
+    mWave.setAngleDeg(float(aValue));
+    writeWave();
+}
+
+void FilterRowModel::setWavePhase(double aValue) {
+    if (!isWave()) return;
+    mWave.setPhase(float(aValue));
+    writeWave();
+}
+
+void FilterRowModel::setWaveMix(double aValue) {
+    if (!isWave()) return;
+    mWave.setMix(float(aValue));
+    writeWave();
+}
+
+void FilterRowModel::setWaveSpeed(double aValue) {
+    if (!isWave()) return;
+    mWave.setSpeed(float(aValue));
+    writeWave();
+}
+
+void FilterRowModel::setWaveCrest(double aValue) {
+    if (!isWave()) return;
+    mWave.setCrest(float(aValue));
+    writeWave();
+}
+
+void FilterRowModel::setWaveDualAngle(double aValue) {
+    if (!isWave()) return;
+    mWave.setDualAngleDeg(float(aValue));
+    writeWave();
+}
+
+void FilterRowModel::setWaveDualScale(double aValue) {
+    if (!isWave()) return;
+    mWave.setDualScale(float(aValue));
+    writeWave();
+}
+
+void FilterRowModel::setWaveRipple(bool aValue) {
+    if (!isWave()) return;
+    mWave.setDeform(aValue ? core::WaveKey::Deform_Ripple : core::WaveKey::Deform_Sway);
+    writeWave();
+}
+
+void FilterRowModel::paintMask(int aChannel) {
+    if (!mOwner.hasTarget())
+        return;
+    const auto channel = core::FilterMaskChannel(aChannel);
+    if (channel < 0 || core::FilterMaskChannel_TERM <= channel)
+        return;
+    mOwner.requestMaskPaint(mType, channel);
+}
+
+void FilterRowModel::clearMask(int aChannel) {
+    if (!mOwner.hasTarget())
+        return;
+    const auto channel = core::FilterMaskChannel(aChannel);
+    if (channel < 0 || core::FilterMaskChannel_TERM <= channel)
+        return;
+    ctrl::TimeLineUtil::clearFilterMask(*mOwner.project(), *mOwner.target(), mType, channel);
+    mOwner.refreshKeys();
+}
+
+void FilterRowModel::writeWave() {
+    if (!isWave() || !mOwner.hasTarget()) return;
+    mOwner.accessor().assignWave(mWave);
+    mOwner.refreshKeys();
+}
+
 //-------------------------------------------------------------------------------------------------
 FilterStackModel::FilterStackModel(InspectorViewModel& aOwner, QObject* aParent):
     QObject(aParent), mOwner(aOwner) {}
@@ -262,8 +380,9 @@ QVariantList FilterStackModel::catalog() const {
               core::TimeKeyType_HSV, true),
         entry(trFilter("Blur"), trFilter("Directional Gaussian blur in the layer's content space."),
               core::TimeKeyType_Blur, true),
-        entry(trFilter("Wave Deform"), trFilter("Traveling wave distortion. Coming soon."),
-              core::TimeKeyType_TERM, false),
+        entry(trFilter("Wave Deform"),
+              trFilter("Traveling waves that distort the layer in its own content space."),
+              core::TimeKeyType_Wave, true),
         entry(trFilter("Custom GLSL"), trFilter("A fragment shader with a guided, typed interface. Coming soon."),
               core::TimeKeyType_TERM, false),
     };

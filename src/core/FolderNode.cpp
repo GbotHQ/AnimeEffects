@@ -8,6 +8,7 @@
 #include "core/TimeKeyExpans.h"
 #include "core/DepthKey.h"
 #include "core/FilterFrame.h"
+#include "core/WavePass.h"
 #include "core/WorldBlurMath.h"
 #include "core/DestinationTexturizer.h"
 
@@ -65,6 +66,11 @@ bool FolderNode::hasActiveBlurKey(const TimeInfo& aTime) const {
         && aTime.frame.get() >= mTimeLine.map(TimeKeyType_Blur).values().first()->frame();
 }
 
+bool FolderNode::hasActiveWave(const TimeCacheAccessor& aAccessor) const {
+    // the blended value, so a static wave (values on the default key) applies too
+    return aAccessor.get(mTimeLine).wave().isActive();
+}
+
 bool FolderNode::isCompositeFolder(const TimeInfo& aTime, const TimeCacheAccessor& aAccessor) const {
     // A non-Normal blend mode always composites: its subtree is grouped before the
     // folder's own blend is applied. Otherwise only an ENABLED filter whose values
@@ -80,6 +86,13 @@ bool FolderNode::isCompositeFolder(const TimeInfo& aTime, const TimeCacheAccesso
         if (entry.type == TimeKeyType_Blur && hasActiveBlurKey(aTime)
             && aAccessor.get(mTimeLine).maxBlurRadius() > FilterFrame::kMinActiveBlurRadius)
             return true;
+        if (entry.type == TimeKeyType_Wave && hasActiveWave(aAccessor))
+            return true;
+        if (entry.type == TimeKeyType_HSV && hasActiveHSVKey(aTime)) {
+            const FilterMask* mask = mTimeLine.filterMask(TimeKeyType_HSV, FilterMaskChannel_Amount);
+            if (mask && !mask->isEmpty())
+                return true;
+        }
     }
     return false;
 }
@@ -93,8 +106,10 @@ void FolderNode::render(const RenderInfo& aInfo, const TimeCacheAccessor& aAcces
     renderClippees(aInfo, aAccessor);
 
     // a folder with a filter renders its subtree as a composite and applies the
-    // filter to the blended result
-    if (isCompositeFolder(aInfo.time, aAccessor)) {
+    // filter to the blended result - and so does the folder the Mask tool is painting,
+    // because the field preview is one pass over that composite
+    const bool previewTarget = aInfo.maskPreview && aInfo.maskPreviewTarget == this;
+    if (isCompositeFolder(aInfo.time, aAccessor) || previewTarget) {
         renderComposite(aInfo, aAccessor);
     }
 }
@@ -142,6 +157,52 @@ void FolderNode::renderComposite(const RenderInfo& aInfo, const TimeCacheAccesso
     auto& expans = aAccessor.get(mTimeLine);
     std::vector<std::unique_ptr<FilterFrame::ScopedSlot>> scratchSlots;
 
+    // A folder has no image, so the wave field lives in the folder's own local
+    // frame (the space its children are positioned in) and there is no content
+    // rectangle to clamp a sample into - the composite itself bounds it.
+    WavePassParams waveParams;
+    bool waveReady = false;
+    if (hasActiveWave(aAccessor)) {
+        waveParams = wavePassFor(
+            aInfo.camera, aInfo.time, QSizeF(frame.size()), expans.wave(),
+            expans.srt().worldCSRTMatrix(), QVector2D(0.0f, 0.0f)
+        );
+        // a collapsed folder transform cannot be inverted; see LayerNode's twin
+        waveReady = waveParams.strength != 0.0f;
+
+        // the same two painted masks a layer offers (see LayerNode)
+        if (FilterMask* mask = mTimeLine.filterMask(TimeKeyType_Wave, FilterMaskChannel_Amount)) {
+            if (!mask->isEmpty()) {
+                waveParams.amountMask = mask->texture();
+                waveParams.amountMaskRect = mask->contentRect();
+            }
+        }
+        if (FilterMask* mask = mTimeLine.filterMask(TimeKeyType_Wave, FilterMaskChannel_TimeOffset)) {
+            if (!mask->isEmpty()) {
+                waveParams.timeMask = mask->texture();
+                waveParams.timeMaskRect = mask->contentRect();
+                waveParams.timeMaskCycles = expans.wave().timeOffset();
+            }
+        }
+    }
+
+    // ONE content-space mapping for every filter input that lives there (the wave's
+    // field, the HSV amount mask and the blur's mix mask): the inverse of the
+    // matrices the subtree was drawn with.
+    QMatrix4x4 screenToLayer;
+    bool haveMapping = false;
+    const auto contentMapping = [&]() -> const QMatrix4x4& {
+        if (!haveMapping) {
+            const QMatrix4x4 toScreen = waveContentToScreen(
+                aInfo.camera, QSizeF(frame.size()), expans.srt().worldCSRTMatrix(), QVector2D(0.0f, 0.0f)
+            );
+            bool invertible = false;
+            screenToLayer = toScreen.inverted(&invertible);
+            haveMapping = true;
+        }
+        return screenToLayer;
+    };
+
     for (const FilterEntry& entry : mTimeLine.filters()) {
         if (!entry.enabled)
             continue;
@@ -149,7 +210,16 @@ void FolderNode::renderComposite(const RenderInfo& aInfo, const TimeCacheAccesso
             if (!hasActiveHSVKey(aInfo.time) || hsvDataIsIdentity(expans.hsv().hsv()))
                 continue;
             auto slot = std::make_unique<FilterFrame::ScopedSlot>(frame);
-            srcTexture = frame.hsvTexture(slot->slot(), srcTexture, expans.hsv().hsv());
+            MaskInput mask;
+            const FilterMask* maskField = mTimeLine.filterMask(TimeKeyType_HSV, FilterMaskChannel_Amount);
+            if (maskField && !maskField->isEmpty()) {
+                mask.texture = const_cast<FilterMask*>(maskField)->texture();
+                mask.rect = maskField->contentRect();
+                mask.neutral = float(maskField->neutral()) / 255.0f;
+            }
+            srcTexture = frame.hsvTexture(
+                slot->slot(), srcTexture, expans.hsv().hsv(), mask, mask.isValid() ? contentMapping() : QMatrix4x4()
+            );
             srcSlot = slot->slot();
             scratchSlots.push_back(std::move(slot));
         } else if (entry.type == TimeKeyType_Blur) {
@@ -171,10 +241,64 @@ void FolderNode::renderComposite(const RenderInfo& aInfo, const TimeCacheAccesso
             };
             const QVector2D majorScreen = screenDir(ellipse.majorDir);
             const QVector2D minorScreen = screenDir(ellipse.minorDir);
-            srcTexture = frame.blurTexture(
-                srcSlot, srcTexture, majorScreen, radiusX, minorScreen, radiusY
-            );
+            // A MASKED blur cannot vary its kernel per pixel: render the blurred
+            // result into a scratch slot, keep the sharp composite, and mix the two
+            // by the field (one extra pass, no extra blur taps). The ladder blur
+            // writes its input slot in place, which is why the sharp source is copied
+            // first only on that path.
+            const FilterMask* blurMask = mTimeLine.filterMask(TimeKeyType_Blur, FilterMaskChannel_Amount);
+            if (blurMask && !blurMask->isEmpty()) {
+                MaskInput mask;
+                mask.texture = const_cast<FilterMask*>(blurMask)->texture();
+                mask.rect = blurMask->contentRect();
+                mask.neutral = float(blurMask->neutral()) / 255.0f;
+
+                auto blurred = std::make_unique<FilterFrame::ScopedSlot>(frame);
+                const bool ladder =
+                    FilterFrame::blurLadderLevel(radiusX, radiusY, frame.size()) > 0;
+                GLuint blurredSrc = srcTexture;
+                if (ladder) {
+                    // keep the sharp content: blur a COPY in the scratch slot
+                    auto copy = std::make_unique<FilterFrame::ScopedSlot>(frame);
+                    srcTexture = frame.copyTexture(copy->slot(), srcTexture);
+                    blurredSrc = srcTexture;
+                    scratchSlots.push_back(std::move(copy));
+                }
+                frame.blurTexture(
+                    blurred->slot(), blurredSrc, majorScreen, radiusX, minorScreen, radiusY
+                );
+
+                auto mixed = std::make_unique<FilterFrame::ScopedSlot>(frame);
+                srcTexture =
+                    frame.mixTexture(mixed->slot(), srcTexture, frame.texture(blurred->slot()), mask, contentMapping());
+                srcSlot = mixed->slot();
+                scratchSlots.push_back(std::move(blurred));
+                scratchSlots.push_back(std::move(mixed));
+            } else {
+                srcTexture = frame.blurTexture(
+                    srcSlot, srcTexture, majorScreen, radiusX, minorScreen, radiusY
+                );
+            }
+        } else if (entry.type == TimeKeyType_Wave) {
+            if (!waveReady)
+                continue;
+            auto slot = std::make_unique<FilterFrame::ScopedSlot>(frame);
+            srcTexture = frame.waveTexture(slot->slot(), srcTexture, waveParams);
+            srcSlot = slot->slot();
+            scratchSlots.push_back(std::move(slot));
         }
+    }
+
+    // THE MASK PREVIEW (see LayerNode): a folder can be the Mask tool's target too.
+    if (aInfo.maskPreview && aInfo.maskPreviewTarget == this) {
+        MaskInput preview;
+        preview.texture = const_cast<FilterMask*>(aInfo.maskPreview)->texture();
+        preview.rect = aInfo.maskPreview->contentRect();
+        preview.neutral = float(aInfo.maskPreview->neutral()) / 255.0f;
+        auto slot = std::make_unique<FilterFrame::ScopedSlot>(frame);
+        srcTexture = frame.tintTexture(slot->slot(), srcTexture, preview, contentMapping(), aInfo.maskPreviewColor);
+        srcSlot = slot->slot();
+        scratchSlots.push_back(std::move(slot));
     }
 
     gl::Global::functions().glBindFramebuffer(GL_FRAMEBUFFER, aInfo.framebuffer);

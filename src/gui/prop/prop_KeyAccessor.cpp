@@ -53,6 +53,9 @@ void seedKey(core::BlurKey* aKey, const core::TimeKeyExpans& aCurrent) {
     aKey->data().setBlurY(aCurrent.blurY());
     aKey->data().setAngleDeg(aCurrent.angleDeg());
 }
+void seedKey(core::WaveKey* aKey, const core::TimeKeyExpans& aCurrent) {
+    aKey->data() = aCurrent.wave();
+}
 
 // Shared "ensure an explicit key of the given type exists at aFrame before
 // writing" helper. If the key is absent it auto-creates one so a stale/unkeyed
@@ -563,6 +566,38 @@ namespace prop {
         }
 
         ctrl::TimeLineUtil::assignBlurKeyData(*mProject, *mTarget, frame, newData);
+    }
+
+    void KeyAccessor::assignWave(const core::WaveKey::Data& aData) {
+        ASSERT_AND_RETURN_INVALID_TARGET();
+        const int frame = editFrame<core::WaveKey, core::TimeKeyType_Wave>(currline(), getFrame());
+        if (frame != core::TimeLine::kDefaultKeyIndex) {
+            ensureKey<core::WaveKey, core::TimeKeyType_Wave>(*mProject, *mTarget, frame);
+        }
+        ctrl::TimeLineUtil::assignWaveKeyData(*mProject, *mTarget, frame, aData);
+    }
+
+    core::WaveKey::Data KeyAccessor::waveData() const {
+        if (!isValid()) {
+            return core::WaveKey::Data();
+        }
+        const int frame = getFrame();
+        const core::TimeLine& timeLine = *mTarget->timeLine();
+        if (!timeLine.hasTimeKey(core::TimeKeyType_Wave, frame)) {
+            // Between keys the played value is the blended one; editing a field
+            // there must keep the fields it does not name (the same rule
+            // blurData() follows).
+            return timeLine.current().wave();
+        }
+        return getKeyData<core::WaveKey, core::TimeKeyType_Wave>(*mTarget, frame);
+    }
+
+    void KeyAccessor::knockNewWave() {
+        ASSERT_AND_RETURN_INVALID_TARGET();
+        auto newKey = new core::WaveKey();
+        newKey->data() = currline().current().wave();
+        assignParam(newKey);
+        ctrl::TimeLineUtil::pushNewWaveKey(*mProject, *mTarget, getFrame(), newKey);
     }
 
     void KeyAccessor::knockNewBlur() {

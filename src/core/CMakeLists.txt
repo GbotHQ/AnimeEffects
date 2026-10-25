@@ -26,6 +26,7 @@ add_library(${PROJECT_NAME}
     FFDKey.cpp FFDKey.h
     FFDKeyUpdater.cpp FFDKeyUpdater.h
     FilterFrame.cpp FilterFrame.h
+    FilterMask.cpp FilterMask.h
     FolderNode.cpp FolderNode.h
     Frame.h
     GridMesh.cpp GridMesh.h
@@ -74,6 +75,8 @@ add_library(${PROJECT_NAME}
     TimeKeyType.h
     TimeLine.cpp TimeLine.h
     TimeLineEvent.cpp TimeLineEvent.h
+    WaveKey.h
+    WavePass.h
     WorldBlurMath.h
 )
 target_include_directories(${PROJECT_NAME} PUBLIC

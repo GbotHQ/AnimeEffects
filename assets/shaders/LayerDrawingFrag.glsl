@@ -80,6 +80,7 @@ float BlendSat(vec3 c) { return max(c.r, max(c.g, c.b)) - min(c.r, min(c.g, c.b)
 #variation BLEND_PREMULTIPLIED_SRC 0
 #variation IS_CLIPPEE 0
 #variation USE_HSV 0
+#variation USE_HSV_MASK 0
 #variation PREMULTIPLIED_INPUT 0
 
 uniform vec4 uColor;
@@ -91,6 +92,16 @@ uniform bool setColor;
 uniform float hue;
 uniform float saturation;
 uniform float value;
+#endif
+
+#if USE_HSV_MASK
+// A painted AMOUNT mask for the HSV adjustment: the texel at this pixel decides how
+// much of the adjustment applies (0 = the untouched colour, 1 = the whole
+// adjustment). Sampled in CONTENT space through the same matrix the wave pass uses,
+// so the mask sticks to the artwork.
+uniform sampler2D uHsvMask;
+uniform vec4 uHsvMaskRect; // content x, y, w, h
+uniform mat3 uScreenToLayer;
 #endif
 
 #if IS_CLIPPEE
@@ -176,6 +187,7 @@ void main(void)
     vec4 destColor = texelFetch(uDestTexture, destCoord, 0);
 
 #if USE_HSV
+    vec3 hsvOriginal = color.xyz;
     vec3 hsv = RGBtoHSV(color.xyz);
     if (setColor)
     {
@@ -189,6 +201,17 @@ void main(void)
     hsv.y = min(1.0, hsv.y * saturation);
     hsv.z = min(1.0, hsv.z * value);
     color.xyz = HSVtoRGB(hsv);
+
+#if USE_HSV_MASK
+    {
+        vec2 q = (uScreenToLayer * vec3(vDestCoord, 1.0)).xy;
+        vec2 uv = (q - uHsvMaskRect.xy) / uHsvMaskRect.zw;
+        float amount = (uv.x < 0.0 || 1.0 < uv.x || uv.y < 0.0 || 1.0 < uv.y) ? 1.0 : texture(uHsvMask, uv).r;
+        // outside the field the adjustment applies in full: the field restricts, it
+        // does not enable
+        color.xyz = mix(hsvOriginal, color.xyz, amount);
+    }
+#endif
 #endif
 
 #if IS_CLIPPEE

@@ -23,11 +23,12 @@ public:
     void grabHeightMap(HeightMap* aNode);
     const HeightMap* heightMap() const { return mHeightMap.data(); }
 
-    // a folder with an active HSV/Blur key renders its subtree into a composite
-    // frame and applies the filter to the blended result
+    // a folder with an active HSV/Blur/Wave key renders its subtree into a
+    // composite frame and applies the filter to the blended result
     bool isCompositeFolder(const TimeInfo& aTime, const TimeCacheAccessor& aAccessor) const;
     bool hasActiveHSVKey(const TimeInfo& aTime) const;
     bool hasActiveBlurKey(const TimeInfo& aTime) const;
+    bool hasActiveWave(const TimeCacheAccessor& aAccessor) const;
 
     // from Renderer: a folder carries its own blend mode (default Normal =
     // pass-through, children render directly; any other mode composites the subtree

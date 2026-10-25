@@ -8,6 +8,7 @@
 
 #include "core/ObjectNode.h"
 #include "core/Project.h"
+#include "util/Signaler.h"
 #include "gui/prop/prop_KeyAccessor.h"
 
 namespace gui {
@@ -66,6 +67,22 @@ class InspectorViewModel: public QObject {
     Q_PROPERTY(double blurAngleMax READ blurAngleMax CONSTANT)
     Q_PROPERTY(int hsvHueMax READ hsvHueMax CONSTANT)
     Q_PROPERTY(int hsvComponentMax READ hsvComponentMax CONSTANT)
+    // Wave Deform field ranges. They mirror core::WaveKey::Data's own clamps
+    // (wavelength >= 1, mix 0..1, crest 0.25..4, dual scale 0.1..4): a field the
+    // key would silently clamp must not be draggable past what it accepts.
+    Q_PROPERTY(double waveStrengthMin READ waveStrengthMin CONSTANT)
+    Q_PROPERTY(double waveStrengthMax READ waveStrengthMax CONSTANT)
+    Q_PROPERTY(double waveWavelengthMin READ waveWavelengthMin CONSTANT)
+    Q_PROPERTY(double waveWavelengthMax READ waveWavelengthMax CONSTANT)
+    Q_PROPERTY(double wavePhaseMin READ wavePhaseMin CONSTANT)
+    Q_PROPERTY(double wavePhaseMax READ wavePhaseMax CONSTANT)
+    Q_PROPERTY(double waveMixMax READ waveMixMax CONSTANT)
+    Q_PROPERTY(double waveSpeedMin READ waveSpeedMin CONSTANT)
+    Q_PROPERTY(double waveSpeedMax READ waveSpeedMax CONSTANT)
+    Q_PROPERTY(double waveCrestMin READ waveCrestMin CONSTANT)
+    Q_PROPERTY(double waveCrestMax READ waveCrestMax CONSTANT)
+    Q_PROPERTY(double waveDualScaleMin READ waveDualScaleMin CONSTANT)
+    Q_PROPERTY(double waveDualScaleMax READ waveDualScaleMax CONSTANT)
 
 public:
     explicit InspectorViewModel(ViaPoint* aViaPoint, QObject* aParent = nullptr);
@@ -125,6 +142,25 @@ public:
     double blurAngleMax() const;
     int hsvHueMax() const;
     int hsvComponentMax() const;
+    double waveStrengthMin() const;
+    double waveStrengthMax() const;
+    double waveWavelengthMin() const;
+    double waveWavelengthMax() const;
+    double wavePhaseMin() const;
+    double wavePhaseMax() const;
+    double waveMixMax() const;
+    double waveSpeedMin() const;
+    double waveSpeedMax() const;
+    double waveCrestMin() const;
+    double waveCrestMax() const;
+    double waveDualScaleMin() const;
+    double waveDualScaleMax() const;
+
+    // A filter row asked to paint its mask: the window answers by switching to the
+    // Mask tool with that lane and channel (the toolbox tool is where painting
+    // happens; the card only points at it).
+    util::Signaler<void(core::TimeKeyType, core::FilterMaskChannel)> onMaskPaintRequested;
+    void requestMaskPaint(core::TimeKeyType aLane, core::FilterMaskChannel aChannel);
 
     Q_INVOKABLE void setBlendIndex(int aIndex);
     Q_INVOKABLE void setClipped(bool aValue);

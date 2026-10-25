@@ -16,16 +16,17 @@ enum TimeKeyType {
     TimeKeyType_Image,
     TimeKeyType_HSV,
     TimeKeyType_Blur,
+    TimeKeyType_Wave,
     TimeKeyType_TERM
 };
 
 // The key types that are FILTERS: a post-process applied to an isolated layer or
 // folder composite, rather than a property of the node itself. This is the list
 // the filter stack UI offers and the renderer reads; a new filter type is added
-// here (and to the catalog in gui/prop/prop_FilterStack.cpp) before it can be
+// here (and to the catalog in gui/qml/FilterStackModel.cpp) before it can be
 // stacked.
 inline bool isFilterType(TimeKeyType aType) {
-    return aType == TimeKeyType_HSV || aType == TimeKeyType_Blur;
+    return aType == TimeKeyType_HSV || aType == TimeKeyType_Blur || aType == TimeKeyType_Wave;
 }
 
 // One entry in a node's filter stack. `enabled` is the eye toggle; the type names

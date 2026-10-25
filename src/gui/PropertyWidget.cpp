@@ -53,6 +53,11 @@ PropertyWidget::PropertyWidget(ViaPoint& aViaPoint, QWidget* aParent, GUIResourc
     mModel = new InspectorViewModel(&aViaPoint, this);
     mTheme = new QmlTheme(this);
 
+    // a filter row's "paint mask" reaches the window, which owns the toolbox
+    mModel->onMaskPaintRequested.connect([this](core::TimeKeyType aLane, core::FilterMaskChannel aChannel) {
+        onMaskPaintRequested(aLane, aChannel);
+    });
+
     mQuick = new QQuickWidget(this);
     mQuick->setResizeMode(QQuickWidget::SizeRootObjectToView);
     mQuick->rootContext()->setContextProperty(QStringLiteral("inspector"), mModel);

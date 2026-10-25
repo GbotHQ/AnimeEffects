@@ -13,6 +13,7 @@
 #include "core/RotateKey.h"
 #include "core/ScaleKey.h"
 #include "core/BlurKey.h"
+#include "core/WaveKey.h"
 #include "core/DepthKey.h"
 #include "core/OpaKey.h"
 #include "core/HsvKey.h"
@@ -311,6 +312,10 @@ namespace TimeLineUtil {
         core::Project& aProject, core::ObjectNode& aTarget, int aFrame, const core::BlurKey::Data& aNewData
     );
 
+    void assignWaveKeyData(
+        core::Project& aProject, core::ObjectNode& aTarget, int aFrame, const core::WaveKey::Data& aNewData
+    );
+
     void assignPoseKeyEasing(
         core::Project& aProject, core::ObjectNode& aTarget, int aFrame, const util::Easing::Param& aNewData
     );
@@ -342,6 +347,8 @@ namespace TimeLineUtil {
     void pushNewHSVKey(core::Project& aProject, core::ObjectNode& aTarget, int aFrame, core::HSVKey* aKey);
     void pushNewBlurKey(core::Project& aProject, core::ObjectNode& aTarget, int aFrame, core::BlurKey* aKey);
 
+    void pushNewWaveKey(core::Project& aProject, core::ObjectNode& aTarget, int aFrame, core::WaveKey* aKey);
+
     void pushNewPoseKey(
         core::Project& aProject, core::ObjectNode& aTarget, int aFrame, core::PoseKey* aKey, core::BoneKey* aParentKey
     );
@@ -351,6 +358,15 @@ namespace TimeLineUtil {
     );
 
     void pushNewImageKey(core::Project& aProject, core::ObjectNode& aTarget, int aFrame, core::ImageKey* aKey);
+
+    // A filter lane's PAINTED MASK (core/FilterMask.h), cleared back to its neutral
+    // value as ONE undo step. The field stays allocated (a later paint reuses it);
+    // undoing restores the pixels the command carries.
+    void clearFilterMask(
+        core::Project& aProject, core::ObjectNode& aTarget, core::TimeKeyType aType,
+        core::FilterMaskChannel aChannel
+    );
+    bool hasFilterMask(const core::ObjectNode& aTarget, core::TimeKeyType aType, core::FilterMaskChannel aChannel);
 
     // --- the filter stack -------------------------------------------------
     // The stack is ORDER + ENABLED on the timeline; values stay in the HSV/Blur

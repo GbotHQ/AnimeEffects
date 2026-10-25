@@ -42,7 +42,10 @@ void KeyCommandInvoker::onKeyPressed(const QKeyEvent* aEvent) {
     if (overlayOwnsKeyboard())
         return;
 
-    const ctrl::KeyBinding keyBind(aEvent->key(), aEvent->modifiers());
+    // Shift's symbol folded back onto its key (see ctrl::unshiftedKeyForShift)
+    const int eventKey = (aEvent->modifiers() & Qt::ShiftModifier) ? ctrl::unshiftedKeyForShift(aEvent->key())
+                                                                   : aEvent->key();
+    const ctrl::KeyBinding keyBind(eventKey, aEvent->modifiers());
     if (!keyBind.isValidBinding())
         return;
 

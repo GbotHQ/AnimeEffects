@@ -10,6 +10,7 @@
 #include "core/FFDKeyUpdater.h"
 #include "core/ResourceUpdatingWorkspace.h"
 #include "ctrl/TimeLineUtil.h"
+#include "ctrl/AssignPixels.h"
 #include "ctrl/CmndName.h"
 #include "ctrl/graph/graph_Channel.h"
 #include "ctrl/proportional/prop_Keys.h"
@@ -734,6 +735,17 @@ namespace TimeLineUtil {
         );
     }
 
+    void assignWaveKeyData(Project& aProject, ObjectNode& aTarget, int aFrame, const WaveKey::Data& aNewData) {
+        assignKeyData<WaveKey, TimeKeyType_Wave>(
+            aProject,
+            aTarget,
+            aFrame,
+            aNewData,
+            aFrame == TimeLine::kDefaultKeyIndex ? CmndName::tr("Update default wave key")
+                                                 : CmndName::tr("Update wave key")
+        );
+    }
+
     void assignPoseKeyEasing(Project& aProject, ObjectNode& aTarget, int aFrame, const util::Easing::Param& aNewData) {
         assignKeyEasing<PoseKey, TimeKeyType_Pose>(
             aProject,
@@ -883,6 +895,10 @@ namespace TimeLineUtil {
         pushNewKey<BlurKey, TimeKeyType_Blur>(aProject, aTarget, aFrame, aKey, CmndName::tr("Add new blur key"));
     }
 
+    void pushNewWaveKey(Project& aProject, ObjectNode& aTarget, int aFrame, WaveKey* aKey) {
+        pushNewKey<WaveKey, TimeKeyType_Wave>(aProject, aTarget, aFrame, aKey, CmndName::tr("Add new wave key"));
+    }
+
     void pushNewPoseKey(Project& aProject, ObjectNode& aTarget, int aFrame, PoseKey* aKey, BoneKey* aParentKey) {
         XC_PTR_ASSERT(aParentKey);
         pushNewKey<PoseKey, TimeKeyType_Pose>(
@@ -941,14 +957,26 @@ namespace TimeLineUtil {
         // A filter starts STATIC: values live on its default key, the row's key
         // dot is hollow, and the timeline gains no keyframe until the dot is
         // pressed. This is the same model 2 rule the inspector's properties use.
-        // A fresh filter starts at its NEUTRAL default, not at a stale default
-        // left by an earlier add/remove cycle. The default key is structural
-        // (not part of the add command's undo); the visible stack row and the
-        // explicit keys are what the command owns.
+        // A fresh filter starts at a DEFINED default, not at a stale default
+        // left by an earlier add/remove cycle: HSV's and Blur's are their
+        // identity (an adjustment at 0 / a radius at 0), a wave's is its own
+        // visible preset because an inert wave would look broken on add. The
+        // default key is structural (not part of the add command's undo); the
+        // visible stack row and the explicit keys are what the command owns.
         const util::Easing::Param easing = util::Easing::defaultParam();
         if (aType == TimeKeyType_HSV) {
             auto* key = new HSVKey();
             for (int c = 0; c < HSVKey::kComponents; ++c)
+                key->data().easing(c) = easing;
+            line.grabDefaultKey(aType, key);
+        } else if (aType == TimeKeyType_Wave) {
+            // A wave's starter values are NOT its identity: an inert filter
+            // would look broken on add. It starts as a gentle water surface
+            // (WaveKey::Preset) and is animated by playback from the start,
+            // because its phase advances with the document frame.
+            auto* key = new WaveKey();
+            key->data() = WaveKey::Data::presetData();
+            for (int c = 0; c < WaveKey::kComponents; ++c)
                 key->data().easing(c) = easing;
             line.grabDefaultKey(aType, key);
         } else {
@@ -957,6 +985,37 @@ namespace TimeLineUtil {
                 key->data().easing(c) = easing;
             line.grabDefaultKey(aType, key);
         }
+    }
+
+    bool hasFilterMask(const ObjectNode& aTarget, TimeKeyType aType, FilterMaskChannel aChannel) {
+        const TimeLine* line = aTarget.timeLine();
+        if (!line)
+            return false;
+        const FilterMask* mask = line->filterMask(aType, aChannel);
+        return mask && !mask->isEmpty();
+    }
+
+    void clearFilterMask(Project& aProject, ObjectNode& aTarget, TimeKeyType aType, FilterMaskChannel aChannel) {
+        TimeLine* line = aTarget.timeLine();
+        if (!line)
+            return;
+        FilterMask* mask = line->filterMask(aType, aChannel);
+        if (!mask || mask->isEmpty())
+            return; // nothing painted: clearing is not an edit
+
+        cmnd::ScopedMacro macro(aProject.commandStack(), CmndName::tr("Clear filter mask"));
+        auto* notifier = new Notifier(aProject);
+        notifier->event().setType(TimeLineEvent::Type_FilterStack);
+        macro.grabListener(notifier);
+
+        // the command carries the pixels it overwrites, so ONE undo brings the field
+        // back exactly (and marks it dirty, so the texture re-uploads)
+        auto* command = new AssignPixels(*mask);
+        command->captureBefore();
+        mask->clear();
+        command->addAfter(mask->image().rect());
+        // the push fires the notifier (Notifier::onExecuted), which repaints
+        aProject.commandStack().push(command);
     }
 
     void removeFilter(Project& aProject, ObjectNode& aTarget, TimeKeyType aType) {

@@ -234,6 +234,23 @@ double InspectorViewModel::blurAngleMin() const { return -100000.0; }
 double InspectorViewModel::blurAngleMax() const { return 100000.0; }
 int InspectorViewModel::hsvHueMax() const { return 360; }
 int InspectorViewModel::hsvComponentMax() const { return 200; }
+double InspectorViewModel::waveStrengthMin() const { return -512.0; }
+double InspectorViewModel::waveStrengthMax() const { return 512.0; }
+double InspectorViewModel::waveWavelengthMin() const { return 1.0; }
+double InspectorViewModel::waveWavelengthMax() const { return 4096.0; }
+double InspectorViewModel::wavePhaseMin() const { return -1000.0; }
+double InspectorViewModel::wavePhaseMax() const { return 1000.0; }
+double InspectorViewModel::waveMixMax() const { return 1.0; }
+double InspectorViewModel::waveSpeedMin() const { return -8.0; }
+double InspectorViewModel::waveSpeedMax() const { return 8.0; }
+double InspectorViewModel::waveCrestMin() const { return 0.25; }
+double InspectorViewModel::waveCrestMax() const { return 4.0; }
+double InspectorViewModel::waveDualScaleMin() const { return 0.1; }
+double InspectorViewModel::waveDualScaleMax() const { return 4.0; }
+
+void InspectorViewModel::requestMaskPaint(core::TimeKeyType aLane, core::FilterMaskChannel aChannel) {
+    onMaskPaintRequested(aLane, aChannel);
+}
 
 void InspectorViewModel::setBlendIndex(int aIndex) {
     if (!mProject || !mTarget || !mTarget->renderer() || !mBlendEnabled)

@@ -163,6 +163,7 @@ void Graph::assignFrom(const Colors& aColors) {
     mKeyColors[core::TimeKeyType_Image] = aColors.imageKey;
     mKeyColors[core::TimeKeyType_HSV] = aColors.HSVKey;
     mKeyColors[core::TimeKeyType_Blur] = aColors.blurKey;
+    mKeyColors[core::TimeKeyType_Wave] = aColors.waveKey;
 }
 
 QColor Graph::channelColor(core::TimeKeyType aType, int aComponent) const {
