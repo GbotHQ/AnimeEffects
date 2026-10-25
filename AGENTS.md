@@ -3797,13 +3797,15 @@ family and point size from `LocaleParam` (`uiFont`), which is what makes 8pt mat
 **In-field labels and units.** `ScrubSpinBox` draws a muted `prefix` and a themed `prefixIcon` at the
 left, and appends the `suffix` to the displayed numeric string (`0` + `°`), so a unit is part of the
 value rather than a separately right-aligned label. The inspector sets `reservePrefix: true`: every
-field reserves the same 22px lead-in, and a 16px slot from x=6..22 centers the prefix (text or icon)
-inside it. The numeric text starts at x=22 in every field whether the glyph is X/Y, an icon, or
-absent, and values stay LEFT-aligned. The chosen vocabulary: Position/Centroid/Image Center use
+field reserves the same 24px lead-in, and a fixed 15px slot from x=4..19 fits/centers the prefix
+(text or icon) with no redundant side padding. The numeric text starts at x=24 in every field whether the glyph is X/Y, an icon, or
+absent, and values stay LEFT-aligned. Prefix glyphs are rasterized at their physical footprint (`sourceSize = 15 * devicePixelRatio`) from
+the official Phosphor FILL assets (`.../assets/regular`) - not the raw stroke assets, which Qt
+rasterizes poorly at this size. The chosen vocabulary: Position/Centroid/Image Center use
 `X`/`Y`; Scale uses Phosphor `arrows-horizontal`/`arrows-vertical`; Depth uses `depth` (the cube
 glyph); Opacity uses `circle-half`; Mesh cell uses `grid-four`; Rotation/Blur angle use the official
 Phosphor `angle` glyph plus a `°` suffix; HSV uses `H`/`S`/`V`. Prefix text and every glyph use the
-SAME `theme.textMuted` token and the same opacity (icon roles `Muted`). The degree suffix is announced
+SAME `theme.textMutedDim` token and the same opacity (icon roles `MutedDim`). The degree suffix is announced
 as "Degrees"; no other unit was invented. Icons live in `assets/icons/ph/` and are tinted by the
 existing role table.
 

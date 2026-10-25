@@ -1,4 +1,5 @@
 import QtQuick
+import QtQuick.Window
 
 // Hand-rolled Blender-style numeric input: drag horizontally to scrub the
 // value, click to type a value directly. Not a QC2 SpinBox: a SpinBox could
@@ -43,10 +44,10 @@ Item {
     // no glyph at all) cannot move the number horizontally. Dialog fields keep
     // their compact 8px inset.
     property bool reservePrefix: false
-    readonly property int contentLeft: reservePrefix ? 22
+    readonly property int contentLeft: reservePrefix ? 24
                                               : (prefixIcon !== "" ? 24 : (prefix !== "" ? 18 : 8))
-    readonly property int prefixSlotLeft: reservePrefix ? 6 : 8
-    readonly property int prefixSlotWidth: Math.max(0, contentLeft - prefixSlotLeft)
+    readonly property int prefixSlotLeft: reservePrefix ? 4 : 8
+    readonly property int prefixSlotWidth: reservePrefix ? 15 : Math.max(0, contentLeft - prefixSlotLeft)
     // NOTE: the enabled state is Item.enabled itself, deliberately NOT redeclared:
     // a `property bool enabled` here would shadow the base property, the item would
     // never report disabled to the accessibility tree, and a probe could not tell a
@@ -135,20 +136,28 @@ Item {
             anchors.centerIn: parent
             visible: root.prefix !== ""
             text: root.prefix
-            color: theme.textMuted
-            opacity: root.enabled ? 0.9 : 0.45
+            color: theme.textMutedDim
+            opacity: root.enabled ? 1.0 : 0.45
             font: root.textFont
         }
         Image {
-            anchors.centerIn: parent
+            // 15px is the largest integer glyph that centers exactly in the
+            // 23px field (4px above, 4px below); 14px left it on a half pixel.
+            anchors.horizontalCenter: parent.horizontalCenter
+            y: Math.floor((parent.height - height) / 2)
             visible: root.prefixIcon !== ""
-            width: 13
-            height: 13
+            width: 15
+            height: 15
             source: root.prefixIcon === "" ? "" : theme.iconUrl(root.prefixIcon)
-            sourceSize.width: 64
-            sourceSize.height: 64
+            // SVG sourceSize is in PIXELS. Size the raster to the icon's
+            // physical footprint so a high-DPI screen does not stretch a 14px
+            // bitmap; at scale 1 this is the same 14px that removes the
+            // four-times-downsample blur of the old 64px source.
+            sourceSize.width: Math.ceil(width * Screen.devicePixelRatio)
+            sourceSize.height: Math.ceil(height * Screen.devicePixelRatio)
             fillMode: Image.PreserveAspectFit
-            opacity: root.enabled ? 0.9 : 0.45
+            smooth: true
+            opacity: root.enabled ? 1.0 : 0.45
         }
     }
 

@@ -47,6 +47,8 @@ Item {
     }
     property var filterRow: emptyRow
     property int cardIndex: 0
+    readonly property int cardRadius: 6
+    readonly property int cardInnerRadius: 5
     signal dragStarted(int index)
     signal dragMoved(int index, real sceneY)
     signal dragEnded(int index, real sceneY)
@@ -63,7 +65,7 @@ Item {
         id: cardFrame
         anchors.fill: parent
         visible: filterRow.expanded
-        radius: 4
+        radius: root.cardRadius
         color: "transparent"
         border.width: 1
         border.color: theme.hairline
@@ -75,7 +77,7 @@ Item {
         y: filterRow.expanded ? 1 : 0
         width: parent.width - (filterRow.expanded ? 2 : 0)
         height: 30
-        radius: filterRow.expanded ? 3 : 4
+        radius: filterRow.expanded ? root.cardInnerRadius : root.cardRadius
         color: filterRow.expanded || headerMouse.containsMouse ? theme.raised : "transparent"
 
         // Expanded: the header's top corners stay rounded, its bottom edge
@@ -86,7 +88,7 @@ Item {
             anchors.left: parent.left
             anchors.right: parent.right
             anchors.bottom: parent.bottom
-            height: 4
+            height: root.cardInnerRadius
             color: headerItem.color
         }
 
@@ -207,7 +209,7 @@ Item {
         height: filterRow.expanded ? bodyColumn.implicitHeight + 18 : 0
         visible: filterRow.expanded
         color: theme.base
-        radius: filterRow.expanded ? 3 : 0
+        radius: filterRow.expanded ? root.cardInnerRadius : 0
 
         // Round the BOTTOM of the body only: the header joins it squarely and
         // the header's own bottom patch does the same at the junction.
@@ -216,7 +218,7 @@ Item {
             anchors.left: parent.left
             anchors.right: parent.right
             anchors.top: parent.top
-            height: 4
+            height: root.cardInnerRadius
             color: body.color
         }
 
