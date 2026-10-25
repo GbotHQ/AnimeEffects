@@ -780,6 +780,29 @@ target_link_libraries(key_accessor_model2 PRIVATE
     cmnd core ctrl gl img thr util pugixml
 )
 
+
+# The QML inspector's document model: model-2 writes, key dots, filter stack and
+# undo. See inspector_view_model.cpp.
+add_executable(inspector_view_model
+    inspector_view_model.cpp
+    ../src/gui/qml/InspectorViewModel.cpp
+    ../src/gui/qml/InspectorRowModel.cpp
+    ../src/gui/qml/FilterStackModel.cpp
+    ../src/gui/prop/prop_KeyAccessor.cpp)
+target_include_directories(inspector_view_model PRIVATE .. ../src)
+target_compile_definitions(inspector_view_model PRIVATE
+    AE_MAJOR_VERSION=1
+    AE_MINOR_VERSION=7
+    AE_MICRO_VERSION=1
+    USE_GL_CORE_PROFILE
+)
+target_link_libraries(inspector_view_model PRIVATE
+    Qt6::Core Qt6::Core5Compat Qt6::Widgets
+    Qt6::Gui Qt6::OpenGL Qt6::OpenGLWidgets
+    Qt6::Svg Qt6::Xml Qt6::Concurrent Qt6::Multimedia
+    cmnd core ctrl gl img thr util pugixml
+)
+
 # Filter stack command grain: add creates the entry and a key as one undo step,
 # remove drops the entry and its explicit keys together, and reorder/eye are
 # independently undoable. See filter_stack_model.cpp.

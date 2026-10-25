@@ -17,6 +17,9 @@ Item {
     property real to: 100
     property real step: 1
     property int decimals: 0
+    // The property inspector shows 357.5, not 357.500. Off by default: the
+    // dialogs that asked for fixed decimals keep their exact display.
+    property bool trimTrailingZeros: false
     // Optional C++ host object with beginScrub()/endScrub(). The dialog uses it
     // so it knows a scrub is active and forwards the Qt::Popup re-targeted mouse
     // moves back to the scene with the held button restored — because inside a
@@ -49,7 +52,12 @@ Item {
     implicitWidth: 72
     implicitHeight: 24
 
-    function fmt(v) { return Number(v).toFixed(root.decimals); }
+    function fmt(v) {
+        var text = Number(v).toFixed(root.decimals);
+        if (root.trimTrailingZeros && text.indexOf(".") >= 0)
+            text = text.replace(/0+$/, "").replace(/\.$/, "");
+        return text === "-0" ? "0" : text;
+    }
     function clampNv(v) { return Math.max(root.from, Math.min(root.to, v)); }
     function commitText(t) {
         const n = parseFloat(t);

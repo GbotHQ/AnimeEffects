@@ -3718,3 +3718,52 @@ regression. A marker whose key is selected on another component keeps the mock's
 0.35 and no fill change (`mock-graph.js` `_keys`, `kKeySiblingRingAlpha`), and it has been that way
 since `a9dd0fbc`; what changed in this round is only that the state now ARISES from a plain press,
 which names one marker instead of the whole key.
+
+## The Properties dock is a QML scene now (2026-10-25)
+
+`gui::PropertyWidget` is a `QWidget` whose only child is a `QQuickWidget`; the old widget inspector
+(`prop_Backboard`, `prop_CurrentKeyPanel`, `prop_ConstantPanel`, `prop_FilterStack`, `prop_KeyGroup`,
+`prop_PropertyRow`, `prop_KeyStateButton`, `prop_KeyKnocker`, `prop_Panel`, `prop_AttrGroup`,
+`prop_HeaderButton`, `prop_ProjectPanel`) is deleted. The split is deliberate:
+
+* `gui::InspectorViewModel` (`qml/InspectorViewModel`) owns the document decisions through the same
+  `prop::KeyAccessor` + `ctrl::TimeLineUtil` path the widget inspector used. Its child
+  `InspectorRowModel`s expose the three-state dot (`static`/`animated`/`keyed`), the typed values,
+  and the setters. `gui::FilterStackModel` / `FilterRowModel` own the stack and its HSV/Blur editors.
+* `qml/PropertiesPanel.qml` and its controls own layout and ink. `InspectorRow.qml` is the one row
+  geometry: gutter 16, label 42..114, field column 124..right-16, row 27, field 23. `InspectorNumberField`
+  wraps the existing `ScrubSpinBox`; `InspectorKeyDot` is the timeline dot; `InspectorFilterCard`
+  expands in place and drags to reorder.
+* A numeric edit commits on release/Enter, not per scrub tick. One gesture is one `KeyAccessor`
+  command, so one undo step; `ae_ui.py set` and the accessibility value path write the same commit.
+
+Five traps cost real runs and are worth knowing before touching this scene:
+
+- **QML has no `mapToScene`.** Mapping to scene coordinates is `item.mapToItem(null, x, y)`. The
+  drag/reorder code silently threw `Property 'mapToScene' ... is not a function` until changed.
+- **A delegate's `required property int index` is shadowed by a component property of the same
+  name.** `InspectorFilterCard` used to declare `property int index`; the Repeater then passed its
+  own default 0 and two different filters rendered the same row. The card property is `cardIndex`;
+  the delegate keeps the required `index`.
+- **A called `Q_INVOKABLE` is not a binding dependency.** The filter picker's `hasFilter(type)` did
+  not re-evaluate after an add, so an existing filter never read "Added". The expression also reads
+  `inspector.filters.rows.length`, which is the dependency `rowsChanged` notifies.
+- **The panel is a `ScrollView`, so a child drag loses the grab after a few pixels.** Both the
+  numeric scrub and the filter-header reorder set `preventStealing: true`; without it the page
+  scrolls and the control never sees the release.
+- **The scene binds to the model and theme, so it must die first.** `~PropertyWidget` deletes
+  `mQuick` before the context objects; every dialog shell here follows the same rule.
+
+The old `propertywidget.ssa` still carries the combo/spin/button rules the easing picker uses; its
+dead inspector/filter selectors were removed. Labels that already had a catalog context are read
+through that context (`gui::prop::MoveKeyGroup`, `gui::prop::ImageKeyGroup`,
+`gui::prop::ConstantPanel`, `gui::prop::FilterStackPanel`), not re-spelled in QML. The scene's own
+`qsTr()` context is `AnimeEffects.Properties` and has not been sent through `lupdate` yet.
+
+**Verified:** `scripts/run_suites.sh Debug` = 57 pass / 0 fail on the tree that removes the widget
+classes; `inspector_view_model` pins model-2 writes, key toggles, filter add/reorder/enable/remove,
+collapsed-card survival across a frame refresh, and undo. Live under Xvfb (`test.anie`, `Paint Layer
+1`, 1580x980): the inspector opens with the unified grid, a scrub changes 357.5 -> 360.5 and one
+Ctrl+Z restores 357.5, key dots toggle, the picker marks an existing filter "Added", two filters
+render distinctly and drag-reorder, and expanding/collapsing a card leaves the dock stable. The
+captures are `docs/design/inspector/qml-panel.png` and `qml-filter-stack.png`.

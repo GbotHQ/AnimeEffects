@@ -718,45 +718,6 @@ namespace prop {
     }
 
     //-------------------------------------------------------------------------------------------------
-    BrowseItem::BrowseItem(QWidget* aParent): mField(), mName(), mButton() {
-        // ONE field surface: name button left, file icon right. No read-only
-        // line exists just to hold a filename.
-        mField = new QWidget(aParent);
-        mField->setObjectName("assetField");
-        mField->setAccessibleName(QCoreApplication::translate("BrowseItem", "Asset"));
-
-        auto* layout = new QHBoxLayout(mField);
-        layout->setContentsMargins(0, 0, 3, 0);
-        layout->setSpacing(0);
-
-        mName = new QPushButton(mField);
-        mName->setObjectName("assetName");
-        mName->setFocusPolicy(Qt::NoFocus);
-        mName->setCursor(Qt::PointingHandCursor);
-        mName->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
-        layout->addWidget(mName, 1);
-
-        mButton = new QPushButton(mField);
-        mButton->setObjectName("assetBrowse");
-        mButton->setFocusPolicy(Qt::NoFocus);
-        mButton->setCursor(Qt::PointingHandCursor);
-        mButton->setFixedSize(18, 18);
-        mButton->setAccessibleName(QCoreApplication::translate("BrowseItem", "Browse asset"));
-        layout->addWidget(mButton, 0, Qt::AlignVCenter);
-
-        mName->connect(mName, &QPushButton::clicked, [=]() { this->onButtonPushed(); });
-        mButton->connect(mButton, &QPushButton::clicked, [=]() { this->onButtonPushed(); });
-    }
-
-    void BrowseItem::setValue(const QString& aValue) { mName->setText(aValue); }
-
-    void BrowseItem::setItemEnabled(bool aEnable) {
-        mField->setEnabled(aEnable);
-        mName->setEnabled(aEnable);
-        mButton->setEnabled(aEnable);
-    }
-
-    void BrowseItem::setItemVisible(bool aVisible) { mField->setVisible(aVisible); }
 
 } // namespace prop
 } // namespace gui

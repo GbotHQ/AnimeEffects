@@ -98,21 +98,9 @@ add_executable(${PROJECT_NAME} WIN32 MACOSX_BUNDLE
     obj/obj_Notifiers.cpp obj/obj_Notifiers.h
     obj/obj_RemoveItem.cpp obj/obj_RemoveItem.h
     obj/obj_Util.cpp obj/obj_Util.h
-    prop/prop_AttrGroup.cpp prop/prop_AttrGroup.h
-    prop/prop_Backboard.cpp prop/prop_Backboard.h
-    prop/prop_ConstantPanel.cpp prop/prop_ConstantPanel.h
-    prop/prop_CurrentKeyPanel.cpp prop/prop_CurrentKeyPanel.h
-    prop/prop_FilterStack.cpp prop/prop_FilterStack.h
-    prop/prop_HeaderButton.cpp prop/prop_HeaderButton.h
     prop/prop_ItemBase.h
     prop/prop_Items.cpp prop/prop_Items.h
     prop/prop_KeyAccessor.cpp prop/prop_KeyAccessor.h
-    prop/prop_KeyGroup.cpp prop/prop_KeyGroup.h
-    prop/prop_KeyStateButton.cpp prop/prop_KeyStateButton.h
-    prop/prop_PropertyRow.cpp prop/prop_PropertyRow.h
-    prop/prop_KeyKnocker.cpp prop/prop_KeyKnocker.h
-    prop/prop_Panel.cpp prop/prop_Panel.h
-    prop/prop_ProjectPanel.cpp prop/prop_ProjectPanel.h
     res/res_ImageSetter.h
     res/res_Item.cpp res/res_Item.h
     res/res_Notifier.cpp res/res_Notifier.h
@@ -144,6 +132,9 @@ add_executable(${PROJECT_NAME} WIN32 MACOSX_BUNDLE
     qml/AnimationSettingViewModel.cpp qml/AnimationSettingViewModel.h
     qml/DestinationPickerModel.cpp qml/DestinationPickerModel.h
     qml/QmlFormAccessibility.cpp qml/QmlFormAccessibility.h
+    qml/InspectorViewModel.cpp qml/InspectorViewModel.h
+    qml/InspectorRowModel.cpp qml/InspectorRowModel.h
+    qml/FilterStackModel.cpp qml/FilterStackModel.h
     ${CMAKE_SOURCE_DIR}/assets/assets.qrc
 )
 target_include_directories(${PROJECT_NAME} PRIVATE
@@ -185,6 +176,15 @@ qt_add_qml_module(${PROJECT_NAME}
         qml/AeIconButton.qml
         qml/AeTextField.qml
         qml/AeToolTip.qml
+        # The Properties dock. The scene owns layout/ink; InspectorViewModel
+        # owns every document decision.
+        qml/PropertiesPanel.qml
+        qml/InspectorRow.qml
+        qml/InspectorKeyDot.qml
+        qml/InspectorNumberField.qml
+        qml/InspectorAssetField.qml
+        qml/InspectorFilterCard.qml
+        qml/InspectorFilterStack.qml
 )
 
 target_compile_definitions(${PROJECT_NAME} PRIVATE

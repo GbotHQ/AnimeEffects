@@ -127,11 +127,6 @@ QAbstractButton#keyGroupHeader {
 
 
 /* field labels sit a step below the values they describe */
-QLabel#attrLabel {
-    /* transparent: same rationale as the knocker label */
-    background-color: transparent;
-    color: @text@;
-}
 QFrame#attrGroup {
     border-radius:0;
     margin: 0;
@@ -181,39 +176,6 @@ QToolButton#keyKnockerPlus {
     min-height: 0;
 }
 
-
-QWidget#assetField {
-    background-color: @raised@;
-    /* Standard fields use the field colour as their resting border. The asset
-       field is a field, not a raised card, so it uses the same token. */
-    border: 1px solid @raised@;
-    border-radius: 0.25em;
-}
-QWidget#assetField:hover {
-    border: 1px solid @hover@;
-}
-QPushButton#assetName {
-    background-color: transparent;
-    border: none;
-    color: @text@;
-    text-align: left;
-    padding: 0 0 0 6px;
-}
-QPushButton#assetName:disabled {
-    color: @textDisabled@;
-}
-QPushButton#assetBrowse {
-    background-color: transparent;
-    border: none;
-    image: url(@icondir@/file.svg);
-    width: 1.1em;
-    height: 1.1em;
-    padding: 0;
-}
-QPushButton#assetBrowse:hover {
-    background-color: @overlay24@;
-    border-radius: 0.2em;
-}
 
 QPushButton#browser {
     background-color: transparent;
@@ -289,113 +251,4 @@ QPushButton#customEasing:hover {
 
 QPushButton#customEasing:pressed {
     background-color: @active@;
-}
-
-QToolButton#keyStateButton {
-    background-color: transparent;
-    border: none;
-    border-radius: 0.25em;
-    padding: 0;
-}
-QToolButton#keyStateButton:hover {
-    background-color: @overlay24@;
-}
-QToolButton#keyStateButton:pressed {
-    background-color: @active@;
-}
-
-QLabel#inspectorSection {
-    background-color: transparent;
-    color: @textMuted@;
-    font-size: 0.92em;
-    font-weight: 600;
-    padding: 0.65em 0.85em 0.2em 0.85em;
-}
-
-QWidget#propertyRow, QWidget#propertyRowFields {
-    background-color: transparent;
-}
-QLabel#propertyRowLabel {
-    background-color: transparent;
-    color: @text@;
-}
-
-/* --- filter stack ------------------------------------------------------- */
-QWidget#filterCard {
-    background-color: transparent;
-}
-QWidget#filterRow {
-    background-color: transparent;
-    border-radius: 0.3em;
-    min-height: 1.875em;
-}
-QWidget#filterRow[hovered="true"] {
-    background-color: @raised@;
-}
-QWidget#filterRow[selected="true"] {
-    background-color: @raised@;
-}
-QWidget#filterCardBody {
-    background-color: @base@;
-    border-top: 0.04em solid @hairline@;
-    border-bottom-left-radius: 0.3em;
-    border-bottom-right-radius: 0.3em;
-}
-QWidget#filterCardBodyInner {
-    background-color: transparent;
-}
-QLabel#filterCaret {
-    background-color: transparent;
-    color: @textMuted@;
-}
-QWidget#filterRow[filterEnabled="false"] QLabel#filterName {
-    color: @textDisabled@;
-}
-QLabel#filterName {
-    background-color: transparent;
-    color: @text@;
-    font-weight: 600;
-}
-QLabel#filterEmpty {
-    background-color: transparent;
-    color: @textMuted@;
-    padding: 0.25em 0.5em;
-}
-QLabel#filterSummary {
-    background-color: transparent;
-    color: @textMuted@;
-}
-QWidget#filterEmpty {
-    background-color: transparent;
-}
-QToolButton#filterRowButton {
-    background-color: transparent;
-    border: none;
-    border-radius: 0.2em;
-    padding: 0;
-}
-QToolButton#filterRowButton:hover {
-    background-color: @overlay24@;
-}
-QToolButton#filterRowButton:pressed {
-    background-color: @active@;
-}
-QToolButton#filterHeaderAdd {
-    background-color: transparent;
-    border: none;
-    border-radius: 0.25em;
-    padding: 0;
-}
-QToolButton#filterHeaderAdd:hover {
-    background-color: @overlay24@;
-}
-QToolButton#filterHeaderAdd:pressed {
-    background-color: @active@;
-}
-QFrame#filterDropLine {
-    background-color: @accent@;
-    border: none;
-}
-QLineEdit#filterPickerSearch {
-    margin: 0.2em;
 }

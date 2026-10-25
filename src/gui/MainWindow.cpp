@@ -643,6 +643,7 @@ void MainWindow::onThemeUpdated(theme::Theme& aTheme) {
     }
 
     mDockPropertyWidget->setStyleSheet(aTheme.loadStylesheet("propertywidget.ssa"));
+    if (mProperty) mProperty->refreshTheme();
     mDockToolWidget->setStyleSheet(aTheme.loadStylesheet("toolwidget.ssa"));
 
     if (!onStartup && !themeChangeWarned) {

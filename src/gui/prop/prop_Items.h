@@ -359,28 +359,6 @@ namespace prop {
         bool mSignal;
     };
 
-    //-------------------------------------------------------------------------------------------------
-    class BrowseItem: public ItemBase {
-    public:
-        typedef std::function<void()> UpdateType;
-
-        BrowseItem(QWidget* aParent);
-
-        QString value() const { return mName->text(); }
-        void setValue(const QString& aValue);
-
-        virtual QWidget* itemWidget() { return mField; }
-        virtual void setItemEnabled(bool aEnable);
-        virtual void setItemVisible(bool aVisible);
-
-        UpdateType onButtonPushed;
-
-    private:
-        QWidget* mField;
-        QPushButton* mName;
-        QPushButton* mButton;
-    };
-
 } // namespace prop
 } // namespace gui
 
