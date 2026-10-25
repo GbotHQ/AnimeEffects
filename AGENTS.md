@@ -3784,6 +3784,22 @@ header and the body are rounded: the body has a `radius` and a small base-colour
 its top corners. Keeping the body square was what made the bottom corners of the outline disappear -
 the square child covered them. Do not "fix" this by dropping the border again.
 
+**Per-item text rendering.** The Qt Text documentation makes `renderType` the per-item override:
+`NativeRendering` is the platform rasterizer, `QtRendering` the default distance-field path, and
+`CurveRendering` the hardware curve rasterizer offered when the default gives poor visual results.
+At the dock's 8pt face the default path produced colored subpixel fringes (a label crop measured 141
+pixels with channel spread); `CurveRendering` measured 0 and matches the QWidget inspector's
+grayscale. Every inspector Text/TextInput uses `Text.CurveRendering` through the controls'
+`textRenderType` property; dialogs keep the Qt default. Do not use the global
+`QQuickWindow::setTextRenderType` for this - it changes every QML scene and only affects elements
+created afterwards.
+
+**In-field labels and units.** `ScrubSpinBox` draws a muted `prefix`, a themed `prefixIcon` and a
+muted `suffix` without touching the numeric text or accessibility value. The inspector uses `X`/`Y`
+for axis pairs, and the official Phosphor `angle` glyph (regular, `icons/ph/angle.svg`) plus `°` for
+Rotation and Blur angle. The degree suffix is announced as "Degrees"; no other unit was invented.
+The glyph goes through the existing icon tint role table, so it follows the theme.
+
 **Verified:** `scripts/run_suites.sh Debug` = 57 pass / 0 fail on the tree that removes the widget
 classes; `inspector_view_model` pins model-2 writes, key toggles, filter add/reorder/enable/remove,
 collapsed-card survival across a frame refresh, and undo. Live under Xvfb (`test.anie`, `Paint Layer
