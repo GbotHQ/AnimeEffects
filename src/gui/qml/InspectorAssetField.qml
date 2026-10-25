@@ -31,7 +31,7 @@ Rectangle {
             Layout.minimumWidth: 0
             text: root.name !== "" ? root.name : qsTr("None")
             color: root.name !== "" && root.enabled ? theme.text : theme.textMuted
-            font.pixelSize: 11
+            font: Qt.application.font
             elide: Text.ElideMiddle
         }
         Image {

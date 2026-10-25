@@ -17,6 +17,9 @@ Item {
     property real to: 100
     property real step: 1
     property int decimals: 0
+    // The inspector uses the app's 8pt Geist face, not the dialog controls'
+    // fixed 11px. Callers that do not set this keep the dialog look.
+    property font textFont: Qt.font({ pixelSize: 11 })
     // The property inspector shows 357.5, not 357.500. Off by default: the
     // dialogs that asked for fixed decimals keep their exact display.
     property bool trimTrailingZeros: false
@@ -103,7 +106,7 @@ Item {
         anchors.rightMargin: 8
         verticalAlignment: Text.AlignVCenter
         color: root.enabled ? theme.text : theme.textDisabled
-        font.pixelSize: 11
+        font: root.textFont
         text: root.fmt(root.value)
         visible: !editInput.activeFocus && root.showValue
     }
@@ -206,7 +209,7 @@ Item {
         // F33: the selection is the theme's selection pair, like AeTextField.
         selectionColor: theme.selection
         selectedTextColor: theme.selectionText
-        font.pixelSize: 11
+        font: root.textFont
         visible: activeFocus
         enabled: root.enabled
         selectByMouse: true

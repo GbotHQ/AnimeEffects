@@ -101,36 +101,9 @@ Item {
             }
         }
 
-        // The grip is a visual cue; the header's own gesture decides whether a
-        // press became a reorder or a click that expands the card.
-        Item {
-            id: grip
-            x: 2
-            width: 11
-            height: parent.height
-            HoverHandler { cursorShape: Qt.SizeVerCursor }
-            Canvas {
-                anchors.centerIn: parent
-                width: 5
-                height: 12
-                opacity: headerMouse.containsMouse || filterRow.expanded ? 0.9 : 0.45
-                onPaint: {
-                    const ctx = getContext("2d");
-                    ctx.reset();
-                    ctx.fillStyle = theme.textMuted;
-                    for (let y = 1; y < height; y += 4) {
-                        ctx.beginPath();
-                        ctx.arc(1, y, 1, 0, Math.PI * 2);
-                        ctx.arc(width - 1, y, 1, 0, Math.PI * 2);
-                        ctx.fill();
-                    }
-                }
-            }
-        }
-
         RowLayout {
             anchors.fill: parent
-            anchors.leftMargin: 15
+            anchors.leftMargin: 8
             anchors.rightMargin: 6
             spacing: 4
 
@@ -169,7 +142,8 @@ Item {
             Text {
                 text: filterRow.name
                 color: filterRow.enabled ? theme.text : theme.textDisabled
-                font.pixelSize: 12
+                font.family: Qt.application.font.family
+                font.pointSize: Qt.application.font.pointSize
                 font.bold: true
                 elide: Text.ElideRight
             }
@@ -178,7 +152,7 @@ Item {
                 Layout.fillWidth: true
                 text: filterRow.summary
                 color: theme.textMuted
-                font.pixelSize: 11
+                font: Qt.application.font
                 horizontalAlignment: Text.AlignRight
                 elide: Text.ElideRight
             }
@@ -186,13 +160,14 @@ Item {
             AeIconButton {
                 Layout.preferredWidth: 20
                 Layout.preferredHeight: 20
-                visible: filterRow.expanded || headerMouse.containsMouse
                 size: 20
-                iconSize: 13
+                iconSize: 16
                 iconName: "trash"
                 label: qsTr("Remove %1").arg(filterRow.name)
                 showTip: true
-                opacity: headerMouse.containsMouse ? 0.9 : 0.4
+                // Always present so revealing it cannot reflow the header; it
+                // brightens with the pointer and the expanded card.
+                opacity: headerMouse.containsMouse || filterRow.expanded ? 0.9 : 0.45
                 onClicked: filterRow.remove()
             }
         }
@@ -268,6 +243,7 @@ Item {
                     Layout.fillWidth: true
                     Layout.preferredHeight: 23
                     text: filterRow.absoluteLabel
+                    textFont: Qt.application.font
                     checked: filterRow.absolute
                     onToggled: filterRow.setAbsolute(checked)
                 }
@@ -295,6 +271,7 @@ Item {
                     Layout.fillWidth: true
                     Layout.preferredHeight: 23
                     text: filterRow.directionalLabel
+                    textFont: Qt.application.font
                     checked: filterRow.directional
                     onToggled: filterRow.setDirectional(checked)
                 }

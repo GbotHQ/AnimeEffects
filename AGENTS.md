@@ -3760,10 +3760,27 @@ through that context (`gui::prop::MoveKeyGroup`, `gui::prop::ImageKeyGroup`,
 `gui::prop::ConstantPanel`, `gui::prop::FilterStackPanel`), not re-spelled in QML. The scene's own
 `qsTr()` context is `AnimeEffects.Properties` and has not been sent through `lupdate` yet.
 
+**The QML default font is NOT the dock font.** `Text` defaults to the Quick window's font, and the
+12px literals the dialogs use read larger than the QWidget inspector, whose base is
+`LocaleDecider`'s `8pt` Geist (`10.67px`). The first QML pass therefore enlarged every label. The
+shared controls now carry an explicit `textFont` (`ScrubSpinBox`, `AeCheckBox`, `AeComboBox`,
+`AeTextField`), defaulting to their old dialog sizes, and the inspector passes
+`Qt.application.font`; the filter chrome uses `Qt.application.font` too. Do not replace these with
+`font.pixelSize: 12` in the inspector.
+
+The hierarchy the widget board got from `Panel`'s four-pixel group spacing is restored explicitly,
+not by making every row taller: `PropertiesPanel.qml` inserts a four-pixel `Item` after Clipped,
+after Path, after each of Rotation/Scale/Depth/Opacity, after Mesh cell, and after Pose/FFD when
+present. Rows inside one key's group stay contiguous. Filter cards keep the old panel body's
+12px left/right inset; the remove control is always laid out (only its opacity changes) so revealing
+it cannot shift the header; the always-on painted grip dots were removed, while the header itself
+remains the reorder target.
+
 **Verified:** `scripts/run_suites.sh Debug` = 57 pass / 0 fail on the tree that removes the widget
 classes; `inspector_view_model` pins model-2 writes, key toggles, filter add/reorder/enable/remove,
 collapsed-card survival across a frame refresh, and undo. Live under Xvfb (`test.anie`, `Paint Layer
-1`, 1580x980): the inspector opens with the unified grid, a scrub changes 357.5 -> 360.5 and one
-Ctrl+Z restores 357.5, key dots toggle, the picker marks an existing filter "Added", two filters
-render distinctly and drag-reorder, and expanding/collapsing a card leaves the dock stable. The
-captures are `docs/design/inspector/qml-panel.png` and `qml-filter-stack.png`.
+1`, 1580x980): the inspector opens with the unified grid and the dock's 8pt face, a scrub changes
+357.5 -> 360.5 and one Ctrl+Z restores 357.5, key dots toggle, the picker marks an existing filter
+"Added", two filters render distinctly and drag-reorder, and expanding/collapsing a card leaves the
+dock stable. The captures are `docs/design/inspector/qml-panel.png` and
+`qml-filter-stack.png`.

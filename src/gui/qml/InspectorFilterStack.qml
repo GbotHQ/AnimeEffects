@@ -83,7 +83,8 @@ Item {
             anchors.verticalCenter: parent.verticalCenter
             text: inspector.filters.title
             color: theme.text
-            font.pixelSize: 12
+            font.family: Qt.application.font.family
+            font.pointSize: Qt.application.font.pointSize
             font.bold: true
             Accessible.role: Accessible.StaticText
             Accessible.name: text
@@ -117,8 +118,9 @@ Item {
 
         Column {
             id: bodyColumn
+            x: 12
             y: 0
-            width: parent.width
+            width: parent.width - 24
             spacing: 2
 
             Repeater {
@@ -160,19 +162,19 @@ Item {
 
             Text {
                 visible: cards.count === 0
-                x: 16
+                x: 4
                 topPadding: 4
                 bottomPadding: 4
                 text: inspector.filters.noFiltersText
                 color: theme.textMuted
-                font.pixelSize: 11
+                font: Qt.application.font
             }
         }
 
         Rectangle {
             id: dropLine
             visible: false
-            x: 0
+            x: 12
             width: bodyColumn.width
             height: 2
             color: theme.accent
@@ -211,6 +213,7 @@ Item {
                 width: parent.width
                 implicitHeight: 28
                 leadingIcon: "magnifying-glass"
+                textFont: Qt.application.font
                 placeholderText: inspector.filters.searchLabel
                 accessibleName: inspector.filters.searchLabel
                 Keys.onReturnPressed: root.addFirstMatching()
@@ -253,7 +256,7 @@ Item {
                                      + (!modelData.available ? "  ·  " + inspector.filters.comingSoonLabel
                                                              : catalogItem.added ? "  ·  " + inspector.filters.addedLabel : "")
                             color: theme.text
-                            font.pixelSize: 12
+                            font: Qt.application.font
                             elide: Text.ElideRight
                         }
                         Text {
@@ -261,7 +264,7 @@ Item {
                             visible: modelData.available
                             text: modelData.description
                             color: theme.textMuted
-                            font.pixelSize: 10
+                            font: Qt.application.font
                             elide: Text.ElideRight
                         }
                     }
@@ -290,7 +293,7 @@ Item {
                 }
                 text: inspector.filters.noMatchLabel
                 color: theme.textMuted
-                font.pixelSize: 11
+                font: Qt.application.font
                 leftPadding: 4
                 topPadding: 4
             }

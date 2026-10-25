@@ -47,6 +47,7 @@ Rectangle {
                     Layout.preferredHeight: 23
                     options: inspector.blendOptions
                     index: inspector.blendIndex
+                    textFont: Qt.application.font
                     enabled: inspector.blendEnabled
                     onActivated: (index) => inspector.setBlendIndex(index)
                 }
@@ -59,11 +60,13 @@ Rectangle {
                     Layout.fillWidth: true
                     Layout.preferredHeight: 23
                     checked: inspector.clipped
+                    textFont: Qt.application.font
                     enabled: inspector.clippedEnabled
                     Accessible.name: inspector.clippedLabel
                     onToggled: inspector.setClipped(checked)
                 }
             }
+            Item { width: 1; height: 4 }
 
             // ---- transform -------------------------------------------------
             InspectorRow {
@@ -131,6 +134,7 @@ Rectangle {
                     Layout.fillWidth: true
                     Layout.preferredHeight: 23
                     text: inspector.smoothLabel
+                    textFont: Qt.application.font
                     checked: inspector.move.smooth
                     onToggled: inspector.move.setSmooth(checked)
                     ToolTip.visible: hovered
@@ -138,6 +142,7 @@ Rectangle {
                     ToolTip.text: inspector.smoothTooltip
                 }
             }
+            Item { width: 1; height: inspector.move.visible ? 4 : 0 }
 
             InspectorRow {
                 visible: inspector.rotate.visible
@@ -157,6 +162,7 @@ Rectangle {
                     onValueEdited: (value) => inspector.rotate.setAngle(value)
                 }
             }
+            Item { width: 1; height: inspector.rotate.visible ? 4 : 0 }
             InspectorRow {
                 visible: inspector.scale.visible
                 enabled: inspector.scale.enabled
@@ -186,6 +192,7 @@ Rectangle {
                     onValueEdited: (value) => inspector.scale.setScaleY(value)
                 }
             }
+            Item { width: 1; height: inspector.scale.visible ? 4 : 0 }
             InspectorRow {
                 visible: inspector.depth.visible
                 enabled: inspector.depth.enabled
@@ -204,6 +211,7 @@ Rectangle {
                     onValueEdited: (value) => inspector.depth.setDepth(value)
                 }
             }
+            Item { width: 1; height: inspector.depth.visible ? 4 : 0 }
             InspectorRow {
                 visible: inspector.opacity.visible
                 enabled: inspector.opacity.enabled
@@ -223,6 +231,7 @@ Rectangle {
                     onValueEdited: (value) => inspector.opacity.setOpacity(value)
                 }
             }
+            Item { width: 1; height: inspector.opacity.visible ? 4 : 0 }
 
             // ---- image -----------------------------------------------------
             InspectorRow {
@@ -284,6 +293,7 @@ Rectangle {
                     onValueEdited: (value) => inspector.image.setCellSize(Math.round(value))
                 }
             }
+            Item { width: 1; height: inspector.image.visible ? 4 : 0 }
 
             // ---- structural / optional ------------------------------------
             InspectorRow {
@@ -295,6 +305,7 @@ Rectangle {
                 keyEnabled: inspector.pose.keyEnabled
                 onToggleKey: inspector.pose.toggleKey()
             }
+            Item { width: 1; height: inspector.pose.visible ? 4 : 0 }
             InspectorRow {
                 visible: inspector.ffd.visible
                 enabled: inspector.ffd.enabled
@@ -304,6 +315,7 @@ Rectangle {
                 keyEnabled: inspector.ffd.keyEnabled
                 onToggleKey: inspector.ffd.toggleKey()
             }
+            Item { width: 1; height: inspector.ffd.visible ? 4 : 0 }
 
             // ---- effects --------------------------------------------------
             InspectorFilterStack {

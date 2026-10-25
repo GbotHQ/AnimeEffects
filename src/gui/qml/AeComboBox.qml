@@ -60,6 +60,8 @@ ComboBox {
     // needs it — Qt's positioner places the list (below / flipped above /
     // clamped inside the window, measured).
     property Item overlay: null
+    // Dialog controls keep 12px; the inspector passes the app font.
+    property font textFont: Qt.font({ pixelSize: 12 })
 
     readonly property string value: (index >= 0 && index < options.length)
                                     ? String(options[index].value) : ""
@@ -158,7 +160,7 @@ ComboBox {
             anchors.verticalCenter: parent.verticalCenter
             text: root.text
             color: root.enabled ? theme.text : theme.textDisabled
-            font.pixelSize: 12
+            font: root.textFont
             elide: Text.ElideRight
         }
         Image {
@@ -292,7 +294,7 @@ ComboBox {
                     anchors.verticalCenter: parent.verticalCenter
                     text: modelData.label
                     color: theme.text
-                    font.pixelSize: 12
+                    font: root.textFont
                     elide: Text.ElideRight
                 }
                 Image {
