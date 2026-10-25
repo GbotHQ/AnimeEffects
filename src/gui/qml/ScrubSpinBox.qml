@@ -20,6 +20,9 @@ Item {
     // The inspector uses the app's 8pt Geist face, not the dialog controls'
     // fixed 11px. Callers that do not set this keep the dialog look.
     property font textFont: Qt.font({ pixelSize: 11 })
+    // The inspector uses CurveRendering so the same 8pt face rasterizes
+    // grayscale like the QWidget inspector; dialogs keep the default Qt path.
+    property int textRenderType: Text.QtRendering
     // The property inspector shows 357.5, not 357.500. Off by default: the
     // dialogs that asked for fixed decimals keep their exact display.
     property bool trimTrailingZeros: false
@@ -33,6 +36,14 @@ Item {
     // export dialog shows the codec's "Auto" and the still writer's "Auto" this
     // way), in which case the number underneath must not show through it.
     property bool showValue: true
+    // In-field labels: Figma-style axis letters (X/Y/W/H), an optional leading
+    // glyph, and a trailing unit (the inspector's angle °). Dialog fields leave
+    // all three empty and keep their original geometry.
+    property string prefix: ""
+    property string prefixIcon: ""
+    property string suffix: ""
+    readonly property int contentLeft: prefixIcon !== "" ? 24 : (prefix !== "" ? 18 : 8)
+    readonly property int contentRight: suffix !== "" ? 18 : 8
     // NOTE: the enabled state is Item.enabled itself, deliberately NOT redeclared:
     // a `property bool enabled` here would shadow the base property, the item would
     // never report disabled to the accessibility tree, and a probe could not tell a
@@ -102,13 +113,48 @@ Item {
     Text {
         id: shown
         anchors.fill: parent
-        anchors.leftMargin: 8
-        anchors.rightMargin: 8
+        anchors.leftMargin: root.contentLeft
+        anchors.rightMargin: root.contentRight
         verticalAlignment: Text.AlignVCenter
         color: root.enabled ? theme.text : theme.textDisabled
         font: root.textFont
+        renderType: root.textRenderType
         text: root.fmt(root.value)
         visible: !editInput.activeFocus && root.showValue
+    }
+
+    Text {
+        visible: root.showValue && root.prefix !== ""
+        anchors.left: parent.left
+        anchors.leftMargin: 8
+        anchors.verticalCenter: parent.verticalCenter
+        text: root.prefix
+        color: root.enabled ? theme.textMuted : theme.textDisabled
+        font: root.textFont
+        renderType: root.textRenderType
+    }
+    Image {
+        visible: root.showValue && root.prefixIcon !== ""
+        anchors.left: parent.left
+        anchors.leftMargin: 7
+        anchors.verticalCenter: parent.verticalCenter
+        width: 13
+        height: 13
+        source: root.prefixIcon === "" ? "" : theme.iconUrl(root.prefixIcon)
+        sourceSize.width: 64
+        sourceSize.height: 64
+        fillMode: Image.PreserveAspectFit
+        opacity: root.enabled ? 0.9 : 0.4
+    }
+    Text {
+        visible: root.showValue && root.suffix !== ""
+        anchors.right: parent.right
+        anchors.rightMargin: 7
+        anchors.verticalCenter: parent.verticalCenter
+        text: root.suffix
+        color: root.enabled ? theme.textMuted : theme.textDisabled
+        font: root.textFont
+        renderType: root.textRenderType
     }
 
     // Hover feedback for the field (HoverHandler matches the checkbox/buttons).
@@ -202,10 +248,11 @@ Item {
     TextInput {
         id: editInput
         anchors.fill: parent
-        anchors.leftMargin: 8
-        anchors.rightMargin: 8
+        anchors.leftMargin: root.contentLeft
+        anchors.rightMargin: root.contentRight
         verticalAlignment: Text.AlignVCenter
         color: theme.text
+        renderType: root.textRenderType
         // F33: the selection is the theme's selection pair, like AeTextField.
         selectionColor: theme.selection
         selectedTextColor: theme.selectionText

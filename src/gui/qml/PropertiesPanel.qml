@@ -48,6 +48,7 @@ Rectangle {
                     options: inspector.blendOptions
                     index: inspector.blendIndex
                     textFont: uiFont
+                    textRenderType: Text.CurveRendering
                     enabled: inspector.blendEnabled
                     onActivated: (index) => inspector.setBlendIndex(index)
                 }
@@ -61,6 +62,7 @@ Rectangle {
                     Layout.preferredHeight: 23
                     checked: inspector.clipped
                     textFont: uiFont
+                    textRenderType: Text.CurveRendering
                     enabled: inspector.clippedEnabled
                     Accessible.name: inspector.clippedLabel
                     onToggled: inspector.setClipped(checked)
@@ -85,6 +87,7 @@ Rectangle {
                     to: inspector.translateMax
                     step: 1
                     label: qsTr("Position X")
+                    prefix: "X"
                     onValueEdited: (value) => inspector.move.setX(value)
                 }
                 InspectorNumberField {
@@ -95,6 +98,7 @@ Rectangle {
                     to: inspector.translateMax
                     step: 1
                     label: qsTr("Position Y")
+                    prefix: "Y"
                     onValueEdited: (value) => inspector.move.setY(value)
                 }
             }
@@ -111,6 +115,7 @@ Rectangle {
                     to: inspector.translateMax
                     step: 1
                     label: inspector.centroidLabel + " X"
+                    prefix: "X"
                     onValueEdited: (value) => inspector.move.setCentroidX(value)
                 }
                 InspectorNumberField {
@@ -121,6 +126,7 @@ Rectangle {
                     to: inspector.translateMax
                     step: 1
                     label: inspector.centroidLabel + " Y"
+                    prefix: "Y"
                     onValueEdited: (value) => inspector.move.setCentroidY(value)
                 }
             }
@@ -135,6 +141,7 @@ Rectangle {
                     Layout.preferredHeight: 23
                     text: inspector.smoothLabel
                     textFont: uiFont
+                    textRenderType: Text.CurveRendering
                     checked: inspector.move.smooth
                     onToggled: inspector.move.setSmooth(checked)
                     ToolTip.visible: hovered
@@ -159,6 +166,8 @@ Rectangle {
                     to: inspector.rotateMax
                     step: 1
                     label: inspector.rotate.label
+                    prefixIcon: "angle"
+                    suffix: "°"
                     onValueEdited: (value) => inspector.rotate.setAngle(value)
                 }
             }
@@ -179,6 +188,7 @@ Rectangle {
                     to: inspector.scaleMax
                     step: 0.1
                     label: qsTr("Scale X")
+                    prefix: "X"
                     onValueEdited: (value) => inspector.scale.setScaleX(value)
                 }
                 InspectorNumberField {
@@ -189,6 +199,7 @@ Rectangle {
                     to: inspector.scaleMax
                     step: 0.1
                     label: qsTr("Scale Y")
+                    prefix: "Y"
                     onValueEdited: (value) => inspector.scale.setScaleY(value)
                 }
             }
@@ -261,6 +272,7 @@ Rectangle {
                     to: inspector.translateMax
                     step: 1
                     label: qsTr("Image center X")
+                    prefix: "X"
                     onValueEdited: (value) => inspector.image.setCenterX(value)
                 }
                 InspectorNumberField {
@@ -271,6 +283,7 @@ Rectangle {
                     to: inspector.translateMax
                     step: 1
                     label: qsTr("Image center Y")
+                    prefix: "Y"
                     onValueEdited: (value) => inspector.image.setCenterY(value)
                 }
             }

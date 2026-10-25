@@ -35,6 +35,7 @@ TextField {
     property bool clearButton: false
     // Dialog controls keep 12px; the inspector passes the app font.
     property font textFont: Qt.font({ pixelSize: 12 })
+    property int textRenderType: Text.QtRendering
     // Forward the VERTICAL tree-navigation keys instead of letting the editor keep
     // them, and announce each as navigate(key). A chooser you have to Tab out of is
     // a chooser you fight: the search field keeps the text cursor while Up/Down move
@@ -64,6 +65,7 @@ TextField {
 
     color: root.enabled ? theme.text : theme.textDisabled
     font: root.textFont
+    renderType: root.textRenderType
     placeholderTextColor: theme.textMutedDim
     selectionColor: theme.selection
     selectedTextColor: theme.selectionText

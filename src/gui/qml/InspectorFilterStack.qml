@@ -86,6 +86,7 @@ Item {
             font.family: uiFont.family
             font.pointSize: uiFont.pointSize
             font.bold: true
+            renderType: Text.CurveRendering
             Accessible.role: Accessible.StaticText
             Accessible.name: text
         }
@@ -168,6 +169,7 @@ Item {
                 text: inspector.filters.noFiltersText
                 color: theme.textMuted
                 font: uiFont
+                renderType: Text.CurveRendering
             }
         }
 
@@ -214,6 +216,7 @@ Item {
                 implicitHeight: 28
                 leadingIcon: "magnifying-glass"
                 textFont: uiFont
+                textRenderType: Text.CurveRendering
                 placeholderText: inspector.filters.searchLabel
                 accessibleName: inspector.filters.searchLabel
                 Keys.onReturnPressed: root.addFirstMatching()
@@ -257,6 +260,7 @@ Item {
                                                              : catalogItem.added ? "  ·  " + inspector.filters.addedLabel : "")
                             color: theme.text
                             font: uiFont
+                            renderType: Text.CurveRendering
                             elide: Text.ElideRight
                         }
                         Text {
@@ -265,6 +269,7 @@ Item {
                             text: modelData.description
                             color: theme.textMuted
                             font: uiFont
+                            renderType: Text.CurveRendering
                             elide: Text.ElideRight
                         }
                     }
@@ -294,6 +299,7 @@ Item {
                 text: inspector.filters.noMatchLabel
                 color: theme.textMuted
                 font: uiFont
+                renderType: Text.CurveRendering
                 leftPadding: 4
                 topPadding: 4
             }

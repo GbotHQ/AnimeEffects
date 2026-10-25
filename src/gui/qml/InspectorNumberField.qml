@@ -14,6 +14,9 @@ Item {
     property real step: 1
     property int decimals: 3
     property string label: ""
+    property string prefix: ""
+    property string prefixIcon: ""
+    property string suffix: ""
     readonly property bool hovered: fieldHover.hovered
     signal valueEdited(real value)
 
@@ -40,6 +43,7 @@ Item {
         function accessibleBeginEdit() { field.beginEdit() }
         Accessible.role: Accessible.SpinBox
         Accessible.name: root.label
+        Accessible.description: root.suffix === "°" ? qsTr("Degrees") : ""
     }
 
     ScrubSpinBox {
@@ -52,6 +56,10 @@ Item {
         decimals: root.decimals
         trimTrailingZeros: true
         textFont: uiFont
+        textRenderType: Text.CurveRendering
+        prefix: root.prefix
+        prefixIcon: root.prefixIcon
+        suffix: root.suffix
         enabled: root.enabled
         onCommitted: (value) => {
             root.valueEdited(root.quantize(value));

@@ -171,6 +171,7 @@ Item {
                 font.family: uiFont.family
                 font.pointSize: uiFont.pointSize
                 font.bold: true
+                renderType: Text.CurveRendering
                 elide: Text.ElideRight
             }
 
@@ -179,6 +180,7 @@ Item {
                 text: filterRow.summary
                 color: theme.textMuted
                 font: uiFont
+                renderType: Text.CurveRendering
                 horizontalAlignment: Text.AlignRight
                 elide: Text.ElideRight
             }
@@ -277,6 +279,7 @@ Item {
                     Layout.preferredHeight: 23
                     text: filterRow.absoluteLabel
                     textFont: uiFont
+                    textRenderType: Text.CurveRendering
                     checked: filterRow.absolute
                     onToggled: filterRow.setAbsolute(checked)
                 }
@@ -305,6 +308,7 @@ Item {
                     Layout.preferredHeight: 23
                     text: filterRow.directionalLabel
                     textFont: uiFont
+                    textRenderType: Text.CurveRendering
                     checked: filterRow.directional
                     onToggled: filterRow.setDirectional(checked)
                 }
@@ -320,6 +324,7 @@ Item {
                     step: 0.5
                     decimals: 1
                     label: filterRow.blurXLabel
+                    prefix: "X"
                     onValueEdited: (value) => filterRow.setBlurX(value)
                 }
             }
@@ -334,6 +339,7 @@ Item {
                     step: 0.5
                     decimals: 1
                     label: filterRow.blurYLabel
+                    prefix: "Y"
                     onValueEdited: (value) => filterRow.setBlurY(value)
                 }
             }
@@ -348,6 +354,8 @@ Item {
                     step: 1
                     decimals: 1
                     label: qsTr("Blur angle")
+                    prefixIcon: "angle"
+                    suffix: "°"
                     onValueEdited: (value) => filterRow.setBlurAngle(value)
                 }
             }

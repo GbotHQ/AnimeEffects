@@ -47,6 +47,7 @@ Item {
         text: root.label
         color: theme.text
         font: uiFont
+        renderType: Text.CurveRendering
         elide: Text.ElideRight
         Accessible.role: Accessible.StaticText
         Accessible.name: root.label
