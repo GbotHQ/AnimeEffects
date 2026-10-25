@@ -3805,7 +3805,9 @@ rasterizes poorly at this size. The chosen vocabulary: Position/Centroid/Image C
 `X`/`Y`; Scale uses Phosphor `arrows-horizontal`/`arrows-vertical`; Depth uses `depth` (the cube
 glyph); Opacity uses `circle-half`; Mesh cell uses `grid-four`; Rotation/Blur angle use the official
 Phosphor `angle` glyph plus a `°` suffix; HSV uses `H`/`S`/`V`. Prefix text and every glyph use the
-SAME `theme.textMutedDim` token and the same opacity (icon roles `MutedDim`). The degree suffix is announced
+SAME `theme.textMutedDim` token and the same opacity (icon roles `MutedDim`). The HSV card's header
+readout is a composed row, not one string: H/S/V are one point smaller in `textMutedDim`, while the
+values use the body face and full `text` ink, so the title, axes and values have three levels. The degree suffix is announced
 as "Degrees"; no other unit was invented. Icons live in `assets/icons/ph/` and are tinted by the
 existing role table.
 

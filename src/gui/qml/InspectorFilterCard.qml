@@ -173,16 +173,75 @@ Item {
                 font.family: uiFont.family
                 font.pointSize: uiFont.pointSize
                 font.bold: true
-                    elide: Text.ElideRight
+                elide: Text.ElideRight
             }
 
-            Text {
+            Item {
                 Layout.fillWidth: true
-                text: filterRow.summary
-                color: theme.textMuted
-                font: uiFont
-                    horizontalAlignment: Text.AlignRight
-                elide: Text.ElideRight
+                Layout.preferredHeight: 20
+
+                // HSV's header is a compact labelled readout, not the same
+                // string as the title: the axis letters are a step smaller and
+                // dimmer, the values stay at the body face and full ink.
+                Row {
+                    visible: filterRow.kind === "hsv"
+                    anchors.right: parent.right
+                    anchors.verticalCenter: parent.verticalCenter
+                    spacing: 8
+
+                    Row {
+                        spacing: 2
+                        Text {
+                            text: "H"
+                            color: theme.textMutedDim
+                            font.family: uiFont.family
+                            font.pointSize: Math.max(1, uiFont.pointSize - 1)
+                        }
+                        Text {
+                            text: filterRow.hue
+                            color: filterRow.enabled ? theme.text : theme.textDisabled
+                            font: uiFont
+                        }
+                    }
+                    Row {
+                        spacing: 2
+                        Text {
+                            text: "S"
+                            color: theme.textMutedDim
+                            font.family: uiFont.family
+                            font.pointSize: Math.max(1, uiFont.pointSize - 1)
+                        }
+                        Text {
+                            text: filterRow.saturation
+                            color: filterRow.enabled ? theme.text : theme.textDisabled
+                            font: uiFont
+                        }
+                    }
+                    Row {
+                        spacing: 2
+                        Text {
+                            text: "V"
+                            color: theme.textMutedDim
+                            font.family: uiFont.family
+                            font.pointSize: Math.max(1, uiFont.pointSize - 1)
+                        }
+                        Text {
+                            text: filterRow.value
+                            color: filterRow.enabled ? theme.text : theme.textDisabled
+                            font: uiFont
+                        }
+                    }
+                }
+
+                Text {
+                    visible: filterRow.kind !== "hsv"
+                    anchors.right: parent.right
+                    anchors.verticalCenter: parent.verticalCenter
+                    text: filterRow.summary
+                    color: theme.textMuted
+                    font: uiFont
+                    elide: Text.ElideRight
+                }
             }
 
             AeIconButton {
