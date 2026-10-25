@@ -3822,3 +3822,354 @@ collapsed-card survival across a frame refresh, and undo. Live under Xvfb (`test
 "Added", two filters render distinctly and drag-reorder, and expanding/collapsing a card leaves the
 dock stable. The captures are `docs/design/inspector/qml-panel.png` and
 `qml-filter-stack.png`.
+
+## The Wave Deform filter (2026-10-25): a UV deformation of the isolated composite
+
+The filter stack's third entry (`TimeKeyType_Wave`, `src/core/WaveKey.h`) is a WAVE:
+two travelling sine waves evaluated in the node's CONTENT space that displace the
+SAMPLE COORDINATE of the composited pixels. The catalog entry that already said
+"Wave Deform / Traveling wave distortion. Coming soon." is now the real filter
+(`gui/qml/FilterStackModel.cpp`).
+
+**Why it is a post-process and not geometry.** A layer is drawn through its own
+mesh, whose cells are triangles that Mesh/FFD/Bone keys deform independently.
+Moving vertices would move cells apart and tear the seams between them; the
+composite is ONE continuous image, so displacing its sample coordinate cannot
+tear anything. The same reason makes it correct on a clipped layer (the clip is
+already baked into the composite) and on a folder (the whole subtree is one
+image by then).
+
+**The field, and the two things a wave can do to a picture.**
+`FilterFrame::waveTexture` runs `kWaveFrag` (inline in `src/core/FilterFrame.cpp`
+beside the blur/resample passes) over the isolated composite:
+
+- wave 1 travels along `angleDeg` with `wavelength`; wave 2 crosses it at
+  `dualAngleDeg` off that direction with `wavelength * dualScale`, mixed in by
+  `mix` (a quarter-cycle phase offset keeps the pair from collapsing into one
+  sine);
+- `Deform_Ripple` displaces along the field's GRADIENT - water surfaces, ripples,
+  heat haze, the refraction offset Wallpaper Engine's water effects produce;
+- `Deform_Sway` displaces ACROSS the travel direction by the field's HEIGHT -
+  cloth, hair, flags;
+- `crest` shapes the sine AND its derivative together (the shader's `waveCos`),
+  so a sharp crest has a sharp slope instead of a sharp displacement with a
+  smooth slope;
+- `speed` advances the phase from the DOCUMENT FRAME (`frame / fps`, never a wall
+  clock), so scrubbing, playback and an export agree.
+
+**Five graph channels, four step-held shape fields.** `strength` (px),
+`wavelength` (px), `angleDeg`, `phase` (cycles) and `mix` are per-component eased
+and appear in the animation graph; `speed`, `crest`, `dualAngleDeg`,
+`dualScale` and the deform mode are STEP-HELD from the earlier key of an
+interpolated segment (`TimeKeyBlender::blendWaveKey`). That split is deliberate:
+the phase is `speed * time`, so smoothly interpolating a RATE would make the
+picture jump at every key; `phase` is the channel to animate when the motion has
+to ease, and `speed` is for a constant drift that needs no keys at all.
+
+**The mapping is the layer's own draw path, in content pixels.** `core/WavePass.h`
+builds `layerToScreen = (ndc -> composite pixels) * camera.viewMatrix() *
+worldCSRTMatrix-with-imageOffset` - the same matrices `LayerShaderVert` draws
+with - and the shader inverts it per pixel, evaluates the field where the pixel
+sits on the ARTWORK, and maps the displaced coordinate back. So the wave stays
+glued to the content while the layer moves, scales, rotates or the camera zooms,
+instead of being a screen-space wobble. `waveAffine3` moves the 4x4's translation
+from column 3 into the mat3's column 2; copying columns 0..2 instead silently
+drops it (the pixel test caught exactly that: the whole field became
+screen-space and the identity pass was not a copy).
+
+**The sample is clamped into the content, and only where the content IS.** A
+displaced sample may not leave the content rectangle, so the edge texels are
+stretched instead of a transparent hole opening (an image effect's texture
+clamp). Two rules the pixel gate pinned, each a visible defect before it:
+
+- the clamp applies ONLY to pixels whose own coordinate is inside the rectangle.
+  Clamping every pixel made a layer cover the whole viewport with a smear of its
+  edge texel - measured by the gate as 16100 background pixels inside the
+  content rect at `strength = 0`;
+- the rectangle is the content's TEXEL-CENTRE range (`0.5 .. size - 0.5`), not its
+  outline: clamping to the outline lands a saturated sample exactly between the
+  last content texel and what is outside it, and a bilinear sample there is half
+  of each (measured: a one-column strip of half-background at the silhouette edge);
+- the inside test carries half a content texel of slack, because a content
+  pixel's `q` is a texel centre recovered through a float matrix and an exact
+  comparison can miss by one ULP - a missed clamp is a tear.
+
+Gates: `tests/wave_pass_pixels.cpp` (real GL, own FBO: identity copy is
+bit-exact; the band's edge follows `strength*sin(2*pi*x/wavelength)` at four
+phases; a ripple along x leaves a y-only pattern unchanged while Sway moves it;
+`leakedWithClamp=0` against `leakedWithoutClamp=11400`; every one of the ten
+fields changes the frame) and `tests/wave_deform.cpp` (headless: the key's data
+contract and clamps, the five graph channels reading/writing the blended fields,
+a two-key blend with per-channel easing and step-held shape, a DEFAULT-only lane
+still deforming, the 0.18 record round-tripping, and the mapping's identity,
+rotation, inverse and collapsed-transform cases).
+
+**Format 0.18.** `WaveKey` writes its easings then the nine values plus the deform
+mode. `TimeKey::kMaxProportionalComponents` grew 3 -> 5 (a wave key has five
+components), which changes the PROPORTIONAL payload for every key: the reader
+takes the count from the file's minor version (`0.16-0.17` -> three, `0.18` ->
+five). A 0.18 file therefore cannot be read by an older build, which is what the
+format version is for.
+
+**Adding it to a filter stack is visible immediately** (`TimeLineUtil::addFilter`
+seeds `WaveKey::Data::presetData()`: 12px at a 140px wavelength, 0.4 cycles/s,
+35% second wave) - unlike HSV and Blur, whose default is their identity, because
+an inert wave would look broken on add. The row's key dot stays hollow and the
+timeline gains no keyframe until it is pressed.
+
+**Measured live** (Xvfb, `~/Downloads/ANIE/test.anie`, a 1102x792 layer, window
+1430x870, the real catalog: Add filter -> type "wave" -> the one row): the canvas
+changed by 13227 px of an 840x500 region when the filter was added, disabling it
+through the card's eye restored 46 px (the playhead/border baseline), and seeking
+to another frame changed 25679 px - the phase advancing with the document frame.
+The card showed all ten rows (Strength, Wavelength, Direction, Phase, Dual wave,
+Deform, Speed, Crest, Dual direction, Dual scale).
+
+**Two traps for the next one.** The inspector is a `ScrollView` in a dock shorter
+than its content: the Filters section sits at the panel's BOTTOM, so an "Add
+filter" press has to come after wheeling the panel down - and the catalog popup is
+rendered INSIDE the QQuickWidget, so on a short window its last rows are clipped
+away (a taller window makes it usable; the probe that types into the search field
+and clicks the single remaining row is the robust route). And the resize that
+makes the window taller must target the real toplevel: `xdotool search --name
+AnimeEffects` here returns the Qt selection-owner (3x3) and a 1x1 helper, NOT the
+main window, so `windowsize`/`windowactivate` quietly do nothing; pick the id from
+`xwininfo -root -tree` whose geometry is the large one.
+
+**Not done here:** the new strings (`Wave Deform`, the ten field labels, the
+catalog description) are not in `assets/locale/*.ts` yet - lupdate would add them
+as `unfinished` in five catalogs and `run_suites.sh` gates that count at 0, so the
+extraction belongs to a translation pass, exactly like the properties scene's own
+`qsTr()` strings.
+
+## ONE brush, four painting contexts, and painted filter masks (2026-10-25)
+
+The filter stack's masks were the goal; the brush was the thing that had to be fixed first,
+because there was no pixel brush to build them on.
+
+**`ctrl/Brush.h` is now the ONE brush model.** `BrushParam` (radius in content px, continuous
+hardness, flow, opacity, two tablet-pressure switches, spacing) + `BrushStamp`
+(center, travel `delta`, radius, hardness, amount, erase) + `brushFalloff()` +
+`BrushStroke`. The falloff is Photoshop's: a flat CORE of `radius*hardness` and a smoothstep
+band to the rim, and it is the only definition of what hardness means.
+
+`BrushStroke` is what fixes the defect every old brush had: a stamp per drag EVENT leaves a
+fast stroke as dots. It walks the segment from the last stamp in `radius*spacing` steps
+(floored at 0.5px), interpolating the pen pressure between the two samples, and carries the
+distance into the next event so an event boundary neither gaps nor double-stamps. Measured
+(`tests/brush_stroke`): a 100px move at radius 10 / spacing 0.25 emits **41 stamps with a max
+gap of exactly 2.500px**, the press stamp lands first, the cross-event gap is still <= the
+step, a 0.2->1.0 pressure ramp rises monotonically 0.200->1.000, and a hairline brush's step
+floors at 0.5px.
+
+**What is shared and what is not.** The stroke, the falloff and the parameter names are
+shared; a stamp's EFFECT is the target's - raster deposits alpha, FFD displaces vertices,
+influence widens bone ranges - which is why a stamp carries only `amount` and a distance
+falloff. `delta` exists for the WARPING targets: a spaced stroke that applied the whole event
+velocity per stamp would multiply its displacement by the stamp count, so the FFD task moves a
+vertex by the travel since the previous stamp instead.
+
+**Adopted into the three old brushes, not left beside them.**
+
+- **FFD**: the `HARDNESS` shader variation (three compile-time exponents, `pow(t,2|4|8)`) is
+  GONE. `ffd::TaskResource` injects one GLSL copy of `brushFalloff` after the `#version` line
+  of the deformer AND the eraser, and passes `uBrushHardness`/`uBrushAmount` as uniforms, so
+  the mesh brush's edge is the raster brush's edge and hardness is continuous. `FFDParam` is
+  `{BrushParam brush; float blur; float focusRadius; Type type}` - the whole duplicate
+  `eraseRadius/erasePressure/eraseHardness` set is deleted, and erase is the same brush with
+  `erase` set. `tool_FFDPanel` is Type + `BrushPanel` + Blur. Verified live (Xvfb, a stroke
+  across the artwork): **11027 canvas px changed, one Undo restored 0 px**, three icons'
+  tooltips still reachable, no shader error in the log.
+- **Bone influence paint/erase**: the hard-wired `0.3 * brushRange` core is now the brush's
+  `hardness`, the deposit is `amount * brushFalloff(distance to the bone, radius, hardness)`,
+  and both modes share ONE `BrushParam` (`piRadius/piPressure/eiRadius/eiPressure` deleted).
+- **Pose erase**: `eraseRate = 1 - amount*falloff(distance)` per bone, one stroke.
+- **`BrushPanel`** (Size / Hardness / Flow / Opacity / the two pressure switches) is now the
+  one block the FFD, Bone, Pose and Mask panels embed; a tool that cannot honour a row HIDES it
+  (the FFD mesh brush hides Opacity: a displacement has no per-stroke cap to blend).
+
+**Painted filter masks.** `core::FilterMask` is one 8-bit field in the node's CONTENT space
+(a layer's image pixels, a folder's canvas box), capped at **1024** texels on the long side
+(a mask is low frequency; 15000px of canvas is ~15px per texel at 1MiB instead of 225). It is
+stored per (filter LANE, CHANNEL) in `TimeLine`, NOT in `FilterEntry`: the stack is
+value-replayed by its commands and megabytes of pixels must never travel through one. Format
+**0.19** writes the masks after the stack (type token, channel, rect, texel size, PNG blob);
+older files have none. The texture uploads on the revision the dirty box bumps (a stroke
+uploads the box it touched, not the field).
+
+**The neutral value is per channel, and it is what makes a fresh mask a no-op**: an AMOUNT
+mask starts WHITE (full effect) and painting REDUCES it - Photoshop's layer mask and Wallpaper
+Engine's opacity mask both start at full; a TIME OFFSET mask starts BLACK (no delay) and
+painting ADDS delay. `core::filterMaskNeutral()` is that table. The wave shader samples both
+in content space: `amountScale = mask` multiplies the displacement, and
+`phase += mask * timeMaskCycles` delays it (the scale is `WaveKey::Data::timeOffset`, added in
+0.19 as a step-held field, default 0.5 cycles).
+
+**The brush paints TOWARD a Value** (0..1), not toward white or black: a stamp moves the texel
+toward it (`v += (target - v) * weight`), so repeated passes converge instead of overshooting,
+the same slider reduces an amount and adds a delay, and the **temporary eyedropper** has an
+obvious thing to pick: Alt + LEFT CLICK on the canvas samples the field under the cursor and
+puts it back into the panel (a click, not a drag - the compositor owns Alt+drag, measured).
+
+**Gate evidence.** `tests/wave_pass_pixels` [6]: an amount mask painted to 0 on the left half
+stops that half (**movedWhereMasked=0**) while the neutral half still moves
+(**movedWhereClear=1360**), and a time-offset mask produces a different deformation (2720px)
+from the same wave. `tests/wave_deform` [6]: both channels allocate at their neutral value,
+paint, and survive serialize/deserialize with their content rect and texel grid.
+`tests/brush_stroke` pins the falloff and the stroke. Live (Xvfb, `test.anie`, a Wave filter
+added through the catalog, the Mask tool from the toolbox): painting the left half changed
+**2720 px**, one Undo restored everything except the tool's own brush ring.
+
+**Three traps, all measured.**
+- A stroke's undo must mark the FIELD DIRTY, not just restore its pixels: `AssignPixels` holds
+  the `FilterMask` for exactly that reason (the first version restored the image and left the
+  wave masked on screen, because the texture only re-uploads on a revision change).
+- `QImage::pixelIndex()` is for INDEXED formats. A `Format_Grayscale8` field is read as a byte
+  (`constScanLine(y)[x]`); `pixelIndex` answers 0 for it, which read as "the mask did not
+  start neutral" in two gates.
+- The toolbox FlowLayout WRAPS with a seventh tool: the mask brush is at **(22,156)**, on a
+  second row, not in a seventh slot of the first - and a hidden tool panel still answers
+  `ae extents`, so a probe that "finds" it that way then paints with the wrong tool.
+
+**A permission prompt on the developer's desktop, and the fix.** An apostrophe in a probe's
+single-quoted `bash -c` body ended the body (the trap this file has recorded before, again in
+a comment: "the first row's 7th slot"), and the leftover lines ran in the OUTER shell, where
+`DISPLAY` is the real session - `import -window root` then raised a screen-capture permission
+prompt under Wayland while the probe was supposed to be offscreen. `scripts/gui/_lib.sh` now
+does `unset DISPLAY; unset WAYLAND_DISPLAY` in the OUTER shell, so a leaked command has no
+display to reach and fails instead of touching the person's desktop. Keep probe bodies free of
+apostrophes and prefer `$SHOTS` (exported) over a `'"$SHOTS"'` splice.
+
+### Masks reach HSV and Blur, and the brush got its gestures (2026-10-25, second round)
+
+**The HSV amount mask is a shader variation, and it isolates the layer.** A masked HSV
+adjustment has to be per pixel, so it cannot be baked into the layer draw: the fragment
+shader gained `#variation USE_HSV_MASK` (the field scales `mix(original, adjusted, mask)`,
+sampled in content space through the SAME `uScreenToLayer` the wave pass uses), and
+`LayerNode::hasActiveHsvMask()` puts the layer on the composite path when an HSV key is
+playing and a field exists. Folders already ran HSV as a stack pass, so they only needed
+the field. Gate (`tests/wave_pass_pixels` [7]): with a hue shift of 180 degrees the
+adjustment would change **40000** pixels of the masked half and keeps **40000 of 40000** at
+the original colour, while the unmasked half carries the full adjustment.
+
+**The blur cannot vary its kernel, so a masked blur renders both and mixes.** `FilterFrame::
+mixTexture` is `mix(sharp, blurred, mask)` as one full-screen pass (`#8`: the sharp half is
+the sharp render **45000 of 45000**, the other half takes **10426** blurred pixels). Two
+facts make it work: the LADDER blur reads and writes the SAME slot (`blurApply`), so a masked
+ladder blur copies the composite first (`copyTexture`, a `Kind_Resample` passthrough); and
+the sharp source is kept because the blur goes into a second slot instead of back into the
+composite. Cost, as measured earlier for the question that started this: one extra
+full-screen pass (+10% of a direct 16px blur, and the absolute extra is 0.35 ms at 1920x1080
+on the R9 380).
+
+**The trap, and it looked exactly like a shader bug.** `drawQuad` has ONE branch chain for a
+pass's bindings *and* its uniforms. The mix's texture bindings went into that chain while its
+uniforms went into a second `else if (aKind == Kind_Mix)` appended after the wave branch -
+dead, because the first branch already matched. A sampler uniform left at its default unit 0
+made `uSecondTexture` and `uMixMask` both sample the SHARP texture, so every masked blur read
+as "no blur anywhere" (`blurredRight=0`) while the blur itself was obviously working
+(`blurSelfDiff=20852`, measured in the same run). One branch now does both.
+
+**The brush's familiar gestures.** `BrushPanel::adjustSize/adjustHardness` are the one
+adjustment path: `[ ]` (one 1.1x notch, 5% hardness) via four rebindable commands
+(`BrushSizeIncrease/Decrease`, `BrushHardnessIncrease/Decrease`), and Alt + RIGHT drag
+(horizontal = size, vertical = hardness) through `MainDisplayWidget::onBrushDragAdjusted` ->
+`ToolWidget::adjustBrush`. Right button on purpose: the compositor owns Alt + LEFT drag.
+Measured live on the mask tool: three `]` took Size 50 -> **66**, four Shift + `]` took
+Hardness 50 -> **70**, and one drag banked size **+7 / +8** steps and hardness **-1 / -1**.
+
+**A Shift binding is spoken on the unshifted key, and Qt answers with the shifted symbol.**
+`Shift + ]` arrives as `BraceRight + Shift`, and the matcher compares the key exactly - so the
+hardness keys silently did nothing while `]` worked. `ctrl::unshiftedKeyForShift()` folds the
+symbol back, and it is applied in **`KeyCommandInvoker`** (the one place a rebindable command
+fires), NOT in `MainWindow::keyPressEvent`: the first `MainWindow::keyPressEvent` in that file
+is inside an `#if 0`, so the first fix went into dead code and changed nothing. A gate for
+this class is `Shift+]` changing the hardness label, not a unit test of the folding alone.
+
+**The temporary eyedropper is verified end to end.** Alt + left click on the canvas samples
+the field under the cursor into the panel's Value (MaskEditor::sampleValue; the click is
+recognised in the viewport because that is where the modifier state lives). Measured: after
+painting the left half, `Value:  0`; Alt + clicking the untouched half reported
+`Value:  100`; Alt + clicking inside the soft stroke reported an intermediate value.
+
+## The bone/pose influence brush, the mask preview, and three gate repairs (2026-10-25, third round)
+
+**The influence brush works, and the first probe said it did not.** The Bone tool's Paint/Erase
+influence modes ran on their own local vector of `Bone2*` from the C++03 tree this app was ported
+from; the bone tree here is `QVector<Bone2*>` (top bones) and the modes were rewritten on
+`BrushStroke`/`BrushStamp` like the mask. Measured live (Xvfb, `test.anie`, Bone tool -> two clicks
+to create a bone -> "Bind bone to node" -> "Paint influence", stroking ALONG the bone): **55 stamps**,
+`weight=1.000`, the band widened by **1741 px**, and one Undo restored **0 px of difference**. The
+mode icons are addressable BY NAME ("Add bones", "Bind bone to node", "Paint influence" - they are
+`SingleOutItem` tooltips, which AT-SPI publishes), so a probe needs no guessed pixels for them.
+
+The mistake worth recording: the first attempt stroked 20 SCREEN px away from the bone and nothing
+happened, which reads as "the brush is broken". The brush radius is in WORLD units, so at
+`test.anie`'s zoom (0.195) a Size-50 brush is a **~10px circle on screen** - the stroke was five
+radii away from the bone. Instrumenting `updatePaint` (stamp centre, vlen, brushRange, the bone's
+ranges) settled it in one run: `vlen=10.3 brushRange=50` painted, `vlen=100` did not.
+
+**`BrushPanel` never set ITS OWN geometry.** Every tool panel here lays its rows out and then calls
+`setGeometry`; the shared brush panel placed its sliders relative to a caller-provided origin but
+left its own widget at the default size, so the Bone/FFD/Pose/Mask panels showed a malformed row of
+three clipped boxes under the title. It now sets its geometry and returns the ABSOLUTE bottom edge
+(`aPos.y() + local`), which is the convention every other panel's `+ 5` chaining assumes.
+
+**The field is PREVIEWED on the canvas while the Mask tool paints it.** Painting blind is the one
+thing a mask tool cannot do, so the viewport draws the field as a tint over its own target's
+composite: `RenderInfo` carries `maskPreview` (the field), `maskPreviewTarget` (whose node) and
+`maskPreviewColor`, filled each frame from `MaskEditor::previewMask()`/`previewTarget()`.
+`FilterFrame::tintTexture` is a `Kind_Tint` pass - `rgb += colour.rgb * |mask - neutral| * colour.a`
+- so an UNPAINTED field tints nothing (the neutral value is the field's own, carried on
+`MaskInput::neutral`), and a painted one shows exactly where. A node that is the preview target is
+pushed onto its composite path even with no active filter, because the tint is one pass over that
+composite; a folder needed the same line in `FolderNode::render`. Measured live: painting the left
+half changed the artwork by **4589 px** with the tool up and **2120 px** with it down (the effect
+alone); the UNPAINTED right half was **0 px** different, and the amount mask's damping stayed after
+the tint went away. The time-offset channel measured **1098 px** for the effect alone.
+
+**The card's mask rows were invisible because a label was not a Q_PROPERTY.** `maskLabel`,
+`timeMaskLabel`, `paintMaskLabel`, `clearMaskLabel`, `paintTimeMaskLabel` and `clearTimeMaskLabel`
+were plain methods on `FilterRowModel`: readable from C++, `undefined` in QML, so the two
+`InspectorRow`s the card declares never appeared (and the app's own log said nothing). They are
+`CONSTANT` Q_PROPERTYs now, and the rows read `Mask | Paint mask | Clear mask` and
+`Time mask | Paint time offset mask | Clear time offset mask` in the accessibility tree. Verified
+live: `Paint mask` presses through to the Mask tool on the WAVE lane, `Clear mask` returns the
+effect in one undo, and the time row does the same on the time channel. The card is taller than the
+dock's viewport with a wave filter expanded - a probe must scroll the inspector before pressing the
+time row (measured: `hidden` before the wheel, `showing` after).
+
+**Three build/gate repairs, all of which had been lying.**
+
+- **Ninja's own state can corrupt and then "succeed" silently.** `ninja` began exiting on
+  `stl_vector.h: operator[]: Assertion '__n < this->size()' failed` (`Node*` is ninja's graph
+  type), and `cmake --build ... | grep -E "error:"` showed NOTHING while the binary stayed at its
+  old mtime - several rounds of edits were never compiled. The fix is `rm -f build/.ninja_deps
+  build/.ninja_log` (ninja regenerates both). After any build where a claimed change has no effect,
+  check the binary's mtime before instrumenting the code.
+- **The half pixel belongs to the RASTERISER, not to `paintMarquee`.** The marquee's 0.5px inset was
+  applied in the shared helper, which is right for QPainter/Canvas2D (centred strokes) and wrong for
+  the ImGui backend (its antialiased 1px line already lands on the row its coordinate names): the
+  graph panel's box-select edge was split over two rows (`#d543fd`/`#d346fd`, 55 from the token).
+  `paintMarquee` now passes the RAW rect - the model's own geometry - and `InkQPainter`/
+  `InkCanvas::strokeRect` inset by `width/2` themselves. The gate reads `d=1` on the ImGui host and
+  `time_body_canvas` stays GEOMETRY 0, so the three backends agree again.
+- **A hairline gate asserted "far from the hairline", which the palette had made false.** The row
+  above the ruler's rule must be the BAND'S SURFACE, and in the dark palette the band (`#171717`)
+  is only 15 from the hairline (`#262626`) - the check's `> 24` bar was a palette coincidence, not a
+  property. It compares against `theme::Graph::rulerBand()` now (`d_surface=0`).
+- `tests/graph_panel_model`'s legend-group expectation pinned the literal "Move [X][Y]"; the display
+  name is "Position" now, so it asks `core::TimeKeyType` through `getTimeKeyDisplayName` and pins the
+  SHAPE (`"<type> [X][Y]"`) instead of a string another surface may rename.
+
+`scripts/run_suites.sh Debug` = **60 pass / 0 fail** after all of it (it was 58 pass / 2 fail:
+`graph_panel_model`, `graph_panel_pixels`, both from the two stale expectations above).
+
+**A warning-free claim needs a build that COMPILED the file.** The round's own new sources carried
+four `-W` findings that no incremental link had shown (`AssignPixels`' unmarked overrides, an unused
+lambda capture in `MaskEditor`, a dead `mUILogger` member, and a `-Wreorder-ctor` from
+`MainDisplayWidget`'s brush-drag fields being initialised before `mTimeLineRangeSlot`/
+`mPlayWindowConnection`), plus `tool_BrushPanel.cpp`'s `kItemLeft` after its inset moved to the
+caller. `touch`ing the files and rebuilding is the cheap way to ask; the `MaskEditor` logger was
+then DROPPED rather than silenced - a brush over a field never logs, so the parameter was a dead
+dependency on the driver's logger.
