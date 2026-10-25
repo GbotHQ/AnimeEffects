@@ -53,6 +53,21 @@ Item {
     signal dragMoved(int index, real sceneY)
     signal dragEnded(int index, real sceneY)
 
+    // The summary stays ONE line of one size. Only the axis/field labels are
+    // dimmer; values keep the original muted summary ink.
+    function summaryHtml() {
+        const segments = filterRow.summarySegments;
+        if (!segments || segments.length === 0)
+            return filterRow.summary;
+        const parts = [];
+        for (let i = 0; i < segments.length; ++i) {
+            const segment = segments[i];
+            parts.push('<font color="' + String(theme.textMutedDim) + '">'
+                       + segment.label + '</font> ' + segment.value);
+        }
+        return parts.join("\u2003");
+    }
+
     width: parent ? parent.width : 0
     height: headerItem.height + body.height + (filterRow.expanded ? 2 : 0)
     Accessible.role: Accessible.Grouping
@@ -180,66 +195,15 @@ Item {
                 Layout.fillWidth: true
                 Layout.preferredHeight: 20
 
-                // HSV's header is a compact labelled readout, not the same
-                // string as the title: the axis letters are a step smaller and
-                // dimmer, the values stay at the body face and full ink.
-                Row {
-                    visible: filterRow.kind === "hsv"
-                    anchors.right: parent.right
-                    anchors.verticalCenter: parent.verticalCenter
-                    spacing: 8
-
-                    Row {
-                        spacing: 2
-                        Text {
-                            text: "H"
-                            color: theme.textMutedDim
-                            font.family: uiFont.family
-                            font.pointSize: Math.max(1, uiFont.pointSize - 1)
-                        }
-                        Text {
-                            text: filterRow.hue
-                            color: filterRow.enabled ? theme.text : theme.textDisabled
-                            font: uiFont
-                        }
-                    }
-                    Row {
-                        spacing: 2
-                        Text {
-                            text: "S"
-                            color: theme.textMutedDim
-                            font.family: uiFont.family
-                            font.pointSize: Math.max(1, uiFont.pointSize - 1)
-                        }
-                        Text {
-                            text: filterRow.saturation
-                            color: filterRow.enabled ? theme.text : theme.textDisabled
-                            font: uiFont
-                        }
-                    }
-                    Row {
-                        spacing: 2
-                        Text {
-                            text: "V"
-                            color: theme.textMutedDim
-                            font.family: uiFont.family
-                            font.pointSize: Math.max(1, uiFont.pointSize - 1)
-                        }
-                        Text {
-                            text: filterRow.value
-                            color: filterRow.enabled ? theme.text : theme.textDisabled
-                            font: uiFont
-                        }
-                    }
-                }
-
                 Text {
-                    visible: filterRow.kind !== "hsv"
+                    anchors.left: parent.left
                     anchors.right: parent.right
                     anchors.verticalCenter: parent.verticalCenter
-                    text: filterRow.summary
+                    textFormat: Text.StyledText
+                    text: root.summaryHtml()
                     color: theme.textMuted
                     font: uiFont
+                    horizontalAlignment: Text.AlignRight
                     elide: Text.ElideRight
                 }
             }

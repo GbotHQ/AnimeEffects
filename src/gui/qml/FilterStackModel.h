@@ -24,6 +24,7 @@ class FilterRowModel: public QObject {
     Q_PROPERTY(QString keyState READ keyState NOTIFY changed)
     Q_PROPERTY(QColor keyColor READ keyColor NOTIFY changed)
     Q_PROPERTY(QString summary READ summary NOTIFY changed)
+    Q_PROPERTY(QVariantList summarySegments READ summarySegments NOTIFY changed)
     Q_PROPERTY(QString hueLabel READ hueLabel CONSTANT)
     Q_PROPERTY(QString saturationLabel READ saturationLabel CONSTANT)
     Q_PROPERTY(QString valueLabel READ valueLabel CONSTANT)
@@ -57,6 +58,7 @@ public:
     QString keyState() const { return mKeyState; }
     QColor keyColor() const { return mKeyColor; }
     QString summary() const { return mSummary; }
+    QVariantList summarySegments() const { return mSummarySegments; }
     QString hueLabel() const { return QCoreApplication::translate("gui::prop::FilterStackPanel", "Hue"); }
     QString saturationLabel() const { return QCoreApplication::translate("gui::prop::FilterStackPanel", "Saturation"); }
     QString valueLabel() const { return QCoreApplication::translate("gui::prop::FilterStackPanel", "Value"); }
@@ -113,6 +115,7 @@ private:
     QString mKeyState;
     QColor mKeyColor;
     QString mSummary;
+    QVariantList mSummarySegments;
 
     int mHue = 0;
     int mSaturation = 100;

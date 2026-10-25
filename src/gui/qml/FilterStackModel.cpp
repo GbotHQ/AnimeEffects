@@ -31,6 +31,19 @@ QString displayName(core::TimeKeyType aType) {
 bool isStackFilter(core::TimeKeyType aType) {
     return aType == core::TimeKeyType_HSV || aType == core::TimeKeyType_Blur;
 }
+
+// Same display rule as ScrubSpinBox's trimTrailingZeros: the summary must not
+// show 0.0 when the field shows 0.
+QString summaryNumber(double aValue, int aDecimals) {
+    QString text = QString::number(aValue, 'f', aDecimals);
+    if (text.contains('.')) {
+        while (text.endsWith('0'))
+            text.chop(1);
+        if (text.endsWith('.'))
+            text.chop(1);
+    }
+    return text == QStringLiteral("-0") ? QStringLiteral("0") : text;
+}
 } // namespace
 
 FilterRowModel::FilterRowModel(core::TimeKeyType aType, InspectorViewModel& aOwner, QObject* aParent):
@@ -60,9 +73,16 @@ void FilterRowModel::refresh() {
         keyState = QStringLiteral("animated");
 
     const QColor keyColor = theme::keyTypeColor(theme::Colors::current(), mType);
-    const QVariantList before{mEnabled, mKeyState, mKeyColor, mSummary, mHue, mSaturation,
-                              mValue, mAbsolute, mAmount, mDirectional, mBlurX, mBlurY,
-                              mBlurAngle};
+    const QVariantList before{mEnabled, mKeyState, mKeyColor, mSummary, mSummarySegments, mHue,
+                              mSaturation, mValue, mAbsolute, mAmount, mDirectional, mBlurX,
+                              mBlurY, mBlurAngle};
+    QVariantList summarySegments;
+    const auto addSummary = [&summarySegments](const QString& aLabel, const QString& aValue) {
+        QVariantMap segment;
+        segment.insert(QStringLiteral("label"), aLabel);
+        segment.insert(QStringLiteral("value"), aValue);
+        summarySegments.append(segment);
+    };
 
     mEnabled = enabled;
     mKeyState = keyState;
@@ -76,6 +96,9 @@ void FilterRowModel::refresh() {
         mValue = values.size() > 2 ? values.at(2) : 100;
         mAbsolute = values.size() > 3 && values.at(3) != 0;
         mSummary = trFilter("H %1  S %2  V %3").arg(mHue).arg(mSaturation).arg(mValue);
+        addSummary(QStringLiteral("H"), QString::number(mHue));
+        addSummary(QStringLiteral("S"), QString::number(mSaturation));
+        addSummary(QStringLiteral("V"), QString::number(mValue));
     } else if (isBlur()) {
         const auto data = mOwner.accessor().blurData();
         const bool hasExplicit = line->hasTimeKey(mType, frame);
@@ -90,14 +113,26 @@ void FilterRowModel::refresh() {
         mBlurAngle = current.angleDeg();
         if (data.amount() != mAmount) // keep the accessor's exact read for a static default
             mAmount = data.amount();
+        const QString blurX = summaryNumber(double(mBlurX), 1);
+        const QString blurY = summaryNumber(double(mBlurY), 1);
+        const QString blurAngle = summaryNumber(double(mBlurAngle), 1);
+        const QString amount = summaryNumber(double(mAmount), 1);
         mSummary = mDirectional
-            ? trFilter("%1 × %2 px").arg(double(mBlurX), 0, 'f', 1).arg(double(mBlurY), 0, 'f', 1)
-            : trFilter("%1 px").arg(double(mAmount), 0, 'f', 1);
+            ? trFilter("X %1 px  Y %2 px  Angle %3°").arg(blurX, blurY, blurAngle)
+            : trFilter("Amount %1 px").arg(amount);
+        if (mDirectional) {
+            addSummary(QStringLiteral("X"), blurX + QStringLiteral(" px"));
+            addSummary(QStringLiteral("Y"), blurY + QStringLiteral(" px"));
+            addSummary(trFilter("Angle"), blurAngle + QStringLiteral("°"));
+        } else {
+            addSummary(trFilter("Amount"), amount + QStringLiteral(" px"));
+        }
     }
+    mSummarySegments = summarySegments;
 
-    const QVariantList after{mEnabled, mKeyState, mKeyColor, mSummary, mHue, mSaturation,
-                             mValue, mAbsolute, mAmount, mDirectional, mBlurX, mBlurY,
-                             mBlurAngle};
+    const QVariantList after{mEnabled, mKeyState, mKeyColor, mSummary, mSummarySegments, mHue,
+                             mSaturation, mValue, mAbsolute, mAmount, mDirectional, mBlurX,
+                             mBlurY, mBlurAngle};
     if (before != after)
         emit changed();
 }

@@ -3802,14 +3802,17 @@ field reserves the same 24px lead-in, and a fixed 15px slot from x=4..19 fits/ce
 absent, and values stay LEFT-aligned. Prefix glyphs are rasterized at their physical footprint (`sourceSize = 15 * devicePixelRatio`) from
 the official Phosphor FILL assets (`.../assets/regular`) - not the raw stroke assets, which Qt
 rasterizes poorly at this size. The chosen vocabulary: Position/Centroid/Image Center use
-`X`/`Y`; Scale uses Phosphor `arrows-horizontal`/`arrows-vertical`; Depth uses `depth` (the cube
-glyph); Opacity uses `circle-half`; Mesh cell uses `grid-four`; Rotation/Blur angle use the official
+`X`/`Y`; Scale uses Phosphor `arrows-horizontal`/`arrows-vertical`; Depth uses `stack` (layers/z-
+order); Opacity uses `circle-half`; Mesh cell uses `grid-four`; Rotation/Blur angle use the official
 Phosphor `angle` glyph plus a `°` suffix; HSV uses `H`/`S`/`V`. Prefix text and every glyph use the
-SAME `theme.textMutedDim` token and the same opacity (icon roles `MutedDim`). The HSV card's header
-readout is a composed row, not one string: H/S/V are one point smaller in `textMutedDim`, while the
-values use the body face and full `text` ink, so the title, axes and values have three levels. The degree suffix is announced
-as "Degrees"; no other unit was invented. Icons live in `assets/icons/ph/` and are tinted by the
-existing role table.
+SAME `theme.textMutedDim` token and the same opacity (icon roles `MutedDim`). Every filter header
+summary comes from `FilterRowModel::summarySegments` and is rendered as ONE StyledText line at ONE
+size: the bold title is full ink, labels are `textMutedDim`, values stay the original `textMuted`.
+There is no smaller label, no second row and no full-opacity value. Summary numbers use the same
+`summaryNumber` trim as the fields (so `0` never becomes `0.0`), and the item separator is an em
+space while label/value uses one ordinary space. Blur uses `Amount`, or `X`/`Y`/`Angle` when
+directional. The degree suffix is announced as "Degrees"; no other unit was
+invented. Icons live in `assets/icons/ph/` and are tinted by the existing role table.
 
 **Verified:** `scripts/run_suites.sh Debug` = 57 pass / 0 fail on the tree that removes the widget
 classes; `inspector_view_model` pins model-2 writes, key toggles, filter add/reorder/enable/remove,
