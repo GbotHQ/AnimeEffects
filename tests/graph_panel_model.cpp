@@ -1263,12 +1263,17 @@ int main(int argc, char** argv) {
             CHECK(model.channels.at(3).channel == ctrl::graph::Channel(core::TimeKeyType_Opa, 0));
 
             // ONE GROUP PER (layer, key type), naming the property and every
-            // component - the design's "Move [X][Y]"; a one-component type carries
-            // its own name ("Rotate", "Opacity") and needs no bracketed repeat.
-            CHECK(model.channels.at(0).group == QStringLiteral("Move [X][Y]"));
-            CHECK(model.channels.at(1).group == QStringLiteral("Move [X][Y]"));
-            CHECK(model.channels.at(2).group == QStringLiteral("Rotate"));
-            CHECK(model.channels.at(3).group == QStringLiteral("Opacity"));
+            // component - "<type> [X][Y]"; a one-component type carries its own name
+            // and needs no bracketed repeat. The TYPE NAME is asked of the same API
+            // the model reads, so the shape is pinned without re-stating a display
+            // string that another surface may rename ("Move" is "Position" now).
+            const QString moveName = core::TimeLine::getTimeKeyDisplayName(core::TimeKeyType_Move);
+            CHECK(model.channels.at(0).group == moveName + QStringLiteral(" [X][Y]"));
+            CHECK(model.channels.at(1).group == moveName + QStringLiteral(" [X][Y]"));
+            CHECK(model.channels.at(2).group ==
+                  core::TimeLine::getTimeKeyDisplayName(core::TimeKeyType_Rotate));
+            CHECK(model.channels.at(3).group ==
+                  core::TimeLine::getTimeKeyDisplayName(core::TimeKeyType_Opa));
             // A group's rows are contiguous: the same (layer, type) never returns
             // after another group has started, or the menu's boundary walk would
             // open a second heading for one property.

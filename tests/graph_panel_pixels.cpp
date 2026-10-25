@@ -3969,19 +3969,24 @@ bool checkRulerHairline(const Rendered& aRendered, const gui::GraphPanelModel& a
             x, hairlineY, hex(c).c_str(), hex(halfCovered).c_str()
         );
     }
-    // ...and the row ABOVE it (the band's last row) does NOT carry the hairline: the
-    // timeline's band is repainted by its strip, so the panel's band must be the same -
-    // a rule that bled into the band would be two grey rows where both views have one.
+    // ...and the row ABOVE it (the band's last row) is the BAND'S OWN SURFACE, not the
+    // hairline: the timeline's band is repainted by its strip, so the panel's band must be
+    // the same - a rule that bled into the band would be two grey rows where both views
+    // have one. The comparison is against the surface token, not a raw distance from the
+    // hairline: in the dark palette the surface (#171717) sits only 15 from the hairline
+    // (#262626), so "far from the hairline" is not the property - "the band's ink" is.
     const QColor above = pixelAt(aRendered.image, probeX[0], aModel.rulerBand.bottom());
+    const QColor surface = over(withAlpha(aTheme.rulerBand(), 1.0f), kClear);
     std::printf(
-        "MEASURED ruler_hairline_above row=%d rgb=%s (token %s, distance %d)\n", aModel.rulerBand.bottom(),
-        hex(above).c_str(), hex(expected).c_str(), colourDistance(above, expected)
+        "MEASURED ruler_hairline_above row=%d rgb=%s (surface %s d_surface=%d, hairline %s d_token=%d)\n",
+        aModel.rulerBand.bottom(), hex(above).c_str(), hex(surface).c_str(), colourDistance(above, surface),
+        hex(expected).c_str(), colourDistance(above, expected)
     );
     REQUIRE(
-        colourDistance(above, expected) > 24,
-        "the band's last row (%d) carries the hairline's ink %s: the rule is bleeding into the band, which"
+        colourDistance(above, surface) <= 6,
+        "the band's last row (%d) is %s, not the band's surface %s: the hairline bled into the band, which"
         " the timeline's own widget repaints over",
-        aModel.rulerBand.bottom(), hex(above).c_str()
+        aModel.rulerBand.bottom(), hex(above).c_str(), hex(surface).c_str()
     );
     return true;
 }

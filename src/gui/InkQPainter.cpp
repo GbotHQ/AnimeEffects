@@ -64,13 +64,17 @@ void InkQPainter::strokeRect(const QRectF& aRect, const QColor& aColor, double a
     mPainter.save();
     mPainter.setPen(penOf(aColor, aWidth));
     mPainter.setBrush(Qt::NoBrush);
-    // THE STROKE IS CENTRED ON THE PATH. Qt and Canvas2D both do this; ImGui's AddRect strokes
-    // inward. The panel's shapes are one pixel, so this is an ink-path difference the parity
-    // gate classifies - it is the same class as the marker rim.
+    // THE STROKE IS CENTRED ON THE PATH, so a 1px stroke on an integer edge would split
+    // itself over two device rows. Inset by half the width: the stroke then covers exactly
+    // the rows the given box names, which is what ImGui's antialiased 1px line already
+    // does. The caller hands over the geometry it means (gui::ink::paintMarquee's raw
+    // rect) and this conversion stays where the rasteriser convention lives.
+    const double half = aWidth * 0.5;
+    const QRectF box = aRect.adjusted(half, half, -half, -half);
     if (aRadius > 0.0)
-        mPainter.drawRoundedRect(boxOf(aRect), aRadius, aRadius);
+        mPainter.drawRoundedRect(boxOf(box), aRadius, aRadius);
     else
-        mPainter.drawRect(boxOf(aRect));
+        mPainter.drawRect(boxOf(box));
     mPainter.restore();
 }
 

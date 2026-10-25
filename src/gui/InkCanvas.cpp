@@ -68,14 +68,19 @@ void InkCanvas::strokeRect(const QRectF& aRect, const QColor& aColor, double aRa
     mPainter.setStrokeStyle(aColor);
     mPainter.setLineWidth(aWidth);
     mPainter.beginPath();
+    // Canvas2D centres its stroke on the path, so inset by half the width for the same
+    // reason InkQPainter does: the stroke then covers exactly the rows/columns the box
+    // names (see gui::ink::paintMarquee).
+    const double half = aWidth * 0.5;
+    const QRectF box = aRect.adjusted(half, half, -half, -half);
     if (aRadius > 0.0)
-        mPainter.roundRect(boxOf(aRect), aRadius);
+        mPainter.roundRect(boxOf(box), aRadius);
     else {
-        const QRectF box = boxOf(aRect);
-        mPainter.moveTo(box.topLeft());
-        mPainter.lineTo(box.topRight());
-        mPainter.lineTo(box.bottomRight());
-        mPainter.lineTo(box.bottomLeft());
+        const QRectF b = boxOf(box);
+        mPainter.moveTo(b.topLeft());
+        mPainter.lineTo(b.topRight());
+        mPainter.lineTo(b.bottomRight());
+        mPainter.lineTo(b.bottomLeft());
         mPainter.closePath();
     }
     mPainter.stroke();
