@@ -3794,11 +3794,14 @@ grayscale. Every inspector Text/TextInput uses `Text.CurveRendering` through the
 `QQuickWindow::setTextRenderType` for this - it changes every QML scene and only affects elements
 created afterwards.
 
-**In-field labels and units.** `ScrubSpinBox` draws a muted `prefix`, a themed `prefixIcon` and a
-muted `suffix` without touching the numeric text or accessibility value. The inspector uses `X`/`Y`
-for axis pairs, and the official Phosphor `angle` glyph (regular, `icons/ph/angle.svg`) plus `°` for
-Rotation and Blur angle. The degree suffix is announced as "Degrees"; no other unit was invented.
-The glyph goes through the existing icon tint role table, so it follows the theme.
+**In-field labels and units.** `ScrubSpinBox` draws a muted `prefix` and a themed `prefixIcon` at the
+left, and appends the `suffix` to the displayed numeric string (`0` + `°`), so a unit is part of the
+value rather than a separately right-aligned label. The inspector sets `rightAlign: true`, so the
+numeric right edge is identical in every field whether or not it has an X/Y prefix; dialogs keep
+their left alignment. The inspector uses `X`/`Y` for axis pairs and the official Phosphor `angle`
+glyph (regular, `icons/ph/angle.svg`) plus `°` for Rotation and Blur angle. Prefix text and the glyph
+use the SAME `theme.textMuted` token and the same opacity; the glyph's role is `Muted`. The degree
+suffix is announced as "Degrees"; no other unit was invented.
 
 **Verified:** `scripts/run_suites.sh Debug` = 57 pass / 0 fail on the tree that removes the widget
 classes; `inspector_view_model` pins model-2 writes, key toggles, filter add/reorder/enable/remove,

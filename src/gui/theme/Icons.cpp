@@ -45,7 +45,7 @@ const QHash<QString, IconRole>& roleTable() {
         {QStringLiteral("dialog_open"), IconRole::Text},
         {QStringLiteral("dialog_reset"), IconRole::Text},
         {QStringLiteral("dialog_save"), IconRole::Text},
-        {QStringLiteral("angle"), IconRole::Text},
+        {QStringLiteral("angle"), IconRole::Muted},
         {QStringLiteral("arrows-out-line-horizontal"), IconRole::Text},
         {QStringLiteral("down_arrow"), IconRole::Muted},
         {QStringLiteral("down_arrow_disabled"), IconRole::Disabled},

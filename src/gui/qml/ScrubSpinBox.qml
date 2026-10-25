@@ -42,8 +42,10 @@ Item {
     property string prefix: ""
     property string prefixIcon: ""
     property string suffix: ""
+    // Preserve the dialogs' left-aligned numbers; the inspector opts into right
+    // alignment so an in-field X/Y or angle glyph cannot move the number.
+    property bool rightAlign: false
     readonly property int contentLeft: prefixIcon !== "" ? 24 : (prefix !== "" ? 18 : 8)
-    readonly property int contentRight: suffix !== "" ? 18 : 8
     // NOTE: the enabled state is Item.enabled itself, deliberately NOT redeclared:
     // a `property bool enabled` here would shadow the base property, the item would
     // never report disabled to the accessibility tree, and a probe could not tell a
@@ -114,12 +116,13 @@ Item {
         id: shown
         anchors.fill: parent
         anchors.leftMargin: root.contentLeft
-        anchors.rightMargin: root.contentRight
+        anchors.rightMargin: 8
         verticalAlignment: Text.AlignVCenter
+        horizontalAlignment: root.rightAlign ? Text.AlignRight : Text.AlignLeft
         color: root.enabled ? theme.text : theme.textDisabled
         font: root.textFont
         renderType: root.textRenderType
-        text: root.fmt(root.value)
+        text: root.fmt(root.value) + (root.showValue && root.suffix !== "" ? root.suffix : "")
         visible: !editInput.activeFocus && root.showValue
     }
 
@@ -129,7 +132,8 @@ Item {
         anchors.leftMargin: 8
         anchors.verticalCenter: parent.verticalCenter
         text: root.prefix
-        color: root.enabled ? theme.textMuted : theme.textDisabled
+        color: theme.textMuted
+        opacity: root.enabled ? 0.9 : 0.45
         font: root.textFont
         renderType: root.textRenderType
     }
@@ -144,17 +148,7 @@ Item {
         sourceSize.width: 64
         sourceSize.height: 64
         fillMode: Image.PreserveAspectFit
-        opacity: root.enabled ? 0.9 : 0.4
-    }
-    Text {
-        visible: root.showValue && root.suffix !== ""
-        anchors.right: parent.right
-        anchors.rightMargin: 7
-        anchors.verticalCenter: parent.verticalCenter
-        text: root.suffix
-        color: root.enabled ? theme.textMuted : theme.textDisabled
-        font: root.textFont
-        renderType: root.textRenderType
+        opacity: root.enabled ? 0.9 : 0.45
     }
 
     // Hover feedback for the field (HoverHandler matches the checkbox/buttons).
@@ -249,8 +243,9 @@ Item {
         id: editInput
         anchors.fill: parent
         anchors.leftMargin: root.contentLeft
-        anchors.rightMargin: root.contentRight
+        anchors.rightMargin: 8
         verticalAlignment: Text.AlignVCenter
+        horizontalAlignment: root.rightAlign ? Text.AlignRight : Text.AlignLeft
         color: theme.text
         renderType: root.textRenderType
         // F33: the selection is the theme's selection pair, like AeTextField.
