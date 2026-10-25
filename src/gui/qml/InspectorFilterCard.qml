@@ -238,6 +238,7 @@ Item {
                     step: 1
                     decimals: 0
                     label: filterRow.hueLabel
+                    prefix: "H"
                     onValueEdited: (value) => filterRow.setHue(Math.round(value))
                 }
             }
@@ -252,6 +253,7 @@ Item {
                     step: 1
                     decimals: 0
                     label: filterRow.saturationLabel
+                    prefix: "S"
                     onValueEdited: (value) => filterRow.setSaturation(Math.round(value))
                 }
             }
@@ -266,6 +268,7 @@ Item {
                     step: 1
                     decimals: 0
                     label: filterRow.valueLabel
+                    prefix: "V"
                     onValueEdited: (value) => filterRow.setValue(Math.round(value))
                 }
             }

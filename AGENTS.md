@@ -3797,11 +3797,15 @@ family and point size from `LocaleParam` (`uiFont`), which is what makes 8pt mat
 **In-field labels and units.** `ScrubSpinBox` draws a muted `prefix` and a themed `prefixIcon` at the
 left, and appends the `suffix` to the displayed numeric string (`0` + `°`), so a unit is part of the
 value rather than a separately right-aligned label. The inspector sets `reservePrefix: true`: every
-field reserves the same 22px lead-in, so a value starts at the same x whether it has X/Y, the angle
-glyph, or no prefix. Values themselves stay LEFT-aligned. The inspector uses `X`/`Y` for axis pairs
-and the official Phosphor `angle` glyph (regular, `icons/ph/angle.svg`) plus `°` for Rotation and
-Blur angle. Prefix text and the glyph use the SAME `theme.textMuted` token and the same opacity; the
-glyph's role is `Muted`. The degree suffix is announced as "Degrees"; no other unit was invented.
+field reserves the same 22px lead-in, and a 16px slot from x=6..22 centers the prefix (text or icon)
+inside it. The numeric text starts at x=22 in every field whether the glyph is X/Y, an icon, or
+absent, and values stay LEFT-aligned. The chosen vocabulary: Position/Centroid/Image Center use
+`X`/`Y`; Scale uses Phosphor `arrows-horizontal`/`arrows-vertical`; Depth uses `depth` (the cube
+glyph); Opacity uses `circle-half`; Mesh cell uses `grid-four`; Rotation/Blur angle use the official
+Phosphor `angle` glyph plus a `°` suffix; HSV uses `H`/`S`/`V`. Prefix text and every glyph use the
+SAME `theme.textMuted` token and the same opacity (icon roles `Muted`). The degree suffix is announced
+as "Degrees"; no other unit was invented. Icons live in `assets/icons/ph/` and are tinted by the
+existing role table.
 
 **Verified:** `scripts/run_suites.sh Debug` = 57 pass / 0 fail on the tree that removes the widget
 classes; `inspector_view_model` pins model-2 writes, key toggles, filter add/reorder/enable/remove,

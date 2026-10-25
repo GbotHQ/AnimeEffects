@@ -185,7 +185,7 @@ Rectangle {
                     to: inspector.scaleMax
                     step: 0.1
                     label: qsTr("Scale X")
-                    prefix: "X"
+                    prefixIcon: "arrows-horizontal"
                     onValueEdited: (value) => inspector.scale.setScaleX(value)
                 }
                 InspectorNumberField {
@@ -196,7 +196,7 @@ Rectangle {
                     to: inspector.scaleMax
                     step: 0.1
                     label: qsTr("Scale Y")
-                    prefix: "Y"
+                    prefixIcon: "arrows-vertical"
                     onValueEdited: (value) => inspector.scale.setScaleY(value)
                 }
             }
@@ -216,6 +216,7 @@ Rectangle {
                     to: inspector.translateMax
                     step: 1
                     label: inspector.depth.label
+                    prefixIcon: "depth"
                     onValueEdited: (value) => inspector.depth.setDepth(value)
                 }
             }
@@ -236,6 +237,7 @@ Rectangle {
                     step: 0.05
                     decimals: 3
                     label: inspector.opacity.label
+                    prefixIcon: "circle-half"
                     onValueEdited: (value) => inspector.opacity.setOpacity(value)
                 }
             }
@@ -297,6 +299,7 @@ Rectangle {
                     step: 1
                     decimals: 0
                     label: inspector.meshCellLabel
+                    prefixIcon: "grid-four"
                     ToolTip.visible: hovered
                     ToolTip.delay: 500
                     ToolTip.text: inspector.meshCellTooltip

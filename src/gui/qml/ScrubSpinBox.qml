@@ -45,6 +45,8 @@ Item {
     property bool reservePrefix: false
     readonly property int contentLeft: reservePrefix ? 22
                                               : (prefixIcon !== "" ? 24 : (prefix !== "" ? 18 : 8))
+    readonly property int prefixSlotLeft: reservePrefix ? 6 : 8
+    readonly property int prefixSlotWidth: Math.max(0, contentLeft - prefixSlotLeft)
     // NOTE: the enabled state is Item.enabled itself, deliberately NOT redeclared:
     // a `property bool enabled` here would shadow the base property, the item would
     // never report disabled to the accessibility tree, and a probe could not tell a
@@ -123,28 +125,31 @@ Item {
         visible: !editInput.activeFocus && root.showValue
     }
 
-    Text {
-        visible: root.showValue && root.prefix !== ""
-        anchors.left: parent.left
-        anchors.leftMargin: 8
-        anchors.verticalCenter: parent.verticalCenter
-        text: root.prefix
-        color: theme.textMuted
-        opacity: root.enabled ? 0.9 : 0.45
-        font: root.textFont
-    }
-    Image {
-        visible: root.showValue && root.prefixIcon !== ""
-        anchors.left: parent.left
-        anchors.leftMargin: 7
-        anchors.verticalCenter: parent.verticalCenter
-        width: 13
-        height: 13
-        source: root.prefixIcon === "" ? "" : theme.iconUrl(root.prefixIcon)
-        sourceSize.width: 64
-        sourceSize.height: 64
-        fillMode: Image.PreserveAspectFit
-        opacity: root.enabled ? 0.9 : 0.45
+    Item {
+        id: prefixSlot
+        x: root.prefixSlotLeft
+        width: root.prefixSlotWidth
+        height: parent.height
+        visible: root.showValue && (root.prefix !== "" || root.prefixIcon !== "")
+        Text {
+            anchors.centerIn: parent
+            visible: root.prefix !== ""
+            text: root.prefix
+            color: theme.textMuted
+            opacity: root.enabled ? 0.9 : 0.45
+            font: root.textFont
+        }
+        Image {
+            anchors.centerIn: parent
+            visible: root.prefixIcon !== ""
+            width: 13
+            height: 13
+            source: root.prefixIcon === "" ? "" : theme.iconUrl(root.prefixIcon)
+            sourceSize.width: 64
+            sourceSize.height: 64
+            fillMode: Image.PreserveAspectFit
+            opacity: root.enabled ? 0.9 : 0.45
+        }
     }
 
     // Hover feedback for the field (HoverHandler matches the checkbox/buttons).
