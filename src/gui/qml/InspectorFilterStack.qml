@@ -83,8 +83,8 @@ Item {
             anchors.verticalCenter: parent.verticalCenter
             text: inspector.filters.title
             color: theme.text
-            font.family: Qt.application.font.family
-            font.pointSize: Qt.application.font.pointSize
+            font.family: uiFont.family
+            font.pointSize: uiFont.pointSize
             font.bold: true
             Accessible.role: Accessible.StaticText
             Accessible.name: text
@@ -167,7 +167,7 @@ Item {
                 bottomPadding: 4
                 text: inspector.filters.noFiltersText
                 color: theme.textMuted
-                font: Qt.application.font
+                font: uiFont
             }
         }
 
@@ -213,7 +213,7 @@ Item {
                 width: parent.width
                 implicitHeight: 28
                 leadingIcon: "magnifying-glass"
-                textFont: Qt.application.font
+                textFont: uiFont
                 placeholderText: inspector.filters.searchLabel
                 accessibleName: inspector.filters.searchLabel
                 Keys.onReturnPressed: root.addFirstMatching()
@@ -256,7 +256,7 @@ Item {
                                      + (!modelData.available ? "  ·  " + inspector.filters.comingSoonLabel
                                                              : catalogItem.added ? "  ·  " + inspector.filters.addedLabel : "")
                             color: theme.text
-                            font: Qt.application.font
+                            font: uiFont
                             elide: Text.ElideRight
                         }
                         Text {
@@ -264,7 +264,7 @@ Item {
                             visible: modelData.available
                             text: modelData.description
                             color: theme.textMuted
-                            font: Qt.application.font
+                            font: uiFont
                             elide: Text.ElideRight
                         }
                     }
@@ -293,7 +293,7 @@ Item {
                 }
                 text: inspector.filters.noMatchLabel
                 color: theme.textMuted
-                font: Qt.application.font
+                font: uiFont
                 leftPadding: 4
                 topPadding: 4
             }

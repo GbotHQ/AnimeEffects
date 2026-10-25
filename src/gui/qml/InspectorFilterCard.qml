@@ -52,17 +52,42 @@ Item {
     signal dragEnded(int index, real sceneY)
 
     width: parent ? parent.width : 0
-    height: headerItem.height + body.height
+    height: headerItem.height + body.height + (filterRow.expanded ? 2 : 0)
     Accessible.role: Accessible.Grouping
     Accessible.name: filterRow.name
 
+    // An expanded filter is ONE bordered card: the frame supplies the body's
+    // missing edge, and the header/body are inset by its 1px stroke.
+    Rectangle {
+        id: cardFrame
+        anchors.fill: parent
+        visible: filterRow.expanded
+        radius: 4
+        color: "transparent"
+        border.width: 1
+        border.color: theme.outline
+    }
 
     Rectangle {
         id: headerItem
-        width: parent.width
+        x: filterRow.expanded ? 1 : 0
+        y: filterRow.expanded ? 1 : 0
+        width: parent.width - (filterRow.expanded ? 2 : 0)
         height: 30
-        radius: 4
+        radius: filterRow.expanded ? 3 : 4
         color: filterRow.expanded || headerMouse.containsMouse ? theme.raised : "transparent"
+
+        // Expanded: the header's top corners stay rounded, its bottom edge
+        // becomes square so it joins the body as one card. Without this patch
+        // the radius leaves a second rounded edge over the body.
+        Rectangle {
+            visible: filterRow.expanded
+            anchors.left: parent.left
+            anchors.right: parent.right
+            anchors.bottom: parent.bottom
+            height: 4
+            color: headerItem.color
+        }
 
         MouseArea {
             id: headerMouse
@@ -142,8 +167,8 @@ Item {
             Text {
                 text: filterRow.name
                 color: filterRow.enabled ? theme.text : theme.textDisabled
-                font.family: Qt.application.font.family
-                font.pointSize: Qt.application.font.pointSize
+                font.family: uiFont.family
+                font.pointSize: uiFont.pointSize
                 font.bold: true
                 elide: Text.ElideRight
             }
@@ -152,7 +177,7 @@ Item {
                 Layout.fillWidth: true
                 text: filterRow.summary
                 color: theme.textMuted
-                font: Qt.application.font
+                font: uiFont
                 horizontalAlignment: Text.AlignRight
                 elide: Text.ElideRight
             }
@@ -175,17 +200,12 @@ Item {
 
     Rectangle {
         id: body
-        y: headerItem.height
-        width: parent.width
+        x: filterRow.expanded ? 1 : 0
+        y: headerItem.height + (filterRow.expanded ? 1 : 0)
+        width: parent.width - (filterRow.expanded ? 2 : 0)
         height: filterRow.expanded ? bodyColumn.implicitHeight + 18 : 0
         visible: filterRow.expanded
         color: theme.base
-
-        Rectangle {
-            width: parent.width
-            height: 1
-            color: theme.hairline
-        }
 
         Column {
             id: bodyColumn
@@ -243,7 +263,7 @@ Item {
                     Layout.fillWidth: true
                     Layout.preferredHeight: 23
                     text: filterRow.absoluteLabel
-                    textFont: Qt.application.font
+                    textFont: uiFont
                     checked: filterRow.absolute
                     onToggled: filterRow.setAbsolute(checked)
                 }
@@ -271,7 +291,7 @@ Item {
                     Layout.fillWidth: true
                     Layout.preferredHeight: 23
                     text: filterRow.directionalLabel
-                    textFont: Qt.application.font
+                    textFont: uiFont
                     checked: filterRow.directional
                     onToggled: filterRow.setDirectional(checked)
                 }

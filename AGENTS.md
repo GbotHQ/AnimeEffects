@@ -3760,13 +3760,15 @@ through that context (`gui::prop::MoveKeyGroup`, `gui::prop::ImageKeyGroup`,
 `gui::prop::ConstantPanel`, `gui::prop::FilterStackPanel`), not re-spelled in QML. The scene's own
 `qsTr()` context is `AnimeEffects.Properties` and has not been sent through `lupdate` yet.
 
-**The QML default font is NOT the dock font.** `Text` defaults to the Quick window's font, and the
-12px literals the dialogs use read larger than the QWidget inspector, whose base is
-`LocaleDecider`'s `8pt` Geist (`10.67px`). The first QML pass therefore enlarged every label. The
-shared controls now carry an explicit `textFont` (`ScrubSpinBox`, `AeCheckBox`, `AeComboBox`,
-`AeTextField`), defaulting to their old dialog sizes, and the inspector passes
-`Qt.application.font`; the filter chrome uses `Qt.application.font` too. Do not replace these with
-`font.pixelSize: 12` in the inspector.
+**The QML default font is NOT the dock font, and `Qt.application.font` is not either.**
+`QApplication::font()` is the process default (9pt here); the dock's 8pt Geist comes from
+`LocaleParam` and is applied to widgets through `standard.ssa`. The first QML pass used 12px
+literals; the first correction used `Qt.application.font`, which still rendered at 9pt, so the
+size did not visibly change. `PropertyWidget` now builds a `QFont` from `LocaleParam`
+(family + `pt`/`px` size) and exposes it as the QML context property `uiFont`; every inspector
+`Text`/field uses `uiFont`. The shared controls carry an explicit `textFont`
+(`ScrubSpinBox`, `AeCheckBox`, `AeComboBox`, `AeTextField`) whose default preserves their old
+dialog size. Do not reintroduce `font.pixelSize` or `Qt.application.font` in the inspector.
 
 The hierarchy the widget board got from `Panel`'s four-pixel group spacing is restored explicitly,
 not by making every row taller: `PropertiesPanel.qml` inserts a four-pixel `Item` after Clipped,
@@ -3774,7 +3776,10 @@ after Path, after each of Rotation/Scale/Depth/Opacity, after Mesh cell, and aft
 present. Rows inside one key's group stay contiguous. Filter cards keep the old panel body's
 12px left/right inset; the remove control is always laid out (only its opacity changes) so revealing
 it cannot shift the header; the always-on painted grip dots were removed, while the header itself
-remains the reorder target.
+remains the reorder target. An expanded card has no divider line: the header's top corners stay rounded, a 4px square patch
+fills its bottom corners, and the body starts as the same card surface instead of a rounded pill
+floating over a hairline. A 1px `theme.outline` frame now runs around the whole expanded card
+(header and body inset by that stroke), so the body reads as bounded instead of loose.
 
 **Verified:** `scripts/run_suites.sh Debug` = 57 pass / 0 fail on the tree that removes the widget
 classes; `inspector_view_model` pins model-2 writes, key toggles, filter add/reorder/enable/remove,

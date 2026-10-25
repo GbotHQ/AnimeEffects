@@ -201,14 +201,14 @@ MainWindow::MainWindow(ctrl::System& aSystem, GUIResources& aResources, LocalePa
         dockWidget->setMaximumWidth(640);
 
 #if 0
-        mProperty = new PropertyWidget(mViaPoint, splitter, &mGUIResources);
+        mProperty = new PropertyWidget(mViaPoint, splitter, &mGUIResources, mLocaleParam);
         dockWidget->setWidget(mProperty);
 #else
         auto splitter = new gui::ThinSplitter(Qt::Vertical, dockWidget);
         splitter->setObjectName("propertysplitter");
         dockWidget->setWidget(splitter);
 
-        mProperty = new PropertyWidget(mViaPoint, splitter, &mGUIResources);
+        mProperty = new PropertyWidget(mViaPoint, splitter, &mGUIResources, mLocaleParam);
         splitter->addWidget(mProperty);
 
         auto textEdit = new QPlainTextEdit(splitter);

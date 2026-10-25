@@ -1,6 +1,7 @@
 #ifndef GUI_PROPERTYWIDGET_H
 #define GUI_PROPERTYWIDGET_H
 
+#include <QFont>
 #include <QWidget>
 
 #include "util/SlotId.h"
@@ -9,6 +10,7 @@
 #include "core/ObjectNode.h"
 #include "core/TimeLineEvent.h"
 #include "gui/ViaPoint.h"
+#include "gui/LocaleParam.h"
 
 class QQuickWidget;
 
@@ -24,7 +26,7 @@ class QmlTheme;
 // and answers the one request that needs a widget (the asset chooser).
 class PropertyWidget: public QWidget {
 public:
-    PropertyWidget(ViaPoint& aViaPoint, QWidget* aParent, GUIResources* aGUIResources);
+    PropertyWidget(ViaPoint& aViaPoint, QWidget* aParent, GUIResources* aGUIResources, const LocaleParam& aLocale);
     ~PropertyWidget();
 
     void setProject(core::Project* aProject);
@@ -51,6 +53,7 @@ private:
     util::SlotId mProjAttrSlot;
     InspectorViewModel* mModel;
     QmlTheme* mTheme;
+    QFont mUiFont;
     QQuickWidget* mQuick;
 };
 

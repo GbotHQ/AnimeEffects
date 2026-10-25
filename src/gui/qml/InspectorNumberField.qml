@@ -51,7 +51,7 @@ Item {
         step: root.step
         decimals: root.decimals
         trimTrailingZeros: true
-        textFont: Qt.application.font
+        textFont: uiFont
         enabled: root.enabled
         onCommitted: (value) => {
             root.valueEdited(root.quantize(value));

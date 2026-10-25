@@ -4,6 +4,7 @@
 #include "gui/qml/QmlTheme.h"
 #include "gui/theme/Colors.h"
 
+#include <QApplication>
 #include <QQuickWidget>
 #include <QQmlContext>
 #include <QUrl>
@@ -11,7 +12,29 @@
 
 namespace gui {
 
-PropertyWidget::PropertyWidget(ViaPoint& aViaPoint, QWidget* aParent, GUIResources* aGUIResources):
+namespace {
+QFont uiFontFromLocale(const LocaleParam& aLocale) {
+    QFont font(QApplication::font());
+    if (!aLocale.fontFamily.isEmpty())
+        font.setFamily(aLocale.fontFamily);
+    const QString size = aLocale.fontSize.trimmed();
+    bool ok = false;
+    if (size.endsWith(QStringLiteral("pt"), Qt::CaseInsensitive)) {
+        const qreal pt = size.left(size.size() - 2).toDouble(&ok);
+        if (ok) font.setPointSizeF(pt);
+    } else if (size.endsWith(QStringLiteral("px"), Qt::CaseInsensitive)) {
+        const int px = size.left(size.size() - 2).toInt(&ok);
+        if (ok) font.setPixelSize(px);
+    } else if (!size.isEmpty()) {
+        const qreal pt = size.toDouble(&ok);
+        if (ok) font.setPointSizeF(pt);
+    }
+    return font;
+}
+} // namespace
+
+PropertyWidget::PropertyWidget(ViaPoint& aViaPoint, QWidget* aParent, GUIResources* aGUIResources,
+                               const LocaleParam& aLocale):
     QWidget(aParent),
     mProject(),
     mTimeLineSlot(),
@@ -21,6 +44,7 @@ PropertyWidget::PropertyWidget(ViaPoint& aViaPoint, QWidget* aParent, GUIResourc
     mProjAttrSlot(),
     mModel(),
     mTheme(),
+    mUiFont(uiFontFromLocale(aLocale)),
     mQuick() {
     Q_UNUSED(aGUIResources);
     setFocusPolicy(Qt::NoFocus);
@@ -33,6 +57,10 @@ PropertyWidget::PropertyWidget(ViaPoint& aViaPoint, QWidget* aParent, GUIResourc
     mQuick->setResizeMode(QQuickWidget::SizeRootObjectToView);
     mQuick->rootContext()->setContextProperty(QStringLiteral("inspector"), mModel);
     mQuick->rootContext()->setContextProperty(QStringLiteral("theme"), mTheme);
+    // QML's Qt.application.font is the process font; the dock's font comes from
+    // LocaleParam and is applied to widgets through standard.ssa, so the scene
+    // needs that font explicitly to match 8pt Geist (or the locale override).
+    mQuick->rootContext()->setContextProperty(QStringLiteral("uiFont"), mUiFont);
     mQuick->setClearColor(theme::Colors::current().base);
     mQuick->setSource(QUrl(QStringLiteral("qrc:/AnimeEffects/Dialogs/qml/PropertiesPanel.qml")));
     connect(mQuick, &QQuickWidget::statusChanged, this, [this](QQuickWidget::Status aStatus) {

@@ -46,7 +46,7 @@ Item {
         anchors.verticalCenter: parent.verticalCenter
         text: root.label
         color: theme.text
-        font: Qt.application.font
+        font: uiFont
         elide: Text.ElideRight
         Accessible.role: Accessible.StaticText
         Accessible.name: root.label

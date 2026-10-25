@@ -47,7 +47,7 @@ Rectangle {
                     Layout.preferredHeight: 23
                     options: inspector.blendOptions
                     index: inspector.blendIndex
-                    textFont: Qt.application.font
+                    textFont: uiFont
                     enabled: inspector.blendEnabled
                     onActivated: (index) => inspector.setBlendIndex(index)
                 }
@@ -60,7 +60,7 @@ Rectangle {
                     Layout.fillWidth: true
                     Layout.preferredHeight: 23
                     checked: inspector.clipped
-                    textFont: Qt.application.font
+                    textFont: uiFont
                     enabled: inspector.clippedEnabled
                     Accessible.name: inspector.clippedLabel
                     onToggled: inspector.setClipped(checked)
@@ -134,7 +134,7 @@ Rectangle {
                     Layout.fillWidth: true
                     Layout.preferredHeight: 23
                     text: inspector.smoothLabel
-                    textFont: Qt.application.font
+                    textFont: uiFont
                     checked: inspector.move.smooth
                     onToggled: inspector.move.setSmooth(checked)
                     ToolTip.visible: hovered
