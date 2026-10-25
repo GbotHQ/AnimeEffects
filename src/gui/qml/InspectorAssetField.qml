@@ -32,7 +32,6 @@ Rectangle {
             text: root.name !== "" ? root.name : qsTr("None")
             color: root.name !== "" && root.enabled ? theme.text : theme.textMuted
             font: uiFont
-            renderType: Text.CurveRendering
             elide: Text.ElideMiddle
         }
         Image {

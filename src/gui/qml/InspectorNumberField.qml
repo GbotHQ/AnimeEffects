@@ -55,9 +55,8 @@ Item {
         step: root.step
         decimals: root.decimals
         trimTrailingZeros: true
-        rightAlign: true
+        reservePrefix: true
         textFont: uiFont
-        textRenderType: Text.CurveRendering
         prefix: root.prefix
         prefixIcon: root.prefixIcon
         suffix: root.suffix

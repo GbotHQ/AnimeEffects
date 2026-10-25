@@ -48,8 +48,7 @@ Rectangle {
                     options: inspector.blendOptions
                     index: inspector.blendIndex
                     textFont: uiFont
-                    textRenderType: Text.CurveRendering
-                    enabled: inspector.blendEnabled
+                                enabled: inspector.blendEnabled
                     onActivated: (index) => inspector.setBlendIndex(index)
                 }
             }
@@ -62,8 +61,7 @@ Rectangle {
                     Layout.preferredHeight: 23
                     checked: inspector.clipped
                     textFont: uiFont
-                    textRenderType: Text.CurveRendering
-                    enabled: inspector.clippedEnabled
+                                enabled: inspector.clippedEnabled
                     Accessible.name: inspector.clippedLabel
                     onToggled: inspector.setClipped(checked)
                 }
@@ -141,8 +139,7 @@ Rectangle {
                     Layout.preferredHeight: 23
                     text: inspector.smoothLabel
                     textFont: uiFont
-                    textRenderType: Text.CurveRendering
-                    checked: inspector.move.smooth
+                                checked: inspector.move.smooth
                     onToggled: inspector.move.setSmooth(checked)
                     ToolTip.visible: hovered
                     ToolTip.delay: 500

@@ -62,7 +62,6 @@ ComboBox {
     property Item overlay: null
     // Dialog controls keep 12px; the inspector passes the app font.
     property font textFont: Qt.font({ pixelSize: 12 })
-    property int textRenderType: Text.QtRendering
 
     readonly property string value: (index >= 0 && index < options.length)
                                     ? String(options[index].value) : ""
@@ -162,8 +161,7 @@ ComboBox {
             text: root.text
             color: root.enabled ? theme.text : theme.textDisabled
             font: root.textFont
-            renderType: root.textRenderType
-            elide: Text.ElideRight
+                elide: Text.ElideRight
         }
         Image {
             id: caret
@@ -297,8 +295,7 @@ ComboBox {
                     text: modelData.label
                     color: theme.text
                     font: root.textFont
-                    renderType: root.textRenderType
-                    elide: Text.ElideRight
+                                elide: Text.ElideRight
                 }
                 Image {
                     id: tick

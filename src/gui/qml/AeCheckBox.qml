@@ -70,7 +70,6 @@ CheckBox {
     readonly property int boxSize: 16
     // Dialog controls keep 12px; the inspector passes the app font (8pt Geist).
     property font textFont: Qt.font({ pixelSize: 12 })
-    property int textRenderType: Text.QtRendering
 
     implicitHeight: 24
     implicitWidth: root.boxSize + (root.text === "" ? 0 : 8 + label.implicitWidth)
@@ -142,7 +141,6 @@ CheckBox {
         text: root.text
         color: root.enabled ? theme.text : theme.textDisabled
         font: root.textFont
-        renderType: root.textRenderType
     }
 
     HoverHandler {

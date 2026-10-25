@@ -20,9 +20,6 @@ Item {
     // The inspector uses the app's 8pt Geist face, not the dialog controls'
     // fixed 11px. Callers that do not set this keep the dialog look.
     property font textFont: Qt.font({ pixelSize: 11 })
-    // The inspector uses CurveRendering so the same 8pt face rasterizes
-    // grayscale like the QWidget inspector; dialogs keep the default Qt path.
-    property int textRenderType: Text.QtRendering
     // The property inspector shows 357.5, not 357.500. Off by default: the
     // dialogs that asked for fixed decimals keep their exact display.
     property bool trimTrailingZeros: false
@@ -42,10 +39,12 @@ Item {
     property string prefix: ""
     property string prefixIcon: ""
     property string suffix: ""
-    // Preserve the dialogs' left-aligned numbers; the inspector opts into right
-    // alignment so an in-field X/Y or angle glyph cannot move the number.
-    property bool rightAlign: false
-    readonly property int contentLeft: prefixIcon !== "" ? 24 : (prefix !== "" ? 18 : 8)
+    // Every inspector field reserves the same small lead-in, so an X/Y glyph (or
+    // no glyph at all) cannot move the number horizontally. Dialog fields keep
+    // their compact 8px inset.
+    property bool reservePrefix: false
+    readonly property int contentLeft: reservePrefix ? 22
+                                              : (prefixIcon !== "" ? 24 : (prefix !== "" ? 18 : 8))
     // NOTE: the enabled state is Item.enabled itself, deliberately NOT redeclared:
     // a `property bool enabled` here would shadow the base property, the item would
     // never report disabled to the accessibility tree, and a probe could not tell a
@@ -118,10 +117,8 @@ Item {
         anchors.leftMargin: root.contentLeft
         anchors.rightMargin: 8
         verticalAlignment: Text.AlignVCenter
-        horizontalAlignment: root.rightAlign ? Text.AlignRight : Text.AlignLeft
         color: root.enabled ? theme.text : theme.textDisabled
         font: root.textFont
-        renderType: root.textRenderType
         text: root.fmt(root.value) + (root.showValue && root.suffix !== "" ? root.suffix : "")
         visible: !editInput.activeFocus && root.showValue
     }
@@ -135,7 +132,6 @@ Item {
         color: theme.textMuted
         opacity: root.enabled ? 0.9 : 0.45
         font: root.textFont
-        renderType: root.textRenderType
     }
     Image {
         visible: root.showValue && root.prefixIcon !== ""
@@ -245,9 +241,7 @@ Item {
         anchors.leftMargin: root.contentLeft
         anchors.rightMargin: 8
         verticalAlignment: Text.AlignVCenter
-        horizontalAlignment: root.rightAlign ? Text.AlignRight : Text.AlignLeft
         color: theme.text
-        renderType: root.textRenderType
         // F33: the selection is the theme's selection pair, like AeTextField.
         selectionColor: theme.selection
         selectedTextColor: theme.selectionText

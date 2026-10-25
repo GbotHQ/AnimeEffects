@@ -3784,24 +3784,24 @@ header and the body are rounded: the body has a `radius` and a small base-colour
 its top corners. Keeping the body square was what made the bottom corners of the outline disappear -
 the square child covered them. Do not "fix" this by dropping the border again.
 
-**Per-item text rendering.** The Qt Text documentation makes `renderType` the per-item override:
-`NativeRendering` is the platform rasterizer, `QtRendering` the default distance-field path, and
-`CurveRendering` the hardware curve rasterizer offered when the default gives poor visual results.
-At the dock's 8pt face the default path produced colored subpixel fringes (a label crop measured 141
-pixels with channel spread); `CurveRendering` measured 0 and matches the QWidget inspector's
-grayscale. Every inspector Text/TextInput uses `Text.CurveRendering` through the controls'
-`textRenderType` property; dialogs keep the Qt default. Do not use the global
-`QQuickWindow::setTextRenderType` for this - it changes every QML scene and only affects elements
-created afterwards.
+**Text rendering is the QML default.** The Qt Text documentation makes `renderType` a per-item
+override: `NativeRendering` is the platform rasterizer, `QtRendering` is the default distance-field
+path, and `CurveRendering` is the hardware curve rasterizer offered only when the default gives poor
+visual results. The inspector therefore sets NO renderType: it uses `QQuickWindow::textRenderType()`
+like every other QML scene here. At 8pt this platform renders with colored subpixel AA; that is the
+default, not a bug. Do not force `CurveRendering`, `NativeRendering`, or the global
+`QQuickWindow::setTextRenderType` to chase the QWidget inspector's grayscale - that is a deliberate
+platform/QML choice, and the global setter changes every QML scene. The only font override is the
+family and point size from `LocaleParam` (`uiFont`), which is what makes 8pt match the dock.
 
 **In-field labels and units.** `ScrubSpinBox` draws a muted `prefix` and a themed `prefixIcon` at the
 left, and appends the `suffix` to the displayed numeric string (`0` + `°`), so a unit is part of the
-value rather than a separately right-aligned label. The inspector sets `rightAlign: true`, so the
-numeric right edge is identical in every field whether or not it has an X/Y prefix; dialogs keep
-their left alignment. The inspector uses `X`/`Y` for axis pairs and the official Phosphor `angle`
-glyph (regular, `icons/ph/angle.svg`) plus `°` for Rotation and Blur angle. Prefix text and the glyph
-use the SAME `theme.textMuted` token and the same opacity; the glyph's role is `Muted`. The degree
-suffix is announced as "Degrees"; no other unit was invented.
+value rather than a separately right-aligned label. The inspector sets `reservePrefix: true`: every
+field reserves the same 22px lead-in, so a value starts at the same x whether it has X/Y, the angle
+glyph, or no prefix. Values themselves stay LEFT-aligned. The inspector uses `X`/`Y` for axis pairs
+and the official Phosphor `angle` glyph (regular, `icons/ph/angle.svg`) plus `°` for Rotation and
+Blur angle. Prefix text and the glyph use the SAME `theme.textMuted` token and the same opacity; the
+glyph's role is `Muted`. The degree suffix is announced as "Degrees"; no other unit was invented.
 
 **Verified:** `scripts/run_suites.sh Debug` = 57 pass / 0 fail on the tree that removes the widget
 classes; `inspector_view_model` pins model-2 writes, key toggles, filter add/reorder/enable/remove,

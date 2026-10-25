@@ -171,8 +171,7 @@ Item {
                 font.family: uiFont.family
                 font.pointSize: uiFont.pointSize
                 font.bold: true
-                renderType: Text.CurveRendering
-                elide: Text.ElideRight
+                    elide: Text.ElideRight
             }
 
             Text {
@@ -180,8 +179,7 @@ Item {
                 text: filterRow.summary
                 color: theme.textMuted
                 font: uiFont
-                renderType: Text.CurveRendering
-                horizontalAlignment: Text.AlignRight
+                    horizontalAlignment: Text.AlignRight
                 elide: Text.ElideRight
             }
 
@@ -279,8 +277,7 @@ Item {
                     Layout.preferredHeight: 23
                     text: filterRow.absoluteLabel
                     textFont: uiFont
-                    textRenderType: Text.CurveRendering
-                    checked: filterRow.absolute
+                                checked: filterRow.absolute
                     onToggled: filterRow.setAbsolute(checked)
                 }
             }
@@ -308,8 +305,7 @@ Item {
                     Layout.preferredHeight: 23
                     text: filterRow.directionalLabel
                     textFont: uiFont
-                    textRenderType: Text.CurveRendering
-                    checked: filterRow.directional
+                                checked: filterRow.directional
                     onToggled: filterRow.setDirectional(checked)
                 }
             }
