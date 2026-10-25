@@ -5,8 +5,11 @@
 #include "gui/ResourceDialog.h"
 #include "gui/prop/prop_ConstantPanel.h"
 #include "gui/prop/prop_Items.h"
+#include "gui/prop/prop_PropertyRow.h"
+#include <QVBoxLayout>
 #include <QEvent>
 #include <QTimer>
+#include <QLabel>
 
 namespace {
 class ObjectNodeAttrNotifier: public cmnd::Listener {
@@ -58,12 +61,12 @@ namespace prop {
         mProject(aProject),
         mGUIResources(aGUIResources),
         mTarget(),
-        mLabelWidth(),
-        mRenderingAttributes(),
+        mRowsHost(),
+        mBlendRow(),
+        mClippedRow(),
         mBlendMode(),
         mClipped() {
-        mLabelWidth = this->fontMetrics().boundingRect(tr("MaxTextWidth")).width();
-
+        this->setHeaderVisible(false);
         build();
         this->hide();
     }
@@ -83,75 +86,75 @@ namespace prop {
     void ConstantPanel::setPlayBackActivity(bool aIsActive) { this->setEnabled(!aIsActive); }
 
     void ConstantPanel::build() {
-        using core::Constant;
+        // The same PropertyRow builder as every keyable property: no key cell
+        // is filled, but its gutter keeps the labels and fields on one grid.
+        mRowsHost = new QWidget(this);
+        auto* rows = new QVBoxLayout(mRowsHost);
+        rows->setContentsMargins(0, 0, 0, 0);
+        rows->setSpacing(0);
+        this->addGroup(mRowsHost);
 
-        mRenderingAttributes = new AttrGroup(tr("Rendering"), mLabelWidth, mGUIResources);
+        mBlendRow = new PropertyRow(tr("Blend"), true, mRowsHost);
+        mClippedRow = new PropertyRow(tr("Clipped"), true, mRowsHost);
+        rows->addWidget(mBlendRow);
+        rows->addWidget(mClippedRow);
+
+        // blend mode
+        mBlendMode = new ComboItem(mRowsHost);
         {
-            this->addGroup(mRenderingAttributes);
+            auto& box = mBlendMode->box();
+            box.setSizeAdjustPolicy(QComboBox::AdjustToContents);
+            auto addMode = [&](img::BlendMode aMode) {
+                box.addItem(img::getBlendNameFromBlendMode(aMode), (int)aMode);
+            };
+            auto addSeparator = [&]() { box.insertSeparator(box.count()); };
 
-            // blend mode
-            // grouped like Photoshop (darken / lighten / contrast / difference /
-            // color), with the CSP-only modes next to their plain equivalents;
-            // groups are split by thin separator lines. Each mode carries its
-            // img::BlendMode value in Qt::UserRole so the row index does not
-            // need to match the enum order.
-            mBlendMode = new ComboItem(mRenderingAttributes);
-            {
-                auto& box = mBlendMode->box();
-                box.setSizeAdjustPolicy(QComboBox::AdjustToContents);
-                auto addMode = [&](img::BlendMode aMode) {
-                    box.addItem(img::getBlendNameFromBlendMode(aMode), (int)aMode);
-                };
-                auto addSeparator = [&]() { box.insertSeparator(box.count()); };
+            addMode(img::BlendMode_Normal);
+            addSeparator();
+            addMode(img::BlendMode_Darken);
+            addMode(img::BlendMode_Multiply);
+            addMode(img::BlendMode_ColorBurn);
+            addMode(img::BlendMode_LinearBurn);
+            addMode(img::BlendMode_DarkerColor);
+            addSeparator();
+            addMode(img::BlendMode_Lighten);
+            addMode(img::BlendMode_Screen);
+            addMode(img::BlendMode_ColorDodge);
+            addMode(img::BlendMode_GlowDodge);
+            addMode(img::BlendMode_LinearDodge);
+            addMode(img::BlendMode_AddGlow);
+            addMode(img::BlendMode_LighterColor);
+            addSeparator();
+            addMode(img::BlendMode_Overlay);
+            addMode(img::BlendMode_SoftLight);
+            addMode(img::BlendMode_HardLight);
+            addMode(img::BlendMode_VividLight);
+            addMode(img::BlendMode_LinearLight);
+            addMode(img::BlendMode_PinLight);
+            addMode(img::BlendMode_HardMix);
+            addSeparator();
+            addMode(img::BlendMode_Difference);
+            addMode(img::BlendMode_Exclusion);
+            addMode(img::BlendMode_Subtract);
+            addMode(img::BlendMode_Divide);
+            addSeparator();
+            addMode(img::BlendMode_Hue);
+            addMode(img::BlendMode_Saturation);
+            addMode(img::BlendMode_Color);
+            addMode(img::BlendMode_Luminosity);
 
-                addMode(img::BlendMode_Normal);
-                addSeparator();
-                addMode(img::BlendMode_Darken);
-                addMode(img::BlendMode_Multiply);
-                addMode(img::BlendMode_ColorBurn);
-                addMode(img::BlendMode_LinearBurn);
-                addMode(img::BlendMode_DarkerColor);
-                addSeparator();
-                addMode(img::BlendMode_Lighten);
-                addMode(img::BlendMode_Screen);
-                addMode(img::BlendMode_ColorDodge);
-                addMode(img::BlendMode_GlowDodge);
-                addMode(img::BlendMode_LinearDodge);
-                addMode(img::BlendMode_AddGlow);
-                addMode(img::BlendMode_LighterColor);
-                addSeparator();
-                addMode(img::BlendMode_Overlay);
-                addMode(img::BlendMode_SoftLight);
-                addMode(img::BlendMode_HardLight);
-                addMode(img::BlendMode_VividLight);
-                addMode(img::BlendMode_LinearLight);
-                addMode(img::BlendMode_PinLight);
-                addMode(img::BlendMode_HardMix);
-                addSeparator();
-                addMode(img::BlendMode_Difference);
-                addMode(img::BlendMode_Exclusion);
-                addMode(img::BlendMode_Subtract);
-                addMode(img::BlendMode_Divide);
-                addSeparator();
-                addMode(img::BlendMode_Hue);
-                addMode(img::BlendMode_Saturation);
-                addMode(img::BlendMode_Color);
-                addMode(img::BlendMode_Luminosity);
+            new BlendComboWidthGuard(&box);
 
-                new BlendComboWidthGuard(&box);
-
-                mBlendMode->onValueUpdated = [=](int, int aNext) {
-                    auto mode = (img::BlendMode)mBlendMode->box().itemData(aNext).toInt();
-                    assignBlendMode(this->mProject, this->mTarget, mode);
-                };
-            }
-            mRenderingAttributes->addItem(tr("Blend"), mBlendMode);
-
-            // clipped
-            mClipped = new CheckItem(mRenderingAttributes);
-            mClipped->onValueUpdated = [=](bool aNext) { assignClipped(this->mProject, this->mTarget, aNext); };
-            mRenderingAttributes->addItem(tr("Clipped"), mClipped);
+            mBlendMode->onValueUpdated = [=](int, int aNext) {
+                auto mode = (img::BlendMode)mBlendMode->box().itemData(aNext).toInt();
+                assignBlendMode(this->mProject, this->mTarget, mode);
+            };
         }
+        mBlendRow->addField(mBlendMode->itemWidget());
+
+        mClipped = new CheckItem(mRowsHost);
+        mClipped->onValueUpdated = [=](bool aNext) { assignClipped(this->mProject, this->mTarget, aNext); };
+        mClippedRow->addField(mClipped->itemWidget());
 
         this->addStretch();
     }

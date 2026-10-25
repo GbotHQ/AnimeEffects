@@ -36,9 +36,10 @@ namespace core {
 QString TimeLine::getTimeKeyName(const TimeKeyType aType) { return {kTimeKeyNames.at(aType)}; }
 
 QString TimeLine::getTimeKeyDisplayName(const TimeKeyType aType) {
-    if (aType == TimeKeyType_Opa) {
+    if (aType == TimeKeyType_Opa)
         return QStringLiteral("Opacity");
-    }
+    if (aType == TimeKeyType_Move)
+        return QStringLiteral("Position");
     return getTimeKeyName(aType);
 }
 
@@ -90,6 +91,60 @@ int TimeLine::validTypeCount() const {
 
 const TimeLine::MapType& TimeLine::map(TimeKeyType aType) const { return mMap.at(aType); }
 
+QVector<FilterEntry> TimeLine::filters() const {
+    // Stored order first (including an entry added before its first key), then
+    // every filter lane that exists but was never written to the stack. The
+    // canonical tail is the renderer's historical order, so a legacy project
+    // opens in the order it rendered before stacks existed.
+    QVector<FilterEntry> out;
+    QSet<TimeKeyType> seen;
+    for (const FilterEntry& entry : mFilters) {
+        if (!isFilterType(entry.type) || seen.contains(entry.type))
+            continue;
+        out.append(entry);
+        seen.insert(entry.type);
+    }
+    for (const TimeKeyType type : { TimeKeyType_Blur, TimeKeyType_HSV }) {
+        if (!mMap.at(type).isEmpty() && !seen.contains(type)) {
+            out.append(FilterEntry(type, true));
+            seen.insert(type);
+        }
+    }
+    return out;
+}
+
+bool TimeLine::filterEnabled(TimeKeyType aType) const {
+    if (!isFilterType(aType))
+        return false;
+    for (const FilterEntry& entry : mFilters) {
+        if (entry.type == aType)
+            return entry.enabled;
+    }
+    // A lane that exists without a stored entry is a filter the user has not
+    // touched from the stack yet; it is enabled.
+    return !mMap.at(aType).isEmpty();
+}
+
+bool TimeLine::hasFilter(TimeKeyType aType) const {
+    for (const FilterEntry& entry : filters()) {
+        if (entry.type == aType)
+            return true;
+    }
+    return false;
+}
+
+void TimeLine::setFilterEntries(const QVector<FilterEntry>& aEntries) {
+    QVector<FilterEntry> normalized;
+    QSet<TimeKeyType> seen;
+    for (const FilterEntry& entry : aEntries) {
+        if (!isFilterType(entry.type) || seen.contains(entry.type))
+            continue;
+        normalized.append(entry);
+        seen.insert(entry.type);
+    }
+    mFilters = normalized;
+}
+
 TimeKey* TimeLine::timeKey(TimeKeyType aType, int aIndex) {
     if (mMap.at(aType).contains(aIndex)) {
         return mMap[aType][aIndex];
@@ -116,6 +171,7 @@ TimeKey* TimeLine::defaultKey(TimeKeyType aType) { return mDefaultKeys.at(aType)
 const TimeKey* TimeLine::defaultKey(TimeKeyType aType) const { return mDefaultKeys.at(aType).data(); }
 
 void TimeLine::clear() {
+    mFilters.clear();
     for (int i = 0; i < TimeKeyType_TERM; ++i) {
         mDefaultKeys[i].reset();
 
@@ -316,6 +372,15 @@ bool TimeLine::serialize(Serializer& aOut) const {
         aOut.endBlock(mapPos);
     }
 
+    // filter stack (0.17): order + enabled flags. The filter VALUES are the key
+    // maps above; this block is only the stack.
+    const QVector<FilterEntry> stack = filters();
+    aOut.write(static_cast<int>(stack.size()));
+    for (const FilterEntry& entry : stack) {
+        aOut.write(getTimeKeyName(entry.type));
+        aOut.write(entry.enabled);
+    }
+
     aOut.endBlock(pos);
 
     return aOut.checkStream();
@@ -416,6 +481,29 @@ bool TimeLine::deserialize(Deserializer& aIn) {
             return false;
         }
         aIn.popLogScope();
+    }
+
+    // filter stack (0.17). A legacy file has no block: its filters are the lanes
+    // that already exist, in the order the renderer used (blur then HSV).
+    mFilters.clear();
+    if (aIn.version().majorVersion() == 0 && aIn.version().minorVersion() >= 17) {
+        int filterCount = 0;
+        aIn.read(filterCount);
+        for (int i = 0; i < filterCount; ++i) {
+            QString typeName;
+            aIn.read(typeName, kMaxLengthOfTimeKeyName);
+            const TimeKeyType type = getTimeKeyType(typeName);
+            bool enabled = true;
+            aIn.read(enabled);
+            if (isFilterType(type))
+                mFilters.append(FilterEntry(type, enabled));
+        }
+        setFilterEntries(mFilters);
+    } else {
+        for (const TimeKeyType type : { TimeKeyType_Blur, TimeKeyType_HSV }) {
+            if (!mMap.at(type).isEmpty())
+                mFilters.append(FilterEntry(type, true));
+        }
     }
 
     // check block end

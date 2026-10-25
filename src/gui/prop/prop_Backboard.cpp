@@ -16,7 +16,6 @@ namespace prop {
         mProject(),
         mLayout(),
         mConstantPanel(),
-        mDefaultKeyPanel(),
         mCurrentKeyPanel() {
         // the dock's single flat surface (see propertywidget.ssa)
         this->setObjectName("backboard");
@@ -54,39 +53,16 @@ namespace prop {
 
     void Backboard::setProject(core::Project* aProject) {
         mConstantPanel.reset();
-        mDefaultKeyPanel.reset();
         mCurrentKeyPanel.reset();
-        mSeparator0.reset();
-        mSeparator1.reset();
 
         resetLayout();
 
         mProject = aProject;
 
         if (mProject) {
-            // hairline between the major sections (not above the first one)
-            auto addSeparator = [this]() {
-                auto* sep = new QFrame(this);
-                sep->setObjectName("separator");
-                sep->setFixedHeight(1);
-                // hidden until a layer is selected (setTarget shows them)
-                sep->setVisible(false);
-                mLayout->addWidget(sep);
-                mLayout->setAlignment(sep, Qt::AlignTop);
-                return sep;
-            };
-
             mConstantPanel.reset(new ConstantPanel(mViaPoint, *mProject, this, mGUIResources));
             mLayout->addWidget(mConstantPanel.data());
             mLayout->setAlignment(mConstantPanel.data(), Qt::AlignTop);
-
-            mSeparator0.reset(addSeparator());
-
-            mDefaultKeyPanel.reset(new DefaultKeyPanel(mViaPoint, *mProject, this, mGUIResources));
-            mLayout->addWidget(mDefaultKeyPanel.data());
-            mLayout->setAlignment(mDefaultKeyPanel.data(), Qt::AlignTop);
-
-            mSeparator1.reset(addSeparator());
 
             mCurrentKeyPanel.reset(new CurrentKeyPanel(mViaPoint, *mProject, this, mGUIResources));
             mLayout->addWidget(mCurrentKeyPanel.data());
@@ -99,19 +75,8 @@ namespace prop {
         if (mConstantPanel) {
             mConstantPanel->setTarget(aNode);
         }
-        if (mDefaultKeyPanel) {
-            mDefaultKeyPanel->setTarget(aNode);
-        }
         if (mCurrentKeyPanel) {
             mCurrentKeyPanel->setTarget(aNode);
-        }
-        // the panels hide themselves without a target; the separators must
-        // follow, or two hairlines float on the empty board
-        if (mSeparator0) {
-            mSeparator0->setVisible(aNode != nullptr);
-        }
-        if (mSeparator1) {
-            mSeparator1->setVisible(aNode != nullptr);
         }
     }
 
@@ -120,9 +85,6 @@ namespace prop {
 
         if (mConstantPanel) {
             mConstantPanel->setPlayBackActivity(aIsActive);
-        }
-        if (mDefaultKeyPanel) {
-            mDefaultKeyPanel->setPlayBackActivity(aIsActive);
         }
         if (mCurrentKeyPanel) {
             mCurrentKeyPanel->setPlayBackActivity(aIsActive);
@@ -136,10 +98,10 @@ namespace prop {
     }
 
     void Backboard::updateKey(bool aUpdateKey, bool aUpdateDefaultKey) {
-        if (aUpdateDefaultKey && mDefaultKeyPanel) {
-            mDefaultKeyPanel->updateKey();
-        }
-        if (aUpdateKey && mCurrentKeyPanel) {
+        // One inspector owns both halves now: a default-key edit and an
+        // explicit-key edit are the same board update (model 2 selects which
+        // key the accessor writes, not which panel the user sees).
+        if ((aUpdateKey || aUpdateDefaultKey) && mCurrentKeyPanel) {
             mCurrentKeyPanel->updateKey();
         }
     }

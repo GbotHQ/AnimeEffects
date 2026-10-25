@@ -34,6 +34,27 @@ namespace prop {
             const QString& aObjectName, QWidget* aParent = nullptr, int aIconSize = 14
         );
 
+        // A right-aligned action in the header row (the Filters section's plus).
+        // It sits after the stretch, so the title stays left and the action right.
+        void addTrailingWidget(QWidget* aWidget);
+        // A control that belongs to the TITLE (the key-state dot), not to the
+        // row's trailing edge. It is inserted after the title and before the
+        // stretch, so a key mark always reads as part of the property's name.
+        void addTitleAction(QWidget* aWidget);
+        // A leading gutter control (the property key dot). It sits before the
+        // title, so adding/removing it never shifts the field column.
+        void addLeadingAction(QWidget* aWidget);
+        void setContentInset(int aLeft);
+        // A flat property row owns no collapse state; hiding the caret is the
+        // visual half of that (KeyGroup also stops accepting the toggle).
+        void setCaretVisible(bool aVisible);
+        // Fixed title column: the key dot after it then lands on one x for
+        // every property row.
+        void setTitleWidth(int aWidth);
+        // A field that belongs on the header line. It takes the row's spare
+        // width instead of sitting after the stretch at its minimum size.
+        void addInlineField(QWidget* aWidget);
+
     protected:
         QSize sizeHint() const override;
         // the caret and title labels render the row; the button itself

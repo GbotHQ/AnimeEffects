@@ -18,6 +18,9 @@ namespace prop {
         AttrGroup(const QString& aTitle, int aLabelWidth, GUIResources* aGUIResources);
         virtual ~AttrGroup();
         void addItem(const QString& aLabel, ItemBase* aItem);
+        // A section that is already named by an inspectorSection label owns no
+        // collapse state of its own.
+        void setHeaderVisible(bool aVisible);
 
     signals:
         // emitted when the section header toggles (parents use it to keep

@@ -9,7 +9,6 @@
 #include "core/ObjectNode.h"
 #include "gui/ViaPoint.h"
 #include "gui/prop/prop_ConstantPanel.h"
-#include "gui/prop/prop_DefaultKeyPanel.h"
 #include "gui/prop/prop_CurrentKeyPanel.h"
 
 namespace gui {
@@ -37,12 +36,7 @@ namespace prop {
         core::Project* mProject;
         QVBoxLayout* mLayout;
         QScopedPointer<ConstantPanel> mConstantPanel;
-        QScopedPointer<DefaultKeyPanel> mDefaultKeyPanel;
         QScopedPointer<CurrentKeyPanel> mCurrentKeyPanel;
-        // hairline separators between the panels; hidden with the panels
-        // when no layer is selected (otherwise they float on the board)
-        QScopedPointer<QFrame> mSeparator0;
-        QScopedPointer<QFrame> mSeparator1;
     };
 
 } // namespace prop

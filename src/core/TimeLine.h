@@ -50,6 +50,24 @@ public:
 
     const MapType& map(TimeKeyType aType) const;
 
+    // --- the filter stack ---
+    //
+    // ORDER and ENABLED are stored per timeline; the filter VALUES remain the
+    // existing HSV/Blur key maps, so animation, the graph and the timeline are
+    // untouched. A stored entry may exist before its first key (adding a filter is
+    // a stack edit, not a key edit); a filter whose keys exist but has no stored
+    // entry is appended in canonical order, which is what makes a legacy project
+    // and a key added from the timeline appear in the stack.
+    const QVector<FilterEntry>& storedFilters() const { return mFilters; }
+    QVector<FilterEntry> filters() const;
+    bool filterEnabled(TimeKeyType aType) const;
+    bool hasFilter(TimeKeyType aType) const;
+    // The raw stored vector, for cmnd::ModifiableAssign's value target. Callers
+    // must write a NORMALIZED vector (filters() plus their edit) - the stack
+    // command owns the value, not the normalization.
+    QVector<FilterEntry>& filterEntriesRef() { return mFilters; }
+    void setFilterEntries(const QVector<FilterEntry>& aEntries);
+
     TimeKey* timeKey(TimeKeyType aType, int aIndex);
     const TimeKey* timeKey(TimeKeyType aType, int aIndex) const;
 
@@ -85,6 +103,7 @@ private:
     bool deserializeTimeKey(Deserializer& aIn, TimeKeyType aType, int aIndex);
 
     std::array<MapType, TimeKeyType_TERM> mMap;
+    QVector<FilterEntry> mFilters;
     QScopedPointer<TimeKeyExpans> mCurrent;
     QScopedPointer<TimeKeyExpans> mWorking;
     std::array<QScopedPointer<TimeKey>, TimeKeyType_TERM> mDefaultKeys;

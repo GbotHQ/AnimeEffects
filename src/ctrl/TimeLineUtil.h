@@ -352,6 +352,22 @@ namespace TimeLineUtil {
 
     void pushNewImageKey(core::Project& aProject, core::ObjectNode& aTarget, int aFrame, core::ImageKey* aKey);
 
+    // --- the filter stack -------------------------------------------------
+    // The stack is ORDER + ENABLED on the timeline; values stay in the HSV/Blur
+    // key maps. Every operation is one undo step and announces
+    // core::TimeLineEvent::Type_FilterStack, so the property board refreshes even
+    // when the operation touches no key.
+    //
+    // addFilter appends a filter that has no key yet (the row exists, identity
+    // values; the first field edit creates the key). removeFilter also removes
+    // every explicit key of that filter's lane, because a stack entry is what
+    // makes the lane meaningful. moveFilter moves one entry to a new index in the
+    // effective stack (0 = top). setFilterEnabled flips one entry's eye.
+    void addFilter(core::Project& aProject, core::ObjectNode& aTarget, core::TimeKeyType aType);
+    void removeFilter(core::Project& aProject, core::ObjectNode& aTarget, core::TimeKeyType aType);
+    void moveFilter(core::Project& aProject, core::ObjectNode& aTarget, core::TimeKeyType aType, int aIndex);
+    void setFilterEnabled(core::Project& aProject, core::ObjectNode& aTarget, core::TimeKeyType aType, bool aEnabled);
+
 } // namespace TimeLineUtil
 
 } // namespace ctrl

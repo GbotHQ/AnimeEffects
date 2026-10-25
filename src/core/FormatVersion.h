@@ -41,8 +41,13 @@
 //                bound ids + per-axis weights (see core/TimeKey.h /
 //                core/TimeLine.cpp). Older files carry neither: the loader
 //                keeps the fresh constructor id and the absolute default
+//   0.16 -> 0.17 the TimeLine block carries the filter stack: each filter's type
+//                token and its enabled flag, in application order. The filter
+//                VALUES remain the existing HSV/Blur key maps. Older files have
+//                no stack and derive one from the filter lanes that exist, in
+//                the historical blur-then-HSV order
 #define AE_PROJECT_FORMAT_MAJOR_VERSION 0
-#define AE_PROJECT_FORMAT_MINOR_VERSION 16
+#define AE_PROJECT_FORMAT_MINOR_VERSION 17
 
 #define AE_PROJECT_FORMAT_OLDEST_MAJOR_VERSION 0
 #define AE_PROJECT_FORMAT_OLDEST_MINOR_VERSION 4

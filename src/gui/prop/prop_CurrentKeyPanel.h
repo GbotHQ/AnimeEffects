@@ -7,9 +7,11 @@
 #include "gui/ViaPoint.h"
 #include "gui/prop/prop_Panel.h"
 #include "gui/prop/prop_KeyGroup.h"
+#include "gui/prop/prop_KeyStateButton.h"
 #include "gui/prop/prop_KeyKnocker.h"
 #include "gui/prop/prop_Items.h"
 #include "gui/prop/prop_KeyAccessor.h"
+#include "gui/prop/prop_FilterStack.h"
 
 namespace gui {
 namespace prop {
@@ -22,12 +24,13 @@ namespace prop {
         void setKeyEnabled(bool);
         void setKeyExists(bool);
         void setKeyValue(const core::TimeKey* aKey);
+        void setKeyValue(const core::TimeLine& aTimeLine, int aFrame);
         bool keyExists() const;
 
     private:
         KeyAccessor& mAccessor;
         KeyKnocker* mKnocker;
-        ComboItem* mSpline;
+        CheckItem* mSmoothPath;
         Vector2DItem* mPosition;
         Vector2DItem* mCentroid;
         bool mKeyExists;
@@ -41,6 +44,7 @@ namespace prop {
         void setKeyEnabled(bool);
         void setKeyExists(bool);
         void setKeyValue(const core::TimeKey* aKey);
+        void setKeyValue(const core::TimeLine& aTimeLine, int aFrame);
         bool keyExists() const;
 
     private:
@@ -58,6 +62,7 @@ namespace prop {
         void setKeyEnabled(bool);
         void setKeyExists(bool);
         void setKeyValue(const core::TimeKey* aKey);
+        void setKeyValue(const core::TimeLine& aTimeLine, int aFrame);
         bool keyExists() const;
 
     private:
@@ -75,6 +80,7 @@ namespace prop {
         void setKeyEnabled(bool);
         void setKeyExists(bool);
         void setKeyValue(const core::TimeKey* aKey);
+        void setKeyValue(const core::TimeLine& aTimeLine, int aFrame);
         bool keyExists() const;
 
     private:
@@ -92,6 +98,7 @@ namespace prop {
         void setKeyEnabled(bool);
         void setKeyExists(bool);
         void setKeyValue(const core::TimeKey* aKey);
+        void setKeyValue(const core::TimeLine& aTimeLine, int aFrame);
         bool keyExists() const;
 
     private:
@@ -100,54 +107,6 @@ namespace prop {
         DecimalItem* mOpacity;
         bool mKeyExists;
     };
-
-    //-------------------------------------------------------------------------------------------------
-    class BlurKeyGroup: public KeyGroup {
-        // The one key group of the twelve here without a metaobject of its own, and so
-        // the one whose tr() strings (the blur directions) resolve through KeyGroup and
-        // never read their own catalog context.
-        Q_OBJECT
-    public:
-        BlurKeyGroup(gui::prop::Panel& aPanel, KeyAccessor& aAccessor, int aLabelWidth, GUIResources* mGUIResources);
-
-        void setKeyEnabled(bool aEnabled);
-        void setKeyExists(bool aIsExists);
-        void setKeyValue(const core::TimeKey* aKey);
-        bool keyExists() const;
-
-    private:
-        void updateDirectionalRows(bool aVisible);
-        void assignBlurAxis(DecimalItem* aEdited);
-
-        KeyAccessor& mAccessor;
-        KeyKnocker* mKnocker;
-        DecimalItem* mAmount;
-        DecimalItem* mBlurX;
-        DecimalItem* mBlurY;
-        DecimalItem* mAngle;
-        CheckItem* mDirectional;
-        bool mKeyExists;
-    };
-
-    class HSVKeyGroup: public KeyGroup {
-        Q_OBJECT
-    public:
-        HSVKeyGroup(gui::prop::Panel& aPanel, KeyAccessor& aAccessor, int aLabelWidth, GUIResources* mGUIResources);
-        void setKeyEnabled(bool);
-        void setKeyExists(bool);
-        void setKeyValue(const core::TimeKey* aKey);
-        bool keyExists() const;
-
-    private:
-        KeyAccessor& mAccessor;
-        KeyKnocker* mKnocker;
-        IntegerItem* mHue;
-        IntegerItem* mSaturation;
-        IntegerItem* mValue;
-        CheckItem* mAbsolute;
-        bool mKeyExists;
-    };
-
 
     //-------------------------------------------------------------------------------------------------
     class PoseKeyGroup: public KeyGroup {
@@ -189,10 +148,13 @@ namespace prop {
         void setKeyEnabled(bool);
         void setKeyExists(bool, bool);
         void setKeyValue(const core::TimeKey* aKey);
+        void setKeyValue(const core::TimeLine& aTimeLine, int aFrame);
         bool keyExists() const;
 
-    private:
+    public:
         void knockNewKey();
+
+    private:
         KeyAccessor& mAccessor;
         KeyKnocker* mKnocker;
         BrowseItem* mBrowse;
@@ -229,11 +191,19 @@ namespace prop {
         QScopedPointer<ScaleKeyGroup> mScalePanel;
         QScopedPointer<DepthKeyGroup> mDepthPanel;
         QScopedPointer<OpaKeyGroup> mOpaPanel;
-        QScopedPointer<HSVKeyGroup> mHSVPanel;
-        QScopedPointer<BlurKeyGroup> mBlurPanel;
+        QScopedPointer<FilterStackPanel> mFilterPanel;
         QScopedPointer<PoseKeyGroup> mPosePanel;
         QScopedPointer<FFDKeyGroup> mFFDPanel;
         QScopedPointer<ImageKeyGroup> mImagePanel;
+
+        KeyStateButton* mMoveKey;
+        KeyStateButton* mRotateKey;
+        KeyStateButton* mScaleKey;
+        KeyStateButton* mDepthKey;
+        KeyStateButton* mOpaKey;
+        KeyStateButton* mPoseKey;
+        KeyStateButton* mFFDKey;
+        KeyStateButton* mImageKey;
     };
 
 } // namespace prop

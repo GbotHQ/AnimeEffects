@@ -39,7 +39,9 @@ namespace prop {
         // (the header spans edge to edge, so the padding lives on the
         // body); the bottom margin is the breathing below the last field
         // row (QSS padding on the group frame does not inset the layout)
-        mLayout->setContentsMargins(0, 4, 16, 12);
+        // The Constants board shares the inspector's field column when it has
+        // labels; the project panel's label-less "Time" group does not.
+        mLayout->setContentsMargins(aLabelWidth > 0 ? 42 : 0, 4, 16, 12);
 
         auto* vbox = new QVBoxLayout(this);
         vbox->setSpacing(0);
@@ -71,11 +73,16 @@ namespace prop {
         }
     }
 
+    void AttrGroup::setHeaderVisible(bool aVisible) {
+        if (mHeader)
+            mHeader->setVisible(aVisible);
+    }
+
     void AttrGroup::addItem(const QString& aLabel, ItemBase* aItem) {
         auto label = new QLabel(aLabel);
         label->setObjectName("attrLabel");
         label->setMinimumWidth(mLabelWidth);
-        label->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
+        label->setAlignment((mLabelWidth > 0 ? Qt::AlignLeft : Qt::AlignRight) | Qt::AlignVCenter);
         mLabels.push_back(label);
         mItems.push_back(aItem);
 
@@ -92,12 +99,14 @@ namespace prop {
         // Single-field rows cap at 70% of the field column so compact
         // values don't stretch edge to edge; multi-field rows (layout items)
         // keep the full column and split it via their stretch factors.
-        int labelColumn = 0;
+        int labelColumn = mLabelWidth;
         for (auto* label : mLabels) {
             labelColumn = qMax(labelColumn, label->sizeHint().width());
         }
-        const int column = contentsRect().width() - labelColumn - mLayout->horizontalSpacing();
-        const int cap = qMax(80, column * 70 / 100);
+        const QMargins margins = mLayout->contentsMargins();
+        const int fieldArea = contentsRect().width() - margins.left() - margins.right();
+        const int column = fieldArea - labelColumn - mLayout->horizontalSpacing();
+        const int cap = mLabelWidth > 0 ? qMax(80, column) : qMax(80, fieldArea * 70 / 100);
         for (auto* item : mItems) {
             if (auto* field = item->itemWidget()) {
                 field->setMaximumWidth(cap);

@@ -102,12 +102,14 @@ add_executable(${PROJECT_NAME} WIN32 MACOSX_BUNDLE
     prop/prop_Backboard.cpp prop/prop_Backboard.h
     prop/prop_ConstantPanel.cpp prop/prop_ConstantPanel.h
     prop/prop_CurrentKeyPanel.cpp prop/prop_CurrentKeyPanel.h
-    prop/prop_DefaultKeyPanel.cpp prop/prop_DefaultKeyPanel.h
+    prop/prop_FilterStack.cpp prop/prop_FilterStack.h
     prop/prop_HeaderButton.cpp prop/prop_HeaderButton.h
     prop/prop_ItemBase.h
     prop/prop_Items.cpp prop/prop_Items.h
     prop/prop_KeyAccessor.cpp prop/prop_KeyAccessor.h
     prop/prop_KeyGroup.cpp prop/prop_KeyGroup.h
+    prop/prop_KeyStateButton.cpp prop/prop_KeyStateButton.h
+    prop/prop_PropertyRow.cpp prop/prop_PropertyRow.h
     prop/prop_KeyKnocker.cpp prop/prop_KeyKnocker.h
     prop/prop_Panel.cpp prop/prop_Panel.h
     prop/prop_ProjectPanel.cpp prop/prop_ProjectPanel.h

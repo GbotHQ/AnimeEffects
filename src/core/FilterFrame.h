@@ -102,6 +102,17 @@ public:
     GLuint blurApply(
         int aCompositeSlot, const QVector2D& aDirX, float aRadiusX, const QVector2D& aDirY, float aRadiusY);
 
+    // The two stack passes over an arbitrary source texture and target slot. The
+    // filter pipeline uses these so a stack can apply HSV before blur, blur before
+    // HSV, or either alone without duplicating the render-target dance in every
+    // node type. `aTargetSlot` may equal the source's slot for blur (its direct
+    // path reuses it); HSV needs a different slot because it samples the source.
+    GLuint blurTexture(
+        int aTargetSlot, GLuint aSrcTexture, const QVector2D& aDirX, float aRadiusX,
+        const QVector2D& aDirY, float aRadiusY
+    );
+    GLuint hsvTexture(int aTargetSlot, GLuint aSrcTexture, const QList<int>& aHSV);
+
     // draws srcTexture through the given filter into the currently bound framebuffer.
     // aNeedHSV requests per-pass HSV (folder presentation of its own keyed HSV, where the
     // composite content is still in plain RGB); when false the content's HSV is already

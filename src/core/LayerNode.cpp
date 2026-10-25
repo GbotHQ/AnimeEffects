@@ -104,7 +104,9 @@ void LayerNode::prerender(const RenderInfo& aInfo, const TimeCacheAccessor& aAcc
 void LayerNode::render(const RenderInfo& aInfo, const TimeCacheAccessor& aAccessor) {
     if (!mIsVisible || aAccessor.get(mTimeLine).opa().isZero()) return;
 
-    bool useHSV = !mTimeLine.isEmpty(TimeKeyType_HSV) && aInfo.time.frame.get() >= mTimeLine.map(TimeKeyType_HSV).values().first()->frame();
+    const bool useHSV = mTimeLine.filterEnabled(TimeKeyType_HSV)
+        && !mTimeLine.isEmpty(TimeKeyType_HSV)
+        && aInfo.time.frame.get() >= mTimeLine.map(TimeKeyType_HSV).values().first()->frame();
     const QList<int> hsvData = useHSV ? aAccessor.get(mTimeLine).hsv().hsv() : QList<int>{};
 
     if (!aInfo.isGrid && isCompositeLayer(aInfo.time, aAccessor)) {
@@ -124,11 +126,11 @@ bool LayerNode::hasActiveBlurKey(const TimeInfo& aTime) const {
 }
 
 bool LayerNode::isCompositeLayer(const TimeInfo& aTime, const TimeCacheAccessor& aAccessor) const {
-    // a BlurKey whose blended radius is at or below the epsilon has no visible effect
-    // (identity kernel, see FilterFrame::kMinActiveBlurRadius), so it must not force
-    // the layer onto the composite path (mirrors the folder gate); the epsilon keeps
-    // interpolations ramping in smoothly from zero
-    return hasActiveBlurKey(aTime)
+    // Only an ENABLED blur whose blended radius is above the epsilon isolates the
+    // layer (see FilterFrame::kMinActiveBlurRadius). The composite path then applies
+    // the whole stack in order; HSV alone stays on the direct path, where it is baked
+    // into the layer shader exactly as before.
+    return mTimeLine.filterEnabled(TimeKeyType_Blur) && hasActiveBlurKey(aTime)
         && aAccessor.get(mTimeLine).maxBlurRadius() > FilterFrame::kMinActiveBlurRadius;
 }
 
@@ -149,9 +151,10 @@ void LayerNode::renderComposite(const RenderInfo& aInfo, const TimeCacheAccessor
     if (worldOpacity <= 0.0f)
         return;
 
-    const bool useHSV = !mTimeLine.isEmpty(TimeKeyType_HSV)
-        && aInfo.time.frame.get() >= mTimeLine.map(TimeKeyType_HSV).values().first()->frame();
-    const QList<int> hsvData = useHSV ? expans.hsv().hsv() : QList<int>{};
+    // 1. render the layer WITHOUT its HSV into a composite slot at full opacity: the
+    // stack applies HSV as an explicit pass, so the order (HSV before blur or after)
+    // is the user's. The direct (no blur) path still bakes HSV for efficiency.
+    const QList<int> hsvData;
 
     // 1. render the layer into a composite slot at full opacity (its opacity is applied
     // at presentation so the blur samples the crisp shape, not a faded one)
@@ -167,69 +170,52 @@ void LayerNode::renderComposite(const RenderInfo& aInfo, const TimeCacheAccessor
         childInfo.framebuffer = composite.framebuffer();
         childInfo.dest = composite.texture();
         childInfo.opacityScale = 1.0f / worldOpacity;
-        renderLayer(childInfo, aAccessor, useHSV, hsvData);
+        renderLayer(childInfo, aAccessor, false, hsvData);
     }
 
-    // 2. blur the isolated content (same radius space as the folder filter: the amount is
-    // in the layer's content pixels - a content-space ellipse when directional; the
-    // content ellipse maps to an ellipse in the composite via the accumulated world
-    // transform M (composed as M*E), so the separable passes run along its principal axes
-    // with the resulting singular values as radii, scaled by the camera zoom)
+    // 2. apply the stack IN ORDER to the isolated content. Blur reuses the current
+    // slot (its direct path is a two-pass in-place filter); HSV takes a scratch slot
+    // because it samples the source while drawing.
     GLuint srcTexture = composite.texture();
-    if (expans.maxBlurRadius() > FilterFrame::kMinActiveBlurRadius && hasActiveBlurKey(aInfo.time)) {
-        const WorldBlurEllipse ellipse = worldBlurEllipse(
-            aAccessor, this, expans.blurX(), expans.blurY(), expans.angleDeg());
-        const float zoom = aInfo.camera.scale();
-        const float radiusX = ellipse.majorRadius * zoom;
-        const float radiusY = ellipse.minorRadius * zoom;
+    int srcSlot = composite.slot();
+    const QVector<FilterEntry> stack = mTimeLine.filters();
+    std::vector<std::unique_ptr<FilterFrame::ScopedSlot>> scratchSlots;
+    // HSV activity is checked once, from the same lane predicate the direct path uses.
+    const bool hsvActive = !mTimeLine.isEmpty(TimeKeyType_HSV)
+        && aInfo.time.frame.get() >= mTimeLine.map(TimeKeyType_HSV).values().first()->frame();
 
-        // map the world-space ellipse directions into the composite slot's screen space:
-        // the slot holds the scene as rendered through the camera, whose view linear part
-        // is R(rotate) * diag(flip ? -1 : 1, 1) (zoom is isotropic, directions stay unit)
-        const float flipX = aInfo.camera.flip ? -1.0f : 1.0f;
-        const float cr = std::cos(aInfo.camera.rotate());
-        const float sr = std::sin(aInfo.camera.rotate());
-        const auto screenDir = [=](const QVector2D& d) {
-            const float x = flipX * d.x();
-            const float y = d.y();
-            return QVector2D(cr * x - sr * y, sr * x + cr * y);
-        };
-        const QVector2D majorScreen = screenDir(ellipse.majorDir);
-        const QVector2D minorScreen = screenDir(ellipse.minorDir);
-
-        if (FilterFrame::blurLadderLevel(radiusX, radiusY, frame.size()) > 0) {
-            srcTexture = frame.blurApply(
-                composite.slot(), majorScreen, radiusX, minorScreen, radiusY);
-        } else {
-            // the composite slot holds the screen image y-flipped (texture row = H - screen
-            // y), so a screen-space direction (dx, dy) appears in slot space as (dx, -dy);
-            // the ladder path needs no adjustment (its first downsample flips back)
-            FilterFrame::BlurParams h;
-            h.direction = QVector2D(majorScreen.x(), -majorScreen.y());
-            h.radiusTexels = radiusX;
-            FilterFrame::BlurParams v;
-            v.direction = QVector2D(minorScreen.x(), -minorScreen.y());
-            v.radiusTexels = radiusY;
-
-            FilterFrame::ScopedSlot hSlot(frame);
-            frame.bind(hSlot.slot());
-            gl::Util::setViewportAsActualPixels(frame.size());
-            gl::Util::resetRenderState();
-            gl::Global::functions().glClearColor(0.0f, 0.0f, 0.0f, 0.0f);
-            gl::Global::functions().glClear(GL_COLOR_BUFFER_BIT);
-            frame.drawQuad(srcTexture, FilterFrame::Kind_Blur, QList<int>(), h, 1.0f);
-
-            // the vertical pass writes back into the composite slot (the same reuse the
-            // ladder path applies on its final upsample), so the direct blur holds one
-            // scratch slot instead of two
-            frame.bind(composite.slot());
-            gl::Util::setViewportAsActualPixels(frame.size());
-            gl::Util::resetRenderState();
-            gl::Global::functions().glClearColor(0.0f, 0.0f, 0.0f, 0.0f);
-            gl::Global::functions().glClear(GL_COLOR_BUFFER_BIT);
-            frame.drawQuad(hSlot.texture(), FilterFrame::Kind_Blur, QList<int>(), v, 1.0f);
-
-            srcTexture = composite.texture();
+    for (const FilterEntry& entry : stack) {
+        if (!entry.enabled)
+            continue;
+        if (entry.type == TimeKeyType_HSV) {
+            if (!hsvActive)
+                continue;
+            auto slot = std::make_unique<FilterFrame::ScopedSlot>(frame);
+            srcTexture = frame.hsvTexture(slot->slot(), srcTexture, expans.hsv().hsv());
+            srcSlot = slot->slot();
+            scratchSlots.push_back(std::move(slot));
+        } else if (entry.type == TimeKeyType_Blur) {
+            if (!hasActiveBlurKey(aInfo.time)
+                || expans.maxBlurRadius() <= FilterFrame::kMinActiveBlurRadius)
+                continue;
+            const WorldBlurEllipse ellipse = worldBlurEllipse(
+                aAccessor, this, expans.blurX(), expans.blurY(), expans.angleDeg());
+            const float zoom = aInfo.camera.scale();
+            const float radiusX = ellipse.majorRadius * zoom;
+            const float radiusY = ellipse.minorRadius * zoom;
+            const float flipX = aInfo.camera.flip ? -1.0f : 1.0f;
+            const float cr = std::cos(aInfo.camera.rotate());
+            const float sr = std::sin(aInfo.camera.rotate());
+            const auto screenDir = [=](const QVector2D& d) {
+                const float x = flipX * d.x();
+                const float y = d.y();
+                return QVector2D(cr * x - sr * y, sr * x + cr * y);
+            };
+            const QVector2D majorScreen = screenDir(ellipse.majorDir);
+            const QVector2D minorScreen = screenDir(ellipse.minorDir);
+            srcTexture = frame.blurTexture(
+                srcSlot, srcTexture, majorScreen, radiusX, minorScreen, radiusY
+            );
         }
     }
 

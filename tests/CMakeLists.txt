@@ -760,6 +760,46 @@ target_link_libraries(attribute_observable PRIVATE
     cmnd core ctrl gl img thr util pugixml
 )
 
+# Model 2 at the accessor layer: static properties edit their default key, and
+# animated properties edit/create a key at the playhead. The unified Inspector
+# depends on this split; see key_accessor_model2.cpp.
+add_executable(key_accessor_model2
+    key_accessor_model2.cpp
+    ../src/gui/prop/prop_KeyAccessor.cpp)
+target_include_directories(key_accessor_model2 PRIVATE .. ../src)
+target_compile_definitions(key_accessor_model2 PRIVATE
+    AE_MAJOR_VERSION=1
+    AE_MINOR_VERSION=7
+    AE_MICRO_VERSION=1
+    USE_GL_CORE_PROFILE
+)
+target_link_libraries(key_accessor_model2 PRIVATE
+    Qt6::Core Qt6::Core5Compat Qt6::Widgets
+    Qt6::Gui Qt6::OpenGL Qt6::OpenGLWidgets
+    Qt6::Svg Qt6::Xml Qt6::Concurrent Qt6::Multimedia
+    cmnd core ctrl gl img thr util pugixml
+)
+
+# Filter stack command grain: add creates the entry and a key as one undo step,
+# remove drops the entry and its explicit keys together, and reorder/eye are
+# independently undoable. See filter_stack_model.cpp.
+add_executable(filter_stack_model
+    filter_stack_model.cpp
+    ../src/gui/prop/prop_KeyAccessor.cpp)
+target_include_directories(filter_stack_model PRIVATE .. ../src)
+target_compile_definitions(filter_stack_model PRIVATE
+    AE_MAJOR_VERSION=1
+    AE_MINOR_VERSION=7
+    AE_MICRO_VERSION=1
+    USE_GL_CORE_PROFILE
+)
+target_link_libraries(filter_stack_model PRIVATE
+    Qt6::Core Qt6::Core5Compat Qt6::Widgets
+    Qt6::Gui Qt6::OpenGL Qt6::OpenGLWidgets
+    Qt6::Svg Qt6::Xml Qt6::Concurrent Qt6::Multimedia
+    cmnd core ctrl gl img thr util pugixml
+)
+
 # Animation-settings ViewModel session undo/redo: discrete edits record one
 # step, a scrub gesture coalesces into one, and reset() clears history per open.
 # See anim_settings_undo.cpp.

@@ -81,6 +81,12 @@ namespace prop {
         void knockNewFFD();
         void knockNewImage(const img::ResourceHandle& aHandle);
 
+        // The key dot is a TOGGLE, not an add-only button: a filled dot removes
+        // the explicit key at the current frame (one undo step). The default
+        // key is untouched, so a property that loses its last explicit key
+        // becomes static again rather than losing its value.
+        void removeKey(core::TimeKeyType aType);
+
     private:
         bool isValid() const { return mProject && mTarget && mTarget->timeLine(); }
         int getFrame() const { return mProject->animator().currentFrame().get(); }

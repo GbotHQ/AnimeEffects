@@ -22,6 +22,11 @@ namespace prop {
         virtual ~Panel() {}
         void addGroup(QWidget* aGroup);
         void addStretch();
+        // A panel whose host already names the section (the Inspector inside the
+        // Properties dock) hides this header instead of repeating the title.
+        void setHeaderVisible(bool aVisible);
+        // A trailing control in this panel's own header (the Filters plus).
+        void addHeaderAction(QWidget* aWidget);
 
         std::function<void()> onCollapsed;
 

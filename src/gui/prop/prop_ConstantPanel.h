@@ -5,11 +5,14 @@
 #include "core/ObjectNode.h"
 #include "gui/ViaPoint.h"
 #include "gui/prop/prop_Panel.h"
-#include "gui/prop/prop_AttrGroup.h"
 #include "gui/prop/prop_Items.h"
+
+class QWidget;
 
 namespace gui {
 namespace prop {
+
+    class PropertyRow;
 
     class ConstantPanel: public Panel {
         Q_OBJECT
@@ -29,9 +32,10 @@ namespace prop {
         core::Project& mProject;
         GUIResources* mGUIResources;
         core::ObjectNode* mTarget;
-        int mLabelWidth;
 
-        AttrGroup* mRenderingAttributes;
+        QWidget* mRowsHost;
+        PropertyRow* mBlendRow;
+        PropertyRow* mClippedRow;
         ComboItem* mBlendMode;
         CheckItem* mClipped;
     };

@@ -82,7 +82,8 @@ void PropertyWidget::onAttributeUpdated(core::ObjectNode&, bool) {
 }
 
 void PropertyWidget::onKeyUpdated(core::TimeLineEvent& aEvent, bool) {
-    mBoard->updateKey(!aEvent.targets().empty(), !aEvent.defaultTargets().empty());
+    const bool stackChanged = aEvent.type() == core::TimeLineEvent::Type_FilterStack;
+    mBoard->updateKey(stackChanged || !aEvent.targets().empty(), !aEvent.defaultTargets().empty());
 }
 
 void PropertyWidget::onFrameUpdated() { mBoard->updateFrame(); }

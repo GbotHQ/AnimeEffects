@@ -140,18 +140,25 @@ static constexpr int kTailwindLight[] = {
 static_assert(sizeof(kTailwindLight) / sizeof(kTailwindLight[0]) == kTokenCount,
               "kTailwindLight must have one column per TokenRole");
 static constexpr int kTailwindDark[] = {
-    /* kBase              */ 8,
-    /* kRecessed          */ 9,
-    /* kRaised            */ 7,
-    /* kRaisedHover       */ 6,
-    /* kActive            */ 6,
+    // The dark elevation model was one step too bright: base read as the same
+    // neutral-800 card surface the mockup used for RAISED controls. Shift the
+    // surfaces down one column so base/recessed are the floor, `raised` is the
+    // old base, and content keeps its existing contrast. Light is unchanged.
+    /* kBase              */ 9,
+    /* kRecessed          */ 10,
+    /* kRaised            */ 8,
+    /* kRaisedHover       */ 7,
+    /* kActive            */ 7, // one step above `raised`; not the same fill
     /* kActiveHover       */ 6,
-    /* kHairline          */ 7,
-    /* kHairlineHover     */ 6,
-    /* kOutline           */ 6,
-    /* kHandleBorder      */ 5,
+    // Borders follow the surfaces down too. Keeping the old absolutes would
+    // turn every separator into a 2-step jump against the darker base; these
+    // stay one step above the surface they sit on.
+    /* kHairline          */ 8, // one step above base (neutral-800)
+    /* kHairlineHover     */ 7, // one step above hairline
+    /* kOutline           */ 7, // one step above raised
+    /* kHandleBorder      */ 6,
     /* kFocus             */ 4,
-    /* kHover             */ 5,
+    /* kHover             */ 6, // one step above outline, not text strength
     /* kText              */ 1,
     /* kTextMuted         */ 4,
     /* kTextMutedDim      */ 5, // neutral-500 (#737373): a step dimmer than
@@ -168,12 +175,12 @@ static constexpr int kTailwindDark[] = {
     /* kAccentBright      */ 4,
     /* kAccentHover       */ 6,
     /* kAccentText        */ 1,
-    /* kFloaterBody       */ 9,
-    /* kFloaterEdge       */ 8, // normal edge; the body is the sunken surface
-    /* kRecessedGuideLine */ 7, // 2 steps from the recessed column (dark
-                                 // col 9) — same distance as light
-    /* kRecessedHairline  */ 8, // 1 step from the recessed column (dark
-                                 // col 9)
+    /* kFloaterBody       */ 8,
+    /* kFloaterEdge       */ 7, // normal edge; the body is one step above base
+    /* kRecessedGuideLine */ 8, // 2 steps from the recessed column (dark
+                                 // col 10) — same distance as light
+    /* kRecessedHairline  */ 9, // 1 step from the recessed column (dark
+                                 // col 10)
     /* kWindowBand        */ 5, // neutral-500: mid gray, visible on the dark
                                  // ruler at its fixed alpha
     /* kWindowEdge        */ 4, // neutral-400 (same step as textMuted: a

@@ -268,6 +268,49 @@ GLuint FilterFrame::blurApply(
     return texture(aCompositeSlot);
 }
 
+GLuint FilterFrame::blurTexture(
+    int aTargetSlot, GLuint aSrcTexture, const QVector2D& aDirX, float aRadiusX,
+    const QVector2D& aDirY, float aRadiusY
+) {
+    if (blurLadderLevel(aRadiusX, aRadiusY, mSize) > 0)
+        return blurApply(aTargetSlot, aDirX, aRadiusX, aDirY, aRadiusY);
+
+    // Direct two-pass path, rewritten against an explicit target slot so callers
+    // can chain filters through scratch slots.
+    BlurParams h;
+    h.direction = QVector2D(aDirX.x(), -aDirX.y());
+    h.radiusTexels = aRadiusX;
+    BlurParams v;
+    v.direction = QVector2D(aDirY.x(), -aDirY.y());
+    v.radiusTexels = aRadiusY;
+
+    ScopedSlot hSlot(*this);
+    bind(hSlot.slot());
+    gl::Util::setViewportAsActualPixels(size());
+    gl::Util::resetRenderState();
+    gl::Global::functions().glClearColor(0.0f, 0.0f, 0.0f, 0.0f);
+    gl::Global::functions().glClear(GL_COLOR_BUFFER_BIT);
+    drawQuad(aSrcTexture, Kind_Blur, QList<int>(), h, 1.0f);
+
+    bind(aTargetSlot);
+    gl::Util::setViewportAsActualPixels(size());
+    gl::Util::resetRenderState();
+    gl::Global::functions().glClearColor(0.0f, 0.0f, 0.0f, 0.0f);
+    gl::Global::functions().glClear(GL_COLOR_BUFFER_BIT);
+    drawQuad(hSlot.texture(), Kind_Blur, QList<int>(), v, 1.0f);
+    return texture(aTargetSlot);
+}
+
+GLuint FilterFrame::hsvTexture(int aTargetSlot, GLuint aSrcTexture, const QList<int>& aHSV) {
+    bind(aTargetSlot);
+    gl::Util::setViewportAsActualPixels(size());
+    gl::Util::resetRenderState();
+    gl::Global::functions().glClearColor(0.0f, 0.0f, 0.0f, 0.0f);
+    gl::Global::functions().glClear(GL_COLOR_BUFFER_BIT);
+    drawQuad(aSrcTexture, Kind_HSV, aHSV, BlurParams(), 1.0f, true);
+    return texture(aTargetSlot);
+}
+
 void FilterFrame::createQuadBuffers() {
     static const GLuint kIndices[4] = {0, 1, 3, 2};
     mIndices.resetData(4, GL_STATIC_DRAW, kIndices);

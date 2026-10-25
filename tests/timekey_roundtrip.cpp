@@ -22,6 +22,8 @@
 #include "XC.h"
 #include "cmnd/Stack.h"
 #include "core/Deserializer.h"
+#include "core/FormatVersion.h"
+#include "core/TimeKeyType.h"
 #include "core/MoveKey.h"
 #include "core/Serializer.h"
 #include "core/TimeKeyType.h"
@@ -86,6 +88,13 @@ int main(int argc, char** argv) {
     check(line.hasTimeKey(core::TimeKeyType_Move, 2), "the proportional key is in the map");
     check(line.hasTimeKey(core::TimeKeyType_Move, 4), "the right absolute key is in the map");
 
+    // The stack is a separate 0.17 record: order and eye survive, and the values
+    // remain the ordinary key lanes.
+    line.setFilterEntries({
+        core::FilterEntry(core::TimeKeyType_HSV, false),
+        core::FilterEntry(core::TimeKeyType_Blur, true),
+    });
+
     middle->setPos(QVector2D(12.0f, -4.0f));
     core::TimeKey::Proportional state;
     state.leftId = left->id();
@@ -112,11 +121,20 @@ int main(int argc, char** argv) {
     NullReporter reporter;
     gl::DeviceInfo device;
     core::Deserializer in(
-        reader, solver, data.size() + 1, QVersionNumber(0, 16), device, reporter, 0
+        reader, solver, data.size() + 1, QVersionNumber(0, AE_PROJECT_FORMAT_MINOR_VERSION), device, reporter,
+        0
     );
     core::TimeLine loaded;
     const bool deserialized = loaded.deserialize(in);
-    check(deserialized, "the timeline deserializes at 0.16");
+    check(deserialized, "the timeline deserializes at the current format");
+
+    check(loaded.filters().size() == 2, "both filter entries survive");
+    if (loaded.filters().size() == 2) {
+        check(loaded.filters().at(0).type == core::TimeKeyType_HSV, "the stack order survives (HSV first)");
+        check(!loaded.filters().at(0).enabled, "a muted filter stays muted");
+        check(loaded.filters().at(1).type == core::TimeKeyType_Blur, "the stack order survives (Blur second)");
+        check(loaded.filters().at(1).enabled, "an enabled filter stays enabled");
+    }
 
     const core::TimeLine::MapType& map = loaded.map(core::TimeKeyType_Move);
     check(map.size() == 3, "three keys survive the round trip");
@@ -150,7 +168,9 @@ int main(int argc, char** argv) {
     }
 
     if (failures == 0)
-        std::printf("timekey_roundtrip: ids, proportional bounds and stored weights survive 0.16\n");
+        std::printf(
+            "timekey_roundtrip: ids, proportional bounds and stored weights survive the current format\n"
+        );
     else
         std::printf("timekey_roundtrip: %d FAILED\n", failures);
     return failures == 0 ? 0 : 1;

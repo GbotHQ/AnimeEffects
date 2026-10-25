@@ -70,6 +70,56 @@ namespace prop {
 
     QSize HeaderButton::sizeHint() const { return mLayout ? mLayout->totalSizeHint() : QSize(); }
 
+    void HeaderButton::addTrailingWidget(QWidget* aWidget) {
+        if (!aWidget || !mLayout)
+            return;
+        mLayout->setContentsMargins(12, 0, 6, 0);
+        mLayout->addWidget(aWidget);
+    }
+
+    void HeaderButton::addInlineField(QWidget* aWidget) {
+        if (!aWidget || !mLayout)
+            return;
+        // Replace the header's trailing stretch with the field host: the host
+        // owns the spare width, and its own leading stretch right-aligns the
+        // field(s) inside it.
+        const int oldStretch = mLayout->count() - 1;
+        delete mLayout->takeAt(oldStretch);
+        mLayout->addWidget(aWidget, 1);
+    }
+
+    void HeaderButton::setTitleWidth(int aWidth) {
+        if (mTitle)
+            mTitle->setFixedWidth(qMax(0, aWidth));
+    }
+
+    void HeaderButton::setCaretVisible(bool aVisible) {
+        if (mCaret)
+            mCaret->setVisible(aVisible);
+    }
+
+    void HeaderButton::addLeadingAction(QWidget* aWidget) {
+        if (!aWidget || !mLayout)
+            return;
+        mLayout->insertWidget(0, aWidget);
+        mLayout->insertSpacing(1, 6);
+    }
+
+    void HeaderButton::setContentInset(int aLeft) {
+        QMargins margins = mLayout->contentsMargins();
+        margins.setLeft(aLeft);
+        mLayout->setContentsMargins(margins);
+    }
+
+    void HeaderButton::addTitleAction(QWidget* aWidget) {
+        if (!aWidget || !mLayout)
+            return;
+        // caret, title, [gap] action [gap], stretch
+        mLayout->insertSpacing(2, 6);
+        mLayout->insertWidget(3, aWidget);
+        mLayout->insertSpacing(4, 2);
+    }
+
     void HeaderButton::paintEvent(QPaintEvent* aEvent) {
         // the QSS background (if any) is drawn by the base widget paint;
         // the caret and title labels render the row content

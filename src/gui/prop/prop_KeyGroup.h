@@ -2,9 +2,10 @@
 #define GUI_PROP_KEYGROUP_H
 
 #include <QFrame>
-#include <QFormLayout>
-#include "gui/prop/prop_HeaderButton.h"
+#include <QVector>
 #include "gui/prop/prop_ItemBase.h"
+
+class QVBoxLayout;
 
 namespace gui {
 
@@ -12,34 +13,35 @@ class GUIResources;
 
 namespace prop {
 
+    class PropertyRow;
+
+    // A keyable property block. Its rows are built by PropertyRow, the same
+    // builder the non-keyable rows use; the key button is only an optional
+    // child of the row's leading gutter.
     class KeyGroup: public QFrame {
         Q_OBJECT
     public:
         KeyGroup(const QString& aTitle, int aLabelWidth, GUIResources* aGUIResources);
-        virtual ~KeyGroup();
+        ~KeyGroup() override;
+
         void addItem(const QString& aLabel, ItemBase* aItem);
-        // shows/hides one row (label + item); the choice persists across collapse/expand
         void setItemVisible(ItemBase* aItem, bool aVisible);
+        void addHeaderAction(QWidget* aWidget);
+
+        // Kept for the panel's old API. Every property row is now a flat row,
+        // so there is no collapse or "inline" mode to switch.
+        void setHeaderCollapsible(bool aCollapsible);
+        void inlineFields();
         void makeSureExpand();
 
     signals:
-        // emitted when the section header toggles (parents use it to keep
-        // their own geometry in sync)
         void expansionChanged(bool aExpanded);
 
-    protected:
-        void resizeEvent(QResizeEvent* aEvent) override;
-
     private:
-        void setExpansion(bool aChecked);
-
-        HeaderButton* mHeader;
-        QWidget* mBody;
-        QVector<QWidget*> mLabels;
+        PropertyRow* mHeader;
+        QVBoxLayout* mLayout;
         QVector<ItemBase*> mItems;
-        QVector<bool> mItemVisibles;
-        QFormLayout* mLayout;
-        int mLabelWidth;
+        QVector<PropertyRow*> mRows;
     };
 
 } // namespace prop

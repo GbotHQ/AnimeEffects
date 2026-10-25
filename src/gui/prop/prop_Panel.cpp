@@ -73,5 +73,15 @@ namespace prop {
 
     void Panel::addStretch() { mLayout->addStretch(); }
 
+    void Panel::setHeaderVisible(bool aVisible) {
+        if (mHeader)
+            mHeader->setVisible(aVisible);
+    }
+
+    void Panel::addHeaderAction(QWidget* aWidget) {
+        if (mHeader)
+            mHeader->addTrailingWidget(aWidget);
+    }
+
 } // namespace prop
 } // namespace gui

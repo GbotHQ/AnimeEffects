@@ -3,7 +3,6 @@
 #include "core/Constant.h"
 #include "core/TimeKeyExpans.h"
 #include "core/DepthKey.h"
-#include "core/BlurKey.h"
 #include "ctrl/TimeLineUtil.h"
 #include "gui/ResourceDialog.h"
 #include "gui/prop/prop_CurrentKeyPanel.h"
@@ -14,10 +13,10 @@ namespace prop {
 
     //-------------------------------------------------------------------------------------------------
     MoveKeyGroup::MoveKeyGroup(gui::prop::Panel& aPanel, KeyAccessor& aAccessor, int aLabelWidth, GUIResources* mGUIResources):
-        KeyGroup(tr("Move"), aLabelWidth, mGUIResources),
+        KeyGroup(tr("Position"), aLabelWidth, mGUIResources),
         mAccessor(aAccessor),
         mKnocker(),
-        mSpline(),
+        mSmoothPath(),
         mPosition(),
         mCentroid(),
         mKeyExists(false) {
@@ -31,27 +30,30 @@ namespace prop {
         {
             aPanel.addGroup(this);
 
-            // spline
-            mSpline = new ComboItem(this);
-            mSpline->box().addItems(
-                QStringList() << "Linear"
-                              << "CatmullRom"
-            );
-            mSpline->setValue(core::MoveKey::kDefaultSplineType, false);
-            mSpline->onValueUpdated = [=](int, int aNext) { this->mAccessor.assignMoveSpline(aNext); };
-            this->addItem(tr("Spline"), mSpline);
-
             // position
             mPosition = new Vector2DItem(this);
             mPosition->setRange(core::Constant::transMin(), core::Constant::transMax());
             mPosition->onValueUpdated = [=](QVector2D, QVector2D aNext) { this->mAccessor.assignMovePosition(aNext); };
-            this->addItem(tr("Position"), mPosition);
+            this->addItem(QString(), mPosition);
 
             // centroid
             mCentroid = new Vector2DItem(this);
             mCentroid->setRange(core::Constant::transMin(), core::Constant::transMax());
             mCentroid->onValueUpdated = [=](QVector2D, QVector2D aNext) { this->mAccessor.assignMoveCentroid(aNext); };
             this->addItem(tr("Centroid"), mCentroid);
+
+            // path shape: one meaningful choice, not an interpolation enum
+            mSmoothPath = new CheckItem(this);
+            mSmoothPath->box().setText(tr("Smooth"));
+            mSmoothPath->box().setToolTip(
+                tr("Curve the position path between keys instead of straight segments.")
+            );
+            mSmoothPath->onValueUpdated = [=](bool aNext) {
+                this->mAccessor.assignMoveSpline(
+                    aNext ? core::MoveKey::SplineType_CatmullRom : core::MoveKey::SplineType_Linear
+                );
+            };
+            this->addItem(tr("Path"), mSmoothPath);
         }
         setKeyEnabled(false);
         setKeyExists(false);
@@ -64,24 +66,48 @@ namespace prop {
 
     void MoveKeyGroup::setKeyExists(bool aIsExists) {
         mKeyExists = aIsExists;
-        mKnocker->setVisible(!aIsExists);
-        this->setVisible(aIsExists);
+        // The header diamond is the affordance now; the old row stays
+        // constructed but hidden so no second add control can drift.
+        mKnocker->setVisible(false);
+        // Model 2: the group is the property's row, not a frame-local key
+        // editor. The knocker above it is the "add a key here" affordance.
+        this->setVisible(true);
     }
 
     void MoveKeyGroup::setKeyValue(const core::TimeKey* aKey) {
         TIMEKEY_PTR_TYPE_ASSERT(aKey, Move);
         const core::MoveKey::Data data = ((const core::MoveKey*)aKey)->data();
 
-        mSpline->setValue(data.spline(), false);
+        mSmoothPath->setValue(data.spline() == core::MoveKey::SplineType_CatmullRom, false);
         mPosition->setValue(data.pos());
         mCentroid->setValue(data.centroid());
+    }
+
+    void MoveKeyGroup::setKeyValue(const core::TimeLine& aTimeLine, int aFrame) {
+        if (const core::TimeKey* key = aTimeLine.timeKey(core::TimeKeyType_Move, aFrame)) {
+            setKeyValue(key);
+            return;
+        }
+        // Animated between keys: show what the playhead actually evaluates.
+        if (!aTimeLine.map(core::TimeKeyType_Move).isEmpty()) {
+            const auto* defaultKey = (const core::MoveKey*)aTimeLine.defaultKey(core::TimeKeyType_Move);
+            mSmoothPath->setValue(
+                defaultKey && defaultKey->data().spline() == core::MoveKey::SplineType_CatmullRom, false
+            );
+            mPosition->setValue(aTimeLine.current().srt().pos());
+            mCentroid->setValue(aTimeLine.current().srt().centroid());
+            return;
+        }
+        if (const core::TimeKey* key = aTimeLine.defaultKey(core::TimeKeyType_Move)) {
+            setKeyValue(key);
+        }
     }
 
     bool MoveKeyGroup::keyExists() const { return mKeyExists; }
 
     //-------------------------------------------------------------------------------------------------
     RotateKeyGroup::RotateKeyGroup(gui::prop::Panel& aPanel, KeyAccessor& aAccessor, int aLabelWidth, GUIResources* mGUIResources):
-        KeyGroup(tr("Rotate"), aLabelWidth, mGUIResources), mAccessor(aAccessor), mKnocker(), mRotate(), mKeyExists(false) {
+        KeyGroup(tr("Rotation"), aLabelWidth, mGUIResources), mAccessor(aAccessor), mKnocker(), mRotate(), mKeyExists(false) {
         using util::MathUtil;
         mKnocker = new KeyKnocker(tr("Rotate"), mGUIResources);
         mKnocker->set([=]() {
@@ -102,7 +128,7 @@ namespace prop {
             mRotate->onValueUpdated = [=](double, double aNext) {
                 this->mAccessor.assignRotateAngle(MathUtil::getRadianFromDegree(aNext));
             };
-            this->addItem(tr("Angle"), mRotate);
+            this->addItem(QString(), mRotate);
         }
         setKeyEnabled(false);
         setKeyExists(false);
@@ -115,8 +141,12 @@ namespace prop {
 
     void RotateKeyGroup::setKeyExists(bool aIsExists) {
         mKeyExists = aIsExists;
-        mKnocker->setVisible(!aIsExists);
-        this->setVisible(aIsExists);
+        // The header diamond is the affordance now; the old row stays
+        // constructed but hidden so no second add control can drift.
+        mKnocker->setVisible(false);
+        // Model 2: the group is the property's row, not a frame-local key
+        // editor. The knocker above it is the "add a key here" affordance.
+        this->setVisible(true);
     }
 
     void RotateKeyGroup::setKeyValue(const core::TimeKey* aKey) {
@@ -124,6 +154,20 @@ namespace prop {
         const core::RotateKey::Data data = ((const core::RotateKey*)aKey)->data();
 
         mRotate->setValue(util::MathUtil::getDegreeFromRadian(data.rotate()));
+    }
+
+    void RotateKeyGroup::setKeyValue(const core::TimeLine& aTimeLine, int aFrame) {
+        if (const core::TimeKey* key = aTimeLine.timeKey(core::TimeKeyType_Rotate, aFrame)) {
+            setKeyValue(key);
+            return;
+        }
+        if (!aTimeLine.map(core::TimeKeyType_Rotate).isEmpty()) {
+            mRotate->setValue(aTimeLine.current().srt().rotate());
+            return;
+        }
+        if (const core::TimeKey* key = aTimeLine.defaultKey(core::TimeKeyType_Rotate)) {
+            setKeyValue(key);
+        }
     }
 
     bool RotateKeyGroup::keyExists() const { return mKeyExists; }
@@ -145,7 +189,7 @@ namespace prop {
             mScale = new Vector2DItem(this);
             mScale->setRange(core::Constant::scaleMin(), core::Constant::scaleMax());
             mScale->onValueUpdated = [=](QVector2D, QVector2D aNext) { this->mAccessor.assignScaleRate(aNext); };
-            this->addItem(tr("Rate"), mScale);
+            this->addItem(QString(), mScale);
         }
         setKeyEnabled(false);
         setKeyExists(false);
@@ -158,8 +202,12 @@ namespace prop {
 
     void ScaleKeyGroup::setKeyExists(bool aIsExists) {
         mKeyExists = aIsExists;
-        mKnocker->setVisible(!aIsExists);
-        this->setVisible(aIsExists);
+        // The header diamond is the affordance now; the old row stays
+        // constructed but hidden so no second add control can drift.
+        mKnocker->setVisible(false);
+        // Model 2: the group is the property's row, not a frame-local key
+        // editor. The knocker above it is the "add a key here" affordance.
+        this->setVisible(true);
     }
 
     void ScaleKeyGroup::setKeyValue(const core::TimeKey* aKey) {
@@ -167,6 +215,20 @@ namespace prop {
         const core::ScaleKey::Data data = ((const core::ScaleKey*)aKey)->data();
 
         mScale->setValue(data.scale());
+    }
+
+    void ScaleKeyGroup::setKeyValue(const core::TimeLine& aTimeLine, int aFrame) {
+        if (const core::TimeKey* key = aTimeLine.timeKey(core::TimeKeyType_Scale, aFrame)) {
+            setKeyValue(key);
+            return;
+        }
+        if (!aTimeLine.map(core::TimeKeyType_Scale).isEmpty()) {
+            mScale->setValue(aTimeLine.current().srt().scale());
+            return;
+        }
+        if (const core::TimeKey* key = aTimeLine.defaultKey(core::TimeKeyType_Scale)) {
+            setKeyValue(key);
+        }
     }
 
     bool ScaleKeyGroup::keyExists() const { return mKeyExists; }
@@ -188,7 +250,7 @@ namespace prop {
             mDepth = new DecimalItem(this);
             mDepth->setRange(core::Constant::transMin(), core::Constant::transMax());
             mDepth->onValueUpdated = [=](double, double aNext) { this->mAccessor.assignDepthPosition(aNext); };
-            this->addItem(tr("Position"), mDepth);
+            this->addItem(QString(), mDepth);
         }
         setKeyEnabled(false);
         setKeyExists(false);
@@ -201,8 +263,12 @@ namespace prop {
 
     void DepthKeyGroup::setKeyExists(bool aIsExists) {
         mKeyExists = aIsExists;
-        mKnocker->setVisible(!aIsExists);
-        this->setVisible(aIsExists);
+        // The header diamond is the affordance now; the old row stays
+        // constructed but hidden so no second add control can drift.
+        mKnocker->setVisible(false);
+        // Model 2: the group is the property's row, not a frame-local key
+        // editor. The knocker above it is the "add a key here" affordance.
+        this->setVisible(true);
     }
 
     void DepthKeyGroup::setKeyValue(const core::TimeKey* aKey) {
@@ -210,6 +276,20 @@ namespace prop {
         const core::DepthKey::Data& data = ((const core::DepthKey*)aKey)->data();
 
         mDepth->setValue(data.depth());
+    }
+
+    void DepthKeyGroup::setKeyValue(const core::TimeLine& aTimeLine, int aFrame) {
+        if (const core::TimeKey* key = aTimeLine.timeKey(core::TimeKeyType_Depth, aFrame)) {
+            setKeyValue(key);
+            return;
+        }
+        if (!aTimeLine.map(core::TimeKeyType_Depth).isEmpty()) {
+            mDepth->setValue(aTimeLine.current().depth());
+            return;
+        }
+        if (const core::TimeKey* key = aTimeLine.defaultKey(core::TimeKeyType_Depth)) {
+            setKeyValue(key);
+        }
     }
 
     bool DepthKeyGroup::keyExists() const { return mKeyExists; }
@@ -236,7 +316,7 @@ namespace prop {
             mOpacity->setRange(0.0f, 1.0f);
             mOpacity->box().setSingleStep(0.1);
             mOpacity->onValueUpdated = [=](double, double aNext) { this->mAccessor.assignOpacity(aNext); };
-            this->addItem(tr("Rate"), mOpacity);
+            this->addItem(QString(), mOpacity);
         }
         setKeyEnabled(false);
         setKeyExists(false);
@@ -249,8 +329,12 @@ namespace prop {
 
     void OpaKeyGroup::setKeyExists(bool aIsExists) {
         mKeyExists = aIsExists;
-        mKnocker->setVisible(!aIsExists);
-        this->setVisible(aIsExists);
+        // The header diamond is the affordance now; the old row stays
+        // constructed but hidden so no second add control can drift.
+        mKnocker->setVisible(false);
+        // Model 2: the group is the property's row, not a frame-local key
+        // editor. The knocker above it is the "add a key here" affordance.
+        this->setVisible(true);
     }
 
     void OpaKeyGroup::setKeyValue(const core::TimeKey* aKey) {
@@ -260,196 +344,21 @@ namespace prop {
         mOpacity->setValue(data.opacity());
     }
 
+    void OpaKeyGroup::setKeyValue(const core::TimeLine& aTimeLine, int aFrame) {
+        if (const core::TimeKey* key = aTimeLine.timeKey(core::TimeKeyType_Opa, aFrame)) {
+            setKeyValue(key);
+            return;
+        }
+        if (!aTimeLine.map(core::TimeKeyType_Opa).isEmpty()) {
+            mOpacity->setValue(aTimeLine.current().opa().opacity());
+            return;
+        }
+        if (const core::TimeKey* key = aTimeLine.defaultKey(core::TimeKeyType_Opa)) {
+            setKeyValue(key);
+        }
+    }
+
     bool OpaKeyGroup::keyExists() const { return mKeyExists; }
-
-    //-------------------------------------------------------------------------------------------------
-    BlurKeyGroup::BlurKeyGroup(gui::prop::Panel& aPanel, KeyAccessor& aAccessor, int aLabelWidth, GUIResources* mGUIResources):
-        KeyGroup(tr("Blur"), aLabelWidth, mGUIResources),
-        mAccessor(aAccessor),
-        mKnocker(),
-        mAmount(),
-        mBlurX(),
-        mBlurY(),
-        mAngle(),
-        mDirectional(),
-        mKeyExists(false) {
-        mKnocker = new KeyKnocker(tr("Blur"), mGUIResources);
-        mKnocker->set([=]() {
-            this->mAccessor.knockNewBlur();
-            this->makeSureExpand();
-        });
-        aPanel.addGroup(mKnocker);
-
-        {
-            aPanel.addGroup(this);
-
-            // amount (isotropic radius, the default/direct mode)
-            mAmount = new DecimalItem(this);
-            mAmount->setRange(0.0, 512.0);
-            mAmount->box().setSingleStep(0.5);
-            mAmount->onValueUpdated = [=](double, double aNext) { this->mAccessor.assignBlur((float)aNext); };
-
-            // directional: extra content-space axes + angle unlocked by a checkbox
-            mDirectional = new CheckItem(this);
-            mDirectional->onValueUpdated = [=](bool aNext) {
-                this->mAccessor.assignBlurDirectional(aNext);
-                this->updateDirectionalRows(aNext);
-            };
-
-            // blur X/Y radii and angle in the layer's content space; each edit keeps the
-            // other axes from the current key data
-            mBlurX = new DecimalItem(this);
-            mBlurX->setRange(0.0, 512.0);
-            mBlurX->box().setSingleStep(0.5);
-            mBlurX->onValueUpdated = [=](double, double) { this->assignBlurAxis(mBlurX); };
-
-            mBlurY = new DecimalItem(this);
-            mBlurY->setRange(0.0, 512.0);
-            mBlurY->box().setSingleStep(0.5);
-            mBlurY->onValueUpdated = [=](double, double) { this->assignBlurAxis(mBlurY); };
-
-            mAngle = new DecimalItem(this);
-            // unbounded like the rotate key so multi-turn spins (0 -> 3600) can be keyed
-            // and animated with easing; the rendered ellipse is 180-periodic, but the
-            // accumulated value drives the spin speed through the interpolation
-            mAngle->setRange(
-                util::MathUtil::getDegreeFromRadian(core::Constant::rotateMin()),
-                util::MathUtil::getDegreeFromRadian(core::Constant::rotateMax())
-            );
-            mAngle->box().setSingleStep(1.0);
-            mAngle->onValueUpdated = [=](double, double) { this->assignBlurAxis(mAngle); };
-
-            this->addItem(tr("Amount"), mAmount);
-            this->addItem(tr("Directional"), mDirectional);
-            this->addItem(tr("Blur X"), mBlurX);
-            this->addItem(tr("Blur Y"), mBlurY);
-            this->addItem(tr("Angle"), mAngle);
-        }
-        setKeyEnabled(false);
-        setKeyExists(false);
-        updateDirectionalRows(false);
-    }
-
-    void BlurKeyGroup::setKeyEnabled(bool aEnabled) {
-        mKnocker->setEnabled(aEnabled);
-        this->setEnabled(aEnabled);
-    }
-
-    void BlurKeyGroup::setKeyExists(bool aIsExists) {
-        mKeyExists = aIsExists;
-        mKnocker->setVisible(!aIsExists);
-        this->setVisible(aIsExists);
-    }
-
-    void BlurKeyGroup::setKeyValue(const core::TimeKey* aKey) {
-        TIMEKEY_PTR_TYPE_ASSERT(aKey, Blur);
-        const core::BlurKey::Data& data = ((const core::BlurKey*)aKey)->data();
-
-        mAmount->setValue(data.amount());
-        // setValue (not box().setChecked) so the item's change stamp stays in sync -
-        // a stale stamp swallows the user's next click (mStamp == value() == no signal)
-        mDirectional->setValue(data.isDirectional(), false);
-        mBlurX->setValue(data.blurX());
-        mBlurY->setValue(data.blurY());
-        mAngle->setValue(data.angleDeg());
-        updateDirectionalRows(data.isDirectional());
-    }
-
-    bool BlurKeyGroup::keyExists() const { return mKeyExists; }
-
-    void BlurKeyGroup::updateDirectionalRows(bool aVisible) {
-        this->setItemVisible(mBlurX, aVisible);
-        this->setItemVisible(mBlurY, aVisible);
-        this->setItemVisible(mAngle, aVisible);
-    }
-
-    void BlurKeyGroup::assignBlurAxis(DecimalItem* aEdited) {
-        const core::BlurKey::Data cur = mAccessor.blurData();
-        float blurX = cur.blurX();
-        float blurY = cur.blurY();
-        float angle = cur.angleDeg();
-        if (aEdited == mBlurX) {
-            blurX = (float)mBlurX->value();
-        } else if (aEdited == mBlurY) {
-            blurY = (float)mBlurY->value();
-        } else {
-            angle = (float)mAngle->value();
-        }
-        mAccessor.assignBlurEllipse(blurX, blurY, angle);
-    }
-
-    //-------------------------------------------------------------------------------------------------
-    HSVKeyGroup::HSVKeyGroup(gui::prop::Panel& aPanel, KeyAccessor& aAccessor, int aLabelWidth, GUIResources* mGUIResources):
-        KeyGroup(tr("HSV"), aLabelWidth, mGUIResources),
-        mAccessor(aAccessor),
-        mKnocker(),
-        mHue(),
-        mSaturation(),
-        mValue(),
-        mKeyExists(false) {
-        mKnocker = new KeyKnocker(tr("HSV"), mGUIResources);
-        mKnocker->set([=]() {
-            this->mAccessor.knockNewHSV();
-            this->makeSureExpand();
-        });
-        aPanel.addGroup(mKnocker);
-
-        {
-            aPanel.addGroup(this);
-
-            // hue
-            mHue = new IntegerItem(this);
-            mHue->setRange(0, 360);
-            mHue->box().setSingleStep(1);
-            mHue->onValueUpdated = [=](int, int aNext) { this->mAccessor.assignHSV(aNext, "hue"); };
-
-            // saturation
-            mSaturation = new IntegerItem(this);
-            mSaturation->setRange(0, 200);
-            mSaturation->box().setSingleStep(1);
-            mSaturation->onValueUpdated = [=](int, int aNext) { this->mAccessor.assignHSV(aNext, "sat"); };
-
-            // value
-            mValue = new IntegerItem(this);
-            mValue->setRange(0, 200);
-            mValue->box().setSingleStep(1);
-            mValue->onValueUpdated = [=](int, int aNext) { this->mAccessor.assignHSV(aNext, "val"); };
-
-            // absolute
-            mAbsolute = new CheckItem(this);
-            mAbsolute->onValueUpdated = [=](bool aNext) { this->mAccessor.assignHSV(int(aNext), "abs"); };
-
-            this->addItem(tr("Hue"), mHue);
-            this->addItem(tr("Saturation"), mSaturation);
-            this->addItem(tr("Value"), mValue);
-            this->addItem(tr("Absolute color"), mAbsolute);
-        }
-        setKeyEnabled(false);
-        setKeyExists(false);
-    }
-
-    void HSVKeyGroup::setKeyEnabled(bool aEnabled) {
-        mKnocker->setEnabled(aEnabled);
-        this->setEnabled(aEnabled);
-    }
-
-    void HSVKeyGroup::setKeyExists(bool aIsExists) {
-        mKeyExists = aIsExists;
-        mKnocker->setVisible(!aIsExists);
-        this->setVisible(aIsExists);
-    }
-
-    void HSVKeyGroup::setKeyValue(const core::TimeKey* aKey) {
-        TIMEKEY_PTR_TYPE_ASSERT(aKey, HSV);
-        const core::HSVKey::Data& data = ((const core::HSVKey*)aKey)->data();
-
-        mHue->setValue(data.hsv()[0]);
-        mSaturation->setValue(data.hsv()[1]);
-        mValue->setValue(data.hsv()[2]);
-        mAbsolute->setValue(bool(data.hsv()[3]), false);
-    }
-
-    bool HSVKeyGroup::keyExists() const { return mKeyExists; }
 
     //-------------------------------------------------------------------------------------------------
     PoseKeyGroup::PoseKeyGroup(gui::prop::Panel& aPanel, KeyAccessor& aAccessor, int aLabelWidth, GUIResources* mGUIResources):
@@ -475,8 +384,8 @@ namespace prop {
 
     void PoseKeyGroup::setKeyExists(bool aIsExists, bool aIsKnockable) {
         mKeyExists = aIsExists;
-        mKnocker->setVisible(!aIsExists && aIsKnockable);
-        this->setVisible(aIsExists);
+        mKnocker->setVisible(false);
+        this->setVisible(aIsExists || aIsKnockable);
     }
 
     void PoseKeyGroup::setKeyValue(const core::TimeKey* aKey) {
@@ -512,8 +421,8 @@ namespace prop {
 
     void FFDKeyGroup::setKeyExists(bool aIsExists, bool aIsKnockable) {
         mKeyExists = aIsExists;
-        mKnocker->setVisible(!aIsExists && aIsKnockable);
-        this->setVisible(aIsExists);
+        mKnocker->setVisible(false);
+        this->setVisible(aIsExists || aIsKnockable);
     }
 
     void FFDKeyGroup::setKeyValue(const core::TimeKey* aKey) {
@@ -554,7 +463,9 @@ namespace prop {
                     this->mAccessor.assignImageResource(*resNode);
                 }
             };
-            this->addItem(tr("Asset"), mBrowse);
+            // The key type's primary field lives on its header row, exactly like
+            // Position: Image shows Asset inline, then Center and Mesh cell below.
+            this->addItem(QString(), mBrowse);
 
             // offset
             mOffset = new Vector2DItem(this);
@@ -566,7 +477,8 @@ namespace prop {
             mCellSize = new IntegerItem(this);
             mCellSize->setRange(core::Constant::imageCellSizeMin(), core::Constant::imageCellSizeMax());
             mCellSize->onValueUpdated = [=](int, int aNext) { this->mAccessor.assignImageCellSize(aNext); };
-            this->addItem(tr("Cell size"), mCellSize);
+            mCellSize->box().setToolTip(tr("Pixel size of each image mesh cell."));
+            this->addItem(tr("Mesh cell"), mCellSize);
         }
         setKeyEnabled(false);
         setKeyExists(false, false);
@@ -586,8 +498,8 @@ namespace prop {
 
     void ImageKeyGroup::setKeyExists(bool aIsExists, bool aIsKnockable) {
         mKeyExists = aIsExists;
-        mKnocker->setVisible(!aIsExists && aIsKnockable);
-        this->setVisible(aIsExists);
+        mKnocker->setVisible(false);
+        this->setVisible(aIsExists || aIsKnockable);
     }
 
     void ImageKeyGroup::setKeyValue(const core::TimeKey* aKey) {
@@ -598,13 +510,29 @@ namespace prop {
         mCellSize->setValue(data.gridMesh().cellSize());
     }
 
+    void ImageKeyGroup::setKeyValue(const core::TimeLine& aTimeLine, int aFrame) {
+        if (const core::TimeKey* key = aTimeLine.timeKey(core::TimeKeyType_Image, aFrame)) {
+            setKeyValue(key);
+            return;
+        }
+        if (!aTimeLine.map(core::TimeKeyType_Image).isEmpty()) {
+            if (const core::TimeKey* key = aTimeLine.current().areaImageKey()) {
+                setKeyValue(key);
+                return;
+            }
+        }
+        if (const core::TimeKey* key = aTimeLine.defaultKey(core::TimeKeyType_Image)) {
+            setKeyValue(key);
+        }
+    }
+
     bool ImageKeyGroup::keyExists() const { return mKeyExists; }
 
     //-------------------------------------------------------------------------------------------------
     CurrentKeyPanel::CurrentKeyPanel(
         ViaPoint& aViaPoint, core::Project& aProject, QWidget* aParent, GUIResources* mGUIResources
     ):
-        Panel(tr("Current Keys"), aParent, mGUIResources),
+        Panel(tr("Properties"), aParent, mGUIResources),
         mViaPoint(aViaPoint),
         mGUIResources(mGUIResources),
         mProject(aProject),
@@ -616,13 +544,24 @@ namespace prop {
         mScalePanel(),
         mDepthPanel(),
         mOpaPanel(),
-        mHSVPanel(),
-        mBlurPanel(),
+        mFilterPanel(),
         mPosePanel(),
         mFFDPanel(),
-        mImagePanel() {
+        mImagePanel(),
+        mMoveKey(nullptr),
+        mRotateKey(nullptr),
+        mScaleKey(nullptr),
+        mDepthKey(nullptr),
+        mOpaKey(nullptr),
+        mPoseKey(nullptr),
+        mFFDKey(nullptr),
+        mImageKey(nullptr) {
         mKeyAccessor.setProject(&aProject);
-        mLabelWidth = this->fontMetrics().boundingRect(tr("Max text width")).width();
+        // The dock already says "Properties"; a second header would repeat it.
+        this->setHeaderVisible(false);
+        // One fixed label column for every property row. Measuring a sample string
+        // made each group's title width differ, which misaligned every key dot.
+        mLabelWidth = 72;
 
         build();
         this->hide();
@@ -631,8 +570,10 @@ namespace prop {
     void CurrentKeyPanel::setTarget(core::ObjectNode* aTarget) {
         mTarget = aTarget;
         mKeyAccessor.setTarget(aTarget);
+        if (mFilterPanel)
+            mFilterPanel->setTarget(aTarget);
 
-        if (mTarget) {
+        if (mTarget && mTarget->timeLine()) {
             this->show();
         } else {
             this->hide();
@@ -653,12 +594,16 @@ namespace prop {
     void CurrentKeyPanel::updateKey() {
         updateKeyExists();
         updateKeyValue();
+        if (mFilterPanel)
+            mFilterPanel->updateKey();
     }
 
     void CurrentKeyPanel::updateFrame() {
         if (this->isEnabled()) {
             updateKeyExists();
             updateKeyValue();
+            if (mFilterPanel)
+                mFilterPanel->updateFrame();
         }
     }
 
@@ -670,11 +615,56 @@ namespace prop {
         mScalePanel.reset(new ScaleKeyGroup(*this, mKeyAccessor, mLabelWidth, mGUIResources));
         mDepthPanel.reset(new DepthKeyGroup(*this, mKeyAccessor, mLabelWidth, mGUIResources));
         mOpaPanel.reset(new OpaKeyGroup(*this, mKeyAccessor, mLabelWidth, mGUIResources));
-        mHSVPanel.reset(new HSVKeyGroup(*this, mKeyAccessor, mLabelWidth, mGUIResources));
-        mBlurPanel.reset(new BlurKeyGroup(*this, mKeyAccessor, mLabelWidth, mGUIResources));
+        mImagePanel.reset(new ImageKeyGroup(*this, mKeyAccessor, mLabelWidth, mViaPoint, mGUIResources));
         mPosePanel.reset(new PoseKeyGroup(*this, mKeyAccessor, mLabelWidth, mGUIResources));
         mFFDPanel.reset(new FFDKeyGroup(*this, mKeyAccessor, mLabelWidth, mGUIResources));
-        mImagePanel.reset(new ImageKeyGroup(*this, mKeyAccessor, mLabelWidth, mViaPoint, mGUIResources));
+        mFilterPanel.reset(new FilterStackPanel(mProject, this, mGUIResources));
+        this->addGroup(mFilterPanel.data());
+
+        // These are property rows, not sections. A single Angle/Rate/Position
+        // under its own collapsible header was a second label and a pointless
+        // disclosure; the header now IS the property label and stays open.
+        for (KeyGroup* group : { (KeyGroup*)mMovePanel.data(), (KeyGroup*)mRotatePanel.data(),
+                                 (KeyGroup*)mScalePanel.data(), (KeyGroup*)mDepthPanel.data(),
+                                 (KeyGroup*)mOpaPanel.data(), (KeyGroup*)mPosePanel.data(),
+                                 (KeyGroup*)mFFDPanel.data(), (KeyGroup*)mImagePanel.data() }) {
+            group->setHeaderCollapsible(false);
+        }
+        // Single-value rows keep the value on the header line.
+        mRotatePanel->inlineFields();
+        mScalePanel->inlineFields();
+        mDepthPanel->inlineFields();
+        mOpaPanel->inlineFields();
+
+        auto addKey = [this](KeyGroup* aGroup, const QString& aName, core::TimeKeyType aType,
+                             const std::function<void()>& aKnock) {
+            auto* button = new KeyStateButton(aName, aType, this);
+            aGroup->addHeaderAction(button);
+            this->connect(button, &QToolButton::clicked, this, [this, button, aType, aKnock]() {
+                if (button->state() == KeyStateButton::State::Keyed)
+                    mKeyAccessor.removeKey(aType);
+                else
+                    aKnock();
+            });
+            return button;
+        };
+        mMoveKey = addKey(mMovePanel.data(), tr("Position"), core::TimeKeyType_Move,
+                          [this]() { mKeyAccessor.knockNewMove(); });
+        mRotateKey = addKey(mRotatePanel.data(), tr("Rotation"), core::TimeKeyType_Rotate,
+                            [this]() { mKeyAccessor.knockNewRotate(); });
+        mScaleKey = addKey(mScalePanel.data(), tr("Scale"), core::TimeKeyType_Scale,
+                           [this]() { mKeyAccessor.knockNewScale(); });
+        mDepthKey = addKey(mDepthPanel.data(), tr("Depth"), core::TimeKeyType_Depth,
+                           [this]() { mKeyAccessor.knockNewDepth(); });
+        mOpaKey = addKey(mOpaPanel.data(), tr("Opacity"), core::TimeKeyType_Opa,
+                         [this]() { mKeyAccessor.knockNewOpacity(); });
+        mPoseKey = addKey(mPosePanel.data(), tr("Pose"), core::TimeKeyType_Pose,
+                          [this]() { mKeyAccessor.knockNewPose(); });
+        mFFDKey = addKey(mFFDPanel.data(), tr("FFD"), core::TimeKeyType_FFD,
+                         [this]() { mKeyAccessor.knockNewFFD(); });
+        mImageKey = addKey(mImagePanel.data(), tr("Image"), core::TimeKeyType_Image,
+                           [this]() { mImagePanel->knockNewKey(); });
+
         this->adjustSize();
         this->addStretch();
     }
@@ -687,8 +677,7 @@ namespace prop {
         mScalePanel->setKeyEnabled(enabled);
         mDepthPanel->setKeyEnabled(enabled);
         mOpaPanel->setKeyEnabled(enabled);
-        mHSVPanel->setKeyEnabled(enabled);
-        mBlurPanel->setKeyEnabled(enabled);
+        mFilterPanel->setEnabled(enabled);
         mPosePanel->setKeyEnabled(enabled);
         mFFDPanel->setKeyEnabled(enabled);
         mImagePanel->setKeyEnabled(enabled);
@@ -705,11 +694,24 @@ namespace prop {
             mScalePanel->setKeyExists(timeLine.hasTimeKey(core::TimeKeyType_Scale, frame));
             mDepthPanel->setKeyExists(timeLine.hasTimeKey(core::TimeKeyType_Depth, frame));
             mOpaPanel->setKeyExists(timeLine.hasTimeKey(core::TimeKeyType_Opa, frame));
-            mHSVPanel->setKeyExists(timeLine.hasTimeKey(core::TimeKeyType_HSV, frame));
-            mBlurPanel->setKeyExists(timeLine.hasTimeKey(core::TimeKeyType_Blur, frame));
             mPosePanel->setKeyExists(timeLine.hasTimeKey(core::TimeKeyType_Pose, frame), hasAreaBone);
             mFFDPanel->setKeyExists(timeLine.hasTimeKey(core::TimeKeyType_FFD, frame), hasAnyMesh);
             mImagePanel->setKeyExists(timeLine.hasTimeKey(core::TimeKeyType_Image, frame), hasAnyImage);
+
+            auto state = [&timeLine, frame](core::TimeKeyType aType) {
+                if (timeLine.map(aType).isEmpty())
+                    return KeyStateButton::State::Static;
+                return timeLine.hasTimeKey(aType, frame) ? KeyStateButton::State::Keyed
+                                                         : KeyStateButton::State::Animated;
+            };
+            mMoveKey->setState(state(core::TimeKeyType_Move));
+            mRotateKey->setState(state(core::TimeKeyType_Rotate));
+            mScaleKey->setState(state(core::TimeKeyType_Scale));
+            mDepthKey->setState(state(core::TimeKeyType_Depth));
+            mOpaKey->setState(state(core::TimeKeyType_Opa));
+            mPoseKey->setState(state(core::TimeKeyType_Pose));
+            mFFDKey->setState(state(core::TimeKeyType_FFD));
+            mImageKey->setState(state(core::TimeKeyType_Image));
         }
     }
 
@@ -718,35 +720,22 @@ namespace prop {
             auto& timeLine = *mTarget->timeLine();
             const int frame = mProject.animator().currentFrame().get();
 
-            if (mMovePanel->keyExists()) {
-                mMovePanel->setKeyValue(timeLine.timeKey(core::TimeKeyType_Move, frame));
-            }
-            if (mRotatePanel->keyExists()) {
-                mRotatePanel->setKeyValue(timeLine.timeKey(core::TimeKeyType_Rotate, frame));
-            }
-            if (mScalePanel->keyExists()) {
-                mScalePanel->setKeyValue(timeLine.timeKey(core::TimeKeyType_Scale, frame));
-            }
-            if (mDepthPanel->keyExists()) {
-                mDepthPanel->setKeyValue(timeLine.timeKey(core::TimeKeyType_Depth, frame));
-            }
-            if (mOpaPanel->keyExists()) {
-                mOpaPanel->setKeyValue(timeLine.timeKey(core::TimeKeyType_Opa, frame));
-            }
-            if (mHSVPanel->keyExists()) {
-                mHSVPanel->setKeyValue(timeLine.timeKey(core::TimeKeyType_HSV, frame));
-            }
-            if (mBlurPanel->keyExists()) {
-                mBlurPanel->setKeyValue(timeLine.timeKey(core::TimeKeyType_Blur, frame));
-            }
+            // One value path for every state: an exact key, the evaluated value
+            // between keys, or the default key of a static property.
+            mMovePanel->setKeyValue(timeLine, frame);
+            mRotatePanel->setKeyValue(timeLine, frame);
+            mScalePanel->setKeyValue(timeLine, frame);
+            mDepthPanel->setKeyValue(timeLine, frame);
+            mOpaPanel->setKeyValue(timeLine, frame);
+            mImagePanel->setKeyValue(timeLine, frame);
+
+            // Structural keys have no field of their own; only their key state
+            // and their knocker matter here.
             if (mPosePanel->keyExists()) {
                 mPosePanel->setKeyValue(timeLine.timeKey(core::TimeKeyType_Pose, frame));
             }
             if (mFFDPanel->keyExists()) {
                 mFFDPanel->setKeyValue(timeLine.timeKey(core::TimeKeyType_FFD, frame));
-            }
-            if (mImagePanel->keyExists()) {
-                mImagePanel->setKeyValue(timeLine.timeKey(core::TimeKeyType_Image, frame));
             }
         }
     }

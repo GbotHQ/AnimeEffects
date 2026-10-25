@@ -342,6 +342,7 @@ namespace prop {
         QVector2D value() const;
         void setValue(QVector2D aValue);
         void setRange(float aMin, float aMax);
+        QDoubleSpinBox& box(int aIndex) { return *mBox[aIndex]; }
 
         virtual QLayout* itemLayout() { return mLayout; }
         virtual void setItemEnabled(bool aEnable);
@@ -365,18 +366,18 @@ namespace prop {
 
         BrowseItem(QWidget* aParent);
 
-        QString value() const { return mLine->text(); }
+        QString value() const { return mName->text(); }
         void setValue(const QString& aValue);
 
-        virtual QLayout* itemLayout() { return mLayout; }
+        virtual QWidget* itemWidget() { return mField; }
         virtual void setItemEnabled(bool aEnable);
         virtual void setItemVisible(bool aVisible);
 
         UpdateType onButtonPushed;
 
     private:
-        QHBoxLayout* mLayout;
-        QLineEdit* mLine;
+        QWidget* mField;
+        QPushButton* mName;
         QPushButton* mButton;
     };
 

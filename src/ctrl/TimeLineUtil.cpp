@@ -1,10 +1,12 @@
 #include <QDebug>
 #include <QSet>
 #include "cmnd/BasicCommands.h"
+#include "util/Easing.h"
 #include "cmnd/ScopedMacro.h"
 #include "core/TimeKeyType.h"
 #include "core/ImageKeyUpdater.h"
 #include "core/BlurKey.h"
+#include "core/TimeKeyExpans.h"
 #include "core/FFDKeyUpdater.h"
 #include "core/ResourceUpdatingWorkspace.h"
 #include "ctrl/TimeLineUtil.h"
@@ -897,6 +899,141 @@ namespace TimeLineUtil {
 
     void pushNewImageKey(Project& aProject, ObjectNode& aTarget, int aFrame, ImageKey* aKey) {
         pushNewKey<ImageKey, TimeKeyType_Image>(aProject, aTarget, aFrame, aKey, CmndName::tr("Add new image key"));
+    }
+
+    //-------------------------------------------------------------------------------------------------
+    namespace {
+        void pushFilterStackCommand(Project& aProject, TimeLine& aLine, const QVector<FilterEntry>& aNext) {
+            aProject.commandStack().push(
+                new cmnd::ModifiableAssign<QVector<FilterEntry>>(&aLine.filterEntriesRef(), aNext)
+            );
+        }
+
+        QVector<FilterEntry> filterStackWithout(const QVector<FilterEntry>& aStack, TimeKeyType aType) {
+            QVector<FilterEntry> next;
+            for (const FilterEntry& entry : aStack) {
+                if (entry.type != aType)
+                    next.append(entry);
+            }
+            return next;
+        }
+
+
+    } // namespace
+
+    void addFilter(Project& aProject, ObjectNode& aTarget, TimeKeyType aType) {
+        if (!isFilterType(aType) || !aTarget.timeLine())
+            return;
+        TimeLine& line = *aTarget.timeLine();
+        QVector<FilterEntry> next = line.filters();
+        for (const FilterEntry& entry : next) {
+            if (entry.type == aType)
+                return; // already in the stack
+        }
+        next.append(FilterEntry(aType, true));
+
+        cmnd::ScopedMacro macro(aProject.commandStack(), CmndName::tr("Add filter"));
+        auto* notifier = new Notifier(aProject);
+        notifier->event().setType(TimeLineEvent::Type_FilterStack);
+        macro.grabListener(notifier);
+        pushFilterStackCommand(aProject, line, next);
+
+        // A filter starts STATIC: values live on its default key, the row's key
+        // dot is hollow, and the timeline gains no keyframe until the dot is
+        // pressed. This is the same model 2 rule the inspector's properties use.
+        // A fresh filter starts at its NEUTRAL default, not at a stale default
+        // left by an earlier add/remove cycle. The default key is structural
+        // (not part of the add command's undo); the visible stack row and the
+        // explicit keys are what the command owns.
+        const util::Easing::Param easing = util::Easing::defaultParam();
+        if (aType == TimeKeyType_HSV) {
+            auto* key = new HSVKey();
+            for (int c = 0; c < HSVKey::kComponents; ++c)
+                key->data().easing(c) = easing;
+            line.grabDefaultKey(aType, key);
+        } else {
+            auto* key = new BlurKey();
+            for (int c = 0; c < BlurKey::kComponents; ++c)
+                key->data().easing(c) = easing;
+            line.grabDefaultKey(aType, key);
+        }
+    }
+
+    void removeFilter(Project& aProject, ObjectNode& aTarget, TimeKeyType aType) {
+        if (!isFilterType(aType) || !aTarget.timeLine())
+            return;
+        TimeLine& line = *aTarget.timeLine();
+        const QVector<FilterEntry> next = filterStackWithout(line.filters(), aType);
+
+        // The stack entry goes first, so an undo restores the keys (the removers'
+        // undo) and then the entry - either order is value-replayable, but this is
+        // the order the UI saw: the row disappears, then the keys are gone.
+        cmnd::ScopedMacro macro(aProject.commandStack(), CmndName::tr("Remove filter"));
+        auto* notifier = new Notifier(aProject);
+        const QVector<int> frames = line.map(aType).keys();
+        if (frames.isEmpty()) {
+            notifier->event().setType(TimeLineEvent::Type_FilterStack);
+        } else {
+            notifier->event().setType(TimeLineEvent::Type_RemoveKey);
+            for (const int frame : frames)
+                notifier->event().pushTarget(aTarget, aType, frame);
+        }
+        macro.grabListener(notifier);
+        pushFilterStackCommand(aProject, line, next);
+        for (const int frame : frames)
+            aProject.commandStack().push(line.createRemover(aType, frame, true));
+    }
+
+    void moveFilter(Project& aProject, ObjectNode& aTarget, TimeKeyType aType, int aIndex) {
+        if (!isFilterType(aType) || !aTarget.timeLine())
+            return;
+        TimeLine& line = *aTarget.timeLine();
+        QVector<FilterEntry> next = line.filters();
+        int from = -1;
+        for (int i = 0; i < next.size(); ++i) {
+            if (next.at(i).type == aType) {
+                from = i;
+                break;
+            }
+        }
+        if (from < 0)
+            return;
+        const int to = qBound(0, aIndex, next.size() - 1);
+        if (from == to)
+            return;
+        const FilterEntry entry = next.takeAt(from);
+        next.insert(to, entry);
+
+        cmnd::ScopedMacro macro(aProject.commandStack(), CmndName::tr("Reorder filters"));
+        auto* notifier = new Notifier(aProject);
+        notifier->event().setType(TimeLineEvent::Type_FilterStack);
+        macro.grabListener(notifier);
+        pushFilterStackCommand(aProject, line, next);
+    }
+
+    void setFilterEnabled(Project& aProject, ObjectNode& aTarget, TimeKeyType aType, bool aEnabled) {
+        if (!isFilterType(aType) || !aTarget.timeLine())
+            return;
+        TimeLine& line = *aTarget.timeLine();
+        QVector<FilterEntry> next = line.filters();
+        bool found = false;
+        for (FilterEntry& entry : next) {
+            if (entry.type == aType) {
+                if (entry.enabled == aEnabled)
+                    return;
+                entry.enabled = aEnabled;
+                found = true;
+                break;
+            }
+        }
+        if (!found)
+            return;
+
+        cmnd::ScopedMacro macro(aProject.commandStack(), CmndName::tr("Toggle filter"));
+        auto* notifier = new Notifier(aProject);
+        notifier->event().setType(TimeLineEvent::Type_FilterStack);
+        macro.grabListener(notifier);
+        pushFilterStackCommand(aProject, line, next);
     }
 
 } // namespace TimeLineUtil
