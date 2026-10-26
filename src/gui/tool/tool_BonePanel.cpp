@@ -71,6 +71,7 @@ namespace tool {
         curPos.setY(mTypeGroup->updateGeometry(curPos, itemWidth) + curPos.y() + 5);
 
         if (mParam.mode == ctrl::BoneEditMode_PaintInfl || mParam.mode == ctrl::BoneEditMode_EraseInfl) {
+            // the brush block answers an ABSOLUTE bottom edge, so a bare gap
             curPos.setY(mBrush->updateGeometry(curPos, itemWidth) + 5);
         }
 

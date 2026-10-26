@@ -111,17 +111,27 @@ namespace tool {
         const int itemWidth = aWidth;
         QPoint curPos(0, 0);
 
-        // SliderItem and CheckBoxItem both answer the BOTTOM edge of their row;
-        // each is asked through its own class.
+        // Two different conventions meet here, so they are named:
+        // a ROW ITEM answers the EXTENT of its row (SliderItem: label+track, 32px;
+        // CheckBoxItem: its sizeHint), because it lays its children out from the
+        // aPos it was handed and never knows where that is in the column. The
+        // PANEL therefore adds its own offset itself - `+ curPos.y()` - and only
+        // then moves down by the gap; without it every row would land at roughly
+        // the previous row's own height and the block would report ~22px for
+        // ~190px of content, which is what stacked FFD/Filter-mask rows on top of
+        // each other.
+        // The value this function RETURNS is the opposite: an ABSOLUTE bottom edge
+        // in the caller's coordinates, which is why the callers chain it with a
+        // bare `+ 5` and must not add their own y again.
         const auto placeSlider = [&](QScopedPointer<SliderItem>& aItem) {
             if (!aItem)
                 return;
-            curPos.setY(aItem->updateGeometry(curPos, itemWidth) + kItemGap);
+            curPos.setY(aItem->updateGeometry(curPos, itemWidth) + curPos.y() + kItemGap);
         };
         const auto placeCheck = [&](QScopedPointer<CheckBoxItem>& aItem) {
             if (!aItem)
                 return;
-            curPos.setY(aItem->updateGeometry(curPos, itemWidth) + kItemGap);
+            curPos.setY(aItem->updateGeometry(curPos, itemWidth) + curPos.y() + kItemGap);
         };
 
         placeSlider(mSize);
@@ -133,7 +143,9 @@ namespace tool {
 
         this->setGeometry(aPos.x(), aPos.y(), aWidth, curPos.y());
 
-        // the callers chain with `+ 5` after this, like every other panel
+        // An ABSOLUTE bottom edge (this widget's own top plus its content), so the
+        // callers chain it with a bare `+ 5`, like every other panel here. The row
+        // items above answer extents, not edges - see the note there.
         return aPos.y() + curPos.y();
     }
 

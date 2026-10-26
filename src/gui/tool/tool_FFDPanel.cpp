@@ -79,6 +79,8 @@ namespace tool {
         // type
         curPos.setY(mTypeGroup->updateGeometry(curPos, itemWidth) + curPos.y() + 5);
 
+        // the brush block answers an ABSOLUTE bottom edge, the blur rows answer an
+        // extent: hence the bare gap on the first and `+ curPos.y()` on the second
         if (mParam.type == ctrl::FFDParam::Type_Pencil || mParam.type == ctrl::FFDParam::Type_Eraser) {
             curPos.setY(mBrush->updateGeometry(curPos, itemWidth) + 5);
         }

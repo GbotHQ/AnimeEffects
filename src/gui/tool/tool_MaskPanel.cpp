@@ -125,9 +125,20 @@ namespace tool {
         curPos.setY(mLaneGroup->updateGeometry(curPos, itemWidth) + curPos.y() + 5);
         curPos.setY(mChannelGroup->updateGeometry(curPos, itemWidth) + curPos.y() + 5);
         curPos.setY(mValue->updateGeometry(curPos, itemWidth) + curPos.y() + 5);
+        // mBrush is a BrushPanel, not a row item: it answers an ABSOLUTE bottom
+        // edge, so it is chained with a bare gap and adding curPos.y() would
+        // double-count it.
         curPos.setY(mBrush->updateGeometry(curPos, itemWidth) + 5);
-        curPos.setY(mClear->geometry().height() + curPos.y() + 5);
-        mClear->setGeometry(kItemLeft, curPos.y() - mClear->geometry().height() - 5, itemWidth, 24);
+
+        // Clear is the last row and the only hand-placed widget here, so its row
+        // height comes from the height it is given below, never from a read-back
+        // geometry: on the first pass that is QPushButton's default 100x30 and on
+        // later passes the 24 we set, which shifted the card by 6px between passes
+        // and left the first frame with a floating button. QSS gives this button no
+        // height, so the constant is ours (kButtonSize, the same 24 as the rows
+        // above).
+        mClear->setGeometry(kItemLeft, curPos.y(), itemWidth, kButtonSize);
+        curPos.setY(curPos.y() + kButtonSize + 5);
 
         const int b = this->contentsMargins().bottom();
         this->setGeometry(aPos.x(), aPos.y(), aWidth, curPos.y() + b);

@@ -75,6 +75,7 @@ namespace tool {
             // weight
             curPos.setY(mDIWeight->updateGeometry(curPos, itemWidth) + curPos.y() + 5);
         } else if (mParam.mode == ctrl::PoseEditMode_Erase) {
+            // the brush block answers an ABSOLUTE bottom edge, so a bare gap
             curPos.setY(mBrush->updateGeometry(curPos, itemWidth) + 5);
         }
 
