@@ -70,15 +70,12 @@ public:
     void renderComposite(const RenderInfo& aInfo, const TimeCacheAccessor&);
     void renderClippees(const RenderInfo& aInfo, const TimeCacheAccessor&);
     bool isClipper() const;
-    bool hasActiveBlurKey(const TimeInfo& aTime) const;
-    // A wave is active when its blended strength can move a pixel. Unlike blur
-    // (whose gate additionally requires an explicit key), a wave applies from
-    // its DEFAULT key too: the value that plays is the blended one, so a filter
-    // added and left static already deforms.
-    bool hasActiveWave(const TimeCacheAccessor& aAccessor) const;
-    // an HSV adjustment with a painted amount mask (it becomes a stack pass)
-    bool hasActiveHsvMask(const TimeInfo& aTime) const;
-    bool isCompositeLayer(const TimeInfo& aTime, const TimeCacheAccessor& aAccessor) const;
+    // an HSV adjustment with a painted amount mask, while its BLENDED value is live
+    // (it becomes a stack pass, which is what isolates the layer)
+    bool hasActiveHsvMask(const TimeCacheAccessor& aAccessor) const;
+    // "an enabled filter whose BLENDED value is above its epsilon" - see
+    // core/FilterActivity.h for why the blended value, not the key map, decides
+    bool isCompositeLayer(const TimeCacheAccessor& aAccessor) const;
     // this node is the Mask tool's target: it isolates and draws the field preview
     bool isPreviewTarget(const RenderInfo& aInfo) const;
     

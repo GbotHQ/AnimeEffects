@@ -16,7 +16,14 @@
 //       the layer shader draws with (image origin at the layer's on-screen
 //       corner, y inverted into the framebuffer, rotation included), and its
 //       inverse round-trips - which is what keeps the wave glued to the artwork
-//       instead of to the screen.
+//       instead of to the screen;
+//   [6] the 0.19 painted-mask record: both fields, their content rectangles and
+//       their neutral starts survive TimeLine serialize -> deserialize;
+//   [7] filter ACTIVITY: a value living on a lane's DEFAULT key (no explicit key
+//       at all) is live, editing it back to the identity makes it not live, and
+//       a key at a later frame is live BEFORE that frame too - the renderer tests
+//       the BLENDED value, not the key map (core/FilterActivity.h), so a static
+//       blur/HSV renders exactly like a static wave.
 //
 // Headless: no widgets, no GL context. The mapping is pure matrix math and the
 // blend is the production core::TimeKeyBlender.
@@ -38,9 +45,14 @@
 #include "core/FormatVersion.h"
 #include "core/KeyEasing.h"
 #include "core/Serializer.h"
+#include "core/BlurKey.h"
+#include "core/FilterActivity.h"
+#include "core/FilterMask.h"
+#include "core/HsvKey.h"
 #include "core/TimeKeyBlender.h"
 #include "core/TimeKeyExpans.h"
-#include "core/FilterMask.h"
+#include "core/TimeCacheAccessor.h"
+#include "core/TimeCacheLock.h"
 #include "core/TimeLine.h"
 #include "core/WaveKey.h"
 #include "core/WavePass.h"
@@ -565,6 +577,166 @@ int main(int argc, char** argv) {
 
         if (failures == before)
             std::printf("[6] the 0.19 painted-mask record round-trips\n");
+    }
+
+    // ------------------------------ [7] a filter's DEFAULT key makes it live
+    //
+    // The reported defect this gates: a Blur/HSV added from the stack and edited
+    // BEFORE any keyframe is written to the lane's DEFAULT key (prop_KeyAccessor's
+    // editFrame picks TimeLine::kDefaultKeyIndex while the map is empty), and the
+    // renderer used to require "an explicit key at or before this frame" - so the
+    // value the panel showed and playback blended was never rendered, while Wave
+    // (which already read the blended value) applied. The gate is now the
+    // predicate pair the nodes use: the stack entry is enabled AND the BLENDED
+    // value is above the type's epsilon.
+    {
+        const int before = failures;
+        core::TimeInfo info;
+        info.fps = 60;
+        info.frameRange = util::Range(0, 10);
+        info.loop = false;
+        info.frame = core::Frame(0);
+
+        // The renderer's read order: the accessor blends the frame (it re-blends
+        // only when the master cache is missing, so it is cleared first - the same
+        // invalidation an edit notification causes) and the predicate then reads
+        // that blended value.
+        const auto readFrame = [](core::TestNode& aNode, const core::TimeInfo& aTime) -> const core::TimeKeyExpans& {
+            aNode.timeLine()->current().clearMasterCache();
+            core::TimeCacheLock lock;
+            core::TimeCacheAccessor accessor(aNode, lock, aTime, false);
+            return aNode.timeLine()->current();
+        };
+        const auto live = [](const core::TimeLine& aLine, const core::TimeKeyExpans& aExpans, core::TimeKeyType aType) {
+            return aLine.filterEnabled(aType) && core::filterValueIsActive(aType, aExpans);
+        };
+
+        // An edit with no explicit key, for each type: the value is on the default
+        // key, the map is empty, and the filter must still be live.
+        {
+            core::TestNode node;
+            core::TimeLine& line = *node.timeLine();
+            QVector<core::FilterEntry> entries;
+            entries.append(core::FilterEntry(core::TimeKeyType_Blur, true));
+            entries.append(core::FilterEntry(core::TimeKeyType_HSV, true));
+            line.setFilterEntries(entries);
+
+            auto* blur = new core::BlurKey();
+            blur->setAmount(8.0f); // the edit the panel writes
+            line.grabDefaultKey(core::TimeKeyType_Blur, blur);
+            auto* hsv = new core::HSVKey();
+            hsv->setHue(40); // additive hue 40: not the identity
+            line.grabDefaultKey(core::TimeKeyType_HSV, hsv);
+
+            const core::TimeKeyExpans& expans = readFrame(node, info);
+            std::printf(
+                "[7] default-key edits at frame 0: blur keys=%d radius=%.3f, hsv keys=%d hue=%d\n",
+                int(line.map(core::TimeKeyType_Blur).size()), expans.maxBlurRadius(),
+                int(line.map(core::TimeKeyType_HSV).size()), expans.hsv().hsv().at(0)
+            );
+            check(line.map(core::TimeKeyType_Blur).isEmpty(), "an edit before any key adds no explicit blur key");
+            check(line.map(core::TimeKeyType_HSV).isEmpty(), "an edit before any key adds no explicit HSV key");
+            check(
+                core::filterValueIsActive(core::TimeKeyType_Blur, expans),
+                "a static blur (default key only) is live"
+            );
+            check(core::filterValueIsActive(core::TimeKeyType_HSV, expans), "a static HSV (default key only) is live");
+            check(live(line, expans, core::TimeKeyType_Blur), "the enabled static blur reads live");
+            check(live(line, expans, core::TimeKeyType_HSV), "the enabled static HSV reads live");
+
+            // The same slots, edited back to the type's identity.
+            static_cast<core::BlurKey*>(line.defaultKey(core::TimeKeyType_Blur))->setAmount(0.0f);
+            static_cast<core::HSVKey*>(line.defaultKey(core::TimeKeyType_HSV))->setHSV({0, 100, 100, 0});
+            const core::TimeKeyExpans& identity = readFrame(node, info);
+            std::printf(
+                "[7] edited back to the identity: radius=%.3f hue=%d sat=%d val=%d\n",
+                identity.maxBlurRadius(), identity.hsv().hsv().at(0), identity.hsv().hsv().at(1),
+                identity.hsv().hsv().at(2)
+            );
+            check(
+                !core::filterValueIsActive(core::TimeKeyType_Blur, identity),
+                "a blur edited back to 0 is not live"
+            );
+            check(
+                !core::filterValueIsActive(core::TimeKeyType_HSV, identity),
+                "an HSV back at 0/100/100/0 is not live"
+            );
+        }
+
+        // A key at a LATER frame: playback holds the first key before the first
+        // key, so the filter is live at frame 0 as well - the old "frame >= first
+        // key" clause hid it, and no setting expresses "start at the first key".
+        {
+            core::TestNode node;
+            core::TimeLine& line = *node.timeLine();
+            QVector<core::FilterEntry> entries;
+            entries.append(core::FilterEntry(core::TimeKeyType_Blur, true));
+            entries.append(core::FilterEntry(core::TimeKeyType_HSV, true));
+            line.setFilterEntries(entries);
+
+            cmnd::Stack commands;
+            auto* blur = new core::BlurKey();
+            blur->setAmount(5.0f);
+            commands.push(line.createPusher(core::TimeKeyType_Blur, 10, blur));
+            auto* hsv = new core::HSVKey();
+            hsv->setHue(90);
+            commands.push(line.createPusher(core::TimeKeyType_HSV, 10, hsv));
+
+            const core::TimeKeyExpans& expans = readFrame(node, info); // frame 0, keys at 10
+            std::printf(
+                "[7] keyed at frame 10, read at frame 0: radius=%.3f hue=%d\n",
+                expans.maxBlurRadius(), expans.hsv().hsv().at(0)
+            );
+            check(line.map(core::TimeKeyType_Blur).size() == 1, "the blur key sits at a later frame");
+            check(line.map(core::TimeKeyType_HSV).size() == 1, "the HSV key sits at a later frame");
+            check(
+                core::filterValueIsActive(core::TimeKeyType_Blur, expans),
+                "a blur keyed at frame 10 is already live at frame 0 (the first-key clamp is gone)"
+            );
+            check(
+                core::filterValueIsActive(core::TimeKeyType_HSV, expans),
+                "an HSV keyed at frame 10 is already live at frame 0 (the first-key clamp is gone)"
+            );
+        }
+
+        // The eye toggle: the value is still there, the filter is not live.
+        {
+            core::TestNode node;
+            core::TimeLine& line = *node.timeLine();
+            QVector<core::FilterEntry> entries;
+            entries.append(core::FilterEntry(core::TimeKeyType_Blur, false));
+            entries.append(core::FilterEntry(core::TimeKeyType_HSV, false));
+            line.setFilterEntries(entries);
+
+            auto* blur = new core::BlurKey();
+            blur->setAmount(8.0f);
+            line.grabDefaultKey(core::TimeKeyType_Blur, blur);
+            auto* hsv = new core::HSVKey();
+            hsv->setHue(40);
+            line.grabDefaultKey(core::TimeKeyType_HSV, hsv);
+
+            const core::TimeKeyExpans& expans = readFrame(node, info);
+            std::printf(
+                "[7] disabled entries: blur value=%d stack=%d, hsv value=%d stack=%d\n",
+                int(core::filterValueIsActive(core::TimeKeyType_Blur, expans)),
+                int(live(line, expans, core::TimeKeyType_Blur)),
+                int(core::filterValueIsActive(core::TimeKeyType_HSV, expans)),
+                int(live(line, expans, core::TimeKeyType_HSV))
+            );
+            check(
+                core::filterValueIsActive(core::TimeKeyType_Blur, expans),
+                "a disabled blur still carries its value"
+            );
+            check(
+                core::filterValueIsActive(core::TimeKeyType_HSV, expans),
+                "a disabled HSV still carries its value"
+            );
+            check(!live(line, expans, core::TimeKeyType_Blur), "a disabled blur stack entry is not live");
+            check(!live(line, expans, core::TimeKeyType_HSV), "a disabled HSV stack entry is not live");
+        }
+
+        if (failures == before)
+            std::printf("[7] the blended value (not the key map) decides which filters are live\n");
     }
 
     if (failures == 0)

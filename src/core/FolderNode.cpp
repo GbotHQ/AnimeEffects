@@ -7,21 +7,11 @@
 #include "core/ObjectNodeUtil.h"
 #include "core/TimeKeyExpans.h"
 #include "core/DepthKey.h"
+#include "core/FilterActivity.h"
 #include "core/FilterFrame.h"
 #include "core/WavePass.h"
 #include "core/WorldBlurMath.h"
 #include "core/DestinationTexturizer.h"
-
-namespace {
-
-// An HSV key is a no-op when it does not change the pixel color: additive hue 0, sat/val
-// at 100, and not absolute. Such a key must not force the folder onto the composite path
-// (does not gate on the presentation-applied HSV).
-bool hsvDataIsIdentity(const QList<int>& aHSV) {
-    return aHSV.size() < 4 || (aHSV[0] == 0 && aHSV[1] == 100 && aHSV[2] == 100 && aHSV[3] == 0);
-}
-
-} // namespace
 
 namespace core {
 
@@ -56,43 +46,26 @@ void FolderNode::grabHeightMap(HeightMap* aNode) { mHeightMap.reset(aNode); }
 
 bool FolderNode::isClipper() const { return ObjectNodeUtil::isClipper(this); }
 
-bool FolderNode::hasActiveHSVKey(const TimeInfo& aTime) const {
-    return !mTimeLine.isEmpty(TimeKeyType_HSV)
-        && aTime.frame.get() >= mTimeLine.map(TimeKeyType_HSV).values().first()->frame();
-}
-
-bool FolderNode::hasActiveBlurKey(const TimeInfo& aTime) const {
-    return !mTimeLine.isEmpty(TimeKeyType_Blur)
-        && aTime.frame.get() >= mTimeLine.map(TimeKeyType_Blur).values().first()->frame();
-}
-
-bool FolderNode::hasActiveWave(const TimeCacheAccessor& aAccessor) const {
-    // the blended value, so a static wave (values on the default key) applies too
-    return aAccessor.get(mTimeLine).wave().isActive();
-}
-
-bool FolderNode::isCompositeFolder(const TimeInfo& aTime, const TimeCacheAccessor& aAccessor) const {
+bool FolderNode::isCompositeFolder(const TimeInfo&, const TimeCacheAccessor& aAccessor) const {
     // A non-Normal blend mode always composites: its subtree is grouped before the
-    // folder's own blend is applied. Otherwise only an ENABLED filter whose values
-    // are currently active puts the folder on the composite path.
+    // folder's own blend is applied. Otherwise only an ENABLED filter whose BLENDED
+    // value is above its epsilon puts the folder on the composite path. The frame
+    // is no longer part of the test: the value that plays is already the blended
+    // one, so the old "a key exists at or before this frame" proxy only hid static
+    // filters (values on the lane's default key) - see core/FilterActivity.h.
     if (mBlendMode != img::BlendMode_Normal)
         return true;
+    const TimeKeyExpans& expans = aAccessor.get(mTimeLine);
     for (const FilterEntry& entry : mTimeLine.filters()) {
         if (!entry.enabled)
             continue;
-        if (entry.type == TimeKeyType_HSV && hasActiveHSVKey(aTime)
-            && !hsvDataIsIdentity(aAccessor.get(mTimeLine).hsv().hsv()))
+        // One test per entry, the same pair the pass itself uses. There is no
+        // separate mask clause any more: an HSV whose blended value is the identity
+        // skips its own pass (see renderComposite), so isolating just to host a
+        // painted mask would composite an image nothing changes - and the Mask
+        // tool's preview target still isolates through render()'s own check.
+        if (filterValueIsActive(entry.type, expans))
             return true;
-        if (entry.type == TimeKeyType_Blur && hasActiveBlurKey(aTime)
-            && aAccessor.get(mTimeLine).maxBlurRadius() > FilterFrame::kMinActiveBlurRadius)
-            return true;
-        if (entry.type == TimeKeyType_Wave && hasActiveWave(aAccessor))
-            return true;
-        if (entry.type == TimeKeyType_HSV && hasActiveHSVKey(aTime)) {
-            const FilterMask* mask = mTimeLine.filterMask(TimeKeyType_HSV, FilterMaskChannel_Amount);
-            if (mask && !mask->isEmpty())
-                return true;
-        }
     }
     return false;
 }
@@ -162,7 +135,8 @@ void FolderNode::renderComposite(const RenderInfo& aInfo, const TimeCacheAccesso
     // rectangle to clamp a sample into - the composite itself bounds it.
     WavePassParams waveParams;
     bool waveReady = false;
-    if (hasActiveWave(aAccessor)) {
+    if (mTimeLine.filterEnabled(TimeKeyType_Wave)
+        && filterValueIsActive(TimeKeyType_Wave, expans)) {
         waveParams = wavePassFor(
             aInfo.camera, aInfo.time, QSizeF(frame.size()), expans.wave(),
             expans.srt().worldCSRTMatrix(), QVector2D(0.0f, 0.0f)
@@ -203,11 +177,19 @@ void FolderNode::renderComposite(const RenderInfo& aInfo, const TimeCacheAccesso
         return screenToLayer;
     };
 
+    // One predicate pair for both decisions - isCompositeFolder above and the
+    // passes here: the type's stack entry is enabled AND its BLENDED value is
+    // above the type's epsilon. Sharing it is what keeps an HSV-isolated folder
+    // from skipping a live static blur (or the reverse).
+    const auto live = [&](TimeKeyType aType) {
+        return mTimeLine.filterEnabled(aType) && filterValueIsActive(aType, expans);
+    };
+
     for (const FilterEntry& entry : mTimeLine.filters()) {
         if (!entry.enabled)
             continue;
         if (entry.type == TimeKeyType_HSV) {
-            if (!hasActiveHSVKey(aInfo.time) || hsvDataIsIdentity(expans.hsv().hsv()))
+            if (!live(TimeKeyType_HSV))
                 continue;
             auto slot = std::make_unique<FilterFrame::ScopedSlot>(frame);
             MaskInput mask;
@@ -223,8 +205,7 @@ void FolderNode::renderComposite(const RenderInfo& aInfo, const TimeCacheAccesso
             srcSlot = slot->slot();
             scratchSlots.push_back(std::move(slot));
         } else if (entry.type == TimeKeyType_Blur) {
-            if (!hasActiveBlurKey(aInfo.time)
-                || expans.maxBlurRadius() <= FilterFrame::kMinActiveBlurRadius)
+            if (!live(TimeKeyType_Blur))
                 continue;
             const WorldBlurEllipse ellipse = worldBlurEllipse(
                 aAccessor, this, expans.blurX(), expans.blurY(), expans.angleDeg());

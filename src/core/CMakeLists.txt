@@ -25,6 +25,7 @@ add_library(${PROJECT_NAME}
     DestinationTexturizer.cpp DestinationTexturizer.h
     FFDKey.cpp FFDKey.h
     FFDKeyUpdater.cpp FFDKeyUpdater.h
+    FilterActivity.h
     FilterFrame.cpp FilterFrame.h
     FilterMask.cpp FilterMask.h
     FolderNode.cpp FolderNode.h

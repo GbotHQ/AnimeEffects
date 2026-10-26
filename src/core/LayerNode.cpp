@@ -16,6 +16,7 @@
 #include "core/ClippingFrame.h"
 #include "core/WorldBlurMath.h"
 #include "core/DestinationTexturizer.h"
+#include "core/FilterActivity.h"
 #include "core/FilterFrame.h"
 #include "core/WavePass.h"
 
@@ -105,12 +106,14 @@ void LayerNode::prerender(const RenderInfo& aInfo, const TimeCacheAccessor& aAcc
 void LayerNode::render(const RenderInfo& aInfo, const TimeCacheAccessor& aAccessor) {
     if (!mIsVisible || aAccessor.get(mTimeLine).opa().isZero()) return;
 
+    // The direct path's HSV comes from the BLENDED value, like every other filter
+    // decision: an HSV edited on its default key must bake into the layer shader
+    // even though the lane has no explicit key at all.
     const bool useHSV = mTimeLine.filterEnabled(TimeKeyType_HSV)
-        && !mTimeLine.isEmpty(TimeKeyType_HSV)
-        && aInfo.time.frame.get() >= mTimeLine.map(TimeKeyType_HSV).values().first()->frame();
+        && filterValueIsActive(TimeKeyType_HSV, aAccessor.get(mTimeLine));
     const QList<int> hsvData = useHSV ? aAccessor.get(mTimeLine).hsv().hsv() : QList<int>{};
 
-    if (!aInfo.isGrid && (isCompositeLayer(aInfo.time, aAccessor) || isPreviewTarget(aInfo))) {
+    if (!aInfo.isGrid && (isCompositeLayer(aAccessor) || isPreviewTarget(aInfo))) {
         renderComposite(aInfo, aAccessor);
     } else {
         renderLayer(aInfo, aAccessor, useHSV, hsvData);
@@ -121,26 +124,12 @@ void LayerNode::render(const RenderInfo& aInfo, const TimeCacheAccessor& aAccess
     renderClippees(aInfo, aAccessor);
 }
 
-bool LayerNode::hasActiveBlurKey(const TimeInfo& aTime) const {
-    return !mTimeLine.isEmpty(TimeKeyType_Blur)
-        && aTime.frame.get() >= mTimeLine.map(TimeKeyType_Blur).values().first()->frame();
-}
-
-bool LayerNode::hasActiveWave(const TimeCacheAccessor& aAccessor) const {
-    // The BLENDED value, not a key's: a filter added from the stack keeps its
-    // values on its default key until the row's dot is pressed, and a default
-    // key is what playback reads between keys - so a static wave must deform
-    // too (blur's gate additionally demands an explicit key, which is why a
-    // static blur only applies once it is keyed).
-    return aAccessor.get(mTimeLine).wave().isActive();
-}
-
-bool LayerNode::hasActiveHsvMask(const TimeInfo& aTime) const {
-    // An HSV key that is playing AND a painted amount mask: the adjustment then has
-    // to become a stack pass (per pixel), which is what isolates the layer.
-    const bool hsvActive = !mTimeLine.isEmpty(TimeKeyType_HSV)
-        && aTime.frame.get() >= mTimeLine.map(TimeKeyType_HSV).values().first()->frame();
-    if (!hsvActive)
+bool LayerNode::hasActiveHsvMask(const TimeCacheAccessor& aAccessor) const {
+    // An HSV whose BLENDED value changes color AND a painted amount mask: the
+    // adjustment then has to become a stack pass (per pixel), which is what
+    // isolates the layer. Both halves are read from the same value the direct
+    // path bakes, so a static HSV with a mask isolates too.
+    if (!filterValueIsActive(TimeKeyType_HSV, aAccessor.get(mTimeLine)))
         return false;
     const FilterMask* mask = mTimeLine.filterMask(TimeKeyType_HSV, FilterMaskChannel_Amount);
     return mask && !mask->isEmpty();
@@ -152,17 +141,22 @@ bool LayerNode::isPreviewTarget(const RenderInfo& aInfo) const {
     return aInfo.maskPreview != nullptr && aInfo.maskPreviewTarget == this;
 }
 
-bool LayerNode::isCompositeLayer(const TimeInfo& aTime, const TimeCacheAccessor& aAccessor) const {
-    // Only an ENABLED filter with values above its epsilon isolates the layer (see
-    // FilterFrame::kMinActiveBlurRadius / WaveKey::kMinActiveStrength). The composite
-    // path then applies the whole stack in order; HSV alone stays on the direct path,
-    // where it is baked into the layer shader exactly as before.
-    if (mTimeLine.filterEnabled(TimeKeyType_Blur) && hasActiveBlurKey(aTime)
-        && aAccessor.get(mTimeLine).maxBlurRadius() > FilterFrame::kMinActiveBlurRadius)
+bool LayerNode::isCompositeLayer(const TimeCacheAccessor& aAccessor) const {
+    // Only an ENABLED filter whose BLENDED value is above its epsilon isolates the
+    // layer (filterValueIsActive carries each type's test: HSV's inert Data,
+    // FilterFrame::kMinActiveBlurRadius, WaveKey::Data::isActive). Testing the
+    // blended value - not "some key exists at or before this frame" - is what keeps
+    // a filter edited on its default key from being dropped here. The composite
+    // path then applies the whole stack in order; HSV alone stays on the direct
+    // path, where it is baked into the layer shader exactly as before.
+    const TimeKeyExpans& expans = aAccessor.get(mTimeLine);
+    if (mTimeLine.filterEnabled(TimeKeyType_Blur)
+        && filterValueIsActive(TimeKeyType_Blur, expans))
         return true;
-    if (mTimeLine.filterEnabled(TimeKeyType_Wave) && hasActiveWave(aAccessor))
+    if (mTimeLine.filterEnabled(TimeKeyType_Wave)
+        && filterValueIsActive(TimeKeyType_Wave, expans))
         return true;
-    return mTimeLine.filterEnabled(TimeKeyType_HSV) && hasActiveHsvMask(aTime);
+    return mTimeLine.filterEnabled(TimeKeyType_HSV) && hasActiveHsvMask(aAccessor);
 }
 
 // A FILTERED layer is isolated: the layer draws into a composite slot (its own HSV,
@@ -222,7 +216,8 @@ void LayerNode::renderComposite(const RenderInfo& aInfo, const TimeCacheAccessor
     // sample from tearing a transparent hole at the silhouette.
     WavePassParams waveParams;
     bool waveReady = false;
-    if (mTimeLine.filterEnabled(TimeKeyType_Wave) && hasActiveWave(aAccessor)) {
+    if (mTimeLine.filterEnabled(TimeKeyType_Wave)
+        && filterValueIsActive(TimeKeyType_Wave, expans)) {
         QMatrix4x4 world = expans.srt().worldCSRTMatrix();
         if (!aInfo.nonPosed && expans.bone().isAffectedByBinding())
             world = expans.bone().outerMatrix();
@@ -258,9 +253,13 @@ void LayerNode::renderComposite(const RenderInfo& aInfo, const TimeCacheAccessor
             }
         }
     }
-    // HSV activity is checked once, from the same lane predicate the direct path uses.
-    const bool hsvActive = !mTimeLine.isEmpty(TimeKeyType_HSV)
-        && aInfo.time.frame.get() >= mTimeLine.map(TimeKeyType_HSV).values().first()->frame();
+    // One predicate pair for both decisions - the isolation above and the pass
+    // here: the type's stack entry is enabled AND its BLENDED value is above the
+    // type's epsilon. Sharing it is what keeps a wave-isolated layer from
+    // skipping a live static blur (or the reverse).
+    const auto live = [&](TimeKeyType aType) {
+        return mTimeLine.filterEnabled(aType) && filterValueIsActive(aType, expans);
+    };
 
     // ONE content-space mapping, shared by every filter input that lives there (the
     // wave's field and the HSV amount mask): the inverse of the matrices the layer
@@ -285,7 +284,7 @@ void LayerNode::renderComposite(const RenderInfo& aInfo, const TimeCacheAccessor
         if (!entry.enabled)
             continue;
         if (entry.type == TimeKeyType_HSV) {
-            if (!hsvActive)
+            if (!live(TimeKeyType_HSV))
                 continue;
             auto slot = std::make_unique<FilterFrame::ScopedSlot>(frame);
             MaskInput mask;
@@ -301,8 +300,7 @@ void LayerNode::renderComposite(const RenderInfo& aInfo, const TimeCacheAccessor
             srcSlot = slot->slot();
             scratchSlots.push_back(std::move(slot));
         } else if (entry.type == TimeKeyType_Blur) {
-            if (!hasActiveBlurKey(aInfo.time)
-                || expans.maxBlurRadius() <= FilterFrame::kMinActiveBlurRadius)
+            if (!live(TimeKeyType_Blur))
                 continue;
             const WorldBlurEllipse ellipse = worldBlurEllipse(
                 aAccessor, this, expans.blurX(), expans.blurY(), expans.angleDeg());
