@@ -323,6 +323,10 @@ MainWindow::MainWindow(ctrl::System& aSystem, GUIResources& aResources, LocalePa
             if (mTool)
                 mTool->beginMaskPaint(aLane, aChannel);
         });
+        prop.onLayerMaskPaintRequested.connect([this]() {
+            if (mTool)
+                mTool->beginLayerMaskPaint();
+        });
         disp.onBrushDragAdjusted.connect([this](int aSizeSteps, int aHardnessSteps) {
             if (mTool)
                 mTool->adjustBrush(aSizeSteps, aHardnessSteps);

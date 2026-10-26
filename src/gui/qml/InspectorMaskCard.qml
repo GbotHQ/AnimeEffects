@@ -27,6 +27,8 @@ Item {
     readonly property bool present: inspector.maskPresent
     readonly property bool keyed: inspector.maskKeyed
     readonly property bool onKey: inspector.maskHasKeyAtFrame
+    // a matte is paintable when nothing is keyed yet, or when this frame owns a key
+    readonly property bool paintable: !keyed || onKey
     // The three-state dot the timeline uses for every channel: hollow = the value is
     // static, half = keys exist elsewhere (this frame is evaluated), filled = this
     // frame owns a key.
@@ -45,6 +47,7 @@ Item {
         height: 32
 
         Text {
+            id: maskTitle
             x: 36
             anchors.verticalCenter: parent.verticalCenter
             text: qsTr("Mask")
@@ -58,8 +61,8 @@ Item {
 
         Text {
             id: stateLabel
-            anchors.left: parent.left
-            anchors.leftMargin: 36 + 44
+            anchors.left: maskTitle.right
+            anchors.leftMargin: 10
             anchors.verticalCenter: parent.verticalCenter
             text: root.stateText
             color: theme.textMuted
@@ -90,7 +93,7 @@ Item {
         id: body
         anchors.top: header.bottom
         width: parent.width
-        height: visible ? 76 : 0
+        height: visible ? 88 : 0
         visible: root.present
         radius: 6
         color: theme.recessed
@@ -124,6 +127,10 @@ Item {
             }
         }
 
+        // THREE actions do not fit beside a 56px thumbnail in this dock: measured on a
+        // 1500x940 window, the wide row overflowed the panel and clipped Clear. Two
+        // compact rows fit at any dock width, and the PRIMARY action keeps the full
+        // width because it is the one a masker presses.
         ColumnLayout {
             anchors.left: thumbFrame.right
             anchors.leftMargin: 12
@@ -133,28 +140,12 @@ Item {
             anchors.topMargin: 12
             spacing: 6
 
-            RowLayout {
+            AeButton {
                 Layout.fillWidth: true
-                spacing: 6
-
-                AeButton {
-                    text: qsTr("Paint")
-                    Accessible.name: qsTr("Paint mask")
-                    // paintable when nothing is keyed yet, or when this frame owns a key
-                    enabled: !inspector.playbackActive && (!root.keyed || root.onKey)
-                    onClicked: inspector.requestLayerMaskPaint()
-                }
-                AeButton {
-                    text: qsTr("Invert")
-                    enabled: !inspector.playbackActive && (!root.keyed || root.onKey)
-                    onClicked: inspector.invertMask()
-                }
-                AeButton {
-                    text: qsTr("Clear")
-                    enabled: !inspector.playbackActive
-                    onClicked: inspector.removeMask()
-                }
-                Item { Layout.fillWidth: true }
+                visible: root.paintable
+                text: qsTr("Paint mask")
+                enabled: !inspector.playbackActive
+                onClicked: inspector.requestLayerMaskPaint()
             }
 
             // Between keys the matte is READ ONLY (a stroke would land on no key), and
@@ -162,20 +153,40 @@ Item {
             // by definition does not change the picture.
             AeButton {
                 Layout.fillWidth: true
-                visible: root.keyed && !root.onKey
+                visible: !root.paintable
                 text: qsTr("Key at frame %1").arg(inspector.currentFrame)
                 enabled: !inspector.playbackActive
                 onClicked: inspector.toggleMaskKey()
             }
 
-            Text {
+            // ICONS, not words: AeButton's implicit width has a 72px FLOOR, so two of
+            // them in a row demanded 150px inside a dock that is ~220px wide - measured
+            // as the whole card overflowing the panel and clipping "Paint mask". A 22px
+            // icon button has no such floor, and both actions are unambiguous with a
+            // tooltip and an accessible name.
+            RowLayout {
                 Layout.fillWidth: true
-                visible: root.onKey && root.keyed
-                text: qsTr("Painting edits this key.")
-                color: theme.textMutedDim
-                font.family: uiFont.family
-                font.pointSize: uiFont.pointSize
-                elide: Text.ElideRight
+                spacing: 6
+
+                AeIconButton {
+                    iconName: "arrow-clockwise"
+                    label: qsTr("Invert mask")
+                    size: 22
+                    iconSize: 14
+                    showTip: true
+                    enabled: !inspector.playbackActive && (!root.keyed || root.onKey)
+                    onClicked: inspector.invertMask()
+                }
+                AeIconButton {
+                    iconName: "trash"
+                    label: qsTr("Remove mask")
+                    size: 22
+                    iconSize: 14
+                    showTip: true
+                    enabled: !inspector.playbackActive
+                    onClicked: inspector.removeMask()
+                }
+                Item { Layout.fillWidth: true }
             }
         }
     }

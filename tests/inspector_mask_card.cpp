@@ -257,9 +257,8 @@ int main(int argc, char** argv) {
         controlWithText(root, QStringLiteral("Key at frame 34")) != nullptr,
         "the card offers a key AT THE PLAYHEAD it was told"
     );
-    check(controlWithText(root, QStringLiteral("Paint")) == nullptr
-              || !controlWithText(root, QStringLiteral("Paint"))->property("enabled").toBool(),
-          "painting is refused on a blended frame");
+    check(controlWithText(root, QStringLiteral("Paint mask")) == nullptr,
+          "painting is not even offered on a blended frame (the matte is read only)");
 
     {
         QObject* keyButton = controlWithText(root, QStringLiteral("Key at frame 34"));
@@ -279,7 +278,7 @@ int main(int argc, char** argv) {
     check(dot() == QStringLiteral("keyed"), "the dot fills on a key");
     check(state() == QStringLiteral("key at this frame"), "the card names the state");
     {
-        QObject* paint = controlWithText(root, QStringLiteral("Paint"));
+        QObject* paint = controlWithText(root, QStringLiteral("Paint mask"));
         check(paint != nullptr && paint->property("enabled").toBool(), "painting is enabled on a key");
         check(
             paint != nullptr && QMetaObject::invokeMethod(paint, "clicked"),
@@ -291,12 +290,26 @@ int main(int argc, char** argv) {
         );
     }
     {
-        QObject* invert = controlWithText(root, QStringLiteral("Invert"));
-        check(invert != nullptr && QMetaObject::invokeMethod(invert, "clicked"), "Invert is live");
+        // the secondary actions are ICON buttons (a word button's 72px floor overflowed
+        // the dock), so they are found by their accessible name
+        QObject* invert = root->findChild<QObject*>(QString());
+        for (QObject* object : root->findChildren<QObject*>()) {
+            if (object->property("label").toString() == QStringLiteral("Invert mask"))
+                invert = object;
+        }
+        check(invert != nullptr, "Invert is in the card");
+        check(
+            invert != nullptr && QMetaObject::invokeMethod(invert, "clicked"), "Invert is live"
+        );
         check(inspector.calls.contains(QStringLiteral("invertMask")), "and calls invertMask");
     }
     {
-        QObject* clear = controlWithText(root, QStringLiteral("Clear"));
+        QObject* clear = nullptr;
+        for (QObject* object : root->findChildren<QObject*>()) {
+            if (object->property("label").toString() == QStringLiteral("Remove mask"))
+                clear = object;
+        }
+        check(clear != nullptr, "Clear is in the card");
         check(clear != nullptr && QMetaObject::invokeMethod(clear, "clicked"), "Clear is live");
         check(inspector.calls.contains(QStringLiteral("removeMask")), "and calls removeMask");
         QCoreApplication::processEvents();

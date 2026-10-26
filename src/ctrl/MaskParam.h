@@ -7,11 +7,25 @@
 
 namespace ctrl {
 
+// WHICH field the brush writes. There are two kinds and they differ in more than
+// their address: a filter input is a per-lane side table whose neutral is per channel,
+// while a layer mask is a KEY's own field whose neutral is reveal-all and which only
+// exists on frames that own a key (or on the default key).
+enum MaskTargetKind {
+    MaskTargetKind_FilterInput,
+    MaskTargetKind_LayerMask,
+};
+
 // The mask paint tool's parameters: the shared brush, plus WHICH field it writes
-// (the filter lane and which of that filter's two mask inputs).
+// (the filter lane and which of that filter's two mask inputs, or the node's matte).
 class MaskParam {
 public:
-    MaskParam(): brush(), lane(core::TimeKeyType_Wave), channel(core::FilterMaskChannel_Amount), value(0.0f) {
+    MaskParam()
+        : brush(),
+          kind(MaskTargetKind_FilterInput),
+          lane(core::TimeKeyType_Wave),
+          channel(core::FilterMaskChannel_Amount),
+          value(0.0f) {
         brush.radius = 50.0f;
         brush.hardness = 0.5f;
         brush.flow = 1.0f;
@@ -23,6 +37,7 @@ public:
     }
 
     BrushParam brush;
+    MaskTargetKind kind;
     core::TimeKeyType lane;
     core::FilterMaskChannel channel;
     // Where the brush takes the field: 0 = no effect, 1 = full effect. A stamp moves
@@ -38,6 +53,19 @@ public:
         channel = aChannel;
         value = (aChannel == core::FilterMaskChannel_TimeOffset) ? 1.0f : 0.0f;
     }
+
+    // The layer mask's neutral is REVEAL ALL, so the useful stroke hides: the value
+    // starts at 0 (hidden) and painting toward 1 restores what was cut away. That is
+    // the opposite of a filter's amount mask, and it is why the kind is separate from
+    // the channel rather than a fourth lane.
+    void setKind(MaskTargetKind aKind) {
+        if (kind == aKind)
+            return;
+        kind = aKind;
+        value = (aKind == MaskTargetKind_LayerMask) ? 0.0f : value;
+    }
+
+    bool isLayerMask() const { return kind == MaskTargetKind_LayerMask; }
 };
 
 } // namespace ctrl

@@ -40,6 +40,8 @@ const gl::Texture* MaskKey::Data::textureId() const {
     return &mTexture->texture;
 }
 
+void MaskKey::Data::markDirty() { mTexture.reset(); }
+
 void MaskKey::Data::alloc(const QSize& aSize, const QRectF& aContentRect, uchar aValue) {
     mTexture.reset();   // a new image always gets its own texture
     const QSize size(aSize.expandedTo(QSize(1, 1)));

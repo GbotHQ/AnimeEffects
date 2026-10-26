@@ -104,6 +104,54 @@ core::FilterMask* MaskEditor::ensureMask() {
     return &mTarget->timeLine()->ensureFilterMask(mParam.lane, mParam.channel, rect);
 }
 
+QRectF MaskEditor::fieldRect() const { return contentRect(); }
+
+core::MaskKey* MaskEditor::currentMaskKey() {
+    if (!mTarget || mParam.isLayerMask())
+        return ctrl::TimeLineUtil::maskKeyForPaint(*mTarget, mProject.animator().currentFrame().get());
+    return nullptr;
+}
+
+MaskEditor::Field MaskEditor::resolveField() {
+    Field field;
+    field.rect = contentRect();
+    if (field.rect.isEmpty())
+        return field;
+
+    if (mParam.isLayerMask()) {
+        // a layer mask is never invented here: the card's "Add mask" makes one, and a
+        // frame between keys has nothing this stroke may write
+        field.key = currentMaskKey();
+        if (field.key && field.key->data().isValid())
+            field.image = &field.key->data().field();
+        return field;
+    }
+
+    field.filter = ensureMask();
+    if (field.filter && !field.filter->isEmpty())
+        field.image = &field.filter->image();
+    return field;
+}
+
+MaskEditor::Field MaskEditor::currentField() const {
+    Field field;
+    field.rect = contentRect();
+    if (field.rect.isEmpty())
+        return field;
+    if (mParam.isLayerMask()) {
+        auto* key = const_cast<MaskEditor*>(this)->currentMaskKey();
+        if (key && key->data().isValid())
+            field.image = const_cast<QImage*>(&key->data().field());
+        field.key = key;
+        return field;
+    }
+    auto* mask = const_cast<MaskEditor*>(this)->currentMask();
+    if (mask && !mask->isEmpty())
+        field.image = &mask->image();
+    field.filter = mask;
+    return field;
+}
+
 core::FilterMask* MaskEditor::currentMask() {
     if (!mTarget || !mTarget->timeLine())
         return nullptr;
@@ -111,6 +159,13 @@ core::FilterMask* MaskEditor::currentMask() {
 }
 
 void MaskEditor::clearMask() {
+    if (mParam.isLayerMask()) {
+        // a matte's neutral is REVEAL ALL, so "clear" here restores what was cut away
+        // (removing the mask itself is the card's Clear, which takes its keys too)
+        if (core::MaskKey* key = currentMaskKey())
+            ctrl::TimeLineUtil::resetMaskField(mProject, *mTarget, key);
+        return;
+    }
     core::FilterMask* mask = currentMask();
     if (!mask || mask->isEmpty())
         return;
@@ -154,8 +209,8 @@ bool MaskEditor::updateCursor(const CameraInfo&, const AbstractCursor& aCursor) 
 }
 
 void MaskEditor::beginStroke() {
-    core::FilterMask* mask = ensureMask();
-    if (!mask)
+    const Field field = resolveField();
+    if (!field.valid())
         return;
 
     // the brush is sized in WORLD pixels (what every tool panel shows); the field
@@ -168,6 +223,10 @@ void MaskEditor::beginStroke() {
         return;
 
     mPainting = true;
+    mStrokeKey = field.key;
+    mCommand = nullptr;
+    if (mStrokeKey)
+        mStrokeBefore = mStrokeKey->data();   // the field undo restores
     // the stroke owns its own copy of the brush (BrushStroke::begin takes the param by
     // value), so the sink only needs `this`
     mStroke.begin(brush, content, 1.0f, [this](const BrushStamp& aStamp) { paintStamp(aStamp); });
@@ -177,20 +236,38 @@ void MaskEditor::endStroke() {
     mStroke.end();
     mPainting = false;
     mCommand = nullptr;
+
+    // a LAYER-MASK stroke is pushed at the release with both states, because the key
+    // is written in place while the brush moves: one stroke, one undo, and the field it
+    // started from is exactly what comes back
+    if (mStrokeKey && mStrokeKey->data().isValid()) {
+        cmnd::Stack& stack = mProject.commandStack();
+        cmnd::ScopedMacro macro(stack, CmndName::tr("Paint mask"));
+        auto* notifier = new TimeLineUtil::Notifier(mProject);
+        notifier->event().setType(TimeLineEvent::Type_ChangeKeyValue);
+        notifier->event().pushTarget(*mTarget, core::TimeKeyType_Mask, mStrokeKey->frame());
+        macro.grabListener(notifier);
+        stack.push(new ctrl::TimeLineUtil::AssignMaskField(mStrokeKey, mStrokeBefore, mStrokeKey->data()));
+
+        TimeLineEvent event;
+        event.setType(TimeLineEvent::Type_ChangeKeyValue);
+        mProject.onTimeLineModified(event, false);
+    }
+    mStrokeKey = nullptr;
 }
 
 bool MaskEditor::paintStamp(const BrushStamp& aStamp) {
-    core::FilterMask* mask = currentMask();
-    if (!mask || mask->isEmpty())
+    Field field = currentField();
+    if (!field.valid())
         return false;
 
-    QImage& image = mask->image();
+    QImage& image = *field.image;
     if (image.isNull())
         return false;
 
     // the stamp is in CONTENT pixels already (beginStroke converted it), and the
     // field's texels are that rect scaled: one texel is contentRect/size pixels
-    const QRectF rect = mask->contentRect();
+    const QRectF rect = field.rect;
     const float texelsPerPixelX = float(image.width()) / float(rect.width());
     const float texelsPerPixelY = float(image.height()) / float(rect.height());
 
@@ -208,15 +285,17 @@ bool MaskEditor::paintStamp(const BrushStamp& aStamp) {
     if (clipped.isEmpty())
         return false;
 
-    // the FIRST stamp of a stroke opens the undo step: the field before the stroke
-    // plus the pixels it writes are one command (ctrl/AssignPixels.h)
-    if (!mCommand) {
+    // the FIRST stamp of a FILTER-input stroke opens the undo step: the field before
+    // the stroke plus the pixels it writes are one command (ctrl/AssignPixels.h). A
+    // layer mask is pushed at the release instead (see endStroke), because its key is
+    // written in place.
+    if (!mCommand && field.filter) {
         cmnd::Stack& stack = mProject.commandStack();
         cmnd::ScopedMacro macro(stack, CmndName::tr("Paint filter mask"));
         auto* notifier = new TimeLineUtil::Notifier(mProject);
         notifier->event().setType(TimeLineEvent::Type_FilterStack);
         macro.grabListener(notifier);
-        mCommand = new AssignPixels(*mask);
+        mCommand = new AssignPixels(*field.filter);
         mCommand->captureBefore();
         stack.push(mCommand);
     }
@@ -240,19 +319,30 @@ bool MaskEditor::paintStamp(const BrushStamp& aStamp) {
         }
     }
 
-    mask->markDirty(clipped);
-    mCommand->addAfter(clipped);
-
-    // the field changed: announce it so the viewport repaints the effect
-    TimeLineEvent event;
-    event.setType(TimeLineEvent::Type_FilterStack);
-    mProject.onTimeLineModified(event, false);
+    if (field.filter) {
+        field.filter->markDirty(clipped);
+        if (mCommand)
+            mCommand->addAfter(clipped);
+        // the field changed: announce it so the viewport repaints the effect
+        TimeLineEvent event;
+        event.setType(TimeLineEvent::Type_FilterStack);
+        mProject.onTimeLineModified(event, false);
+    } else if (field.key) {
+        // the painted pixels ARE the change: drop the cached texture so the next frame
+        // uploads them, and repaint every frame of the stroke (the brush is live)
+        field.key->data().markDirty();
+        TimeLineEvent event;
+        event.setType(TimeLineEvent::Type_ChangeKeyValue);
+        mProject.onTimeLineModified(event, false);
+    }
     return true;
 }
 
 const core::FilterMask* MaskEditor::previewMask() const {
     if (!mTarget || !mTarget->timeLine())
         return nullptr;
+    if (mParam.isLayerMask())
+        return nullptr;   // the matte preview is the card's thumbnail and the rubylith
     const core::FilterMask* mask = mTarget->timeLine()->filterMask(mParam.lane, mParam.channel);
     if (!mask || mask->isEmpty())
         return nullptr;
@@ -262,24 +352,25 @@ const core::FilterMask* MaskEditor::previewMask() const {
 float MaskEditor::sampleValue(const QVector2D& aWorldPos) const {
     if (!mTarget || !mTarget->timeLine())
         return -1.0f;
-    const core::FilterMask* mask = mTarget->timeLine()->filterMask(mParam.lane, mParam.channel);
-    if (!mask || mask->isEmpty())
-        return -1.0f;
 
-    QVector2D content;
-    if (!const_cast<MaskEditor*>(this)->toContent(aWorldPos, content))
+    // the eyedropper reads whichever field the brush writes
+    const Field field = const_cast<MaskEditor*>(this)->currentField();
+    if (!field.valid())
         return -1.0f;
-
-    const QRectF rect = mask->contentRect();
-    if (!rect.contains(content.toPointF()))
+    const QImage& image = *field.image;
+    const QRectF rect = field.rect;
+    {
+        QVector2D content;
+        if (!const_cast<MaskEditor*>(this)->toContent(aWorldPos, content))
+            return -1.0f;
+        if (!rect.contains(content.toPointF()))
+            return -1.0f;
+        const int x = int((content.x() - rect.x()) / rect.width() * image.width());
+        const int y = int((content.y() - rect.y()) / rect.height() * image.height());
+        if (image.rect().contains(x, y))
+            return float(image.constScanLine(y)[x]) / 255.0f;
         return -1.0f;
-
-    const QImage& image = mask->image();
-    const int x = int((content.x() - rect.x()) / rect.width() * image.width());
-    const int y = int((content.y() - rect.y()) / rect.height() * image.height());
-    if (image.rect().contains(x, y))
-        return float(image.constScanLine(y)[x]) / 255.0f;
-    return -1.0f;
+    }
 }
 
 void MaskEditor::updateEvent(EventType) {

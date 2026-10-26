@@ -286,6 +286,20 @@ void ToolWidget::beginMaskPaint(core::TimeKeyType aLane, core::FilterMaskChannel
     // tool button so the whole switch goes through the normal route
     mMaskPanel->setLaneAndChannel(aLane, aChannel);
     mModePanel->pushButton(ctrl::ToolType_Mask);
+    // ...and PUSH THE PARAM AGAIN: onParamUpdated only forwards while the Mask tool is
+    // already current, so a panel filled in BEFORE the switch leaves the freshly created
+    // editor on the default parameter - measured as a stroke that painted nothing at all
+    // (the editor still thought it was writing the Wave filter's mask, which this layer
+    // does not have).
+    onParamUpdated(false);
+}
+
+void ToolWidget::beginLayerMaskPaint() {
+    if (!mMaskPanel)
+        return;
+    mMaskPanel->setLayerMask();
+    mModePanel->pushButton(ctrl::ToolType_Mask);
+    onParamUpdated(false);   // see beginMaskPaint: the editor is created by the switch
 }
 
 void ToolWidget::adjustBrush(int aSizeSteps, int aHardnessSteps) {

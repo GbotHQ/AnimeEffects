@@ -27,6 +27,8 @@ namespace tool {
 
         const ctrl::MaskParam& param() const { return mParam; }
         void setLane(core::TimeKeyType aLane);
+        // the node's own matte: no filter lane, no channel
+        void setLayerMask();
         void setLaneAndChannel(core::TimeKeyType aLane, core::FilterMaskChannel aChannel);
         // the eyedropper's result lands here
         void setValue(float aValue);

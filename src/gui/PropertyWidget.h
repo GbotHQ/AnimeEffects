@@ -42,6 +42,8 @@ public:
     util::Signaler<void()> onVisualUpdated;
     // a filter row asked to paint its mask (see InspectorViewModel)
     util::Signaler<void(core::TimeKeyType, core::FilterMaskChannel)> onMaskPaintRequested;
+    // the card's Paint: the node's own matte, which has no lane or channel
+    util::Signaler<void()> onLayerMaskPaintRequested;
 
 private:
     void unlinkProject();

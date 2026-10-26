@@ -1020,25 +1020,45 @@ namespace TimeLineUtil {
             MaskKey::Data mData;
         };
 
-        // One command that writes a key's whole field. The two states are captured, so
-        // undo restores the pixels exactly (a mask is too big to re-derive).
-        class AssignMaskField: public cmnd::Stable {
-        public:
-            AssignMaskField(MaskKey* aKey, const MaskKey::Data& aNext)
-                : mKey(aKey), mPrev(aKey->data()), mNext(aNext) {}
-
-            virtual bool redoable() const { return true; }
-            virtual bool undoable() const { return true; }
-            virtual void redo() { mKey->data().assign(mNext); }
-            virtual void undo() { mKey->data().assign(mPrev); }
-
-        private:
-            MaskKey* mKey;
-            MaskKey::Data mPrev;
-            MaskKey::Data mNext;
-        };
-
     } // namespace
+
+    // One command that writes a key's whole field. The two states are captured, so
+    // undo restores the pixels exactly (a mask is too big to re-derive).
+    AssignMaskField::AssignMaskField(MaskKey* aKey, const MaskKey::Data& aNext)
+        : mKey(aKey), mPrev(aKey->data()), mNext(aNext) {}
+
+    AssignMaskField::AssignMaskField(MaskKey* aKey, const MaskKey::Data& aPrev, const MaskKey::Data& aNext)
+        : mKey(aKey), mPrev(aPrev), mNext(aNext) {}
+
+    bool AssignMaskField::redoable() const { return true; }
+    bool AssignMaskField::undoable() const { return true; }
+    void AssignMaskField::redo() { mKey->data().assign(mNext); }
+    void AssignMaskField::undo() { mKey->data().assign(mPrev); }
+
+    MaskKey* maskKeyForPaint(ObjectNode& aTarget, int aFrame) {
+        if (!aTarget.timeLine())
+            return nullptr;
+        return maskKeyForEdit(*aTarget.timeLine(), aFrame);
+    }
+
+    void resetMaskField(Project& aProject, ObjectNode& aTarget, MaskKey* aKey) {
+        if (!aKey || !aKey->data().isValid())
+            return;
+        MaskKey::Data next = aKey->data();
+        QImage field = next.field();
+        field.fill(MaskKey::kNeutral);
+        const QRectF rect = next.contentRect();
+        const util::Easing::Param easing = next.easing(0);
+        next.write(field, rect);
+        next.easing(0) = easing;
+
+        cmnd::ScopedMacro macro(aProject.commandStack(), CmndName::tr("Clear mask"));
+        auto* notifier = new Notifier(aProject);
+        notifier->event().setType(TimeLineEvent::Type_ChangeKeyValue);
+        notifier->event().pushTarget(aTarget, TimeKeyType_Mask, aKey->frame());
+        macro.grabListener(notifier);
+        aProject.commandStack().push(new AssignMaskField(aKey, next));
+    }
 
     void addMask(Project& aProject, ObjectNode& aTarget) {
         if (!aTarget.timeLine())

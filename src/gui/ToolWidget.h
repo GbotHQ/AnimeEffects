@@ -41,6 +41,8 @@ public:
     // A filter card asked to paint a mask: switch to the Mask tool with that lane and
     // channel already selected, so the artist paints immediately.
     void beginMaskPaint(core::TimeKeyType aLane, core::FilterMaskChannel aChannel);
+    // the node's own matte: same tool, same brush, a target that is not a filter lane
+    void beginLayerMaskPaint();
 
     util::Signaler<void()> onVisualUpdated;
     util::Signaler<void(ctrl::ToolType)> onToolChanged;

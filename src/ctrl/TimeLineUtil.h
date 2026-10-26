@@ -389,6 +389,35 @@ namespace TimeLineUtil {
     // A mask starts at REVEAL ALL (the field is 255 everywhere), so adding one
     // changes nothing on screen until it is painted - unlike a filter mask, whose
     // neutral is per input.
+    // The KEY a stroke may write: the one at aFrame, else the default key, else
+    // nullptr (nothing to paint - the card's "Add mask" is the entry, and the tool
+    // does not invent a mask behind the user's back).
+    core::MaskKey* maskKeyForPaint(core::ObjectNode& aTarget, int aFrame);
+
+    // One undoable write of a mask key's whole field. The brush captures the field
+    // before its stroke and calls this at the end, so a stroke is ONE undo step and
+    // undo restores the pixels exactly (a matte is too big to re-derive).
+    class AssignMaskField: public cmnd::Stable {
+    public:
+        AssignMaskField(core::MaskKey* aKey, const core::MaskKey::Data& aNext);
+        // Both states given: a STROKE writes the key in place and pushes this at the
+        // release, so the field it captured before the first stamp is what undo restores.
+        AssignMaskField(core::MaskKey* aKey, const core::MaskKey::Data& aPrev,
+                        const core::MaskKey::Data& aNext);
+        virtual bool redoable() const;
+        virtual bool undoable() const;
+        virtual void redo();
+        virtual void undo();
+
+    private:
+        core::MaskKey* mKey;
+        core::MaskKey::Data mPrev;
+        core::MaskKey::Data mNext;
+    };
+
+    // Clears a mask key's field back to REVEAL ALL (the matte's neutral).
+    void resetMaskField(core::Project& aProject, core::ObjectNode& aTarget, core::MaskKey* aKey);
+
     void addMask(core::Project& aProject, core::ObjectNode& aTarget);
     // Remove the mask and all its keys. Undoable, like removing a filter.
     void removeMask(core::Project& aProject, core::ObjectNode& aTarget);

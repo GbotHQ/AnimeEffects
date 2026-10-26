@@ -142,6 +142,8 @@ PropertyWidget::PropertyWidget(ViaPoint& aViaPoint, QWidget* aParent, GUIResourc
     mModel->onMaskPaintRequested.connect([this](core::TimeKeyType aLane, core::FilterMaskChannel aChannel) {
         onMaskPaintRequested(aLane, aChannel);
     });
+    // ...and the mask card's Paint asks for the node's own matte
+    mModel->onLayerMaskPaintRequested.connect([this]() { onLayerMaskPaintRequested(); });
 
     mQuick = new KeyForwardingQuickWidget(this);
     mQuick->setResizeMode(QQuickWidget::SizeRootObjectToView);

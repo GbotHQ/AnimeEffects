@@ -80,6 +80,10 @@ public:
         // The field as a GL texture (uploaded lazily, re-uploaded only when the
         // image behind it changes). Null when there is no field.
         const gl::Texture* textureId() const;
+
+        // A PAINTED write goes straight into the image's pixels, which QImage's
+        // cacheKey does not see - so the brush says so and the next frame re-uploads.
+        void markDirty();
         const QImage& field() const { return mField; }
         QImage& field() { return mField; }
         QSize texelSize() const { return mField.size(); }

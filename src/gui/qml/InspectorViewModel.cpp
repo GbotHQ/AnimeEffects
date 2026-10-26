@@ -242,11 +242,28 @@ QImage InspectorViewModel::maskThumbnail(const QSize& aRequested) const {
         return QImage();
 
     QImage field = key->data().field();
-    // A matte is a mask of VISIBILITY: show it as the user's tool does (white = kept)
-    // and let the QML tint it.
     if (aRequested.isValid() && !aRequested.isEmpty())
         field = field.scaled(aRequested, Qt::KeepAspectRatio, Qt::SmoothTransformation);
-    return field;
+
+    // THE THUMBNAIL SHOWS WHAT IS HIDDEN, in the same ink the canvas overlay uses, so
+    // the two read as one thing. A matte is stored as VISIBILITY (255 = kept), and a
+    // thumbnail of that is a solid white square on a dark panel - loud, and it says
+    // nothing about the state ("reveal all" and "almost reveal all" look identical).
+    // Inverted, an untouched mask is an EMPTY box and a painted one is a shape.
+    QImage preview(field.size(), QImage::Format_ARGB32_Premultiplied);
+    preview.fill(Qt::transparent);
+    const QColor tint = theme::Colors::current().danger;   // the rubylith
+    for (int y = 0; y < field.height(); ++y) {
+        const uchar* src = field.constScanLine(y);
+        QRgb* dst = reinterpret_cast<QRgb*>(preview.scanLine(y));
+        for (int x = 0; x < field.width(); ++x) {
+            const int hidden = 255 - int(src[x]);
+            // the overlay draws the hidden area at ~45 %; the thumbnail is small, so it
+            // takes a little more weight to stay visible at 56px
+            dst[x] = qPremultiply(qRgba(tint.red(), tint.green(), tint.blue(), (hidden * 170) / 255));
+        }
+    }
+    return preview;
 }
 
 void InspectorViewModel::addMask() {

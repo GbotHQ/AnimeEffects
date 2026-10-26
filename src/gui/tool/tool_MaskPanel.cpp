@@ -8,6 +8,11 @@ const int kButtonSpace = kButtonSize;
 // the lanes the mask tool can write, in the order the SingleOutItem shows them
 const core::TimeKeyType kLanes[] = {core::TimeKeyType_HSV, core::TimeKeyType_Blur, core::TimeKeyType_Wave};
 const int kLaneCount = 3;
+// The FOURTH target is the node's own matte, which is not a filter lane: it lives in
+// a core::MaskKey and its neutral is reveal-all. It sits in the same chooser because
+// the brush, the value and the eyedropper are the same for both kinds.
+const int kLayerMaskChoice = kLaneCount;
+const int kTargetCount = kLaneCount + 1;
 } // namespace
 
 namespace gui {
@@ -40,13 +45,24 @@ namespace tool {
     void MaskPanel::createItems() {
         // WHICH filter lane: the mask belongs to a lane, because that is the thing
         // the renderer consults (see core/TimeLine::filterMask)
-        mLaneGroup.reset(new SingleOutItem(kLaneCount, QSize(kButtonSpace, kButtonSpace), this));
+        mLaneGroup.reset(new SingleOutItem(kTargetCount, QSize(kButtonSpace, kButtonSpace), this));
         mLaneGroup->setChoice(2); // Wave
-        mLaneGroup->setToolTips(QStringList() << tr("Mask for HSV") << tr("Mask for blur") << tr("Mask for wave deform"));
+        mLaneGroup->setToolTips(
+            QStringList() << tr("Mask for HSV") << tr("Mask for blur")
+                          << tr("Mask for wave deform") << tr("The layer's own mask")
+        );
         mParam.lane = core::TimeKeyType_Wave;
         mLaneGroup->connect([=](int aIndex) {
-            this->mParam.lane = kLanes[aIndex];
-            this->onParamUpdated(false);
+            if (aIndex == kLayerMaskChoice) {
+                this->mParam.setKind(ctrl::MaskTargetKind_LayerMask);
+            } else {
+                this->mParam.setKind(ctrl::MaskTargetKind_FilterInput);
+                this->mParam.lane = kLanes[aIndex];
+            }
+            // a filter input has an amount/time choice; a matte does not
+            this->mChannelGroup->setVisible(!this->mParam.isLayerMask());
+            this->mValue->setAttribute(util::Range(0, 100), int(this->mParam.value * 100.0f), 10);
+            this->onParamUpdated(true);
         });
 
         // WHICH input of that filter: the amount it scales, or the time it delays
@@ -90,7 +106,16 @@ namespace tool {
 
     void MaskPanel::refresh() { mBrush->refresh(); }
 
+    void MaskPanel::setLayerMask() {
+        mParam.setKind(ctrl::MaskTargetKind_LayerMask);
+        mLaneGroup->setChoice(kLayerMaskChoice);
+        mChannelGroup->setVisible(false);
+        mValue->setAttribute(util::Range(0, 100), int(mParam.value * 100.0f), 10);
+        onParamUpdated(true);
+    }
+
     void MaskPanel::setLaneAndChannel(core::TimeKeyType aLane, core::FilterMaskChannel aChannel) {
+        mChannelGroup->setVisible(true);
         setLane(aLane);
         mParam.setChannel(aChannel);
         mChannelGroup->setChoice(int(aChannel));
