@@ -771,6 +771,29 @@ int sectionMoveSpline() {
         CHECK(matchesPlayback(oracle, cy, core::Frame(frame)));
     }
 
+    // AND THE DRAWN PATH IS THE SAMPLED PATH for a Move channel too. The polyline prepares
+    // one segment (its Catmull-Rom knots and the spline's linearization table) and then walks
+    // it per point, so the point of this assertion is the pair "prepared once / evaluated per
+    // point" - the shape that changed - against sample()'s one-shot evaluation, fractional
+    // frames included.
+    {
+        QVector<QPointF> line;
+        cy.buildPolyline(core::Frame(0), core::Frame(10), 8, line);
+        int compared = 0;
+        int fractional = 0;
+        for (const QPointF& point : line) {
+            const float x = static_cast<float>(point.x());
+            CHECK(nearly(static_cast<float>(point.y()),
+                         cy.sample(core::Frame::fromDecimal(x))));
+            ++compared;
+            if (std::fabs(x - std::floor(x + 0.5)) > 1e-6) ++fractional;
+        }
+        std::printf("MEASURED Move polyline: %d points compared with sample(), %d of them fractional\n",
+                    compared, fractional);
+        CHECK(compared >= 10);
+        CHECK(fractional > 5);   // the assertion must reach the interpolated points
+    }
+
     // A Linear spline on either end drops the neighbour from the Catmull-Rom
     // velocity (MoveKey::getCatmullRomVels nulls aKey3 when the arrival key is
     // Linear), so the segment is the straight chord again and the midpoint IS

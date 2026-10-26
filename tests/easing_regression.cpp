@@ -1010,6 +1010,24 @@ int main(int argc, char** argv) {
                       "the prepared segment's branch flags do not match the predicate");
     }
 
+    // ---- A ZERO SPAN IS THE LINEAR RATE, not a division by zero ----
+    //
+    // EasingSegment clamps a zero span to 1, and this is the one place the refactor changed an
+    // answer: `t / 0` used to be +inf and UnitBezier::solve turned that into an endpoint-
+    // gradient extrapolation (an unbounded number reaching a drawn curve). Nothing in the tree
+    // asks for it - both funnels guard a zero-length segment before evaluating (sampleOver
+    // returns the from value, getEasingRateFromTwoKeys returns the earlier key) - so this pins
+    // the bounded answer a future caller gets instead of the old infinity.
+    {
+        util::Easing::Param custom;
+        custom.type = util::Easing::Type_Custom;
+        custom.cubicBezier = {1.0f / 3.0f, 0.2f, 2.0f / 3.0f, 0.8f};
+        const float zeroSpan = util::Easing::calculate(custom, 0.5f, 0.0f, 1.0f, 0.0f);
+        std::printf("zero span: calculate(custom, 0.5, 0, 1, 0) = %.4f (was an infinity)\n", zeroSpan);
+        XC_MSG_ASSERT(std::fabs(zeroSpan - 0.5f) <= 1e-4f,
+                      "a zero span produced %.4f, expected the linear 0.5", zeroSpan);
+    }
+
     std::printf("easing_regression: PASS (%d curves, solver + weight + threads + auto + names "
                 "+ defaults + thirds + crossed ok)\n",
                 numCurves);
