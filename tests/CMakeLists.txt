@@ -580,8 +580,8 @@ add_executable(filter_card_geometry
 target_include_directories(filter_card_geometry PRIVATE .. ../src ../src/gui)
 target_compile_definitions(filter_card_geometry PRIVATE
     AE_MAJOR_VERSION=1
-    AE_MINOR_VERSION=1
-    AE_MICRO_VERSION=0
+    AE_MINOR_VERSION=7
+    AE_MICRO_VERSION=1
     USE_GL_CORE_PROFILE
     AE_QML_DIR="${CMAKE_SOURCE_DIR}/src/gui/qml"
     AE_ICON_SRC="${CMAKE_SOURCE_DIR}/assets/icons"
