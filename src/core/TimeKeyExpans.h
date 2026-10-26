@@ -10,6 +10,7 @@
 #include "core/OpaKey.h"
 #include "core/HsvKey.h"
 #include "core/WaveKey.h"
+#include "core/MaskKey.h"
 #include "core/BoneKey.h"
 #include "core/PoseKey.h"
 #include "core/MeshKey.h"
@@ -46,6 +47,12 @@ public:
 
     WaveKey::Data& wave() { return mWave; }
     const WaveKey::Data& wave() const { return mWave; }
+
+    // The blended mask FIELD for this frame. An invalid field means "no mask",
+    // which the renderer treats as fully visible - so a node without a mask pays
+    // one null test and nothing else.
+    MaskKey::Data& mask() { return mMask; }
+    const MaskKey::Data& mask() const { return mMask; }
 
     void setBlurEllipse(float aBlurX, float aBlurY, float aAngleDeg) {
         mBlurX = aBlurX;
@@ -108,6 +115,7 @@ private:
     OpaKey::Data mOpa;
     HSVKey::Data mHSV;
     WaveKey::Data mWave;
+    MaskKey::Data mMask;
     float mBlurX;
     float mBlurY;
     float mBlurAngle;

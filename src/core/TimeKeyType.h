@@ -17,6 +17,7 @@ enum TimeKeyType {
     TimeKeyType_HSV,
     TimeKeyType_Blur,
     TimeKeyType_Wave,
+    TimeKeyType_Mask,
     TimeKeyType_TERM
 };
 

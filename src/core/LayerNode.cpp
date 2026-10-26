@@ -513,6 +513,23 @@ void LayerNode::transformShape(const RenderInfo& aInfo, const TimeCacheAccessor&
     mCurrentMesh = mesh;
 }
 
+// The inverse of the matrices this layer is drawn with: screen pixels -> the
+// layer's content pixels. The filter passes build it for their content-space fields
+// (the wave's, the HSV mask's); a layer mask needs it on the DIRECT path too.
+QMatrix4x4 LayerNode::contentMappingFor(
+    const RenderInfo& aInfo, const TimeCacheAccessor& aAccessor, const QSize& aTargetSize
+) const {
+    const auto& expans = aAccessor.get(mTimeLine);
+    QMatrix4x4 world = expans.srt().worldCSRTMatrix();
+    if (!aInfo.nonPosed && expans.bone().isAffectedByBinding())
+        world = expans.bone().outerMatrix();
+    const QMatrix4x4 toScreen =
+        waveContentToScreen(aInfo.camera, QSizeF(aTargetSize), world, expans.imageOffset());
+    bool invertible = false;
+    const QMatrix4x4 inverted = toScreen.inverted(&invertible);
+    return invertible ? inverted : QMatrix4x4();
+}
+
 void LayerNode::renderLayer(const RenderInfo& aInfo, const TimeCacheAccessor& aAccessor, bool useHSV, QList<int> HSVData = {}) {
     if (!mCurrentMesh)
         return;
@@ -530,7 +547,13 @@ void LayerNode::renderLayer(const RenderInfo& aInfo, const TimeCacheAccessor& aA
     auto blendMode = expans.blendMode();
     const QMatrix4x4 viewMatrix = aInfo.camera.viewMatrix();
 
-    auto& shader = aInfo.isGrid ? mShaderHolder.gridShader() : mShaderHolder.shader(blendMode, isClippee, useHSV);
+    // THE NODE'S MATTE. A mask with a field compiles into the draw (LAYER_MASK), so
+    // the multiply is one texture read in the layer's own fragment shader and needs
+    // no isolated composite: a masked layer still draws on the direct path.
+    const MaskKey::Data& maskData = expans.mask();
+    const bool useLayerMask = !aInfo.isGrid && maskData.isValid();
+    auto& shader = aInfo.isGrid ? mShaderHolder.gridShader()
+                                : mShaderHolder.shader(blendMode, isClippee, useHSV, useLayerMask);
 
     // update destination color
     XC_PTR_ASSERT(aInfo.destTexturizer);
@@ -580,6 +603,26 @@ void LayerNode::renderLayer(const RenderInfo& aInfo, const TimeCacheAccessor& aA
         if (isClippee) {
             shader.setUniformValue("uClippingId", (int)aInfo.clippingId);
             shader.setUniformValue("uClippingTexture", 2);
+        }
+
+        if (useLayerMask) {
+            if (const gl::Texture* maskTexture = maskData.textureId()) {
+                // unit 3: 0 is the layer, 1 the destination, 2 the clipping frame
+                ggl.glActiveTexture(GL_TEXTURE3);
+                ggl.glBindTexture(GL_TEXTURE_2D, maskTexture->id());
+                ggl.glActiveTexture(GL_TEXTURE0);
+                shader.setUniformValue("uLayerMask", 3);
+                const QRectF rect = maskData.contentRect();
+                shader.setUniformValue(
+                    "uLayerMaskRect",
+                    QVector4D(
+                        float(rect.x()), float(rect.y()), float(rect.width()), float(rect.height())
+                    )
+                );
+                shader.setUniformValue(
+                    "uScreenToLayer", waveAffine3(contentMappingFor(aInfo, aAccessor, aInfo.camera.deviceScreenSize()))
+                );
+            }
         }
 
         if (useHSV && !HSVData.isEmpty()) {

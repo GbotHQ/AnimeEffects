@@ -56,8 +56,13 @@
 //                filter stack, one entry per lane that has a field (type token,
 //                content rect, texel size, PNG blob). Older files have none, and
 //                a lane without a mask renders exactly as before
+//   0.19 -> 0.20 the LAYER MASK key type (core/MaskKey.h): a node's matte as an
+//                8-bit alpha field in its content space, with the node's content
+//                rect and texel grid, and the key's single shared easing. The
+//                type name in the TimeKeyMap block is "Mask". Older files have
+//                no layer mask, and a node without one renders as before
 #define AE_PROJECT_FORMAT_MAJOR_VERSION 0
-#define AE_PROJECT_FORMAT_MINOR_VERSION 19
+#define AE_PROJECT_FORMAT_MINOR_VERSION 20
 
 #define AE_PROJECT_FORMAT_OLDEST_MAJOR_VERSION 0
 #define AE_PROJECT_FORMAT_OLDEST_MINOR_VERSION 4

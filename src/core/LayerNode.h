@@ -67,6 +67,12 @@ public:
     private:
     void transformShape(const RenderInfo& aInfo, const TimeCacheAccessor&);
     void renderLayer(const RenderInfo& aInfo, const TimeCacheAccessor&, bool useHSV, QList<int> HSVData);
+    // screen pixels -> this layer's content pixels, the inverse of the transforms it
+    // is drawn with. Shared by the direct draw (a layer mask samples in content
+    // space) and the composite path's filter fields.
+    QMatrix4x4 contentMappingFor(
+        const RenderInfo& aInfo, const TimeCacheAccessor& aAccessor, const QSize& aTargetSize
+    ) const;
     void renderComposite(const RenderInfo& aInfo, const TimeCacheAccessor&);
     void renderClippees(const RenderInfo& aInfo, const TimeCacheAccessor&);
     bool isClipper() const;

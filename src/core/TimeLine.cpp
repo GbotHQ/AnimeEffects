@@ -7,6 +7,7 @@
 #include "core/DepthKey.h"
 #include "core/BlurKey.h"
 #include "core/WaveKey.h"
+#include "core/MaskKey.h"
 #include "core/Project.h"
 
 namespace {
@@ -14,7 +15,7 @@ namespace {
 constexpr int kMaxLengthOfTimeKeyName = 8;
 constexpr std::array<const char*, core::TimeKeyType_TERM> kTimeKeyNames = {
     "Move", "Rotate", "Scale", "Depth", "Opa", "Bone", "Pose", "Mesh", "FFD", "Image", "HSV", "Blur",
-    "Wave"};
+    "Wave", "Mask"};
 
 constexpr std::array<core::TimeKeyType, core::TimeKeyType_TERM> kTimeKeyTypeInOrderOfOperations = {
     core::TimeKeyType_Image,
@@ -29,7 +30,10 @@ constexpr std::array<core::TimeKeyType, core::TimeKeyType_TERM> kTimeKeyTypeInOr
     core::TimeKeyType_Opa,
     core::TimeKeyType_HSV,
     core::TimeKeyType_Blur,
-    core::TimeKeyType_Wave};
+    core::TimeKeyType_Wave,
+    // A mask multiplies the PRESENT alpha, i.e. it is the last thing applied to
+    // a node, so it resolves after every filter.
+    core::TimeKeyType_Mask};
 
 } // namespace
 
@@ -625,6 +629,8 @@ bool TimeLine::deserializeTimeKey(Deserializer& aIn, TimeKeyType aType, int aInd
         key = new BlurKey();
     } else if (aType == TimeKeyType_Wave) {
         key = new WaveKey();
+    } else if (aType == TimeKeyType_Mask) {
+        key = new MaskKey();
     } else if (aType == TimeKeyType_Bone) {
         key = new BoneKey();
     } else if (aType == TimeKeyType_Pose) {

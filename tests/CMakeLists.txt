@@ -451,6 +451,9 @@ add_executable(general_setting_form general_setting_form.cpp
     # The two files are header-only in their dependencies, so the light target stays
     # light; the `util` library would drag the whole Qt/GL stack in for two symbols.
     ../src/util/Easing.cpp
+    # Easing.cpp's solver funnels go through EasingSegment (the prepared curve), so a
+    # target that compiles Easing.cpp directly needs it beside it.
+    ../src/util/EasingSegment.cpp
     ../src/util/EasingName.cpp
     ../src/gui/MouseSetting.cpp)
 target_include_directories(general_setting_form PRIVATE .. ../src ../src/gui)
@@ -901,6 +904,26 @@ target_link_libraries(wave_deform PRIVATE
 # (FilterFrame compiles the layer fragment shader for its HSV/present variants).
 add_executable(wave_pass_pixels wave_pass_pixels.cpp
     ${CMAKE_SOURCE_DIR}/assets/assets.qrc
+)
+
+# See layer_mask_pixels.cpp. The LAYER MASK's contract is a pixel fact (a field
+# sampled in content space, multiplied into the present alpha), so it is measured on
+# a real context through the SHIPPED shader variant table (core::ShaderHolder).
+add_executable(layer_mask_pixels layer_mask_pixels.cpp
+    ${CMAKE_SOURCE_DIR}/assets/assets.qrc
+)
+target_include_directories(layer_mask_pixels PRIVATE .. ../src)
+target_compile_definitions(layer_mask_pixels PRIVATE
+    AE_MAJOR_VERSION=1
+    AE_MINOR_VERSION=7
+    AE_MICRO_VERSION=1
+    USE_GL_CORE_PROFILE
+)
+target_link_libraries(layer_mask_pixels PRIVATE
+    Qt6::Core Qt6::Core5Compat Qt6::Widgets
+    Qt6::Gui Qt6::OpenGL Qt6::OpenGLWidgets
+    Qt6::Svg Qt6::Xml Qt6::Concurrent Qt6::Multimedia
+    cmnd core ctrl gl img thr util pugixml
 )
 target_include_directories(wave_pass_pixels PRIVATE .. ../src)
 target_compile_definitions(wave_pass_pixels PRIVATE

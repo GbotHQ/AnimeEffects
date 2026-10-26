@@ -231,6 +231,9 @@ void TimeKeyBlender::updateCurrents(ObjectNode* aRootNode, const TimeInfo& aTime
 
             // build ffd
             blendFFDKey(pos, aTime);
+
+            // build mask
+            blendMaskKey(pos, aTime);
         }
     }
 
@@ -955,6 +958,89 @@ void TimeKeyBlender::blendFFDKey(PositionType aPos, const TimeInfo& aTime) {
         gl::Vector3* dst = expans.ffd().positions();
         for (int i = 0; i < count; ++i) {
             dst[i] = v0[i] * (1.0f - time) + v1[i] * time;
+        }
+    }
+}
+
+// A MASK animates by keying SHAPES: each key carries a whole alpha field, and a
+// frame between two keys is the per-texel blend of them. That is the same bet
+// FFD makes with its vertices, and it is why a mask needs no per-pixel curve:
+// the field itself is the animated value, and the easing shapes how it crosses.
+void TimeKeyBlender::blendMaskKey(PositionType aPos, const TimeInfo& aTime) {
+    auto seekData = mSeeker->data(aPos);
+    if (!seekData.objNode || !seekData.expans)
+        return;
+    auto& node = *seekData.objNode;
+    auto& expans = *seekData.expans;
+    if (!node.timeLine())
+        return;
+
+    expans.setKeyCache(TimeKeyType_Mask, aTime.frame);
+
+    MaskKey::Data& out = expans.mask();
+    out.clear();
+
+    TimeKeyGatherer blend(node.timeLine()->map(TimeKeyType_Mask), aTime);
+
+    if (blend.isEmpty()) {
+        // no key at all: the default key's field, or no mask
+        auto defaultKey = (const MaskKey*)node.timeLine()->defaultKey(TimeKeyType_Mask);
+        if (defaultKey && defaultKey->data().isValid())
+            out.assign(defaultKey->data());
+        return;
+    }
+
+    if (blend.hasSameFrame()) {
+        out.assign(((const MaskKey*)blend.point(0).key)->data());
+        return;
+    }
+
+    if (blend.isSingle()) {
+        // a mask does not extrapolate: outside the keyed span it holds the
+        // nearest key's shape, which is what a hold looks like
+        out.assign(((const MaskKey*)blend.singlePoint().key)->data());
+        return;
+    }
+
+    auto key0 = (const MaskKey*)blend.point(0).key;
+    auto key1 = (const MaskKey*)blend.point(1).key;
+    const MaskKey::Data& d0 = key0->data();
+    const MaskKey::Data& d1 = key1->data();
+
+    if (!d0.isValid()) {
+        out.assign(d1);
+        return;
+    }
+    if (!d1.isValid()) {
+        out.assign(d0);
+        return;
+    }
+
+    const float time = getEasingRateFromTwoKeys<MaskKey>(blend, 0);
+
+    // The per-frame path never RESAMPLES: two keys on the same texel grid and
+    // the same content rect blend texel by texel, and any other pair cannot be
+    // blended without a scale per frame, which would cost more than the whole
+    // present. Such a pair takes the nearer key and says nothing - the authoring
+    // path keeps one grid per node, so this is the "someone re-imported the
+    // image at another size" case, not an ordinary one.
+    if (d0.texelSize() != d1.texelSize() || d0.contentRect() != d1.contentRect()) {
+        out.assign(time < 0.5f ? d0 : d1);
+        return;
+    }
+
+    out.alloc(d0.texelSize(), d0.contentRect(), MaskKey::kNeutral);
+    out.easing(0) = d0.easing(0);
+
+    const int w = d0.texelSize().width();
+    const int h = d0.texelSize().height();
+    const int fixedTime = int(time * 256.0f + 0.5f);   // one rounding, integer lerp
+    for (int y = 0; y < h; ++y) {
+        const uchar* s0 = d0.field().constScanLine(y);
+        const uchar* s1 = d1.field().constScanLine(y);
+        uchar* dst = out.field().scanLine(y);
+        for (int x = 0; x < w; ++x) {
+            dst[x] = uchar((int(s0[x]) * (256 - fixedTime) + int(s1[x]) * fixedTime) >> 8);
         }
     }
 }

@@ -76,6 +76,7 @@ add_library(${PROJECT_NAME}
     TimeKeyType.h
     TimeLine.cpp TimeLine.h
     TimeLineEvent.cpp TimeLineEvent.h
+    MaskKey.cpp MaskKey.h
     WaveKey.h
     WavePass.h
     WorldBlurMath.h

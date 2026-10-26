@@ -52,7 +52,12 @@ constexpr int easingComponentCount(TimeKeyType aType) {
 // timeline header's chip) iterates; the graph uses easingComponentCount, which
 // is 0 for those two because they publish no channel.
 constexpr int easingStorageCount(TimeKeyType aType) {
-    return (aType == TimeKeyType_Pose || aType == TimeKeyType_FFD) ? 1 : easingComponentCount(aType);
+    // Structural keys shape a whole key with ONE easing, addressed at index 0:
+    // a pose blends bones and a mask blends a FIELD, neither of which has a
+    // component axis to ease separately.
+    return (aType == TimeKeyType_Pose || aType == TimeKeyType_FFD || aType == TimeKeyType_Mask)
+               ? 1
+               : easingComponentCount(aType);
 }
 
 } // namespace core
