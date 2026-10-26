@@ -56,13 +56,28 @@ The picture: [`mask-surfaces.svg`](mask-surfaces.svg).
 and no strokes can vanish into an unnamed key). The alternative is an auto-key on the first stroke,
 which is friendlier for masking but inconsistent with every other tool in the application.
 
-## Order of work
+## Order of work, and where it stands
 
-1. `TimeKeyType_Mask` + `MaskKey` (field, easings, serialization) — the type the rest hangs on.
-2. Expans + blender: `lerp` of two fields on equal grids, nearer key otherwise (no scaling in the
-   per-frame path).
-3. Present multiply for a layer and for a folder, with a pixel gate (masked half unmoved, unmasked half
-   at full strength).
-4. The inspector card + tree chip + lane (the lane is free; the card and chip are QML/inspector work).
-5. The Mask tool target + rubylith.
-6. PSD import writes the mask.
+DONE and gated (`5f06df23`, `77b34405`):
+
+1. `TimeKeyType_Mask` + `MaskKey` — the field, one shared easing, the content rect, the texel grid and
+   the PNG payload, at format 0.20. `timekey_roundtrip` saves and reloads a gradient matte (0 of 3072
+   texels differ).
+2. Expans + blender — one integer `lerp` per texel on equal grids, the nearer key otherwise, and the
+   field's texture shared through a copy so a static mask uploads once.
+3. The layer draw — `LAYER_MASK` as a fourth variant of the shipped table, sampled through the same
+   `uScreenToLayer` the HSV amount mask uses, multiplied into the present alpha after every filter.
+   `layer_mask_pixels` measures ten things on radeonsi (a half field masks its half, a soft edge is
+   monotonic partial alpha, a corner field hides 1024 px and leaves the rest visible, and halving the
+   content mapping doubles the field's screen extent).
+4. The four edits every surface calls — `addMask`, `removeMask`, `invertMask`, `toggleMaskKey`, one
+   undo step each, with a reveal-all neutral and a keyed hold that copies the frame it was keyed on.
+   `layer_mask_commands` pins them.
+
+REMAINING, in this order:
+
+5. The inspector card (`InspectorViewModel`'s mask properties + a thumbnail image provider + the QML
+   card), the tree chip, and the Mask tool's `Target` entry with the canvas rubylith.
+6. A folder's mask on its composite path (the layer's draw is the direct path; a folder presents from
+   an isolated composite).
+7. PSD import writes the mask instead of standing clipping in for one.
