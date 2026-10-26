@@ -541,6 +541,18 @@ bool ImageFileLoader::loadPsd(core::Project& aProject, util::IProgressReporter& 
             folderNode->setBlendMode(
                 folderBlend == img::BlendMode_TERM ? img::BlendMode_Normal : folderBlend);
 
+            // A GROUP MASK masks the group's COMPOSITE in Photoshop, which is exactly
+            // what a folder's matte does here. It covers the document box (a group's
+            // mask rect is drawn in document space), and the folder's own content box
+            // is that canvas once it has been measured.
+            if (!maskField.isNull()) {
+                // the folder's content space is the CANVAS this import establishes, so the
+                // field is anchored to the same box the folder will be measured against -
+                // not the header's, which a forced canvas size can differ from
+                const QRectF groupRect(QPointF(0.0, 0.0), QSizeF(canvasSize));
+                attachMask(*folderNode, maskField, groupRect);
+            }
+
             // push tree
             current->children().pushBack(folderNode);
             treeStack.push_back(folderNode);

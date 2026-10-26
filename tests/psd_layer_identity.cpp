@@ -180,6 +180,8 @@ struct LayerSpec {
     // ...and the mask's own PIXELS: channel id -2 over the mask rect, 0 on the left
     // column and 255 on the right (hidden / visible), so an assertion can name both.
     bool maskChannel = false;
+    // An "lsct" section divider: 1 opens a group, 3 closes it (PSDFormat's enum).
+    int divider = -1;
 };
 
 std::string layerRecord(const LayerSpec& aSpec)
@@ -240,6 +242,11 @@ std::string layerRecord(const LayerSpec& aSpec)
         ByteWriter id;
         id.u32((uint32)aSpec.identity.toUInt());
         writeInfo(extra, "lyid", id.data());
+    }
+    if (aSpec.divider >= 0) {
+        ByteWriter section;
+        section.u32((uint32)aSpec.divider);
+        writeInfo(extra, "lsct", section.data());
     }
     if (!aSpec.unicodeName.isEmpty()) {
         const QString text = aSpec.unicodeName;
@@ -648,6 +655,64 @@ int testUnsupportedFillLayerDegradesWithOneWarning()
 // without the mask". A mask whose PIXELS cannot be decoded still counts into the
 // warning, so nothing is dropped silently.
 // -----------------------------------------------------------------------------
+// A PSD GROUP carries its own mask, and Photoshop draws it in DOCUMENT space: it masks
+// the group's composite, which is what a folder's matte does here. The field is
+// anchored to the canvas the import establishes, not to the header's size, so a forced
+// canvas size cannot misplace it.
+int testGroupMaskBecomesAFolderMatte()
+{
+    QTemporaryDir dir;
+    CHECK(dir.isValid());
+    const QString path = dir.filePath("groupmask.psd");
+    CHECK(writePsdFile(
+        // PSD stores layers BOTTOM-TO-TOP and the importer walks them in reverse: the
+        // closing divider is written first, then the child, then the opening one - a
+        // group written in reading order pops an empty stack.
+        buildPsd({
+            {"</Layer group>", "", "", true, {0, 0, 0}, nullptr, false, false, 3},
+            {"child", "", "", true, {200, 210, 220}},
+            {"<Layer group>", "", "", true, {0, 0, 0}, nullptr, true, true, 1},
+        }),
+        path
+    ));
+
+    NullAnimator animator;
+    core::Project project("psd_groupmask.anie", animator, nullptr);
+    NullProgressReporter reporter;
+    ctrl::ImageFileLoader loader(gl::DeviceInfo::instance());
+    CHECK(loader.load(path, project, reporter));
+
+    std::printf("assert: a GROUP's mask becomes a matte on the folder\n");
+    core::MaskKey* maskKey = nullptr;
+    for (core::ObjectNode* node : project.objectTree().topNode()->children()) {
+        if (!node->timeLine()) continue;
+        if (auto* key = static_cast<core::MaskKey*>(node->timeLine()->defaultKey(core::TimeKeyType_Mask)))
+            maskKey = key;
+    }
+    CHECK(maskKey != nullptr);
+    if (maskKey) {
+        const core::MaskKey::Data& data = maskKey->data();
+        CHECK(data.isValid());
+        CHECK(data.isPainted());
+        // ANCHORED TO THE CANVAS, which is the folder's content space
+        const QRectF canvas(QPointF(0.0, 0.0), QSizeF(project.attribute().imageSize()));
+        CHECK(data.contentRect() == canvas);
+        const uchar* row = data.field().constScanLine(0);
+        std::printf(
+            "MEASURED group matte: %dx%d over %dx%d, texels %d %d\n", data.texelSize().width(),
+            data.texelSize().height(), int(canvas.width()), int(canvas.height()), row[0], row[1]
+        );
+        CHECK(row[0] == 0);
+        CHECK(row[1] == 255);
+    }
+
+    std::printf("assert: and nothing is reported as an ignored mask\n");
+    for (const QString& warning : loader.warnings()) {
+        CHECK(!warning.contains(QStringLiteral("masks are not supported")));
+    }
+    return 0;
+}
+
 int testLayerMaskIsReportedOnce()
 {
     QTemporaryDir dir;
@@ -724,6 +789,7 @@ int run()
     CHECK(testJsonResolutionIsUnambiguous() == 0);
     CHECK(testUnsupportedFillLayerDegradesWithOneWarning() == 0);
     CHECK(testLayerMaskIsReportedOnce() == 0);
+    CHECK(testGroupMaskBecomesAFolderMatte() == 0);
     std::printf("psd_layer_identity: all checks passed\n");
     return 0;
 }
