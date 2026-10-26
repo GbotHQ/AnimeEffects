@@ -24,6 +24,7 @@
 #include <thread>
 #include <vector>
 #include "util/Easing.h"
+#include "util/EasingSegment.h"
 #include "util/UnitBezier.h"
 #include "XCAssert.h"
 
@@ -949,6 +950,64 @@ int main(int argc, char** argv) {
         XC_MSG_ASSERT(nearMatchesSolver == 999,
                       "a pair 1e-6 OFF the thirds did not stay on the solver in %d of 999 samples",
                       999 - nearMatchesSolver);
+    }
+
+    // ---- THE PREPARED SEGMENT IS THE SHIPPED EVALUATION --------------------------
+    //
+    // `Easing::calculate` is a one-shot wrapper over util::EasingSegment, so the two must
+    // agree BIT FOR BIT (not merely within a tolerance): a caller that prepares a segment
+    // once and samples it 600 times must draw the curve playback plays.
+    //
+    // THIS GATE IS NOT AN ORACLE, and it must not be read as one: both sides are now the
+    // same implementation. It is a guard against a SECOND evaluation path appearing in
+    // `calculate` (the failure it catches is "someone re-spelled the maths"), plus a pin on
+    // the branch flags, which a value comparison cannot see at all. The independent
+    // evidence that the refactor changed nothing is the sweep ABOVE, which compares against
+    // UnitBezier and against the direct cubic - code that is not the shipped path.
+    {
+        util::Easing::Param thirds;
+        thirds.type = util::Easing::Type_Custom;
+        thirds.cubicBezier = {1.0f / 3.0f, 0.2f, 2.0f / 3.0f, 0.8f};
+        thirds.handleIn = util::Easing::HandleMode_Free;
+        thirds.handleOut = util::Easing::HandleMode_Free;
+        util::Easing::Param nearMiss = thirds;
+        nearMiss.cubicBezier = {1.0f / 3.0f + 1e-6f, 0.2f, 2.0f / 3.0f - 1e-6f, 0.8f};
+        util::Easing::Param derived = thirds;
+        derived.handleOut = util::Easing::HandleMode_Auto;
+        derived.handleIn = util::Easing::HandleMode_AutoClamped;
+        util::Easing::AutoContext ctx;
+        ctx.prev = {true, -1.0f, -0.2f};
+        ctx.next = {true, 2.0f, 1.2f};
+        ctx.inMode = util::Easing::HandleMode_AutoClamped;
+
+        int storedExact = 0, nearExact = 0, derivedExact = 0;
+        const float span = 1.0f;
+        const util::EasingSegment preparedStored(thirds, span);
+        const util::EasingSegment preparedNear(nearMiss, span);
+        const util::EasingSegment preparedDerived(derived, ctx, span);
+        for (int i = 0; i <= 1000; ++i) {
+            const float t = float(i) / 1000.0f;
+            const float viaSurface = util::Easing::calculate(thirds, t, 0.0f, 1.0f, span);
+            const float viaPrepared = preparedStored.rate(t);
+            if (viaSurface == viaPrepared) ++storedExact;
+            if (util::Easing::calculate(nearMiss, t, 0.0f, 1.0f, span) == preparedNear.rate(t))
+                ++nearExact;
+            if (util::Easing::calculate(derived, ctx, t, 0.0f, 1.0f, span) == preparedDerived.rate(t))
+                ++derivedExact;
+        }
+        std::printf("prepared segment: stored %d/1001, near-miss %d/1001, derived %d/1001 bitwise equal "
+                    "to Easing::calculate; branch flags thirds=%d near=%d derived=%d\n",
+                    storedExact, nearExact, derivedExact, int(preparedStored.usesThirdsPath()),
+                    int(preparedNear.usesThirdsPath()), int(preparedDerived.usesThirdsPath()));
+        XC_MSG_ASSERT(storedExact == 1001, "a prepared segment disagreed with Easing::calculate in %d of "
+                      "1001 samples (stored pair)", 1001 - storedExact);
+        XC_MSG_ASSERT(nearExact == 1001, "a prepared segment disagreed with Easing::calculate in %d of "
+                      "1001 samples (near-thirds pair)", 1001 - nearExact);
+        XC_MSG_ASSERT(derivedExact == 1001, "a prepared segment disagreed with Easing::calculate in %d of "
+                      "1001 samples (derived pair)", 1001 - derivedExact);
+        XC_MSG_ASSERT(preparedStored.usesThirdsPath() && !preparedNear.usesThirdsPath()
+                      && preparedDerived.usesThirdsPath(),
+                      "the prepared segment's branch flags do not match the predicate");
     }
 
     std::printf("easing_regression: PASS (%d curves, solver + weight + threads + auto + names "
