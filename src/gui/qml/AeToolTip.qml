@@ -83,13 +83,16 @@ import QtQuick.Templates
 // hides after a timeout or as soon as the pointer leaves.
 //
 // The delay is a CONSTANT of the design rather than a value read from Qt, and that
-// is measured, not assumed: on Qt 6.11.2 there is nothing to read. Qt 6.11 ships no
-// tooltip-delay API at all - the whole installed header tree matches no showDelay,
-// toolTipDelay or hideDelay - Qt Quick Controls' ToolTip.delay defaults to 0, no
-// installed style overrides it, and Qt's own QToolTip fires 1-2 ms after the hover
-// (measured, this spike: ENTER 2846 ms / TOOLTIP 2848 ms). QStyleHints::
-// toolTipWakeUpDelay only exists from 6.12. So "the platform's wake-up delay" here
-// means the conventional desktop one: 500 ms here, 10 s before it retires itself.
+// is measured, not assumed: it was chosen on Qt 6.11.2, where there was nothing to
+// read at all - that release ships no tooltip-delay API (the whole installed header
+// tree matches no showDelay, toolTipDelay or hideDelay), Qt Quick Controls' ToolTip.delay
+// defaults to 0, no installed style overrides it, and Qt's own QToolTip fires 1-2 ms
+// after the hover (measured, this spike: ENTER 2846 ms / TOOLTIP 2848 ms). So "the
+// platform's wake-up delay" here means the conventional desktop one: 500 ms, then 10 s
+// before the tip retires itself. NOTE for whoever moves this next: the tree's floor is
+// Qt 6.12 now, and 6.12 DOES have QStyleHints::toolTipWakeUpDelay (read-only) - the
+// constant can become the platform's value, and that is a deliberate design change to
+// make, not a rename.
 Item {
     id: root
 

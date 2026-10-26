@@ -560,6 +560,38 @@ target_link_libraries(tooltip_contract PRIVATE
 # the tooltip/combo popups inside the scrolling content are clipped by NOTHING
 # (E28's clamp narrows to the visible viewport). Hosts the REAL ExportDialog.qml
 # with the real view model. See form_layout.cpp.
+# A FILTER CARD'S HEADER DOES NOT MOVE WHEN THE CARD EXPANDS (notes.md, 2026-10-26).
+# The rule - "expansion may change ink, never geometry" - is a QML geometry fact that no
+# model test can see: inspector_view_model pins the STATE, and this pins the pixels it
+# must not move, through the marker each card publishes for its own disclosure.
+add_executable(filter_card_geometry
+    filter_card_geometry.cpp
+    ../src/gui/qml/QmlTheme.cpp
+    ../src/gui/theme/Icons.cpp
+    ../src/gui/qml/InspectorViewModel.cpp
+    ../src/gui/qml/InspectorViewModel.h
+    ../src/gui/qml/InspectorRowModel.cpp
+    ../src/gui/qml/InspectorRowModel.h
+    ../src/gui/qml/FilterStackModel.cpp
+    ../src/gui/qml/FilterStackModel.h
+    ../src/gui/qml/QmlFormAccessibility.cpp
+    ../src/gui/prop/prop_KeyAccessor.cpp
+    ${CMAKE_SOURCE_DIR}/assets/assets.qrc)
+target_include_directories(filter_card_geometry PRIVATE .. ../src ../src/gui)
+target_compile_definitions(filter_card_geometry PRIVATE
+    AE_MAJOR_VERSION=1
+    AE_MINOR_VERSION=1
+    AE_MICRO_VERSION=0
+    USE_GL_CORE_PROFILE
+    AE_QML_DIR="${CMAKE_SOURCE_DIR}/src/gui/qml"
+    AE_ICON_SRC="${CMAKE_SOURCE_DIR}/assets/icons"
+)
+target_link_libraries(filter_card_geometry PRIVATE
+    Qt6::Core Qt6::Gui Qt6::Widgets Qt6::Xml
+    Qt6::Qml Qt6::Quick Qt6::QuickControls2 Qt6::Test Qt6::Multimedia
+    cmnd core ctrl gl img thr util pugixml media
+)
+
 add_executable(form_layout
     form_layout.cpp
     ../src/gui/qml/QmlTheme.cpp
