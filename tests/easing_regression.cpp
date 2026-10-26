@@ -16,6 +16,7 @@
 // as through util::Easing::calculate.
 #include <QCoreApplication>
 #include <QDebug>
+#include <algorithm>
 #include <atomic>
 #include <cmath>
 #include <cstdio>
@@ -634,7 +635,247 @@ int main(int argc, char** argv) {
         XC_ASSERT(unclamped.y() < 0.0f); // the overshoot the default must not have
     }
 
-    std::printf("easing_regression: PASS (%d curves, solver + weight + threads + auto + names + defaults ok)\n",
+    // 9) THE THIRDS FAST PATH. A Custom pair whose control points sit on the
+    //    third points in x - P1 = (1/3, y1), P2 = (2/3, y2) - makes the cubic's
+    //    x component the identity, x(t) = t, so Easing.cpp reads y straight off
+    //    the cubic in x and never runs the x -> t solve (isThirdsPair /
+    //    thirdsPairY). EVERY automatic segment is such a pair: controlPoint
+    //    answers x = 1/3 and 2/3 for Vector, Auto and AutoClamped alike, and a
+    //    frozen handle stores those same floats. The numbers must NOT move, and
+    //    the pairs that are not the thirds must NOT be swallowed.
+    //
+    //    The fast path and the solve differ only by the float thirds: fl(1/3) is
+    //    9.93e-9 above 1/3, so x(t) - t = 3t(1-t^2)*9.93e-9 <= 1.15e-8 - an order
+    //    below kBezierEpsilon, which is why a 1e-7 bound is the right one to
+    //    demand of the two.
+    {
+        const float span = 10.0f;
+
+        // THE DERIVED PAIR. A symmetric neighbourhood gives one central slope on
+        // both keys: prev at (-1, -0.2), next at (2, 1.2) mirror each other about
+        // the segment, so m = (1 - (-0.2)) / (1 - (-1)) = 0.6 at both keys and
+        // the handles are (1/3, m/3) = (1/3, 0.2) and (2/3, 1 - m/3) = (2/3, 0.8).
+        util::Easing::AutoContext ctx;
+        ctx.prev = { true, -span, -0.2f };
+        ctx.next = { true, 2.0f * span, 1.2f };
+        ctx.inMode = util::Easing::kDefaultAutomaticHandleMode;
+
+        util::Easing::Param derived;
+        derived.type = util::Easing::Type_Custom;
+        derived.handleOut = util::Easing::kAutoPresetHandleMode;
+        // Deliberately UNRELATED stored values: an automatic pair must come from
+        // the neighbours, not from what an earlier edit left behind.
+        derived.cubicBezier = util::Easing::CubicBezier{0.4f, 0.1f, 0.8f, 0.9f};
+
+        const QPointF d1 = util::Easing::controlPoint(derived, ctx.inMode, ctx, span, 0);
+        const QPointF d2 = util::Easing::controlPoint(derived, ctx.inMode, ctx, span, 1);
+        // Exact float equality is what the fast path's own gate tests, so assert
+        // exactly that after the narrowing - not an epsilon that would also pass
+        // for a pair merely near the thirds.
+        XC_MSG_ASSERT(float(d1.x()) == 1.0f / 3.0f && float(d2.x()) == 2.0f / 3.0f,
+                      "derived pair is not the thirds: x1=%.9f x2=%.9f", d1.x(), d2.x());
+        XC_MSG_ASSERT(float(d1.y()) == 0.2f && float(d2.y()) == 0.8f,
+                      "derived pair y: y1=%.9f y2=%.9f (want 0.2 / 0.8)", d1.y(), d2.y());
+
+        // The same pair as a STORED one, which is what the frozen-handle path and
+        // the stored evaluation funnel see.
+        util::Easing::Param stored = derived;
+        stored.handleOut = util::Easing::HandleMode_Free;
+        stored.handleIn = util::Easing::HandleMode_Free;
+        stored.cubicBezier =
+            util::Easing::CubicBezier{1.0f / 3.0f, 0.2f, 2.0f / 3.0f, 0.8f};
+
+        // The oracle is the header's own solve - the tree's independent WebKit
+        // port - and the closed form is written out textbook-style (a different
+        // association order from the fast path's Horner form).
+        const util::UnitBezier oracle(1.0f / 3.0f, 0.2f, 2.0f / 3.0f, 0.8f);
+        const auto cubicAt = [](double aX, double aY1, double aY2) {
+            return 3.0 * (1.0 - aX) * (1.0 - aX) * aX * aY1
+                + 3.0 * (1.0 - aX) * aX * aX * aY2 + aX * aX * aX;
+        };
+
+        double maxVsSolve = 0.0, maxVsSolveDerived = 0.0, maxVsCubic = 0.0, maxFunnelGap = 0.0,
+               maxFrozenGap = 0.0;
+        for (int k = 0; k <= 200; ++k) {
+            const float x = float(k) / 200.0f;
+            // Stored funnel: Easing::calculate(Param, t, b, c, d).
+            const double viaStored = evalCurve(double(x), 1.0 / 3.0, 0.2, 2.0 / 3.0, 0.8);
+            // Derived funnel: Easing::calculate(Param, AutoContext, t, b, c, d).
+            const double viaDerived =
+                double(util::Easing::calculate(derived, ctx, x * span, 0.0f, 1.0f, span));
+            // The FROZEN-handle shape: Free modes over a stored thirds pair, which
+            // is what GraphEditor::setHandleMode leaves behind. It must play the
+            // same numbers, which is exactly why freezing does not move the curve.
+            const double viaFrozen =
+                double(util::Easing::calculate(stored, x * span, 0.0f, 1.0f, span));
+            const double solved = oracle.solve(double(x), util::UnitBezier::kBezierEpsilon);
+            const double cubic = cubicAt(double(x), 0.2, 0.8);
+            // The derived funnel's own x is t/d, and the float multiply/divide
+            // round trip through the frame span moves it by up to 6e-8 - that is
+            // the caller's arithmetic, not the curve's, so hold the derived value
+            // to the oracle at the x it actually used.
+            const float xin = (x * span) / span;
+            const double solvedAt = oracle.solve(double(xin), util::UnitBezier::kBezierEpsilon);
+
+            maxVsSolve = std::max(maxVsSolve, std::fabs(viaStored - solved));
+            maxVsSolveDerived = std::max(maxVsSolveDerived, std::fabs(viaDerived - solvedAt));
+            maxVsCubic = std::max(maxVsCubic, std::fabs(viaStored - cubic));
+            maxFunnelGap = std::max(maxFunnelGap, std::fabs(viaStored - viaDerived));
+            maxFrozenGap = std::max(maxFrozenGap, std::fabs(viaFrozen - viaStored));
+
+            XC_MSG_ASSERT(std::fabs(viaFrozen - viaStored) <= 1e-6,
+                          "frozen thirds pair x=%.3f frozen=%.9f stored=%.9f",
+                          double(x), viaFrozen, viaStored);
+
+            XC_MSG_ASSERT(std::fabs(viaStored - solved) <= 1e-7,
+                          "thirds stored x=%.3f fast=%.9f solve=%.9f err=%.2e",
+                          double(x), viaStored, solved, std::fabs(viaStored - solved));
+            XC_MSG_ASSERT(std::fabs(viaDerived - solvedAt) <= 1e-7,
+                          "thirds derived x=%.3f fast=%.9f solve=%.9f err=%.2e",
+                          double(xin), viaDerived, solvedAt, std::fabs(viaDerived - solvedAt));
+            // The fast path must be the CUBIC, not the smoothstep and not
+            // something the solve would not have produced.
+            XC_MSG_ASSERT(std::fabs(viaStored - cubic) <= 1e-7,
+                          "thirds vs cubic x=%.3f fast=%.9f cubic=%.9f err=%.2e",
+                          double(x), viaStored, cubic, std::fabs(viaStored - cubic));
+            // Playback (stored) and the graph panel (derived) must not disagree.
+            XC_MSG_ASSERT(std::fabs(viaStored - viaDerived) <= 1e-6,
+                          "thirds funnel gap x=%.3f stored=%.9f derived=%.9f",
+                          double(x), viaStored, viaDerived);
+        }
+        // Endpoints are exact on both funnels: a segment must still join its keys.
+        XC_ASSERT(std::fabs(evalCurve(0.0, 1.0 / 3.0, 0.2, 2.0 / 3.0, 0.8) - 0.0) <= 1e-7);
+        XC_ASSERT(std::fabs(evalCurve(1.0, 1.0 / 3.0, 0.2, 2.0 / 3.0, 0.8) - 1.0) <= 1e-7);
+        XC_ASSERT(std::fabs(
+            double(util::Easing::calculate(derived, ctx, 0.0f, 0.0f, 1.0f, span)) - 0.0) <= 1e-6);
+        XC_ASSERT(std::fabs(
+            double(util::Easing::calculate(derived, ctx, span, 0.0f, 1.0f, span)) - 1.0) <= 1e-6);
+
+        std::printf("thirds fast path: |stored-solve| max %.3e, |derived-solve| max %.3e, "
+                    "|fast-cubic| max %.3e, |stored-derived| max %.3e, |frozen-stored| max %.3e\n",
+                    maxVsSolve, maxVsSolveDerived, maxVsCubic, maxFunnelGap, maxFrozenGap);
+    }
+
+    // 10) THE CROSSED DEFAULT PAIR keeps the solve. The stored CubicBezier default
+    //     is x1 = 2/3, x2 = 1/3 - the controls CROSSED - so its x(t) is
+    //     2t - 3t^2 + 2t^3, NOT t, and the fast path must not take it. What that
+    //     costs is real: the pair's parametric y(t) is the smoothstep 3t^2 - 2t^3,
+    //     and the UNCROSSED thirds with the same Ys (x(t) = t) give that same
+    //     smoothstep as a function of x. The crossed curve is a different function
+    //     of x, and the gap printed below - a tenth of the unit range - is what a
+    //     gate that tested anything looser than exact thirds would erase.
+    {
+        const util::Easing::CubicBezier def;
+        XC_MSG_ASSERT(def.x1 == 2.0f / 3.0f && def.x2 == 1.0f / 3.0f,
+                      "the default pair is no longer crossed: x1=%.6f x2=%.6f",
+                      double(def.x1), double(def.x2));
+        const util::UnitBezier crossed(def.x1, def.y1, def.x2, def.y2);
+
+        double maxMargin = 0.0, atX = 0.0, crossedAtX = 0.0, smoothstepAtX = 0.0;
+        for (int k = 0; k <= 200; ++k) {
+            const double x = double(k) / 200.0;
+            const double got = evalCurve(x, 2.0 / 3.0, 0.0, 1.0 / 3.0, 1.0);
+            const double solved = crossed.solve(x, util::UnitBezier::kBezierEpsilon);
+            XC_MSG_ASSERT(std::fabs(got - solved) <= 1e-6,
+                          "crossed x=%.3f got=%.9f solve=%.9f", x, got, solved);
+            // The same Ys on the UNCROSSED thirds - the pair the fast path takes.
+            // There x(t) = t, so the value is the smoothstep in x, and asserting
+            // that closed form pins the fast path's own arithmetic on this exact
+            // curve while the crossed pair is held to the solve beside it.
+            const double uncrossed = evalCurve(x, 1.0 / 3.0, 0.0, 2.0 / 3.0, 1.0);
+            const double smoothstep = 3.0 * x * x - 2.0 * x * x * x;
+            XC_MSG_ASSERT(std::fabs(uncrossed - smoothstep) <= 1e-6,
+                          "uncrossed thirds is not the smoothstep: x=%.3f got=%.9f want=%.9f",
+                          x, uncrossed, smoothstep);
+            const double margin = std::fabs(got - uncrossed);
+            if (margin > maxMargin) {
+                maxMargin = margin;
+                atX = x;
+                crossedAtX = got;
+                smoothstepAtX = uncrossed;
+            }
+        }
+        // Pinned from both sides. A swallowed crossed pair would return the
+        // smoothstep instead: at x = 0.355 that is 0.288597 where the crossed
+        // curve reads 0.171297, and at the mirror x = 0.645 it is 0.711403 where
+        // the crossed curve reads 0.828703 (the scan reports whichever of the two
+        // edges the rounding favours). The margin would collapse to 0; today it
+        // is 0.117301.
+        std::printf("crossed default: max |crossed - smoothstep| = %.9f at x=%.3f "
+                    "(crossed %.9f, smoothstep %.9f)\n",
+                    maxMargin, atX, crossedAtX, smoothstepAtX);
+        XC_MSG_ASSERT(maxMargin > 0.10 && maxMargin < 0.13,
+                      "crossed/smoothstep margin %.9f at x=%.3f is outside [0.10, 0.13]",
+                      maxMargin, atX);
+        // The crossed curve is a real S: through the centre, below the smoothstep
+        // over the first half and above it in the second, and symmetric about
+        // (0.5, 0.5) - which is what "the smoothstep reparametrized" looks like.
+        XC_ASSERT(std::fabs(evalCurve(0.5, 2.0 / 3.0, 0.0, 1.0 / 3.0, 1.0) - 0.5) <= 1e-6);
+        XC_ASSERT(evalCurve(0.25, 2.0 / 3.0, 0.0, 1.0 / 3.0, 1.0) < 0.15625);
+        XC_ASSERT(evalCurve(0.75, 2.0 / 3.0, 0.0, 1.0 / 3.0, 1.0) > 0.84375);
+        XC_ASSERT(std::fabs(evalCurve(0.25, 2.0 / 3.0, 0.0, 1.0 / 3.0, 1.0)
+                            + evalCurve(0.75, 2.0 / 3.0, 0.0, 1.0 / 3.0, 1.0) - 1.0) <= 1e-6);
+    }
+
+    // 11) AN ARBITRARY PAIR keeps the solve, through BOTH funnels. x = 0.2 / 0.8
+    //     is nowhere near a third, so neither the stored evaluation nor a Free
+    //     side of the derived one may take the fast path; the values must stay
+    //     the solved ones. The solved curve is also measurably NOT the same-Y
+    //     cubic in x - the identity assumption the fast path makes on the thirds
+    //     is exactly what is false here, and the printed gap is the proof the
+    //     solve is still doing that work.
+    {
+        const float span = 10.0f;
+        const double x1 = 0.2, y1 = 0.1, x2 = 0.8, y2 = 0.45;
+        const util::UnitBezier oracle(x1, y1, x2, y2);
+        const auto cubicAt = [](double aX, double aY1, double aY2) {
+            return 3.0 * (1.0 - aX) * (1.0 - aX) * aX * aY1
+                + 3.0 * (1.0 - aX) * aX * aX * aY2 + aX * aX * aX;
+        };
+
+        // The derived funnel over a STORED pair: Free on both sides makes
+        // controlPoint answer the stored points verbatim.
+        util::Easing::Param stored;
+        stored.type = util::Easing::Type_Custom;
+        stored.handleIn = util::Easing::HandleMode_Free;
+        stored.handleOut = util::Easing::HandleMode_Free;
+        stored.cubicBezier = util::Easing::CubicBezier{
+            float(x1), float(y1), float(x2), float(y2)};
+        util::Easing::AutoContext ctx;
+        ctx.prev = { true, -span, 2.0f }; // present but irrelevant: Free never derives
+        ctx.next = { true, 2.0f * span, -1.0f };
+        ctx.inMode = util::Easing::HandleMode_Free;
+
+        double maxErr = 0.0, maxHermiteGap = 0.0;
+        for (int k = 0; k <= 200; ++k) {
+            const float x = float(k) / 200.0f;
+            const double solved = oracle.solve(double(x), util::UnitBezier::kBezierEpsilon);
+            const double viaStored = evalCurve(double(x), x1, y1, x2, y2);
+            const double viaDerived =
+                double(util::Easing::calculate(stored, ctx, x * span, 0.0f, 1.0f, span));
+            maxErr = std::max(maxErr, std::max(std::fabs(viaStored - solved),
+                                               std::fabs(viaDerived - solved)));
+            maxHermiteGap = std::max(maxHermiteGap,
+                                     std::fabs(viaStored - cubicAt(double(x), y1, y2)));
+            XC_MSG_ASSERT(std::fabs(viaStored - solved) <= 1e-6,
+                          "arbitrary stored x=%.3f got=%.9f solve=%.9f",
+                          double(x), viaStored, solved);
+            XC_MSG_ASSERT(std::fabs(viaDerived - solved) <= 1e-6,
+                          "arbitrary derived x=%.3f got=%.9f solve=%.9f",
+                          double(x), viaDerived, solved);
+        }
+        // ... and the pair is provably not being read as the cubic in x.
+        std::printf("arbitrary pair (0.2, 0.1, 0.8, 0.45): |eval-solve| max %.3e, "
+                    "|eval-cubic(x)| max %.3e\n",
+                    maxErr, maxHermiteGap);
+        XC_MSG_ASSERT(maxErr <= 1e-6, "arbitrary pair drifted from the solve by %.2e", maxErr);
+        XC_MSG_ASSERT(maxHermiteGap > 1e-2,
+                      "arbitrary pair read as the cubic in x - the gate is too loose "
+                      "(gap %.2e)", maxHermiteGap);
+    }
+
+    std::printf("easing_regression: PASS (%d curves, solver + weight + threads + auto + names "
+                "+ defaults + thirds + crossed ok)\n",
                 numCurves);
     return 0;
 }

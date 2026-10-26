@@ -327,11 +327,80 @@ float Easing::calculate(
 #undef RETURN_BY_EASING_FUNCTION
 }
 
+namespace {
+// THIRDS PAIRS: the drawn curve whose control points sit on the third points in
+// x has the identity as its x component. With P1 = (1/3, y1) and P2 = (2/3, y2),
+//
+//     x(t) = 3(1-t)^2 t (1/3) + 3(1-t) t^2 (2/3) + t^3 = t,
+//
+// so WebKit's x -> t solve - the spline guess, the Newton iterations, the
+// bisection fallback, the whole of UnitBezier::solveCurveX - has nothing left to
+// do. y(x) is just the same cubic read at t = x,
+//
+//     y(x) = 3(1-x)^2 x y1 + 3(1-x) x^2 y2 + x^3,
+//
+// which is UnitBezier's own Horner form (cy = 3 y1, by = 3(y2 - y1) - cy,
+// ay = 1 - cy - by) evaluated once at x. I keep the coefficients in double and
+// narrow the result at the end, exactly as the solved path does, so the two
+// agree to within their own rounding rather than one carrying a longer tail.
+//
+// The thirds are FLOATS, so the identity is not literal: fl(1/3) is 9.93e-9
+// above 1/3 (fl(2/3) is exactly twice that), which leaves
+//
+//     x(t) - t = 3t(1-t^2) * 9.93e-9 <= 2^-25 * t(1-t^2) <= 1.15e-8.
+//
+// That is an order of magnitude below UnitBezier::kBezierEpsilon (1e-7), so this
+// returns the numbers the solve returns. What it saves is the machinery around
+// them: per sample, ~90 flops, three divisions, the construction of the 11-entry
+// spline array and the scan through it become ~11 flops and no division. Playback
+// evaluates once per key per frame, so this is the hot path of a scrubbed timeline.
+//
+// WHICH PAIRS REACH IT: controlPoint answers 1.0/3.0 and 2.0/3.0 verbatim for a
+// side whose mode is Vector, Auto or AutoClamped, and a frozen ghost keeps those
+// floats (ctrl::GraphEditor::setHandleMode stores float(effective.x())). Free and
+// Aligned keep an arbitrary stored x, and the CubicBezier default pair is CROSSED
+// (x1 = 2/3, x2 = 1/3 - the smoothstep), so none of those can be mistaken for one.
+//
+// THE TEST IS EXACT FLOAT EQUALITY, never an epsilon. An epsilon would hand a
+// drawn curve to the other formula while a handle is being dragged across the
+// boundary, and the two formulas differ there by far more than the 1.15e-8 above
+// (a pair merely NEAR the thirds has a non-identity x(t)). A curve must not move
+// because its evaluation changed branch.
+bool isThirdsPair(const float aX1, const float aX2) {
+    // 1.0f/3.0f and 2.0f/3.0f round to the same floats as controlPoint's
+    // 1.0/3.0 and 2.0/3.0 narrowed to float, which is what makes the exact
+    // compare meaningful instead of accidental.
+    return aX1 == 1.0f / 3.0f && aX2 == 2.0f / 3.0f;
+}
+
+// y(x) for such a pair - the cubic in x, with no t to solve for (see isThirdsPair).
+float thirdsPairY(const float aX, const float aY1, const float aY2) {
+    const double x = static_cast<double>(aX);
+    const double y1 = static_cast<double>(aY1);
+    const double y2 = static_cast<double>(aY2);
+    const double cy = 3.0 * y1;
+    const double by = 3.0 * (y2 - y1) - cy;
+    const double ay = 1.0 - cy - by;
+    return static_cast<float>(((ay * x + by) * x + cy) * x);
+}
+} // namespace
+
 float calculateBezier(const Easing::Param& aParam, const float t, const float b, const float c, const float d) {
     auto [x1, y1, x2, y2] = aParam.cubicBezier;
     // Normalized progress (frame offset / duration). This is the x fed to the
     // curve; it must NOT depend on weight.
     const float x = t / d;
+    // A THIRDS PAIR skips the solve: y is the cubic read at t = x (see
+    // isThirdsPair). The STORED pair reaches the thirds when a derived side is
+    // frozen back to Free/Aligned: ctrl::GraphEditor::setHandleMode writes the
+    // thirds the panel was drawing, so the curve does not jump at that moment and
+    // keeps taking this path afterwards. A side a gesture actually dragged, and
+    // the crossed CubicBezier default, store arbitrary x values and keep the
+    // solve. The [0,1] gate is not optional: UnitBezier::solve extrapolates along
+    // its endpoint GRADIENTS outside the interval, while the extended cubic is a
+    // different curve out there, so the solve must keep that regime.
+    if (0.0f <= x && x <= 1.0f && isThirdsPair(x1, x2))
+        return b + c * thirdsPairY(x, y1, y2);
     // The solver is built per evaluation: constructing a UnitBezier is 11 Horner
     // evals plus a handful of multiplies, and this keeps Easing stateless (no
     // cache, no shared mutable state on the frame path).
@@ -370,10 +439,25 @@ float Easing::calculate(
     // stored value lives in aParam.
     const QPointF first = controlPoint(aParam, aCtx.inMode, aCtx, d, 0);
     const QPointF second = controlPoint(aParam, aCtx.inMode, aCtx, d, 1);
-    const UnitBezier bezier(
-        static_cast<float>(first.x()), static_cast<float>(first.y()),
-        static_cast<float>(second.x()), static_cast<float>(second.y()));
-    return b + c * static_cast<float>(bezier.solve(t / d, UnitBezier::kBezierEpsilon));
+    // Narrow once: the derivation works in double, the curve has always been
+    // float, and the fast path below must test the same floats the solve would
+    // receive - not the doubles they came from.
+    const float x1 = static_cast<float>(first.x());
+    const float y1 = static_cast<float>(first.y());
+    const float x2 = static_cast<float>(second.x());
+    const float y2 = static_cast<float>(second.y());
+    const float x = t / d;
+    // A THIRDS PAIR skips the solve (see isThirdsPair). This is where it earns
+    // its keep: EVERY automatic segment is one - Vector, Auto and AutoClamped all
+    // answer x = 1/3 and 2/3 from controlPoint, so the whole automatic family
+    // plays through the plain cubic. A stored side (Free / Aligned) answers its
+    // arbitrary x and falls through to the solve. The [0,1] gate keeps
+    // UnitBezier::solve's endpoint-gradient extrapolation, which the extended
+    // cubic does not reproduce.
+    if (0.0f <= x && x <= 1.0f && isThirdsPair(x1, x2))
+        return b + c * thirdsPairY(x, y1, y2);
+    const UnitBezier bezier(x1, y1, x2, y2);
+    return b + c * static_cast<float>(bezier.solve(x, UnitBezier::kBezierEpsilon));
 }
 
 //-------------------------------------------------------------------------------------------------
