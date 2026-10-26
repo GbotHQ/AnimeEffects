@@ -4380,3 +4380,83 @@ Also worth knowing for whoever continues this: the live invalidation path is
 default-key edit clears no cache at all. `updateCurrents` re-blends the whole tree right
 after, which is why the display still normally catches up. And `TimeLineEvent`'s CONST
 accessor is misspelled `detaulTargets()` with no callers - a one-character landmine.
+
+## One scroll bar in QML, and the two traps it cost (2026-10-26)
+
+`notes.md`: "the Blend dropdown gained scroll, but its styling is inconsistent with other
+scrollbars." Nine QML surfaces had a bar and they said FOUR different things: the widget
+bar (`AppStyle`'s `CC_ScrollBar`, which paints `ctrl::graph::scrollBar::kLaneThickness`
+12 / `kPillThickness` 4 / `kPillRadius` 2, `theme.outline` and `theme.hover` while hot),
+an 8px lane with a 6px `textMuted` pill invented by the first QML dialogs
+(`DestinationPicker`, `ExportDialog`, `GeneralSettingDialog`, `KeyBindingDialog`,
+`NewProjectDialog`, `ProjectSettingDialog`), a 12px copy with a self-fading pill
+(`PropertiesPanel`), and two of mine that copied the numbers and rendered a **1px**
+handle. `src/gui/qml/AeScrollBar.qml` is the one implementation now, used by all nine
+sites: 12px invisible lane, 4px pill, radius 2, `outline`/`hover`, a 28px minimum thumb,
+shown only when the content overflows.
+
+**Trap 1: `contentItem`'s `implicitWidth` does NOT size the handle; `padding` does.** The
+Basic style's own bar gets its thickness from `contentItem.implicitWidth` because it also
+lets the CONTROL's `implicitWidth` be `implicitContentWidth + paddings`; a component that
+pins `implicitWidth: 12` on the control instead leaves the handle to the layout, and a
+Rectangle without an explicit width collapsed to one column of ink - measured, and only
+visible by looking (a 1px column of `#404040` at the popup's edge reads as a border, not
+as a bar). `padding: 4` on a 12px lane is the same arithmetic as
+`ctrl::graph::scrollBar::pill`'s `(lane - pill) / 2` offset, so the two painters agree.
+Note also that `width: 12` has to come from the CALLER: a binding that named the other
+axis would be self-referential.
+
+**Trap 2: measuring a bar in a screenshot needs the right row.** The first "the pill is
+1px" readings measured the popup's right BORDER (same `floaterEdge` colour) because the
+scan's y-range was below the popup. When the ink and the border share a token, mark the
+handle temporarily (`border.color: "red"`) and measure its rect - 4 columns x 60 rows is
+unambiguous where a threshold count is not.
+
+## The filter catalog opens where it FITS, and the height that came out NaN (2026-10-26)
+
+The popup's room cannot be assumed: the Filters section is the panel's LAST one, so on a
+1280x662 window `root` sits at scene y=321 inside a 396px host and there are **35px** below
+its 32px header while there are **313px** above; on `test.anie`'s short board the same
+section sits at the top and there is room below. So `onOpened` MEASURES
+(`root.mapToItem(null, 0, 0).y` + `root.Window.height`) and writes `roomBelow`/`roomAbove`;
+the y/height bindings read them and choose: down when a usable list fits, otherwise up,
+otherwise the larger side. Two rules fall out:
+
+- **A binding over `mapToItem` is evaluated once and never again.** It cannot notify, and at
+  first evaluation the item may not even be in a window - which is how the popup came to
+  open downward with a height clamped by a host edge it had measured as 0. Measure at open,
+  in the handler, into plain properties; the handler runs before the frame is painted and
+  the bindings pick the new values up.
+- **`Window` attaches to an ITEM, not to a Popup** ("Window.window only supports types
+  derived from Item", measured), so `root.Window.height` - not `Window.height` inside the
+  popup block.
+- **`root.rowsHeight` on a property declared on the POPUP is `undefined`, and
+  `Math.max(undefined, x)` is NaN.** The NaN then made `opensUp` false (`NaN < x` is false)
+  and `height` `Math.max(120, NaN)` -> NaN, which Qt resolved to a ~40px strip: the popup
+  drew its search field and nothing else while the ROWS were laid out at their correct
+  rectangles, so the accessibility tree said "showing Blur" and the screen showed an empty
+  strip. That is the shape of every "the popup is broken" report in this area - assert on
+  the DRAWN pixels, not on the nodes.
+
+The wanted height is also computed without the delegates now
+(`FilterStackModel::catalogRowHeight` is the model's number, which the delegate reads too):
+`catalogColumn.implicitHeight` is 0 on the first evaluation, because the Repeater creates
+its items while the popup is being opened, after the binding has run.
+
+## A typo must not empty a list: `FuzzyMatch`'s rule 7 (2026-10-26)
+
+The filter catalog's search went empty on `blurr`. That is not a size problem (the catalog
+has four rows) - every rule in `gui/qml/FuzzyMatch.h` needs the token to be INSIDE a word,
+and a token with one letter too many cannot be a subsequence of anything. So the matcher
+gained **rule 7**: bounded Damerau-Levenshtein (adjacent transposition = one edit) against
+each word and each of its prefixes within `[L-limit, L+limit]`, with `limit` 1 below seven
+characters and 2 above, scored at `120 + 8L - 60*distance` so it sits BELOW rule 6 and a
+correction can never outrank a real match. Below four characters it does not run at all,
+which is why `hsb` still matches nothing while `blurr` finds `Blur`.
+
+`FilterStackModel::catalogScore(index, query)` is the one door the catalogue uses
+(`fuzzy::queryScore(name + 0x1F + description, query)`), and the picker's visibility, its
+highlight walk and its Return all read it - a row cannot be visible under one rule and
+unchoosable under another. Gates: `tests/fuzzy_match.cpp` pins both halves (including
+`bzzz`-style negatives and the 1-edit-under-7 / 2-edit-from-7 thresholds), and
+`tests/inspector_view_model.cpp` pins the scores the catalog actually hands the picker.
