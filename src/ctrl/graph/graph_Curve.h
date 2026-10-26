@@ -8,6 +8,7 @@
 #include "util/Range.h"
 #include "util/Easing.h"
 #include "util/EasingSegment.h"
+#include "util/FergusonCoonsSpline.h"
 #include "ctrl/graph/graph_Channel.h"
 
 namespace ctrl {
@@ -172,9 +173,14 @@ private:
     // one-shot derived evaluation 78.9 ns, prepared 5.7 ns, and the panel's 8 curves x 600
     // samples 379 us -> 27 us.
     //
-    // It is a MEMO, not mutable document state: the pair it was built for is stored with
-    // it, and any other pair rebuilds it. `Curve` is sampled from the UI thread only (the
-    // model builder and the editor's hover), which is why a `mutable` cache is safe here.
+    // IT IS NOT CACHED ACROSS CALLS, and that is a correctness decision, not an unfinished
+    // optimisation: a memo keyed by the two keys (and their span) cannot see an EDIT that
+    // leaves the keys where they are - changing a key's spline type, its handle modes or its
+    // easing rewrites the document without moving a pointer, and the memo would serve the
+    // curve from before the edit. tests/graph_curve caught exactly that (a Move channel
+    // switched to Linear kept drawing its Catmull-Rom bow). So the preparation is a VALUE
+    // the caller holds for as long as its document state is the same - `buildPolyline` owns
+    // one per segment for the length of its loop, which is where the win lives.
     struct Prepared {
         const core::TimeKey* from = nullptr;
         const core::TimeKey* to = nullptr;
@@ -195,11 +201,16 @@ private:
         // a Custom one uses the prepared segment below, which is where the cost was.
         const util::Easing::Param* param = nullptr;
         std::optional<util::EasingSegment> easing;
+        // Move's arc-length spline, prepared for the same reason: its knots and its
+        // 8-segment linearization table depend only on the two keys and their neighbours.
+        // Measured (Release): vels+set+getByLinear 226 ns per point, getByLinear alone
+        // 25.9 ns - i.e. 200 ns of the 270 ns a Move polyline point used to cost was
+        // rebuilding a spline it already had.
+        std::optional<util::FergusonCoonsSpline<QVector3D>> spline;
     };
-    const Prepared& prepareOver(const core::TimeKey& aFrom, const core::TimeKey& aTo,
-                                float aD) const;
-
-    mutable Prepared mPrepared;
+    Prepared prepareOver(const core::TimeKey& aFrom, const core::TimeKey& aTo, float aD) const;
+    // The value of a prepared segment at a frame (a float, inside the segment).
+    float evaluateOver(const Prepared& aPrep, float aAt) const;
 
     const core::TimeLine* mTimeLine;
     Channel mChannel;
