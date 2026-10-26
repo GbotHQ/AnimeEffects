@@ -1,6 +1,7 @@
 #ifndef CTRL_BRUSH_H
 #define CTRL_BRUSH_H
 
+#include <QPointF>
 #include <QVector2D>
 #include <algorithm>
 #include <cmath>
@@ -100,6 +101,124 @@ private:
     float mNextStamp = 0.0f;
     bool mActive = false;
     int mStampCount = 0;
+};
+
+// THE SIZE/HARDNESS DRAG, decided in one place: the Alt + RIGHT gesture over the
+// viewport (horizontal = size, vertical = hardness), as the notch keys do it one
+// value at a time. It lives here for the same reason the stroke does - every
+// painting context shares one brush, so one gesture must mean one thing - and the
+// widget only calls begin/move/end and forwards the steps it returns.
+//
+// THIS LOCK IS AN AnimeEffects DECISION, NOT PHOTOSHOP PARITY. Photoshop's version
+// of the gesture is a 2D PAD: horizontal drives the size and vertical the hardness
+// at the same time, and the "Vary Round Brush Hardness based on HUD vertical
+// movement" preference only turns the hardness half on or off. It has NO
+// dominant-axis snap - there is nothing to copy. The snap is here because of the
+// measured complaint: the old handler banked both axes unconditionally, so one
+// vertical drag with 2px of sideways jitter banked size steps too (AGENTS.md
+// records +7 size / -1 hardness from a single drag), and a value moving when the
+// user did not aim at it is a defect, not a feature.
+//
+// THE RULES (the gate in tests/brush_stroke.cpp pins them):
+// - nothing fires until the pointer has left kAxisSlop in EITHER direction, so a
+//   click that wobbles adjusts nothing;
+// - at that threshold the DOMINANT axis latches for the rest of the gesture and
+//   the other bank is zeroed. The run-up travel is discarded, not banked: banking
+//   it would fire the first step the moment the latch engaged, which is the exact
+//   jump the slop exists to prevent;
+// - afterwards only the latched axis' component is banked, in whole steps, and
+//   the remainder is kept, so a slow drag still adds up.
+//
+// THE AXIS IS NOT RE-EVALUATED MID-DRAG. Around 45 degrees the |dx| > |dy| winner
+// flips between samples, and flipping would have to drop the other axis' bank (it
+// is one gesture) and make a value jump. A future "re-evaluate" is a different
+// feel, not a fix: it must reset BOTH banks and re-arm the slop, i.e. begin a new
+// gesture - a decision to make deliberately rather than a tweak.
+struct BrushDrag {
+    // 4px: the house slop (InspectorFilterCard begins its reorder drag past the
+    // same number), and the smallest travel that reads as intent rather than hand
+    // tremor.
+    static constexpr float kAxisSlop = 4.0f;
+    // One step per 8 logical px of the latched axis for the size, per 40 for the
+    // hardness. These are the rates the event handler used to hold as literals,
+    // moved here so the policy has one home instead of one per caller.
+    static constexpr float kSizePxPerStep = 8.0f;
+    static constexpr float kHardnessPxPerStep = 40.0f;
+
+    enum class Axis { None, Size, Hardness };
+
+    // Starts a gesture at the press point: no axis yet, no bank, nothing fired.
+    void begin(const QPointF& aPos) {
+        mOrigin = aPos;
+        mLast = aPos;
+        mAxis = Axis::None;
+        mSizeBank = 0.0f;
+        mHardnessBank = 0.0f;
+        mActive = true;
+    }
+
+    // Banks the travel since the last call and reports the whole steps each value
+    // earned (either may be 0); true when at least one fired. The latch itself
+    // fires nothing (see the run-up rule above). A drag that has ended ignores
+    // later moves, so a stray event cannot adjust a finished gesture.
+    bool move(const QPointF& aPos, int& aSizeSteps, int& aHardnessSteps) {
+        aSizeSteps = 0;
+        aHardnessSteps = 0;
+        if (!mActive)
+            return false;
+
+        if (mAxis == Axis::None) {
+            const QPointF runUp = aPos - mOrigin;
+            const float dx = float(runUp.x());
+            const float dy = float(runUp.y());
+            if (std::max(std::fabs(dx), std::fabs(dy)) <= kAxisSlop) {
+                mLast = aPos;
+                return false;
+            }
+            mAxis = std::fabs(dx) > std::fabs(dy) ? Axis::Size : Axis::Hardness;
+            mSizeBank = 0.0f;
+            mHardnessBank = 0.0f;
+            mLast = aPos; // the run-up is discarded, not banked
+            return false;
+        }
+
+        const QPointF delta = aPos - mLast;
+        mLast = aPos;
+        if (mAxis == Axis::Size) {
+            mSizeBank += float(delta.x()) / kSizePxPerStep;
+            aSizeSteps = int(mSizeBank);
+            mSizeBank -= float(aSizeSteps);
+        } else {
+            // dragging up raises the hardness: screen y grows downwards, so the
+            // vertical component is subtracted
+            mHardnessBank -= float(delta.y()) / kHardnessPxPerStep;
+            aHardnessSteps = int(mHardnessBank);
+            mHardnessBank -= float(aHardnessSteps);
+        }
+        return aSizeSteps != 0 || aHardnessSteps != 0;
+    }
+
+    // Closes the gesture. The banks go with it: the next begin() starts clean.
+    void end() {
+        mActive = false;
+        mAxis = Axis::None;
+        mSizeBank = 0.0f;
+        mHardnessBank = 0.0f;
+    }
+
+    bool isActive() const { return mActive; }
+    Axis axis() const { return mAxis; }
+    // the sub-step travel still owed to each value (the gate reads them)
+    float sizeBank() const { return mSizeBank; }
+    float hardnessBank() const { return mHardnessBank; }
+
+private:
+    QPointF mOrigin; // the press point: what the slop is measured from
+    QPointF mLast;   // the previous sample: what the latched axis banks from
+    Axis mAxis = Axis::None;
+    float mSizeBank = 0.0f;
+    float mHardnessBank = 0.0f;
+    bool mActive = false;
 };
 
 } // namespace ctrl

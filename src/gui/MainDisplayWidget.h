@@ -21,6 +21,7 @@
 #include "core/ClippingFrame.h"
 #include "core/DestinationTexturizer.h"
 #include "core/FilterFrame.h"
+#include "ctrl/Brush.h"
 #include "ctrl/Driver.h"
 #include "ctrl/Painter.h"
 #include "gui/MainViewSetting.h"
@@ -156,10 +157,13 @@ public:
     // that owns the value.
     util::Signaler<void(float)> onMaskValueSampled;
 
-    // THE BRUSH SIZE/HARDNESS DRAG (Photoshop's Alt + RIGHT drag): horizontal is the
-    // size, vertical the hardness, in whole steps of one notch. Right button on
+    // THE BRUSH SIZE/HARDNESS DRAG (Alt + RIGHT over the viewport): horizontal is
+    // the size, vertical the hardness, in whole steps of one notch. Right button on
     // purpose - the compositor owns Alt + LEFT drag to move windows (measured), so
-    // the familiar gesture survives on this platform.
+    // the familiar gesture survives on this platform. Photoshop's own version is a
+    // 2D PAD (both values follow the pointer, no snap); ctrl::BrushDrag adds a
+    // dominant-axis lock after 4px because the old handler moved both values on a
+    // drag aimed at one, and the comment there states why.
     util::Signaler<void(int, int)> onBrushDragAdjusted;
 
 private:
@@ -242,12 +246,10 @@ private:
     // (see setTimeLineWidget), and the connection to its view-range signal.
     TimeLineWidget* mTimeLine;
     util::SlotId mTimeLineRangeSlot;
-    // the Alt+right-drag gesture in flight, and the fractional steps it has banked
-    // so a slow drag still produces whole notches
-    bool mBrushDrag;
-    QPointF mBrushDragLast;
-    float mBrushDragSize;
-    float mBrushDragHardness;
+    // the Alt+right-drag gesture in flight, owned by ctrl::BrushDrag: the latch,
+    // the slop and the fractional banks all live in the brush model (ctrl/Brush.h),
+    // so the gesture is one decision instead of three literals in this event handler
+    ctrl::BrushDrag mBrushDrag;
     // The timeline surface's playWindowChanged -> syncGraphPanelSharedState connection
     // (see setTimeLineWidget). Dropped with the old timeline; auto-dropped when this
     // widget dies.

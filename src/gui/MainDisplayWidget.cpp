@@ -75,10 +75,7 @@ MainDisplayWidget::MainDisplayWidget(ViaPoint& aViaPoint, QWidget* aParent):
     mChannelPopup(nullptr),
     mTimeLine(),
     mTimeLineRangeSlot(),
-    mBrushDrag(false),
-    mBrushDragLast(),
-    mBrushDragSize(0.0f),
-    mBrushDragHardness(0.0f),
+    mBrushDrag(),
     mPlayWindowConnection(),
     mViewportBackground(),
     mUsingTablet(false),
@@ -789,19 +786,31 @@ void MainDisplayWidget::applyCanvasMoverDragMode() {
 }
 
 void MainDisplayWidget::mouseMoveEvent(QMouseEvent* aEvent) {
-    if (mBrushDrag) {
-        const QPointF delta = aEvent->position() - mBrushDragLast;
-        mBrushDragLast = aEvent->position();
-        // one step per 8 logical px horizontally, per 40 vertically: a deliberate
-        // drag changes the size, a small wobble does not
-        mBrushDragSize += float(delta.x()) / 8.0f;
-        mBrushDragHardness -= float(delta.y()) / 40.0f;
-        const int sizeSteps = int(mBrushDragSize);
-        const int hardnessSteps = int(mBrushDragHardness);
-        if (sizeSteps != 0 || hardnessSteps != 0) {
-            mBrushDragSize -= float(sizeSteps);
-            mBrushDragHardness -= float(hardnessSteps);
+    if (mBrushDrag.isActive()) {
+        // The decision - the 4px slop, the dominant-axis latch, the px-per-step
+        // rates and the remainder - is ctrl::BrushDrag's (ctrl/Brush.h); this only
+        // forwards the whole steps. The old handler banked both axes on every move,
+        // which is why a vertical drag with a couple of pixels of jitter changed the
+        // size as well.
+        int sizeSteps = 0;
+        int hardnessSteps = 0;
+        if (mBrushDrag.move(aEvent->position(), sizeSteps, hardnessSteps)) {
             onBrushDragAdjusted(sizeSteps, hardnessSteps);
+        }
+        // THE RING FOLLOWS THE POINTER, position only. The press and every move above
+        // return before setMousePress/setMouseMove reach the tools, so without this
+        // the two-ring cursor would sit frozen at the press point while the values
+        // change. A move event marks no button as pressed (AbstractCursor tracks that
+        // in setMousePress/setMouseRelease, neither of which this gesture calls), so
+        // the tools' updateCursor only re-reads the position: no stroke begins and no
+        // tool state moves. The release needs no matching call for the same reason.
+        if (mRenderInfo) {
+            if (mDriver) {
+                mDriver->setGraphModifiers(aEvent->modifiers());
+            }
+            if (mAbstractCursor.setMouseMove(aEvent, mRenderInfo->camera)) {
+                updateCursor();
+            }
         }
         aEvent->accept();
         return;
@@ -852,13 +861,12 @@ void MainDisplayWidget::mousePressEvent(QMouseEvent* aEvent) {
     }
 
     // THE BRUSH SIZE/HARDNESS DRAG claims the press before the tools see it: it is a
-    // viewport gesture over any brush tool, not a tool gesture.
+    // viewport gesture over any brush tool, not a tool gesture. The press only starts
+    // the gesture - nothing fires until the pointer has left the slop and latched an
+    // axis (ctrl::BrushDrag).
     if (mRenderInfo && mDriver && aEvent->button() == Qt::MouseButton::RightButton
         && (aEvent->modifiers() & Qt::AltModifier) && brushToolActive()) {
-        mBrushDrag = true;
-        mBrushDragLast = aEvent->position();
-        mBrushDragSize = 0.0f;
-        mBrushDragHardness = 0.0f;
+        mBrushDrag.begin(aEvent->position());
         aEvent->accept();
         return;
     }
@@ -892,9 +900,11 @@ void MainDisplayWidget::mousePressEvent(QMouseEvent* aEvent) {
 }
 
 void MainDisplayWidget::mouseReleaseEvent(QMouseEvent* aEvent) {
-    if (mBrushDrag) {
+    if (mBrushDrag.isActive()) {
+        // The right button, or Alt coming up first, ends the gesture: the latch and
+        // the banks go with it, so the next drag starts from the press point again.
         if (aEvent->button() == Qt::MouseButton::RightButton || !(aEvent->modifiers() & Qt::AltModifier))
-            mBrushDrag = false;
+            mBrushDrag.end();
         aEvent->accept();
         return;
     }
