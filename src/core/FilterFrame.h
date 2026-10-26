@@ -28,7 +28,9 @@ public:
         Kind_Resample, // premultiplied passthrough (bilinear) for blur ladder down/upsampling
         Kind_Wave,     // UV deformation of the composite (see waveTexture)
         Kind_Mix,      // `mix(sharp, blurred, mask)` for a masked blur (see mixTexture)
-        Kind_Tint      // the mask preview over the content (see tintTexture)
+        Kind_Tint,     // the mask preview over the content (see tintTexture)
+        Kind_LayerMask, // the node's own matte over its isolated composite (see maskTexture)
+        Kind_TERM
     };
 
     // Largest radius rendered directly (two full-resolution passes). Larger radii go
@@ -152,6 +154,13 @@ public:
     // space. A blur cannot vary its kernel per pixel affordably, so a masked blur
     // renders both results and mixes them - one full-screen pass, no extra blur
     // taps. Both sources are premultiplied, like every composite.
+    // Multiplies a node's isolated composite by its MATTE (core/MaskKey): a folder's
+    // present path applies it here, the way a layer applies it in its own shader.
+    GLuint maskTexture(
+        int aTargetSlot, GLuint aSrcTexture, GLuint aMaskTexture, const QRectF& aMaskRect,
+        const QMatrix4x4& aScreenToLayer
+    );
+
     GLuint mixTexture(
         int aTargetSlot, GLuint aSharpTexture, GLuint aBlurredTexture, const MaskInput& aMask,
         const QMatrix4x4& aScreenToLayer
@@ -173,7 +182,8 @@ public:
         bool aFlipY = false, img::BlendMode aPresentBlend = img::BlendMode_Normal,
         GLuint aPresentDest = 0, const WavePassParams* aWave = nullptr, const MaskInput* aHsvMask = nullptr,
         const QMatrix4x4& aScreenToLayer = QMatrix4x4(), GLuint aSecondTexture = 0, const MaskInput* aMixMask = nullptr,
-        const MaskInput* aTintMask = nullptr, const QColor& aTintColor = QColor()
+        const MaskInput* aTintMask = nullptr, const QColor& aTintColor = QColor(),
+        const MaskInput* aLayerMask = nullptr
     );
 
     // LAYER-LEVEL PRESENTATION for the blend-aware composite:
@@ -224,7 +234,10 @@ private:
     std::array<QScopedPointer<gl::Texture>, kMaxLadderLevels> mTexturesL;
     std::array<QScopedPointer<gl::Framebuffer>, kMaxLadderLevels> mFramebuffersL2;
     std::array<QScopedPointer<gl::Texture>, kMaxLadderLevels> mTexturesL2;
-    gl::EasyShaderProgram mPassShaders[6];
+    // SIZED BY THE ENUM, not by a count: this was a literal 6, and adding the
+    // Kind_LayerMask pass wrote one past its end - a segfault inside Qt's shader
+    // program init on the first frame, which reads like a driver fault.
+    gl::EasyShaderProgram mPassShaders[Kind_TERM];
     QScopedPointer<gl::EasyShaderProgram> mHsvMaskShader;
     // per-blend present variants (see presentShader)
     std::array<QScopedPointer<gl::EasyShaderProgram>, img::BlendMode_TERM> mPresentShaders;

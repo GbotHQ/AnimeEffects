@@ -19,7 +19,13 @@
 //       intermediate alpha, monotonic across the edge - a mask is not a stencil.
 //   [4] OUTSIDE THE FIELD THE LAYER IS VISIBLE: a field smaller than the quad leaves
 //       everything outside it at full opacity. A field RESTRICTS; it never enables.
-//   [5] THE FIELD LIVES IN CONTENT SPACE: scaling the screen->content matrix shrinks
+//   [5] THE FOLDER PATH: a folder presents an ISOLATED COMPOSITE, so its matte is
+//       one fullscreen pass over that composite (core::FilterFrame::maskTexture)
+//       rather than a fragment in the layer shader. Its composite is PREMULTIPLIED,
+//       and the pass must scale colour WITH alpha - scaling alpha alone would
+//       brighten what survives, which is invisible on an opaque red fixture and
+//       obvious on a semi-transparent edge.
+//   [6] THE FIELD LIVES IN CONTENT SPACE: scaling the screen->content matrix shrinks
 //       the masked region with it, which is what makes the matte stick to the artwork
 //       while the camera zooms or the layer moves.
 //
@@ -36,12 +42,14 @@
 #include <QSurfaceFormat>
 #include <QVector2D>
 #include <QVector4D>
+#include <array>
 #include <cstdio>
 #include <memory>
 #include <cstdlib>
 #include <vector>
 
 #include "XCAssert.h"
+#include "core/FilterFrame.h"
 #include "core/ShaderHolder.h"
 #include "core/WavePass.h"
 #include "gl/DeviceInfo.h"
@@ -410,7 +418,71 @@ int main(int argc, char** argv) {
         check(opaque > kW * kH / 2, "the field restricts, it does not enable");
     }
 
-    // [5] CONTENT SPACE: halving the matrix halves the masked region.
+    // [5] THE FOLDER PATH: premultiplied, so colour and alpha scale together.
+    {
+        // the pass uploads its attributes, and a core profile needs a bound VAO for that
+        gl::VertexArrayObject vao;
+        vao.bind();
+
+        core::FilterFrame frame;
+        frame.resize(QSize(kW, kH));
+        const int srcSlot = frame.acquire();
+        const int outSlot = frame.acquire();
+
+        // a HALF-TRANSPARENT composite: premultiplied (128,0,0) with alpha 128 is
+        // straight red at 50%; if the pass scaled only alpha the surviving pixels
+        // would come out (128,0,0,64) - twice as bright as they should be
+        std::vector<unsigned char> straight(size_t(kW) * kH * 4);
+        for (int i = 0; i < kW * kH; ++i) {
+            straight[size_t(i * 4 + 0)] = 128;
+            straight[size_t(i * 4 + 1)] = 0;
+            straight[size_t(i * 4 + 2)] = 0;
+            straight[size_t(i * 4 + 3)] = 128;
+        }
+        gl::Texture composite;
+        composite.create(QSize(kW, kH), straight.data());
+        composite.setFilter(GL_NEAREST);
+        composite.setWrap(GL_CLAMP_TO_EDGE);
+
+        const QImage half = halfField();
+        gl::Texture maskTexture;
+        const QImage maskRgba = half.convertToFormat(QImage::Format_RGBA8888);
+        maskTexture.create(half.size(), maskRgba.constBits());
+        maskTexture.setFilter(GL_NEAREST);
+        maskTexture.setWrap(GL_CLAMP_TO_EDGE);
+
+        frame.maskTexture(outSlot, composite.id(), maskTexture.id(), fullRect, mapping);
+
+        QImage out(kW, kH, QImage::Format_RGBA8888);
+        frame.bind(outSlot);
+        funcs->glReadPixels(0, 0, kW, kH, GL_RGBA, GL_UNSIGNED_BYTE, out.bits());
+
+        const auto rgba = [&](int x, int y) {
+            const uchar* row = out.constScanLine(kH - 1 - y);
+            return std::array<int, 4>{row[x * 4], row[x * 4 + 1], row[x * 4 + 2], row[x * 4 + 3]};
+        };
+        const auto kept = rgba(8, 64);         // hidden half
+        const auto survived = rgba(kW - 8, 64);  // visible half
+        std::printf(
+            "MEASURED folder pass: hidden=(%d,%d,%d,%d) visible=(%d,%d,%d,%d)\n", kept[0], kept[1],
+            kept[2], kept[3], survived[0], survived[1], survived[2], survived[3]
+        );
+        check(kept[3] <= 2, "the folder pass removes the hidden half");
+        check(
+            survived[3] >= 120 && survived[3] <= 136,
+            "the visible half keeps its own alpha"
+        );
+        check(
+            std::abs(survived[0] - 128) <= 6,
+            "and its premultiplied COLOUR (scaling alpha alone would leave it at 128 over 64)"
+        );
+
+        frame.release(outSlot);
+        frame.release(srcSlot);
+        vao.release();
+    }
+
+    // [6] CONTENT SPACE: halving the matrix halves the masked region.
     {
         const QImage hiddenField = uniformField(0);
         // a field that covers a CORNER of the content, so the mapping's scale is what

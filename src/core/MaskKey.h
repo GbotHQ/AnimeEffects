@@ -58,6 +58,7 @@ public:
         std::array<util::Easing::Param, kComponents> mEasings;
         QImage mField;
         QRectF mContentRect;
+        bool mPainted = false;
 
     public:
         Data();
@@ -80,6 +81,13 @@ public:
         // The field as a GL texture (uploaded lazily, re-uploaded only when the
         // image behind it changes). Null when there is no field.
         const gl::Texture* textureId() const;
+
+        // HAS ANYTHING BEEN HIDDEN? A matte at its neutral is a no-op, and it must cost
+        // nothing and change nothing: measured, a freshly added folder mask put the
+        // folder on the isolated-composite path and shifted 2098 px of the picture
+        // before a single stroke. The flag rides the value, like
+        // FilterActivity's "is the blended value above its epsilon".
+        bool isPainted() const { return mPainted; }
 
         // A PAINTED write goes straight into the image's pixels, which QImage's
         // cacheKey does not see - so the brush says so and the next frame re-uploads.

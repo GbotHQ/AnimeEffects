@@ -551,7 +551,9 @@ void LayerNode::renderLayer(const RenderInfo& aInfo, const TimeCacheAccessor& aA
     // the multiply is one texture read in the layer's own fragment shader and needs
     // no isolated composite: a masked layer still draws on the direct path.
     const MaskKey::Data& maskData = expans.mask();
-    const bool useLayerMask = !aInfo.isGrid && maskData.isValid();
+    // a matte at its neutral changes nothing, so it does not even take the masked
+    // shader variant: adding a mask stays a no-op until the first stroke
+    const bool useLayerMask = !aInfo.isGrid && maskData.isValid() && maskData.isPainted();
     auto& shader = aInfo.isGrid ? mShaderHolder.gridShader()
                                 : mShaderHolder.shader(blendMode, isClippee, useHSV, useLayerMask);
 

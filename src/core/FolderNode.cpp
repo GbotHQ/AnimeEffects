@@ -55,6 +55,13 @@ bool FolderNode::isCompositeFolder(const TimeInfo&, const TimeCacheAccessor& aAc
     // filters (values on the lane's default key) - see core/FilterActivity.h.
     if (mBlendMode != img::BlendMode_Normal)
         return true;
+    // A folder with a MATTE composites too, and for the same reason the filter case
+    // does: the matte multiplies the folder's PRIORITY as one image, which is what
+    // makes it a mask of the subtree instead of a mask of each child separately (a
+    // per-child mask would show the gaps between them).
+    if (aAccessor.get(mTimeLine).mask().isPainted())
+        return true;
+
     const TimeKeyExpans& expans = aAccessor.get(mTimeLine);
     for (const FilterEntry& entry : mTimeLine.filters()) {
         if (!entry.enabled)
@@ -265,6 +272,22 @@ void FolderNode::renderComposite(const RenderInfo& aInfo, const TimeCacheAccesso
                 continue;
             auto slot = std::make_unique<FilterFrame::ScopedSlot>(frame);
             srcTexture = frame.waveTexture(slot->slot(), srcTexture, waveParams);
+            srcSlot = slot->slot();
+            scratchSlots.push_back(std::move(slot));
+        }
+    }
+
+    // THE FOLDER'S OWN MATTE. A layer multiplies its matte inside its own fragment
+    // pass; a folder presents an ISOLATED COMPOSITE, so the same multiply is one
+    // fullscreen pass over it - and it runs HERE, after the filters, so a blurred
+    // folder cannot bleed past its own matte either.
+    if (const MaskKey::Data& maskData = aAccessor.get(mTimeLine).mask();
+        maskData.isValid() && maskData.isPainted()) {
+        if (const gl::Texture* maskTexture = maskData.textureId()) {
+            auto slot = std::make_unique<FilterFrame::ScopedSlot>(frame);
+            srcTexture = frame.maskTexture(
+                slot->slot(), srcTexture, maskTexture->id(), maskData.contentRect(), contentMapping()
+            );
             srcSlot = slot->slot();
             scratchSlots.push_back(std::move(slot));
         }

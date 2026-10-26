@@ -32,6 +32,7 @@
 #include <QTemporaryDir>
 #include <QTextStream>
 
+#include <algorithm>
 #include <cstdio>
 
 #include "XCAssert.h"
@@ -85,12 +86,19 @@ QList<QQuickItem*> visualTree(QQuickItem* aRoot) {
     return out;
 }
 
-// The disclosure markers, in the order the stack shows its cards.
+// The disclosure markers, in the order the stack shows its cards: sorted by their
+// Y in the panel, NOT by the walk. visualTree's traversal is a LIFO stack, so it
+// visits siblings bottom-first - with two cards that handed back the SECOND card as
+// `first`, and the assertion then read "expanding the second moved the first" while
+// the layout was perfectly correct.
 QList<QQuickItem*> disclosures(QQuickItem* aRoot) {
     QList<QQuickItem*> out;
     for (QQuickItem* it : visualTree(aRoot)) {
         if (it->objectName() == QLatin1String("aeAccessibleDisclosure")) out.append(it);
     }
+    std::sort(out.begin(), out.end(), [aRoot](QQuickItem* aLhs, QQuickItem* aRhs) {
+        return aLhs->mapToItem(aRoot, 0, 0).y() < aRhs->mapToItem(aRoot, 0, 0).y();
+    });
     return out;
 }
 

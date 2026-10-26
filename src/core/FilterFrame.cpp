@@ -222,6 +222,30 @@ static const char* kTintFrag =
     "  oFragColor = color;"
     "}";
 
+// THE NODE'S OWN MATTE, applied to a FOLDER's isolated composite. A layer multiplies
+// its matte in the layer shader's own fragment pass; a folder presents an ISOLATED
+// COMPOSITE, so the same multiply is one fullscreen pass over it - the same
+// content-space sampling (uScreenToLayer, the matrix every content-space field uses)
+// and the same rule: outside the field the node is fully visible.
+static const char* kLayerMaskFrag =
+    "#version 330 \n"
+    "uniform sampler2D uTexture;"
+    "uniform sampler2D uLayerMask;"
+    "uniform vec4 uLayerMaskRect;"
+    "uniform mat3 uScreenToLayer;"
+    "in vec2 vDestCoord;"
+    "layout(location = 0, index = 0) out vec4 oFragColor;"
+    "void main() {"
+    "  vec4 color = texture(uTexture, vDestCoord / vec2(textureSize(uTexture, 0)));"
+    "  vec2 q = (uScreenToLayer * vec3(vDestCoord, 1.0)).xy;"
+    "  vec2 uv = (q - uLayerMaskRect.xy) / uLayerMaskRect.zw;"
+    "  float visible = (uv.x < 0.0 || 1.0 < uv.x || uv.y < 0.0 || 1.0 < uv.y)"
+    "      ? 1.0 : texture(uLayerMask, uv).r;"
+    // the composite is PREMULTIPLIED, so hiding part of it scales colour and alpha
+    // together; scaling alpha alone would brighten what survives
+    "  oFragColor = color * visible;"
+    "}";
+
 } // namespace
 
 namespace core {
@@ -523,6 +547,27 @@ GLuint FilterFrame::tintTexture(
     return texture(aTargetSlot);
 }
 
+GLuint FilterFrame::maskTexture(
+    int aTargetSlot, GLuint aSrcTexture, GLuint aMaskTexture, const QRectF& aMaskRect,
+    const QMatrix4x4& aScreenToLayer
+) {
+    MaskInput mask;
+    mask.texture = aMaskTexture;
+    mask.rect = aMaskRect;
+    mask.neutral = 1.0f;
+
+    bind(aTargetSlot);
+    gl::Util::setViewportAsActualPixels(size());
+    gl::Util::resetRenderState();
+    gl::Global::functions().glClearColor(0.0f, 0.0f, 0.0f, 0.0f);
+    gl::Global::functions().glClear(GL_COLOR_BUFFER_BIT);
+    drawQuad(
+        aSrcTexture, Kind_LayerMask, QList<int>(), BlurParams(), 1.0f, false, QSizeF(), QSizeF(), false,
+        img::BlendMode_Normal, 0, nullptr, nullptr, aScreenToLayer, 0, nullptr, nullptr, QColor(), &mask
+    );
+    return texture(aTargetSlot);
+}
+
 GLuint FilterFrame::mixTexture(
     int aTargetSlot, GLuint aSharpTexture, GLuint aBlurredTexture, const MaskInput& aMask,
     const QMatrix4x4& aScreenToLayer
@@ -599,6 +644,7 @@ void FilterFrame::createShaders() {
     build(Kind_Wave, kFullscreenVert, kWaveFrag);
     build(Kind_Mix, kFullscreenVert, kMixFrag);
     build(Kind_Tint, kFullscreenVert, kTintFrag);
+    build(Kind_LayerMask, kFullscreenVert, kLayerMaskFrag);
 
     // HSV pass: shared layer fragment shader with variations
     fBuildLayerDrawingVariant(mPassShaders[Kind_HSV], QString("BlendNormal"), 0, 1, 1, 0, 0);
@@ -636,7 +682,8 @@ void FilterFrame::drawQuad(
     GLuint aSrcTexture, Kind aKind, const QList<int>& aHSV, const BlurParams& aBlur, float aOpacity,
     bool aNeedHSV, const QSizeF& aTargetSize, const QSizeF& aSrcSize, bool aFlipY, img::BlendMode aPresentBlend,
     GLuint aPresentDest, const WavePassParams* aWave, const MaskInput* aHsvMask, const QMatrix4x4& aScreenToLayer,
-    GLuint aSecondTexture, const MaskInput* aMixMask, const MaskInput* aTintMask, const QColor& aTintColor
+    GLuint aSecondTexture, const MaskInput* aMixMask, const MaskInput* aTintMask, const QColor& aTintColor,
+    const MaskInput* aLayerMask
 ) {
     if (mSize.isEmpty())
         return;
@@ -788,6 +835,20 @@ void FilterFrame::drawQuad(
             "uTintColor", QVector4D(aTintColor.redF(), aTintColor.greenF(), aTintColor.blueF(), aTintColor.alphaF())
         );
         shader->setUniformValue("uTintNeutral", aTintMask->neutral);
+    } else if (aKind == Kind_LayerMask) {
+        XC_PTR_ASSERT(aLayerMask);
+        ggl.glActiveTexture(GL_TEXTURE1);
+        ggl.glBindTexture(GL_TEXTURE_2D, aLayerMask->texture);
+        ggl.glActiveTexture(GL_TEXTURE0);
+        shader->setUniformValue("uLayerMask", 1);
+        shader->setUniformValue(
+            "uLayerMaskRect",
+            QVector4D(
+                float(aLayerMask->rect.x()), float(aLayerMask->rect.y()), float(aLayerMask->rect.width()),
+                float(aLayerMask->rect.height())
+            )
+        );
+        shader->setUniformValue("uScreenToLayer", waveAffine3(aScreenToLayer));
     } else if (aKind == Kind_Wave) {
         XC_PTR_ASSERT(aWave);
         const WavePassParams& wave = *aWave;

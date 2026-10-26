@@ -40,7 +40,11 @@ const gl::Texture* MaskKey::Data::textureId() const {
     return &mTexture->texture;
 }
 
-void MaskKey::Data::markDirty() { mTexture.reset(); }
+void MaskKey::Data::markDirty() {
+    mTexture.reset();
+    // the brush wrote into the pixels, so the matte now hides something
+    mPainted = true;
+}
 
 void MaskKey::Data::alloc(const QSize& aSize, const QRectF& aContentRect, uchar aValue) {
     mTexture.reset();   // a new image always gets its own texture
@@ -48,6 +52,7 @@ void MaskKey::Data::alloc(const QSize& aSize, const QRectF& aContentRect, uchar 
     mField = QImage(size, QImage::Format_Grayscale8);
     mField.fill(aValue);
     mContentRect = aContentRect;
+    mPainted = (aValue != kNeutral);
 }
 
 void MaskKey::Data::write(const QImage& aField, const QRectF& aContentRect) {
@@ -67,12 +72,24 @@ void MaskKey::Data::write(const QImage& aField, const QRectF& aContentRect) {
         image = image.convertToFormat(QImage::Format_Grayscale8);
     mField = image;
     mContentRect = aContentRect;
+    // an AUTHORING path (an import, an invert): scan once here rather than per frame
+    mPainted = false;
+    for (int y = 0; y < image.height() && !mPainted; ++y) {
+        const uchar* row = image.constScanLine(y);
+        for (int x = 0; x < image.width(); ++x) {
+            if (row[x] != kNeutral) {
+                mPainted = true;
+                break;
+            }
+        }
+    }
 }
 
 void MaskKey::Data::assign(const Data& aRhs) {
     mField = aRhs.mField;
     mContentRect = aRhs.mContentRect;
     mEasings = aRhs.mEasings;
+    mPainted = aRhs.mPainted;
     // Sharing the holder is what keeps a STATIC mask free: the same image means the
     // same texture, so a node whose mask has one key uploads it once and then only
     // binds it. Nothing can write through a shared holder - every mutator detaches.
@@ -82,12 +99,14 @@ void MaskKey::Data::assign(const Data& aRhs) {
 void MaskKey::Data::swap(Data& aRhs) {
     mField.swap(aRhs.mField);
     mTexture.swap(aRhs.mTexture);
+    std::swap(mPainted, aRhs.mPainted);
     std::swap(mContentRect, aRhs.mContentRect);
     std::swap(mEasings, aRhs.mEasings);
 }
 
 void MaskKey::Data::clear() {
     mTexture.reset();
+    mPainted = false;
     mField = QImage();
     mContentRect = QRectF();
 }
