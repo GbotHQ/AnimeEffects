@@ -22,6 +22,7 @@
 #include "core/FFDKey.h"
 #include "core/MeshKey.h"
 #include "core/ImageKey.h"
+#include "core/MaskKey.h"
 
 namespace ctrl {
 
@@ -379,6 +380,24 @@ namespace TimeLineUtil {
     // every explicit key of that filter's lane, because a stack entry is what
     // makes the lane meaningful. moveFilter moves one entry to a new index in the
     // effective stack (0 = top). setFilterEnabled flips one entry's eye.
+    // ---- the node's MATTE (core::MaskKey) -------------------------------------
+    //
+    // One mask per node, and the four edits every surface calls: the inspector's
+    // card, the tree's chip and the Mask tool all go through these, so the states
+    // they paint and the states they show cannot drift.
+    //
+    // A mask starts at REVEAL ALL (the field is 255 everywhere), so adding one
+    // changes nothing on screen until it is painted - unlike a filter mask, whose
+    // neutral is per input.
+    void addMask(core::Project& aProject, core::ObjectNode& aTarget);
+    // Remove the mask and all its keys. Undoable, like removing a filter.
+    void removeMask(core::Project& aProject, core::ObjectNode& aTarget);
+    // Invert the matte at the key it would be painted on (that key's own field).
+    void invertMask(core::Project& aProject, core::ObjectNode& aTarget, int aFrame);
+    // Hollow dot -> a key at aFrame holding the current blend (a hold); filled dot ->
+    // remove that frame's key. The same rule every other channel's dot follows.
+    void toggleMaskKey(core::Project& aProject, core::ObjectNode& aTarget, int aFrame);
+
     void addFilter(core::Project& aProject, core::ObjectNode& aTarget, core::TimeKeyType aType);
     void removeFilter(core::Project& aProject, core::ObjectNode& aTarget, core::TimeKeyType aType);
     void moveFilter(core::Project& aProject, core::ObjectNode& aTarget, core::TimeKeyType aType, int aIndex);

@@ -186,6 +186,24 @@ target_link_libraries(creation_select_keys PRIVATE
 # between their bounds. Drives the real TimeLineUtil commands; headless.
 add_executable(proportional_edits proportional_edits.cpp
     ../src/gui/theme/TimeLine.cpp)
+
+# See layer_mask_commands.cpp. The four edits every mask surface calls, on the same
+# Project + node fixture proportional_edits uses.
+add_executable(layer_mask_commands layer_mask_commands.cpp
+    ../src/gui/theme/TimeLine.cpp)
+target_include_directories(layer_mask_commands PRIVATE ..)
+target_compile_definitions(layer_mask_commands PRIVATE
+    AE_MAJOR_VERSION=1
+    AE_MINOR_VERSION=7
+    AE_MICRO_VERSION=1
+    USE_GL_CORE_PROFILE
+)
+target_link_libraries(layer_mask_commands PRIVATE
+    Qt6::Core Qt6::Core5Compat Qt6::Widgets
+    Qt6::Gui Qt6::OpenGL Qt6::OpenGLWidgets
+    Qt6::Svg Qt6::Xml Qt6::Concurrent Qt6::Multimedia
+    cmnd core ctrl gl img thr util pugixml
+)
 target_include_directories(proportional_edits PRIVATE ..)
 target_compile_definitions(proportional_edits PRIVATE
     AE_MAJOR_VERSION=1

@@ -937,6 +937,216 @@ namespace TimeLineUtil {
 
     } // namespace
 
+    //-------------------------------------------------------------------------------------------------
+    // THE NODE'S MATTE. The field lives in the KEY (not in a per-lane side table the
+    // way a filter's painted mask does), so every edit is an ordinary key command and
+    // undo comes from the value-replayable stack - nothing here needs a new command
+    // type.
+
+    namespace {
+
+        // The key a paint would edit: the one at this frame, or the DEFAULT key. A
+        // mask with keys and no key at this frame has nothing to paint - that is the
+        // "read-only between keys" state the card shows, and this rule is behind it.
+        MaskKey* maskKeyForEdit(TimeLine& aLine, int aFrame) {
+            if (const TimeKey* atFrame = aLine.map(TimeKeyType_Mask).value(aFrame))
+                return const_cast<MaskKey*>(static_cast<const MaskKey*>(atFrame));
+            return static_cast<MaskKey*>(aLine.defaultKey(TimeKeyType_Mask));
+        }
+
+        // Where a field lives, in the node's CONTENT space. The same two branches
+        // ctrl::MaskEditor uses for the painted filter masks, so the layer tool and
+        // the filter tool cannot disagree about what a content pixel is: a layer's
+        // mask covers its IMAGE, a folder's covers the CANVAS (a folder has no image
+        // of its own).
+        QRectF maskContentRect(Project& aProject, ObjectNode& aTarget) {
+            if (aTarget.type() == ObjectType_Layer) {
+                const gl::Texture* texture = aTarget.timeLine()->current().areaTexture();
+                if (texture && !texture->size().isEmpty())
+                    return QRectF(QPointF(0.0, 0.0), QSizeF(texture->size()));
+            }
+            const QSize canvas = aProject.attribute().imageSize();
+            if (canvas.isEmpty())
+                return QRectF();
+            return QRectF(QPointF(0.0, 0.0), QSizeF(canvas));
+        }
+
+        // A fresh field's grid: the content box scaled down to the field cap, keeping
+        // the aspect. Computed once per authored key, never per frame.
+        QSize maskTexelSize(const QRectF& aRect) {
+            const double longest = std::max(aRect.width(), aRect.height());
+            if (longest <= 0.0)
+                return QSize(1, 1);
+            const double scale = std::min(1.0, double(MaskKey::kMaxTexels) / longest);
+            return QSize(
+                std::max(1, int(std::lround(aRect.width() * scale))),
+                std::max(1, int(std::lround(aRect.height() * scale)))
+            );
+        }
+
+        // The DEFAULT key is a store of its own (TimeLine::grabDefaultKey owns the key
+        // and deletes the one it replaces), so it is written by VALUE: a state is
+        // "present, with this field" or "absent", and both undo and redo replay it.
+        // That keeps the mask's add/remove value-replayable like every other command
+        // without inventing pointer hand-over in grabDefaultKey.
+        class AssignDefaultMask: public cmnd::Stable {
+        public:
+            AssignDefaultMask(TimeLine& aLine, bool aPresent, const MaskKey::Data& aData)
+                : mLine(aLine), mPresent(aPresent), mData(aData) {}
+
+            virtual bool redoable() const { return true; }
+            virtual bool undoable() const { return true; }
+            virtual void redo() { apply(mPresent, mData); }
+            virtual void undo() { apply(!mPresent, MaskKey::Data()); }
+
+        private:
+            void apply(bool aPresent, const MaskKey::Data& aData) {
+                MaskKey* existing = static_cast<MaskKey*>(mLine.defaultKey(TimeKeyType_Mask));
+                if (aPresent) {
+                    if (existing) {
+                        existing->data().assign(aData);
+                    } else {
+                        auto* key = new MaskKey();
+                        key->data().assign(aData);
+                        mLine.grabDefaultKey(TimeKeyType_Mask, key);
+                    }
+                } else if (existing) {
+                    mLine.grabDefaultKey(TimeKeyType_Mask, nullptr);
+                }
+            }
+
+            TimeLine& mLine;
+            bool mPresent;
+            MaskKey::Data mData;
+        };
+
+        // One command that writes a key's whole field. The two states are captured, so
+        // undo restores the pixels exactly (a mask is too big to re-derive).
+        class AssignMaskField: public cmnd::Stable {
+        public:
+            AssignMaskField(MaskKey* aKey, const MaskKey::Data& aNext)
+                : mKey(aKey), mPrev(aKey->data()), mNext(aNext) {}
+
+            virtual bool redoable() const { return true; }
+            virtual bool undoable() const { return true; }
+            virtual void redo() { mKey->data().assign(mNext); }
+            virtual void undo() { mKey->data().assign(mPrev); }
+
+        private:
+            MaskKey* mKey;
+            MaskKey::Data mPrev;
+            MaskKey::Data mNext;
+        };
+
+    } // namespace
+
+    void addMask(Project& aProject, ObjectNode& aTarget) {
+        if (!aTarget.timeLine())
+            return;
+        TimeLine& line = *aTarget.timeLine();
+        if (!line.map(TimeKeyType_Mask).isEmpty() || line.defaultKey(TimeKeyType_Mask))
+            return; // one mask per node
+
+        const QRectF rect = maskContentRect(aProject, aTarget);
+        if (!rect.isValid() || rect.isEmpty())
+            return; // nothing to mask yet (no image and no canvas)
+
+        cmnd::ScopedMacro macro(aProject.commandStack(), CmndName::tr("Add mask"));
+        auto* notifier = new Notifier(aProject);
+        notifier->event().setType(TimeLineEvent::Type_PushKey);
+        notifier->event().pushTarget(aTarget, TimeKeyType_Mask, TimeKey::kDefaultKeyIndex);
+        macro.grabListener(notifier);
+
+        MaskKey::Data data;
+        data.alloc(maskTexelSize(rect), rect, MaskKey::kNeutral);
+        aProject.commandStack().push(new AssignDefaultMask(line, true, data));
+    }
+
+    void removeMask(Project& aProject, ObjectNode& aTarget) {
+        if (!aTarget.timeLine())
+            return;
+        TimeLine& line = *aTarget.timeLine();
+        const QVector<int> frames = line.map(TimeKeyType_Mask).keys();
+        if (frames.isEmpty() && !line.defaultKey(TimeKeyType_Mask))
+            return;
+
+        cmnd::ScopedMacro macro(aProject.commandStack(), CmndName::tr("Remove mask"));
+        auto* notifier = new Notifier(aProject);
+        notifier->event().setType(frames.isEmpty() ? TimeLineEvent::Type_RemoveKey
+                                                   : TimeLineEvent::Type_RemoveKey);
+        for (const int frame : frames)
+            notifier->event().pushTarget(aTarget, TimeKeyType_Mask, frame);
+        notifier->event().pushTarget(aTarget, TimeKeyType_Mask, TimeKey::kDefaultKeyIndex);
+        macro.grabListener(notifier);
+
+        for (const int frame : frames)
+            aProject.commandStack().push(line.createRemover(TimeKeyType_Mask, frame));
+        if (const MaskKey* key = static_cast<const MaskKey*>(line.defaultKey(TimeKeyType_Mask))) {
+            aProject.commandStack().push(new AssignDefaultMask(line, false, key->data()));
+        }
+    }
+
+    void invertMask(Project& aProject, ObjectNode& aTarget, int aFrame) {
+        if (!aTarget.timeLine())
+            return;
+        TimeLine& line = *aTarget.timeLine();
+        MaskKey* key = maskKeyForEdit(line, aFrame);
+        if (!key || !key->data().isValid())
+            return;
+
+        MaskKey::Data next = key->data();
+        QImage field = next.field();
+        for (int y = 0; y < field.height(); ++y) {
+            uchar* row = field.scanLine(y);
+            for (int x = 0; x < field.width(); ++x)
+                row[x] = uchar(255 - row[x]);
+        }
+        const QRectF rect = next.contentRect();
+        const util::Easing::Param easing = next.easing(0);
+        next.write(field, rect);
+        next.easing(0) = easing;
+
+        cmnd::ScopedMacro macro(aProject.commandStack(), CmndName::tr("Invert mask"));
+        auto* notifier = new Notifier(aProject);
+        notifier->event().setType(TimeLineEvent::Type_ChangeKeyValue);
+        notifier->event().pushTarget(aTarget, TimeKeyType_Mask, key->frame());
+        macro.grabListener(notifier);
+
+        aProject.commandStack().push(new AssignMaskField(key, next));
+    }
+
+    void toggleMaskKey(Project& aProject, ObjectNode& aTarget, int aFrame) {
+        if (!aTarget.timeLine())
+            return;
+        TimeLine& line = *aTarget.timeLine();
+        if (line.map(TimeKeyType_Mask).value(aFrame)) {
+            cmnd::ScopedMacro macro(aProject.commandStack(), CmndName::tr("Remove mask key"));
+            auto* notifier = new Notifier(aProject);
+            notifier->event().setType(TimeLineEvent::Type_RemoveKey);
+            notifier->event().pushTarget(aTarget, TimeKeyType_Mask, aFrame);
+            macro.grabListener(notifier);
+            aProject.commandStack().push(line.createRemover(TimeKeyType_Mask, aFrame));
+            return;
+        }
+
+        // A key HOLDS what the frame currently shows. Keying a mask between two keys
+        // therefore does not change the picture - which is what makes keying a shape a
+        // safe gesture rather than a jump.
+        MaskKey* source = maskKeyForEdit(line, aFrame);
+        if (!source || !source->data().isValid())
+            return;
+
+        cmnd::ScopedMacro macro(aProject.commandStack(), CmndName::tr("Add mask key"));
+        auto* notifier = new Notifier(aProject);
+        notifier->event().setType(TimeLineEvent::Type_PushKey);
+        notifier->event().pushTarget(aTarget, TimeKeyType_Mask, aFrame);
+        macro.grabListener(notifier);
+
+        auto* key = new MaskKey();
+        key->data().assign(source->data());
+        aProject.commandStack().push(line.createPusher(TimeKeyType_Mask, aFrame, key));
+    }
+
     void addFilter(Project& aProject, ObjectNode& aTarget, TimeKeyType aType) {
         if (!isFilterType(aType) || !aTarget.timeLine())
             return;
