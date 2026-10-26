@@ -74,10 +74,18 @@ DONE and gated (`5f06df23`, `77b34405`):
    undo step each, with a reveal-all neutral and a keyed hold that copies the frame it was keyed on.
    `layer_mask_commands` pins them.
 
-REMAINING, in this order:
+DONE as well (`0470aac0`, `c5f419f2`, `62866b9a`):
 
-5. The inspector card (`InspectorViewModel`'s mask properties + a thumbnail image provider + the QML
-   card), the tree chip, and the Mask tool's `Target` entry with the canvas rubylith.
-6. A folder's mask on its composite path (the layer's draw is the direct path; a folder presents from
-   an isolated composite).
-7. PSD import writes the mask instead of standing clipping in for one.
+5. The inspector card, its four derived states, its thumbnail (served through
+   `image://maskthumb/mask?<revision>`, showing WHAT IS HIDDEN in the canvas overlay's own ink) and
+   the Mask tool's `Target` entry. Measured live on a leaf layer: canvas unchanged by 0 px when the
+   mask is added, 26223 px when a stroke is painted, back to the brush ring's 1521 after ONE undo.
+6. A folder's matte, on the composite path, through `FilterFrame::maskTexture` - measured 14623 px
+   for one stroke over a folder subtree, and 0 px on add (a neutral matte costs nothing).
+
+REMAINING:
+
+7. The tree's chip (a row must show that it carries a matte without being selected) and the canvas
+   RUBYLITH while the Mask tool targets the matte. Painting already shows its result live - the
+   hidden area disappears - so the rubylith is pre-commitment feedback, not feedback.
+8. PSD import writes the mask instead of standing clipping in for one.

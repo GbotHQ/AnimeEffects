@@ -4494,3 +4494,50 @@ that one rounding moved 118 of 999 samples.
 
 The measured win, through the shipping `util::Easing::calculate`: **34.6 ns against
 233.1 ns** per evaluation (6.7x, ~199 ns saved), `|fast - solver| <= 4.3e-8`.
+
+## Layer masks: a channel whose payload is a field, and five traps it cost (2026-10-26)
+
+A node's mask is `core::MaskKey` - a `TimeKeyType` whose payload is an 8-bit alpha field in the
+node's content space - so it inherits the lane, the keys, the easing, the proportional machinery,
+the key menu, the marquee and value-replayable undo from every other channel. It animates the way
+FFD does: key mask SHAPES and blend the fields. Gates: `layer_mask_pixels` (the draw, on a real
+context: ten assertions for the layer shader's LAYER_MASK variation plus three for the folder's
+composite pass), `layer_mask_commands` (add/invert/key/remove, one undo each),
+`timekey_roundtrip` (the field survives format 0.20), `inspector_mask_card` (the card's four
+states and every button's wiring).
+
+**A NEUTRAL MATTE MUST COST NOTHING.** Measured: adding a folder mask flipped the folder onto the
+isolated-composite path and shifted 2098 px of the picture before a stroke. A composite present is
+not byte-identical to a direct subtree render, so "the matte is a no-op" has to be enforced, not
+assumed: `MaskKey::Data::isPainted()` rides the value (set by a brush write and by an invert,
+computed once on import) and both consumers test it, the way `FilterActivity` tests a blended
+value. After it, adding a mask changes 0 px on a layer AND a folder.
+
+**`mPassShaders[6]` was hand-counted.** Adding the folder pass wrote one past the end and the first
+frame segfaulted inside `QOpenGLShaderProgram::init()` - which reads like a driver fault, not like
+an array bounds bug. It is `mPassShaders[Kind_TERM]` now.
+
+**A tool panel filled BEFORE the tool switch never reaches the editor.** `ToolWidget::onParamUpdated`
+forwards only while `mToolType == ToolType_Mask`, so `beginMaskPaint`/`beginLayerMaskPaint` set the
+panel first, push the tool, and then call `onParamUpdated(false)` again. Without that last call the
+brand-new `MaskEditor` keeps MaskParam's defaults: measured as a stroke that painted NOTHING, with
+no error anywhere (the editor was still writing the Wave filter's mask, which the layer did not
+have).
+
+**`AeButton` has a 72px implicitWidth FLOOR.** Three of them in a row demanded 150px inside a ~220px
+inspector dock, so the whole mask card overflowed the panel and clipped its own primary button -
+invisible in the QML, obvious in a screenshot. The card's secondary actions are 22px
+`AeIconButton`s. And do not trust a crop to prove a layout fits: my first "proof" cut the button off
+itself.
+
+**Nothing sizes the window under Xvfb, so `_lib.sh` does it.** With no WM and a fresh
+`XDG_CONFIG_HOME` there is no remembered geometry either: the application mapped at 795x337 on a
+1600x1000 screen, which makes every screenshot look broken and every pixel computed from the screen
+miss the window. `ae_size_window` (called by `wait_ready`, override `AE_WINDOW_SIZE`/`AE_NO_RESIZE`)
+sizes the toplevel found by GEOMETRY through `xwininfo -root -tree` - `xdotool search --name` finds
+the selection owner.
+
+**A LIFO walk hands back siblings bottom-first.** `tests/filter_card_geometry` identified its two
+cards through a `visualTree()` that pushes children onto a stack, so with two cards `first` was the
+SECOND one and the gate failed on a correct layout ("expanding the second moved the first"). Sort
+markers by their Y in the panel, which is what the helper's own comment always meant.
