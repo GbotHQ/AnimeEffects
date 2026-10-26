@@ -494,9 +494,9 @@ struct Colors {
             // accent row): red and amber at the pale-theme columns above.
             paletteColor(kTailwindRows[kDangerRow][kTailwindLight[kDanger]]),   // danger
             paletteColor(kTailwindRows[kWarningRow][kTailwindLight[kWarning]]), // warning
-            // the SAME two-step relationship round a pale row: centred on #e5e5e5 (229)
-            QColor(0xf0, 0xf0, 0xf0), // checkerLight  (#f0f0f0)
-            QColor(0xda, 0xda, 0xda), // checkerDark   (#dadada)
+            // the SAME two steps round a pale row (`base` = #ffffff in the light theme)
+            QColor(0xf4, 0xf4, 0xf4), // checkerLight  (#f4f4f4)
+            QColor(0xdc, 0xdc, 0xdc), // checkerDark   (#dcdcdc)
             false, // isDark
         };
         return c;
@@ -566,10 +566,11 @@ struct Colors {
             // kDangerRow/kWarningRow for why they do not follow the accent).
             paletteColor(kTailwindRows[kDangerRow][kTailwindDark[kDanger]]),   // danger
             paletteColor(kTailwindRows[kWarningRow][kTailwindDark[kWarning]]), // warning
-            // the alpha checker: ALPHA-ONLY, so it composites with whatever row it sits on
-            // and needs no per-theme values. Over the tree's #262626 row this is 55 on 33.
-            QColor(0x36, 0x36, 0x36), // checkerLight  (#363636)
-            QColor(0x20, 0x20, 0x20), // checkerDark   (#202020)
+            // the checker's ON-SCREEN values, measured off the original's own screenshot
+            // (c0b1eea4): #242424 on #141414. The tree's row is `base` #171717 - not `raised`
+            // #262626, which is what I had been calibrating against, one surface too high.
+            QColor(0x24, 0x24, 0x24), // checkerLight  (#242424 = 36)
+            QColor(0x14, 0x14, 0x14), // checkerDark   (#141414 = 20)
             true, // isDark
         };
         return c;

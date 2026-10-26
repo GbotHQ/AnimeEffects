@@ -144,17 +144,21 @@ int main(int argc, char** argv) {
         check(offArt == 0, "and an opaque layer shows NO checker inside its band");
         // THE BORDER: the cell's own edge, which is what makes a dark drawing on a dark row
         // read as a cell at all (the review asked whether to keep it; it is kept).
-        // THE FRAME follows the cell's ROUNDED edge, over the checker/art (the arrangement the
-        // review preferred over a ring outside), so the corner is transparent and the edge's
-        // midpoint carries the palette's field-border token.
+        // THE FRAME is the original's GLOW: white at 26/255 (what rgba(255,255,255,40) became
+        // under the 0.66 icon rest the tree used to apply), on the cell's rounded edge over the
+        // art. So the assertion is the BLEND, not a palette token.
         const QColor edge = cell.pixelColor(cell.width() / 2, 0);
-        const QColor outline = theme::Colors::current().outline;
+        const auto liftOver = [](int aChannel) {
+            return qRound(aChannel + (255 - aChannel) * 26.0 / 255.0);
+        };
+        const QColor expected(liftOver(art.red()), liftOver(art.green()), liftOver(art.blue()));
         std::printf(
-            "MEASURED frame: edge midpoint (%d,%d,%d), field border is (%d,%d,%d), corner alpha %d\n",
-            edge.red(), edge.green(), edge.blue(), outline.red(), outline.green(), outline.blue(),
+            "MEASURED frame: edge (%d,%d,%d), expected white@26 over the art (%d,%d,%d), corner "
+            "alpha %d\n",
+            edge.red(), edge.green(), edge.blue(), expected.red(), expected.green(), expected.blue(),
             qAlpha(cell.pixel(0, 0))
         );
-        check(distance(edge, outline) <= 24, "the edge carries the field-border token");
+        check(distance(edge, expected) <= 8, "the edge is the glow's own white@26 over the art");
         // ROUNDING: the corner block cannot be full - the arc slices it. Count the pixels that
         // are substantially inked in the 3x3 corner: a square cell would give nine.
 
@@ -222,25 +226,25 @@ int main(int argc, char** argv) {
             "MEASURED checker: dark #%02x%02x%02x on #%02x%02x%02x (row #%02x%02x%02x), light "
             "#%02x%02x%02x on #%02x%02x%02x (row #%02x%02x%02x)\n",
             dark.checkerLight.red(), dark.checkerLight.green(), dark.checkerLight.blue(),
-            dark.checkerDark.red(), dark.checkerDark.green(), dark.checkerDark.blue(), dark.raised.red(),
-            dark.raised.green(), dark.raised.blue(), light.checkerLight.red(), light.checkerLight.green(),
+            dark.checkerDark.red(), dark.checkerDark.green(), dark.checkerDark.blue(), dark.base.red(),
+            dark.base.green(), dark.base.blue(), light.checkerLight.red(), light.checkerLight.green(),
             light.checkerLight.blue(), light.checkerDark.red(), light.checkerDark.green(),
-            light.checkerDark.blue(), light.raised.red(), light.raised.green(), light.raised.blue()
+            light.checkerDark.blue(), light.base.red(), light.base.green(), light.base.blue()
         );
         check(
-            dark.checkerLight.red() == 0x36 && dark.checkerDark.red() == 0x20,
-            "the dark tiles ARE the specified #363636 / #202020"
+            dark.checkerLight.red() == 0x24 && dark.checkerDark.red() == 0x14,
+            "the dark tiles ARE #242424 / #141414 - the values measured off the original"
         );
         check(
             dark.checkerLight.alpha() == 255 && dark.checkerDark.alpha() == 255,
             "and they are opaque, so nothing can composite them to another value"
         );
         check(
-            std::abs(dark.checkerLight.red() - dark.checkerDark.red()) >= 18,
-            "they read as a checker (>= 18 levels)"
+            std::abs(dark.checkerLight.red() - dark.checkerDark.red()) >= 14,
+            "they read as a checker (>= 14 levels at 5px tiles)"
         );
         check(
-            std::abs((dark.checkerLight.red() + dark.checkerDark.red()) / 2 - dark.raised.red()) <= 10,
+            std::abs((dark.checkerLight.red() + dark.checkerDark.red()) / 2 - dark.base.red()) <= 10,
             "and the pair's average sits at the row's value, not above it"
         );
     }

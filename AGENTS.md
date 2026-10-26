@@ -4654,18 +4654,17 @@ THE CHECKER AND THE FRAME, as finally decided (the review asked for both):
 
 - **4 LOGICAL-px squares**, not 2. At 2px the pattern read as dithering, not as a checker
   (reported from the running app).
-- **Tiles are `#363636` on `#202020`, OPAQUE, 5 LOGICAL px**: `Colors::checkerLight`/`checkerDark`.
-  FIVE corrections landed here and the last two are the lesson. (1) These are the values the
-  ORIGINAL translucent pair (`rgba(255,255,255,20)`/`rgba(0,0,0,36)`) composited to over the
-  tree's #262626 row, which is what "20/36" always meant - so they are written as exact channels
-  now, because a translucent pair lands a level off on screen (measured 31 where the
-  specification says 32). (2) **A THUMBNAIL IS CONTENT, NOT A GLYPH**: the tree drew every icon
-  at `baseOpacity` 0.66, the rest that keeps a file/folder glyph quiet beside its label, so the
-  specified 54/32 arrived as 50/29 - every tone I had "specified" for three rounds was being
-  multiplied by 0.66. A thumbnail is drawn at its own visibility (1.0 visible, 0.45 hidden) and
-  the glyph alone keeps the 0.66 rest; the rendered cells then measure exactly #363636/#202020.
-  Keep the pair's AVERAGE at the row's value (`raised` is the row's token; `hairline` is the
-  same value, which is why a hairline border was invisible) or it reads as a lit patch.
+- **Tiles are `#242424` on `#141414`, OPAQUE, 5 LOGICAL px** (`Colors::checkerLight`/`checkerDark`),
+  and the frame is **white at 26/255**. Those four numbers are not taste, they were measured off
+  the ORIGINAL commit's own screenshot (`git show c0b1eea4:docs/design/tree/layer-thumbnails.png`):
+  its cells rendered #242424 on #141414, and its frame - `QPen(QColor(255,255,255,40))` - reached
+  the screen at 26/255 because the tree multiplied every icon by its 0.66 rest. **The row's token
+  is `base` #171717, NOT `raised` #262626**: calibrating against `raised` is what made three tone
+  pairs "too bright" (and `hairline` equals `raised`, which is why a hairline border was
+  invisible). And **a thumbnail is CONTENT, not a glyph**: it is drawn at its own visibility
+  (1.0 visible, 0.45 hidden) while the glyph alone keeps the 0.66 rest - that rest was what made
+  every "specified" tone arrive ~1/3 darker and started this whole chain.
+  The comparison with the original is `docs/design/tree/checker-original-vs-now.png`.
 - **The cell is ROUNDED, 2 LOGICAL px**, and the frame follows the same path. The frame is drawn
   INSIDE on that path with the path INSET by half the pen (0.5px): a 1px stroke centred on the
   cell's edge half-covers the outer pixel and measured (142,77,52) - art with a hint of border,

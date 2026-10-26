@@ -112,7 +112,11 @@ QPixmap ThumbnailCache::layerThumbnail(const img::Buffer& aImage, int aSize, qre
         // which is the same invisibility the ring outside was meant to fix.
         painter.setClipping(false);
         painter.setBrush(Qt::NoBrush);
-        QPen pen(colors.outline, 1);
+        // THE GLOW, reproduced rather than guessed: the original drew this frame in
+        // rgba(255,255,255,40) and the tree then multiplied every icon by its 0.66 rest, so
+        // what reached the screen was white at 26/255. The thumbnail is drawn at full opacity
+        // now, so the same look is alpha 26 written directly.
+        QPen pen(QColor(255, 255, 255, 26), 1);
         pen.setJoinStyle(Qt::RoundJoin);
         painter.setPen(pen);
         QPainterPath edge;
