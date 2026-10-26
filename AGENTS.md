@@ -4460,3 +4460,37 @@ highlight walk and its Return all read it - a row cannot be visible under one ru
 unchoosable under another. Gates: `tests/fuzzy_match.cpp` pins both halves (including
 `bzzz`-style negatives and the 1-edit-under-7 / 2-edit-from-7 thresholds), and
 `tests/inspector_view_model.cpp` pins the scores the catalog actually hands the picker.
+
+## The thirds fast path: what the predicate IS, and how its branch is gated (2026-10-26)
+
+Two statements about it were wrong in the first write-up and are corrected here, because
+both invite a wrong change:
+
+**The predicate is arithmetic, not mode-based.**
+`type == Custom && x_out(from key) == float(1/3) && x_in(to key) == float(2/3) && 0 <= x <= 1`.
+A mode only decides WHICH x is written: `Vector`, `Auto` and `AutoClamped` write the thirds
+verbatim (so they always take the fast path and NEVER run the full solve), a derived handle
+frozen back to Free/Aligned keeps those exact floats (and also takes it), a dragged side
+stores an arbitrary x (and does not), and the crossed default `(2/3, 1/3)` does not. So
+"every segment whose facing handles are both derived" is one PRODUCER of the pair, not the
+rule - a Free pair storing the thirds qualifies too.
+
+**The reason for exact equality is not a visible jump.** A tiny epsilon would be harmless
+(y moves by ~epsilon*slope); the real reason is that `y(x) = B_y(x)` is the true curve ONLY
+when `x(t) = t`, which holds at the thirds and nowhere else, so an epsilon admits pairs where
+the fast path returns the wrong point of the curve while looking like a legitimate
+reduction. Measured on a pair 1e-6 off the thirds: cubic `0.345757604` against solve
+`0.345757395`.
+
+**And the branch itself is now a gate, because a tolerance cannot prove it.** The two
+branches agree to their own rounding, but their floats are not always identical: for a
+thirds pair 261 of 999 swept samples differ (by one ULP). `tests/easing_regression.cpp`
+therefore asserts BITWISE equality against the branch that must have run - the thirds pair
+equals the direct cubic in 999/999 samples, a pair 1e-6 off the thirds equals the solver in
+999/999 (952 of which could have told the difference), with an assertion that the sweep CAN
+discriminate before either claim is made. The reference cubic in that test computes
+`y2 - y1` in DOUBLE on purpose: in float it is `0.6f`, in double `0.6000000089406967`, and
+that one rounding moved 118 of 999 samples.
+
+The measured win, through the shipping `util::Easing::calculate`: **34.6 ns against
+233.1 ns** per evaluation (6.7x, ~199 ns saved), `|fast - solver| <= 4.3e-8`.

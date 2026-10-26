@@ -874,6 +874,83 @@ int main(int argc, char** argv) {
                       "(gap %.2e)", maxHermiteGap);
     }
 
+    // ---- WHICH BRANCH RAN, not merely "the numbers agree" -------------------------
+    //
+    // Every assertion above compares two values that are supposed to be equal, so a
+    // build where the fast path never fires passes all of them. That cannot be pinned by
+    // a tolerance: the two branches agree to their own rounding. It CAN be pinned
+    // bit-for-bit, because for a thirds pair they do not always land on the same float -
+    // measured: 379 of 999 samples differ by one ULP. So this sweep asserts EXACT
+    // bitwise equality against the branch that must have run:
+    //
+    //   * a pair on the thirds must equal the DIRECT cubic y(x) (the fast path), and
+    //   * a pair 1e-6 off the thirds must equal the SOLVER, not the cubic (the fast path
+    //     is gated on the exact floats, so a near miss must not be read as one).
+    //
+    // The sweep first proves it CAN discriminate: if the two candidate values were
+    // bitwise identical everywhere, both assertions below would be vacuous.
+    {
+        const float y1 = 0.2f, y2 = 0.8f;
+        // Double throughout, INCLUDING the subtraction: `y2 - y1` in float arithmetic is
+        // 0.6f, in double it is 0.6000000089406967, and that one rounding is enough to move
+        // the result by an ULP for ~12% of samples. The shipped helper narrows the floats
+        // once and then works in double, so this reference has to as well - a reference
+        // that is merely "close" cannot tell two branches apart bit for bit.
+        const double dy1 = double(y1), dy2 = double(y2);
+        const double cy = 3.0 * dy1, by = 3.0 * (dy2 - dy1) - cy, ay = 1.0 - cy - by;
+        const auto cubicInX = [&](double x) {
+            return static_cast<float>(((ay * x + by) * x + cy) * x);
+        };
+        util::Easing::Param thirds;
+        thirds.type = util::Easing::Type_Custom;
+        thirds.cubicBezier = {1.0f / 3.0f, y1, 2.0f / 3.0f, y2};
+        thirds.handleIn = util::Easing::HandleMode_Free;
+        thirds.handleOut = util::Easing::HandleMode_Free;
+        util::Easing::Param nearMiss = thirds;
+        nearMiss.cubicBezier = {1.0f / 3.0f + 1e-6f, y1, 2.0f / 3.0f - 1e-6f, y2};
+
+        int discriminating = 0;
+        int thirdsExact = 0;
+        int nearMatchesSolver = 0;
+        int nearDiscriminating = 0;
+        const util::UnitBezier solverThirds(1.0f / 3.0f, y1, 2.0f / 3.0f, y2);
+        const util::UnitBezier solverNear(1.0f / 3.0f + 1e-6f, y1, 2.0f / 3.0f - 1e-6f, y2);
+        for (int i = 1; i < 1000; ++i) {
+            const float x = float(i) / 1000.0f;
+            const float cubic = cubicInX(double(x));
+            const float solved = static_cast<float>(solverThirds.solve(x, util::UnitBezier::kBezierEpsilon));
+            if (cubic != solved) ++discriminating;
+
+            const float gotThirds = util::Easing::calculate(thirds, x, 0.0f, 1.0f, 1.0f);
+            if (gotThirds == cubic) ++thirdsExact;
+
+            const float gotNear = util::Easing::calculate(nearMiss, x, 0.0f, 1.0f, 1.0f);
+            const float solvedNear = static_cast<float>(solverNear.solve(x, util::UnitBezier::kBezierEpsilon));
+            // The solver's answer, in EVERY sample: where the solver happens to land on the
+            // cubic's float too, the two builds are indistinguishable at that x, and the
+            // aggregate below reports how many samples actually discriminate.
+            if (gotNear == solvedNear) ++nearMatchesSolver;
+            if (solvedNear != cubic) ++nearDiscriminating;
+        }
+        std::printf("thirds branch: %d of 999 samples tell the branches apart; thirds pair matched "
+                    "the cubic in %d, near-miss pair matched the solver in %d "
+                    "(%d of those samples could have told the difference)\n",
+                    discriminating, thirdsExact, nearMatchesSolver, nearDiscriminating);
+        XC_MSG_ASSERT(nearDiscriminating > 100,
+                      "the NEAR-MISS sweep cannot tell the solver from the fast path either "
+                      "(%d samples differ) - the assertion below would be vacuous",
+                      nearDiscriminating);
+        XC_MSG_ASSERT(discriminating > 100,
+                      "the sweep cannot tell the fast path from the solver (%d samples differ) - "
+                      "the branch assertions below would be vacuous", discriminating);
+        XC_MSG_ASSERT(thirdsExact == 999,
+                      "a pair ON the thirds left the fast path in %d of 999 samples - it must take "
+                      "it in all of them", 999 - thirdsExact);
+        XC_MSG_ASSERT(nearMatchesSolver == 999,
+                      "a pair 1e-6 OFF the thirds did not stay on the solver in %d of 999 samples",
+                      999 - nearMatchesSolver);
+    }
+
     std::printf("easing_regression: PASS (%d curves, solver + weight + threads + auto + names "
                 "+ defaults + thirds + crossed ok)\n",
                 numCurves);
