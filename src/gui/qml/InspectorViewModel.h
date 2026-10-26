@@ -3,6 +3,7 @@
 
 #include <QColor>
 #include <QObject>
+#include <QImage>
 #include <QVariantList>
 #include <QVector>
 
@@ -33,6 +34,25 @@ class InspectorViewModel: public QObject {
     Q_PROPERTY(InspectorRowModel* pose READ pose CONSTANT)
     Q_PROPERTY(InspectorRowModel* ffd READ ffd CONSTANT)
     Q_PROPERTY(FilterStackModel* filters READ filters CONSTANT)
+
+    // ---- the node's MATTE (core::MaskKey) -----------------------------------
+    //
+    // The card's whole state is these four facts plus a thumbnail. They are
+    // DERIVED from the document on every refresh (never cached here), so the card
+    // cannot disagree with the lane: `maskKeyed` is "the lane has a keyframe",
+    // `maskHasKeyAtFrame` is "there is a key to paint", and the card's between-keys
+    // state is `maskKeyed && !maskHasKeyAtFrame`.
+    Q_PROPERTY(bool maskPresent READ maskPresent NOTIFY changed)
+    Q_PROPERTY(bool maskKeyed READ maskKeyed NOTIFY changed)
+    Q_PROPERTY(bool maskHasKeyAtFrame READ maskHasKeyAtFrame NOTIFY changed)
+    Q_PROPERTY(int maskKeyCount READ maskKeyCount NOTIFY changed)
+    // Bumped on every refresh so `image://maskthumb/...?<revision>` re-asks the
+    // provider; a QQuickImage is cached by URL, and a matte that was painted must
+    // not keep showing the pixels it had.
+    Q_PROPERTY(int maskRevision READ maskRevision NOTIFY changed)
+    // The playhead, for the card's "Key at frame N" - the same number the lane and the
+    // ruler show, so the button cannot name a different frame from the one it keys.
+    Q_PROPERTY(int currentFrame READ frame NOTIFY changed)
 
     Q_PROPERTY(bool hasTarget READ hasTarget NOTIFY changed)
     Q_PROPERTY(bool playbackActive READ playbackActive NOTIFY changed)
@@ -161,6 +181,25 @@ public:
     // happens; the card only points at it).
     util::Signaler<void(core::TimeKeyType, core::FilterMaskChannel)> onMaskPaintRequested;
     void requestMaskPaint(core::TimeKeyType aLane, core::FilterMaskChannel aChannel);
+    // The LAYER mask is not a filter input (it has no lane/channel pair), so it asks
+    // for the tool on its own signal rather than by a sentinel channel value.
+    util::Signaler<void()> onLayerMaskPaintRequested;
+
+    bool maskPresent() const;
+    bool maskKeyed() const;
+    bool maskHasKeyAtFrame() const;
+    int maskKeyCount() const;
+    int maskRevision() const { return mMaskRevision; }
+    // The matte at the playhead as a small image, for the card's thumbnail (and for
+    // the tree's chip). Empty when the node has no mask.
+    QImage maskThumbnail(const QSize& aRequested = QSize()) const;
+
+    Q_INVOKABLE void addMask();
+    Q_INVOKABLE void removeMask();
+    Q_INVOKABLE void invertMask();
+    Q_INVOKABLE void toggleMaskKey();
+    // The card points at the tool, like a filter row's "paint mask" does.
+    Q_INVOKABLE void requestLayerMaskPaint();
 
     Q_INVOKABLE void setBlendIndex(int aIndex);
     Q_INVOKABLE void setClipped(bool aValue);
@@ -198,6 +237,7 @@ private:
     int mBlendIndex = 0;
     bool mBlendEnabled = false;
     bool mClipped = false;
+    int mMaskRevision = 0;
     bool mClippedEnabled = false;
 };
 

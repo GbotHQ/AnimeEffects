@@ -10,6 +10,7 @@
 #include <QQuickWindow>
 #include <QQmlContext>
 #include <QUrl>
+#include <QQuickImageProvider>
 #include <QVBoxLayout>
 
 namespace gui {
@@ -91,6 +92,32 @@ private:
 };
 } // namespace
 
+
+namespace {
+
+// The mask card's THUMBNAIL. A QQuickImage caches by URL, so the model bumps a
+// revision the URL carries and the provider builds the matte on demand - no second
+// copy of the field is kept anywhere, and every state the document can reach (a
+// default key, a key at the playhead, a blended frame) shows what that frame holds.
+class MaskThumbnailProvider: public QQuickImageProvider {
+public:
+    explicit MaskThumbnailProvider(InspectorViewModel* aModel)
+        : QQuickImageProvider(QQuickImageProvider::Image), mModel(aModel) {}
+
+    QImage requestImage(const QString& aId, QSize* aSize, const QSize& aRequested) override {
+        Q_UNUSED(aId);
+        const QImage image = mModel ? mModel->maskThumbnail(aRequested) : QImage();
+        if (aSize)
+            *aSize = image.size();
+        return image;
+    }
+
+private:
+    InspectorViewModel* mModel;
+};
+
+} // namespace
+
 PropertyWidget::PropertyWidget(ViaPoint& aViaPoint, QWidget* aParent, GUIResources* aGUIResources,
                                const LocaleParam& aLocale):
     QWidget(aParent),
@@ -124,6 +151,10 @@ PropertyWidget::PropertyWidget(ViaPoint& aViaPoint, QWidget* aParent, GUIResourc
     // LocaleParam and is applied to widgets through standard.ssa, so the scene
     // needs that font explicitly to match 8pt Geist (or the locale override).
     mQuick->rootContext()->setContextProperty(QStringLiteral("uiFont"), mUiFont);
+    // the card's thumbnail (image://maskthumb/<anything>?<revision>)
+    mQuick->engine()->addImageProvider(
+        QStringLiteral("maskthumb"), new MaskThumbnailProvider(mModel)
+    );
     mQuick->setClearColor(theme::Colors::current().base);
     mQuick->setSource(QUrl(QStringLiteral("qrc:/AnimeEffects/Dialogs/qml/PropertiesPanel.qml")));
     connect(mQuick, &QQuickWidget::statusChanged, this, [this](QQuickWidget::Status aStatus) {
@@ -199,6 +230,10 @@ void PropertyWidget::onPlayBackStateChanged(bool aIsActive) { mModel->setPlaybac
 void PropertyWidget::refreshTheme() {
     mTheme->refresh();
     mModel->refreshTheme();
+    // the card's thumbnail (image://maskthumb/<anything>?<revision>)
+    mQuick->engine()->addImageProvider(
+        QStringLiteral("maskthumb"), new MaskThumbnailProvider(mModel)
+    );
     mQuick->setClearColor(theme::Colors::current().base);
 }
 

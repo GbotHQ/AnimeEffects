@@ -388,6 +388,26 @@ target_link_libraries(picker_keyboard PRIVATE
 # without a window - the model directly, and the REAL NewProjectDialog.qml loaded and
 # clicked so the "Live link" checkbox is proven to write back (AeCheckBox records that
 # setting `checked` does not fire toggled(), so a click is the only honest driver).
+# The MASK CARD, headless: the real PropertiesPanel.qml with the real
+# gui::InspectorViewModel over a real Project + node. It is also the only check that
+# the whole inspector scene still loads, which is what a card's binding error breaks.
+add_executable(inspector_mask_card inspector_mask_card.cpp
+    ../src/gui/qml/QmlTheme.cpp
+    ../src/gui/theme/Icons.cpp)
+target_include_directories(inspector_mask_card PRIVATE .. ../src ../src/gui)
+target_compile_definitions(inspector_mask_card PRIVATE
+    AE_MAJOR_VERSION=1
+    AE_MINOR_VERSION=7
+    AE_MICRO_VERSION=1
+    USE_GL_CORE_PROFILE
+    AE_QML_DIR="${CMAKE_SOURCE_DIR}/src/gui/qml"
+    AE_ICON_SRC="${CMAKE_SOURCE_DIR}/assets/icons"
+)
+target_link_libraries(inspector_mask_card PRIVATE
+    Qt6::Core Qt6::Gui Qt6::Widgets Qt6::Xml
+    Qt6::Qml Qt6::Quick Qt6::QuickControls2)
+set_target_properties(inspector_mask_card PROPERTIES AUTOMOC ON)
+
 add_executable(new_project_form new_project_form.cpp
     ../src/gui/qml/NewProjectViewModel.cpp
     ../src/gui/qml/QmlTheme.cpp

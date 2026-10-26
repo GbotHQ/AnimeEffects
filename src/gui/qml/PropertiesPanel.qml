@@ -328,6 +328,13 @@ Rectangle {
                 width: parent.width
             }
 
+            InspectorMaskCard {
+                id: maskCard
+                visible: inspector.hasTarget
+                enabled: !inspector.playbackActive
+                width: parent.width
+            }
+
             Item { width: 1; height: 12 }
         }
     }

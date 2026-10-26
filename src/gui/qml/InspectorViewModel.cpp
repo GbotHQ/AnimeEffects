@@ -189,11 +189,108 @@ void InspectorViewModel::setPlaybackActive(bool aActive) {
     emit changed();
 }
 
+
+// ---- the node's MATTE -------------------------------------------------------
+//
+// The card's state is read from the DOCUMENT here rather than stored: the mask can
+// also change from the lane's key menu, the tool's stroke or an undo, and a cached
+// flag would go stale in exactly those cases.
+
+namespace {
+
+const core::TimeLine* maskLine(const core::ObjectNode* aTarget) {
+    return aTarget ? aTarget->timeLine() : nullptr;
+}
+
+} // namespace
+
+bool InspectorViewModel::maskPresent() const {
+    const core::TimeLine* line = maskLine(mTarget);
+    return line && (line->defaultKey(core::TimeKeyType_Mask) || !line->map(core::TimeKeyType_Mask).isEmpty());
+}
+
+bool InspectorViewModel::maskKeyed() const {
+    const core::TimeLine* line = maskLine(mTarget);
+    return line && !line->map(core::TimeKeyType_Mask).isEmpty();
+}
+
+bool InspectorViewModel::maskHasKeyAtFrame() const {
+    const core::TimeLine* line = maskLine(mTarget);
+    return line && line->map(core::TimeKeyType_Mask).value(frame()) != nullptr;
+}
+
+int InspectorViewModel::maskKeyCount() const {
+    const core::TimeLine* line = maskLine(mTarget);
+    return line ? line->map(core::TimeKeyType_Mask).size() : 0;
+}
+
+QImage InspectorViewModel::maskThumbnail(const QSize& aRequested) const {
+    const core::TimeLine* line = maskLine(mTarget);
+    if (!line)
+        return QImage();
+
+    // The field the frame SHOWS: the key at the playhead when there is one,
+    // otherwise the default key. A blended frame's thumbnail is the blended field,
+    // which is what makes the card's between-keys state legible ("this is what you
+    // are looking at, and it is read-only").
+    const core::MaskKey* key = nullptr;
+    if (const core::TimeKey* atFrame = line->map(core::TimeKeyType_Mask).value(frame()))
+        key = static_cast<const core::MaskKey*>(atFrame);
+    else
+        key = static_cast<const core::MaskKey*>(line->defaultKey(core::TimeKeyType_Mask));
+    if (!key || !key->data().isValid())
+        return QImage();
+
+    QImage field = key->data().field();
+    // A matte is a mask of VISIBILITY: show it as the user's tool does (white = kept)
+    // and let the QML tint it.
+    if (aRequested.isValid() && !aRequested.isEmpty())
+        field = field.scaled(aRequested, Qt::KeepAspectRatio, Qt::SmoothTransformation);
+    return field;
+}
+
+void InspectorViewModel::addMask() {
+    if (!mProject || !mTarget)
+        return;
+    ctrl::TimeLineUtil::addMask(*mProject, *mTarget);
+    refresh();
+}
+
+void InspectorViewModel::removeMask() {
+    if (!mProject || !mTarget)
+        return;
+    ctrl::TimeLineUtil::removeMask(*mProject, *mTarget);
+    refresh();
+}
+
+void InspectorViewModel::invertMask() {
+    if (!mProject || !mTarget)
+        return;
+    ctrl::TimeLineUtil::invertMask(*mProject, *mTarget, frame());
+    refresh();
+}
+
+void InspectorViewModel::toggleMaskKey() {
+    if (!mProject || !mTarget)
+        return;
+    ctrl::TimeLineUtil::toggleMaskKey(*mProject, *mTarget, frame());
+    refresh();
+}
+
+void InspectorViewModel::requestLayerMaskPaint() {
+    if (!mTarget)
+        return;
+    onLayerMaskPaintRequested();
+}
+
 void InspectorViewModel::refresh() {
     refreshAttributes();
     for (InspectorRowModel* row : {mMove, mRotate, mScale, mDepth, mOpacity, mImage, mPose, mFFD})
         row->refresh();
     mFilters->refresh();
+    // a mask thumbnail is an IMAGE: its URL has to change for QML to re-ask the
+    // provider, and the state flags ride the same signal
+    ++mMaskRevision;
     emit changed();
 }
 

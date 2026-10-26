@@ -193,6 +193,7 @@ qt_add_qml_module(${PROJECT_NAME}
         qml/InspectorAssetField.qml
         qml/InspectorFilterCard.qml
         qml/InspectorFilterStack.qml
+        qml/InspectorMaskCard.qml
 )
 
 target_compile_definitions(${PROJECT_NAME} PRIVATE
