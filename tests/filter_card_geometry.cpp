@@ -107,6 +107,13 @@ QRectF rectOf(QQuickItem* aItem, QQuickItem* aFrame) {
     return QRectF(p.x(), p.y(), aItem->width(), aItem->height());
 }
 
+// The card a disclosure marker's header belongs to: marker (fills the header) ->
+// headerItem -> card.
+QQuickItem* cardOf(QQuickItem* aMarker) {
+    QQuickItem* header = aMarker ? aMarker->parentItem() : nullptr;
+    return header ? header->parentItem() : nullptr;
+}
+
 QString describe(const QRectF& r) {
     return QStringLiteral("x=%1 y=%2 w=%3 h=%4")
         .arg(r.x()).arg(r.y()).arg(r.width()).arg(r.height());
@@ -230,11 +237,18 @@ int main(int argc, char** argv) {
     check(stateOf(first) == QLatin1String("Collapsed"), QStringLiteral("card 1 reports Collapsed"));
 
     // ---- expanding the FIRST card must not move its own header ----
+    const qreal cardHeight0 = cardOf(first) ? cardOf(first)->height() : -1.0;
     press(first);
     QCoreApplication::processEvents();
     const QRectF header1 = rectOf(first, rootItem);
     std::printf("MEASURED  card 1 header (expanded):  %s\n", qPrintable(describe(header1)));
     check(stateOf(first) == QLatin1String("Expanded"), QStringLiteral("card 1 reports Expanded"));
+    // The FIXTURE must be able to show the defect: if the body did not grow, "the header
+    // did not move" would be true for the trivial reason that nothing moved at all.
+    check(cardOf(first) && cardOf(first)->height() > cardHeight0,
+          QStringLiteral("the card grew when it expanded (%1 -> %2)")
+              .arg(cardHeight0)
+              .arg(cardOf(first) ? cardOf(first)->height() : -1.0));
     check(header1 == header0,
           QStringLiteral("the header did not move when its card expanded (%1 -> %2)")
               .arg(describe(header0), describe(header1)));
