@@ -449,24 +449,30 @@ Item {
                 }
             }
 
-            // The row tooltip, drawn by the list AREA so the ListView's own clip
-            // cannot cut it off at the first row. Its content is the hovered
-            // row's full label plus the model's identification (E29's kept kind),
-            // and it sits on the ROW rect passed as ownerX/Y/W/H - AeToolTip
-            // does the rest: below-first, flipping above at the bottom edge, and
-            // shifted inside the window so it is never clipped (E27/E28).
+            // The row tooltip. It is mounted in the window overlay (see
+            // AeToolTip's "where it lives"), so neither the ListView's clip nor
+            // the dialog's own stacking can cut it off or hide it behind a later
+            // sibling; `ownerItem: listArea` names the item its rect is
+            // expressed in. Its content is the hovered row's full label plus the
+            // model's identification (E29's kept kind), and it sits on the ROW
+            // rect passed as ownerX/Y/W/H in the list area's coordinates -
+            // AeToolTip does the rest: below-first, flipping above at the bottom
+            // edge, and shifted inside the window so it is never clipped
+            // (E27/E28).
             //
-            // The rect is the delegate's own, in this item's coordinates - which is
-            // why it must be re-read rather than captured once. A ListView scrolls
-            // its CONTENT under a clip window that does not move, so the
-            // delegate's y is a coordinate in the content, not on screen: without
-            // subtracting the view's contentY a wheel under a stationary hovered
-            // pointer left the tooltip anchored at the row's PRE-SCROLL position
-            // (E27 violated in that one case; E28's clamp still held, because it
-            // re-reads every ancestor's contentY on purpose - see AeToolTip's own
-            // note). The read is in the binding itself, so the dependency is on
-            // contentY and every scroll re-evaluates it.
+            // The rect is the delegate's own, in the list area's coordinates -
+            // which is why it must be re-read rather than captured once. A
+            // ListView scrolls its CONTENT under a clip window that does not
+            // move, so the delegate's y is a coordinate in the content, not on
+            // screen: without subtracting the view's contentY a wheel under a
+            // stationary hovered pointer left the tooltip anchored at the row's
+            // PRE-SCROLL position (E27 violated in that one case; E28's clamp
+            // still held, because it re-reads every ancestor's contentY on
+            // purpose - see AeToolTip's own note). The read is in the binding
+            // itself, so the dependency is on contentY and every scroll
+            // re-evaluates it.
             AeToolTip {
+                ownerItem: listArea
                 text: listArea.hoveredTooltip
                 shown: listArea.hoveredRow >= 0 && text !== ""
                 ownerX: { const item = list.itemAtIndex(listArea.hoveredRow); return item ? list.x + item.x : 0 }

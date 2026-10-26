@@ -341,6 +341,7 @@ Item {
                             onClicked: generalSettingModel.requestResetRecentFiles()
                         }
                         AeToolTip {
+                            ownerItem: resetButton
                             text: qsTr("Deletes all project entries from your recents")
                             shown: resetButton.hovered
                         }
