@@ -23,6 +23,9 @@ Item {
     // The popup's height cap. The rows scroll under it instead of being clipped away:
     // before this, any row past the fold was unreachable at all on a short window.
     readonly property int catalogMaxHeight: 420
+    // gui::fuzzy::kNoMatch, mirrored so the QML never restates the number: a score of -1
+    // is "this row does not answer the query".
+    readonly property int fuzzyNoMatch: -1
 
     width: parent ? parent.width : 0
     implicitHeight: collapsed ? header.height : header.height + body.height
@@ -38,14 +41,17 @@ Item {
     // the call site: hasFilter() taught this file that an invokable call is not a
     // dependency, and a binding that reads nothing never updates.
     function queryMatches(index, query) {
-        const entry = inspector.filters.catalog[index];
-        if (!entry)
-            return false;
-        const needle = query.trim().toLowerCase();
-        if (needle === "")
-            return true;
-        return String(entry.name).toLowerCase().indexOf(needle) >= 0
-            || String(entry.description).toLowerCase().indexOf(needle) >= 0;
+        // THE SCORE IS THE MODEL'S (gui::fuzzy over name+description), not a substring
+        // test. `notes.md`: "currently if you make a typo, you get an empty list, which is
+        // a problem" - and it was, on purpose: every substring/subsequence rule needs the
+        // query to be INSIDE a word, so "blurr" (one letter too many) matched nothing and
+        // the list went blank. The matcher gained a bounded edit-distance rule for that
+        // (gui/qml/FuzzyMatch.h's rule 7), and the catalog reads the same score the
+        // destination picker does, so a typo now answers the row it meant.
+        //
+        // An empty query matches everything, which is the score's own behaviour (0 for
+        // every row) and the reason there is no special case here.
+        return inspector.filters.catalogScore(index, query) != fuzzyNoMatch;
     }
     // Whether the row can be TAKEN right now: it exists in this build, it is not
     // already in the stack, and the query keeps it. Derived from the catalog and the
@@ -323,33 +329,69 @@ Item {
         // Opening aims Return at the first row that can be taken, so the popup is
         // usable the moment a key is pressed rather than only after an arrow.
         onOpened: {
+            const top = root.mapToItem(null, 0, 0).y;
+            roomBelow = Math.max(0, root.Window.height - (top + header.height) - 8);
+            roomAbove = Math.max(0, top - 8);
             root.resetHighlight();
             search.forceActiveFocus();
         }
         onClosed: search.text = ""
 
-        // THE HOST'S EDGE IS THE POPUP'S EDGE, AND THE ROOM IS ABOVE THE HEADER.
-        // A Popup renders inside the QQuickWidget's own window, so whatever the
-        // widget's rectangle does not cover is simply cut - and the Filters section is
-        // the LAST thing in the panel, which leaves ~70px below this header on a
-        // normal window. Measured 2026-10-26: the popup opened DOWNWARD, its rows were
-        // laid out correctly (the accessibility bus reported their real rectangles)
-        // and the user saw only the search field and a sliver of the first row.
+        // THE POPUP FITS THE HOST, AND IT OPENS THE WAY THAT FITS.
         //
-        // So it opens UPWARD from the header, where the property rows are, and its
-        // height is capped against the HOST's height rather than against a guessed
-        // offset: the rows then scroll under a popup that is guaranteed to fit inside
-        // the widget (see listHeight below, and the Flickable and bar that follow).
-        // This section is always last, which is what makes 'upward' the correct side
-        // rather than a preference.
+        // A Popup renders inside the QQuickWidget's own window, so whatever the widget's
+        // rectangle does not cover is cut - and this section is the panel's LAST one, so
+        // how much room it has below depends entirely on the window height: measured
+        // 2026-10-26 on a 1280x662 window, `root` sits at scene y=321 in a 396px host, so
+        // below the 32px header there are 43px and the catalog cannot fit down; on a
+        // taller window the same section sits higher and it can. So the side is DECIDED,
+        // not assumed: down when a usable list fits (kUsableHeight below), otherwise up,
+        // otherwise whichever side has more room.
+        //
+        // The room is measured from the host (`root.Window.height`, an attached property
+        // of an Item - writing it on the Popup itself fails with "Window.window only
+        // supports types derived from Item", measured) and from where this section
+        // actually sits in the scene, which `mapToItem` reports INCLUDING the ScrollView's
+        // scroll offset. Scrolling the panel while the list is open can therefore leave an
+        // open list where it was; the popup takes the wheel while it is up, so that costs
+        // nothing in practice.
+        readonly property int kUsableHeight: 160
+        // MEASURED AT OPEN, NOT BOUND. `mapToItem` cannot notify, and the thing being
+        // measured (where this section sits inside the host widget) changes with the
+        // panel's scroll - so a binding over it is evaluated once, often before the item
+        // is in a window at all, and then never again: that is how the popup came to open
+        // downward with a height clamped by a host edge it had measured as 0. onOpened
+        // writes the two numbers, the y/height bindings below read them, and both are
+        // fresh exactly when the list appears.
+        property real roomBelow: 0
+        property real roomAbove: 0
+        // HOW TALL the list WANTS to be, computed WITHOUT the delegates. The delegate
+        // column's `implicitHeight` is 0 on the first evaluation (the Repeater creates its
+        // items while the popup is being opened, after this would have run). The row height
+        // is the MODEL's (`catalogRowHeight`), the same number the delegate uses, so this
+        // floor is exact and the column can only ever agree with it.
+        readonly property real rowsHeight: {
+            let total = 0;
+            let shown = 0;
+            const catalog = inspector.filters.catalog;
+            for (let i = 0; i < catalog.length; ++i) {
+                if (!root.queryMatches(i, search.text))
+                    continue;
+                total += inspector.filters.catalogRowHeight(i);
+                ++shown;
+            }
+            return shown > 0 ? total + (shown - 1) * pickerContent.spacing : 0;
+        }
         readonly property real wantedHeight: Math.min(root.catalogMaxHeight,
                                                      search.implicitHeight
                                                      + pickerContent.spacing
-                                                     + catalogColumn.implicitHeight + 12)
-        readonly property real hostHeight: root.Window.height > 0 ? root.Window.height
-                                                                  : root.height
-        y: header.height - height - 4
-        height: Math.max(120, Math.min(wantedHeight, hostHeight - 120))
+                                                     + Math.max(rowsHeight,
+                                                                catalogColumn.implicitHeight) + 12)
+        // Down when a usable list fits there, otherwise up, otherwise the larger side.
+        readonly property bool opensUp: roomBelow < Math.min(wantedHeight, kUsableHeight)
+                                        && roomAbove > roomBelow
+        y: opensUp ? header.height - height - 4 : header.height + 4
+        height: Math.max(120, Math.min(wantedHeight, opensUp ? roomAbove : roomBelow))
         // What is left for the rows once the search field has taken its row - the
         // Flickable's height, so a constrained popup SCROLLS instead of hiding rows.
         readonly property real listHeight: Math.max(0, height - 12 - search.implicitHeight
@@ -471,7 +513,7 @@ Item {
                                 // a screen reader as well as for the eye.
                                 readonly property bool keyboardTarget: root.highlightIndex === index
                                 width: parent.width
-                                height: visible ? (modelData.available ? 34 : 38) : 0
+                                height: visible ? inspector.filters.catalogRowHeight(index) : 0
                                 // The rule itself is stated once, in root.queryMatches();
                                 // search.text is named HERE because that is what this
                                 // binding has to depend on.
@@ -564,28 +606,14 @@ Item {
                     // children of a Flickable are stacked into its contentItem and would
                     // scroll with the rows, and Qt only positions a bar whose parentItem
                     // IS the flickable - which is also why the geometry is stated here.
-                    ScrollBar.vertical: ScrollBar {
+                    ScrollBar.vertical: AeScrollBar {
                         id: catalogBar
                         parent: catalogArea
                         anchors.right: parent.right
                         anchors.top: parent.top
                         anchors.bottom: parent.bottom
-                        width: 8
                         orientation: Qt.Vertical
-                        policy: ScrollBar.AsNeeded
-                        visible: size < 1.0
-                        hoverEnabled: true
-                        // The design's minimum thumb length, expressed in the units
-                        // minimumSize takes: a fraction of the bar's own length.
-                        minimumSize: height > 0 ? 28 / height : 0
-                        background: Rectangle { color: "transparent" }
-                        contentItem: Rectangle {
-                            implicitWidth: 6
-                            radius: 3
-                            color: catalogBar.pressed ? theme.textMuted
-                                 : catalogBar.hovered ? theme.textMuted
-                                 : theme.raisedHover
-                        }
+                        width: 12
                     }
                 }
             }

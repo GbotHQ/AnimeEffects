@@ -17,17 +17,7 @@ Rectangle {
         anchors.fill: parent
         clip: true
         ScrollBar.horizontal.policy: ScrollBar.AlwaysOff
-        ScrollBar.vertical: ScrollBar {
-            policy: ScrollBar.AsNeeded
-            width: 12
-            contentItem: Rectangle {
-                implicitWidth: 4
-                radius: 2
-                color: parent.pressed ? theme.hover : theme.outline
-                opacity: parent.active ? 1.0 : 0.65
-            }
-            background: Item {}
-        }
+        ScrollBar.vertical: AeScrollBar { width: 12 }
         contentWidth: width
 
         Column {

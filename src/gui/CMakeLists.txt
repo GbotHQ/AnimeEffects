@@ -183,6 +183,7 @@ qt_add_qml_module(${PROJECT_NAME}
         qml/AeIconButton.qml
         qml/AeTextField.qml
         qml/AeToolTip.qml
+        qml/AeScrollBar.qml
         # The Properties dock. The scene owns layout/ink; InspectorViewModel
         # owns every document decision.
         qml/PropertiesPanel.qml

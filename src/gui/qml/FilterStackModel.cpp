@@ -1,5 +1,7 @@
 #include "gui/qml/FilterStackModel.h"
 
+#include "gui/qml/FuzzyMatch.h"
+
 #include <QColor>
 #include <QCoreApplication>
 #include <QVariant>
@@ -386,6 +388,27 @@ QVariantList FilterStackModel::catalog() const {
         entry(trFilter("Custom GLSL"), trFilter("A fragment shader with a guided, typed interface. Coming soon."),
               core::TimeKeyType_TERM, false),
     };
+}
+
+int FilterStackModel::catalogScore(int aIndex, const QString& aQuery) const {
+    const QVariantList entries = catalog();
+    if (aIndex < 0 || aIndex >= entries.size())
+        return fuzzy::kNoMatch;
+    const QVariantMap entry = entries.at(aIndex).toMap();
+    // Name and description are two FIELDS of one haystack (kFieldSeparator), so the
+    // matcher's phrase bonus and its joined-run rule stay inside each of them: "deform"
+    // must not match by stitching the end of a name to the start of a description.
+    const QString haystack = entry.value(QStringLiteral("name")).toString()
+                           + fuzzy::kFieldSeparator
+                           + entry.value(QStringLiteral("description")).toString();
+    return fuzzy::queryScore(haystack, aQuery);
+}
+
+int FilterStackModel::catalogRowHeight(int aIndex) const {
+    const QVariantList entries = catalog();
+    if (aIndex < 0 || aIndex >= entries.size())
+        return 0;
+    return entries.at(aIndex).toMap().value(QStringLiteral("available")).toBool() ? 34 : 38;
 }
 
 QString FilterStackModel::noFiltersText() const { return trFilter("No filters"); }

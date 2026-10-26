@@ -424,28 +424,14 @@ Item {
                 // its clip. The Qt docs name this as the way to keep an attached bar
                 // outside a clipping Flickable, and position/size/active stay
                 // automatic.
-                ScrollBar.vertical: ScrollBar {
+                ScrollBar.vertical: AeScrollBar {
                     id: vbar
                     parent: listArea
                     anchors.right: parent.right
                     anchors.top: parent.top
                     anchors.bottom: parent.bottom
-                    width: 8
                     orientation: Qt.Vertical
-                    policy: ScrollBar.AsNeeded
-                    visible: size < 1.0
-                    hoverEnabled: true
-                    // The design's minimum thumb length, expressed in the units
-                    // minimumSize takes: a fraction of the bar's own length.
-                    minimumSize: height > 0 ? 28 / height : 0
-                    background: Rectangle { color: "transparent" }
-                    contentItem: Rectangle {
-                        implicitWidth: 6
-                        radius: 3
-                        color: vbar.pressed ? theme.textMuted
-                             : vbar.hovered ? theme.textMuted
-                             : theme.raisedHover
-                    }
+                    width: 12
                 }
             }
 

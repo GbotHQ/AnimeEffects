@@ -147,6 +147,44 @@ int run() {
     // Filters: add is static-first, the dot creates the explicit key, and the
     // row's fields edit the document.
     CHECK(inspector.filters()->rows().isEmpty());
+    // THE CATALOG ANSWERS A TYPO. `notes.md`: a typo left the picker's list EMPTY, and
+    // the fix is the shared fuzzy matcher, whose rule 7 allows one edit (two from seven
+    // characters). These are the rows the picker offers, by catalog index, and the
+    // NEGATIVES are as load-bearing as the positives: a tolerant matcher that matches
+    // everything is worse than a substring test.
+    {
+        QStringList names;
+        for (const QVariant& entry : inspector.filters()->catalog())
+            names.append(entry.toMap().value(QStringLiteral("name")).toString());
+        CHECK(names.size() == 4);
+        const auto score = [&](const QString& query, int index) {
+            return inspector.filters()->catalogScore(index, query);
+        };
+        const int blurRow = names.indexOf(QStringLiteral("Blur"));
+        const int hsvRow = names.indexOf(QStringLiteral("HSV"));
+        CHECK(blurRow >= 0 && hsvRow >= 0);
+        std::printf("MEASURED catalog scores: blur=%d blurr=%d blu=%d hsb=%d zzzz=%d empty=%d\n",
+                    score(QStringLiteral("blur"), blurRow),
+                    score(QStringLiteral("blurr"), blurRow),
+                    score(QStringLiteral("blu"), blurRow),
+                    score(QStringLiteral("hsb"), hsvRow),
+                    score(QStringLiteral("zzzz"), blurRow),
+                    score(QString(), blurRow));
+        CHECK(score(QStringLiteral("blur"), blurRow) > 0);      // the exact word
+        CHECK(score(QStringLiteral("blurr"), blurRow) > 0);     // ONE LETTER TOO MANY - the report
+        CHECK(score(QStringLiteral("bulr"), blurRow) > 0);      // a transposition
+        CHECK(score(QStringLiteral("blu"), blurRow) > 0);       // a prefix
+        CHECK(score(QStringLiteral("blurr"), hsvRow) == -1);    // and it does not match everything
+        CHECK(score(QStringLiteral("zzzz"), blurRow) == -1);    // unrelated
+        CHECK(score(QStringLiteral("hsb"), hsvRow) == -1);      // 3 letters: below rule 7's floor
+        CHECK(score(QString(), blurRow) >= 0);                  // empty query keeps every row
+        CHECK(score(QStringLiteral("deform"), names.indexOf(QStringLiteral("Wave Deform"))) > 0);
+        // A typo must not OUTRANK the word it corrects: the picker's highlight starts at
+        // the first row the query answers, so an inverted order would aim Return at a
+        // correction while the exact word sat below it.
+        CHECK(score(QStringLiteral("blur"), blurRow) > score(QStringLiteral("blurr"), blurRow));
+    }
+
     inspector.filters()->addFilter(core::TimeKeyType_HSV);
     CHECK(inspector.filters()->rows().size() == 1);
     CHECK(inspector.filters()->hasFilter(core::TimeKeyType_HSV));

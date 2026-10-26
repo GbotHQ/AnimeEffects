@@ -246,6 +246,23 @@ public:
 
     QVariantList rows() const;
     QVariantList catalog() const;
+
+    // How well the catalog entry at `aIndex` answers `aQuery`, or -1 for no match: the
+    // ONE rule the picker's visibility, its highlight walk and its Return all read, so a
+    // row cannot be visible under one rule and unchoosable under another.
+    //
+    // It is gui::fuzzy's score, not a substring test: `notes.md`'s report was that a
+    // TYPO left the list empty ("blurr" matched nothing, because every rule needs the
+    // token to be a subsequence of a word). Q_INVOKABLE rather than a property because
+    // the answer depends on the query, which the CALLER passes - a QML binding that calls
+    // this must also read `search.text` itself, exactly as `queryMatches` documents.
+    Q_INVOKABLE int catalogScore(int aIndex, const QString& aQuery) const;
+
+    // The height of the catalog row at `aIndex`: 34 for a filter you can add, 38 for one
+    // that is only announced (it carries a second, "coming soon" line). The CATALOG owns
+    // the number so the picker's popup can size itself before its delegates exist - the
+    // delegates read it too, so the two cannot disagree.
+    Q_INVOKABLE int catalogRowHeight(int aIndex) const;
     QString noFiltersText() const;
     QString title() const;
     QString addLabel() const;

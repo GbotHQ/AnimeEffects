@@ -309,23 +309,14 @@ ComboBox {
                 // re-parents itself to the ListView and is then cut by the list's
                 // clip, which is the same reason DestinationPicker parents its
                 // bar to the list area.
-                ScrollBar.vertical: ScrollBar {
+                ScrollBar.vertical: AeScrollBar {
                     id: vbar
                     parent: popupContent
                     anchors.right: parent.right
                     anchors.top: parent.top
                     anchors.bottom: parent.bottom
-                    width: 12
                     orientation: Qt.Vertical
-                    policy: ScrollBar.AsNeeded
-                    hoverEnabled: true
-                    background: Item {}
-                    contentItem: Rectangle {
-                        implicitWidth: 4
-                        radius: 2
-                        color: vbar.pressed || vbar.hovered ? theme.hover : theme.outline
-                        opacity: vbar.active ? 1.0 : 0.65
-                    }
+                    width: 12
                 }
 
                 delegate: Item {
