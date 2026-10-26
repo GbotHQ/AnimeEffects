@@ -1068,7 +1068,13 @@ target_link_libraries(export_encoder_fallback PRIVATE
 # identity was the display name, the lazy loader captured a pointer into a
 # stack-owned PSDFormat, and JSON resolution took the LAST matching tree. Drives
 # the real reader and loader through a crafted PSD. See psd_layer_identity.cpp.
-add_executable(psd_layer_identity psd_layer_identity.cpp)
+add_executable(psd_layer_identity psd_layer_identity.cpp
+    # The importer constructs core::LayerNode, whose MeshTransformer reads
+    # :/shaders/MeshTransformVert.glsl (and whose shaders are then compiled), so
+    # the loader cases need the embedded assets exactly like `roundtrip` above.
+    # Without the resource the harness aborts on the first imported layer.
+    ${CMAKE_SOURCE_DIR}/assets/assets.qrc
+)
 target_include_directories(psd_layer_identity PRIVATE ..)
 target_compile_definitions(psd_layer_identity PRIVATE
     AE_MAJOR_VERSION=1

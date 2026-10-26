@@ -20,6 +20,22 @@ using namespace core;
 namespace ctrl {
 
 //-------------------------------------------------------------------------------------------------
+// The sentence for one layer the importer could not reproduce. The kind words
+// come from img::psdUnsupportedLayerName, which the relink walker also uses, so
+// the same layer is named the same way on both paths; only the sentence itself
+// lives here, under the class's translation context (see the tr() note near the
+// ORA prompt below).
+QString unsupportedLayerWarning(const QString& aName, img::PsdUnsupportedLayer aKind, bool aFlattened) {
+    const QString kind = QString::fromLatin1(img::psdUnsupportedLayerName(aKind));
+    if (aFlattened) {
+        return ImageFileLoader::tr(
+                   "Layer \"%1\" is not supported (%2); it was imported as a flattened image.")
+            .arg(aName, kind);
+    }
+    return ImageFileLoader::tr("Layer \"%1\" is not supported (%2); it was imported empty.").arg(aName, kind);
+}
+
+//-------------------------------------------------------------------------------------------------
 img::ResourceNode* createLayerResource(
     const img::PSDFormat::Header& aHeader, const img::PSDFormat::Layer& aLayer, const QString& aName, QRect& aInOutRect
 ) {
@@ -122,7 +138,12 @@ FolderNode* createTopNode(const QString& aName, const QRect& aInitialRect) {
 
 //-------------------------------------------------------------------------------------------------
 ImageFileLoader::ImageFileLoader(gl::DeviceInfo  aDeviceInfo):
-    mLog(), mFileInfo(), mGLDeviceInfo(std::move(aDeviceInfo)), mCanvasSize(512, 512), mForceCanvasSize(false) {}
+    mLog(),
+    mWarnings(),
+    mFileInfo(),
+    mGLDeviceInfo(std::move(aDeviceInfo)),
+    mCanvasSize(512, 512),
+    mForceCanvasSize(false) {}
 
 void ImageFileLoader::setCanvasSize(const QSize& aSize, bool aForce) {
     if (aSize.width() <= 0 || aSize.height() <= 0)
@@ -135,6 +156,7 @@ void ImageFileLoader::setCanvasSize(const QSize& aSize, bool aForce) {
 bool ImageFileLoader::load(const QString& aPath, core::Project& aProject, util::IProgressReporter& aReporter) {
     XC_DEBUG_REPORT("------------------------------------------");
 
+    mWarnings.clear();
     mFileInfo = QFileInfo(aPath);
     const QString suffix = mFileInfo.suffix();
 
@@ -271,6 +293,12 @@ bool ImageFileLoader::loadPsd(core::Project& aProject, util::IProgressReporter& 
     aReporter.setProgress(0);
     int progress = 0;
 
+    // Layer masks are parsed and re-written by the reader but never composited,
+    // so a masked layer renders exactly as if its mask were absent. Counting them
+    // here and reporting one line at the end keeps that file-wide omission from
+    // burying the per-layer notes that explain why a particular layer is missing.
+    int ignoredMaskCount = 0;
+
     // build tree by a psd format
     std::unique_ptr<PSDFormat>& format = reader.format();
     PSDFormat::LayerList& layers = format->layerAndMaskInfo().layers;
@@ -340,6 +368,10 @@ bool ImageFileLoader::loadPsd(core::Project& aProject, util::IProgressReporter& 
         QRect rect(layer.rect.left(), layer.rect.top(), layer.rect.width(), layer.rect.height());
         const float parentDepth = ObjectNodeUtil::getInitialWorldDepth(*current);
 
+        if (layer.mask) {
+            ++ignoredMaskCount;
+        }
+
         XC_REPORT() << "name =" << name << "size =" << rect.width() << "," << rect.height();
 
         // check the image has valid size as a texture.
@@ -348,11 +380,41 @@ bool ImageFileLoader::loadPsd(core::Project& aProject, util::IProgressReporter& 
         }
 
         if (layer.entryType == PSDFormat::LayerEntryType_Layer) {
+            // A fill or adjustment layer keeps its appearance as parameters, not
+            // as pixel channels, and a plain layer stripped of its colour planes
+            // has nothing to decode either. None of those is a broken file: the
+            // project must still open, so such a layer becomes the same 1x1
+            // transparent placeholder the zero-size adjustment path already
+            // produced, and the warning below says which layer was lost and what
+            // it used to be.
+            const auto unsupportedKind = img::psdUnsupportedLayerKind(layer);
+            const QPoint layerPos = rect.topLeft();
+
             // create layer resource (Note that the rect be modified.)
             auto resNode = createLayerResource(format->header(), layer, name, rect);
             if (!resNode->data().hasImage()) {
-                mLog = "Failed to decode the image data of a layer ('" + name + "').";
-                return false;
+                if (unsupportedKind == img::PsdUnsupportedLayer_None) {
+                    // The layer had colour planes and a non-empty rect, so this is
+                    // a genuine decode failure rather than an unsupported kind.
+                    mLog = "Failed to decode the image data of a layer ('" + name + "').";
+                    return false;
+                }
+
+                // value-initialised, so the placeholder is a fully transparent
+                // RGBA pixel, exactly what createTextureImage returns for a
+                // zero-size layer.
+                XCMemBlock placeholder(new uint8[4](), 4);
+                rect = QRect(layerPos, QSize(1, 1));
+                resNode->data().grabImage(placeholder, rect.size(), img::Format_RGBA8);
+                resNode->data().setPos(layerPos);
+            }
+            if (unsupportedKind != img::PsdUnsupportedLayer_None) {
+                // hasImage() decides between the two outcomes: a text or smart
+                // object with its rasterized pixels looks right but is no longer
+                // editable, while a fill or adjustment has nothing to draw.
+                const bool flattened =
+                    img::psdUnsupportedLayerKeepsRaster(unsupportedKind) && resNode->data().hasImage();
+                mWarnings.append(unsupportedLayerWarning(name, unsupportedKind, flattened));
             }
             resCurrent->children().pushBack(resNode);
 
@@ -414,6 +476,12 @@ bool ImageFileLoader::loadPsd(core::Project& aProject, util::IProgressReporter& 
 
     // setup default positions
     setDefaultPosturesFromInitialRects(*topNode);
+
+    if (ignoredMaskCount > 0) {
+        // One line for the whole file. Naming every masked layer would push the
+        // per-layer notes that explain an actually-missing layer out of the log.
+        mWarnings.append(tr("Layer masks are not supported by AnimeEffects; %1 ignored.").arg(ignoredMaskCount));
+    }
 
     XC_DEBUG_REPORT("------------------------------------------");
 

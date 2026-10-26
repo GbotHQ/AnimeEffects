@@ -20,29 +20,45 @@
 //    layers in two trees must resolve to the node whose id the key names, and a
 //    key with no id at all must be REFUSED rather than last-matched.
 //
+// 4. A fill layer stores its appearance in a "SoCo"/"GdFl"/"PtFl" block and
+//    carries no RGB planes, so makeInterleavedImage returns an empty block and
+//    the import used to fail the WHOLE file on it. Here the import must succeed,
+//    keep the layer as a 1x1 transparent placeholder, and report one warning that
+//    names the layer and its kind. See img::psdUnsupportedLayerKind.
+//
+// 5. Layer masks are parsed and then ignored by the compositor, which is a silent
+//    "my file looks different" cause. One aggregated warning must say how many
+//    masks were dropped, without disturbing the masked layer's pixels.
+//
 // Run: xvfb-run -a ./psd_layer_identity
 //
-// Core: core::ImageKey's GridMesh binds GL in its constructor, so case 4 needs a
-// live GL context, set up in main() the same way roundtrip and media_exporter_e2e
-// set theirs up. Nothing is rendered -- only a current context is required.
-// (QT_QPA_PLATFORM=offscreen alone is not enough: it provides no GL context.)
+// Core: core::ImageKey's GridMesh binds GL in its constructor, and the loader
+// cases build core::LayerNode, whose MeshTransformer reads :/shaders -- so both
+// need a live GL context, set up in main() the same way roundtrip and
+// media_exporter_e2e set theirs up, and the target embeds assets.qrc. Nothing is
+// rendered -- only a current context is required. (QT_QPA_PLATFORM=offscreen
+// alone is not enough: it provides no GL context.)
 #include <QApplication>
 #include <QByteArray>
 #include <QChar>
+#include <QFile>
 #include <QJsonObject>
-#include <QString>
 #include <QOpenGLWidget>
 #include <QOpenGLVersionFunctions>
+#include <QString>
 #include <QSurfaceFormat>
+#include <QTemporaryDir>
 #include <cstdio>
 #include <sstream>
 #include <string>
 #include <vector>
 #include "XC.h"
+#include "gl/DeviceInfo.h"
 #include "gl/Global.h"
 #include "core/ImageKey.h"
 #include "core/Project.h"
 #include "core/Animator.h"
+#include "ctrl/ImageFileLoader.h"
 #include "img/ColorRGBA.h"
 #include "img/BlendMode.h"
 #include "img/PSDFormat.h"
@@ -50,6 +66,7 @@
 #include "img/ResourceData.h"
 #include "img/ResourceNode.h"
 #include "img/Util.h"
+#include "util/IProgressReporter.h"
 #include "XCAssert.h"
 #include "XCReport.h"
 
@@ -80,6 +97,15 @@ public:
     void suspend() override {}
     void resume() override {}
     bool isSuspended() const override { return false; }
+};
+
+// The loader wants a progress sink; a harness has no user to report to.
+class NullProgressReporter : public util::IProgressReporter {
+public:
+    void setSection(const QString&) override {}
+    void setMaximum(int) override {}
+    void setProgress(int) override {}
+    bool wasCanceled() const override { return false; }
 };
 
 #define CHECK(cond)                                                                                          \
@@ -144,11 +170,22 @@ struct LayerSpec {
     QString unicodeName; // "luni" value; empty = write no luni block at all
     bool unicodeNameCountsNull; // whether the block's count includes the null
     uint8 rgb[3];
+    // A fill-layer key ("SoCo"/"GdFl"/"PtFl"). A fill layer stores its appearance
+    // in this block and carries no RGB planes, which is exactly the shape the
+    // importer used to fail on.
+    const char* fillKey = nullptr;
+    // Write a 20-byte layer-mask record, the shape PSDReader parses into `mask`.
+    bool masked = false;
 };
 
 std::string layerRecord(const LayerSpec& aSpec)
 {
     ByteWriter w;
+
+    // A fill layer has no RGB planes; only its mask channel may exist, and the
+    // classifier must see the channels list without 0/1/2.
+    const bool hasRgb = aSpec.fillKey == nullptr;
+    const int channelCount = hasRgb ? 3 : 0;
 
     // rect: t, l, b, r -- the layer is one 2x2 image at the origin
     w.u32(0);
@@ -158,8 +195,8 @@ std::string layerRecord(const LayerSpec& aSpec)
 
     // channels: 0, 1, 2, each holding the 2-byte compression id and a 2x2 plane
     // (the record's length field counts the compression id, so 6)
-    w.u16(3);
-    for (int c = 0; c < 3; ++c) {
+    w.u16((uint16)channelCount);
+    for (int c = 0; c < channelCount; ++c) {
         w.u16((uint16)c);
         w.u32(6);
     }
@@ -175,7 +212,19 @@ std::string layerRecord(const LayerSpec& aSpec)
     // layer extra data: layer mask, blending range, padded name, then the
     // additional layer info blocks ("lyid" and "luni" here)
     ByteWriter extra;
-    extra.u32(0); // layer mask: length 0
+    if (aSpec.masked) {
+        // a 20-byte S14 layer mask: rect (16), default colour, flags, 2 pad
+        extra.u32(20);
+        extra.u32(0);
+        extra.u32(0);
+        extra.u32(2);
+        extra.u32(2);
+        extra.u8(0); // default colour
+        extra.u8(0); // flags
+        extra.u16(0); // padding to the declared length
+    } else {
+        extra.u32(0); // layer mask: length 0
+    }
     extra.u32(0); // blending range: length 0
     extra.name(aSpec.name);
 
@@ -205,16 +254,25 @@ std::string layerRecord(const LayerSpec& aSpec)
         }
         writeInfo(extra, "luni", uni.data());
     }
+    if (aSpec.fillKey) {
+        // The classifier only scans for the key; the real block's payload is
+        // Photoshop's fill settings, which the importer never reads.
+        writeInfo(extra, aSpec.fillKey, std::string());
+    }
 
     w.u32((uint32)extra.data().size());
     return w.data() + extra.data();
 }
 
 // the channel image data that follows all layer records: one compressed id and
-// one 2x2 plane per channel.
+// one 2x2 plane per channel. A fill layer declared no channels, so it contributes
+// no bytes here.
 std::string layerChannelData(const LayerSpec& aSpec)
 {
     ByteWriter w;
+    if (aSpec.fillKey) {
+        return w.data();
+    }
     for (int c = 0; c < 3; ++c) {
         w.u16(0); // compression id: raw
         for (int i = 0; i < 4; ++i) {
@@ -501,12 +559,130 @@ int testJsonResolutionIsUnambiguous()
     return 0;
 }
 
+// -----------------------------------------------------------------------------
+// The importer is file-based (the resource tree keeps the path), so crafted bytes
+// go through a real file with the .psd suffix load() dispatches on.
+// -----------------------------------------------------------------------------
+bool writePsdFile(const std::string& aPsd, const QString& aPath)
+{
+    QFile file(aPath);
+    if (!file.open(QIODevice::WriteOnly)) {
+        return false;
+    }
+    return file.write(aPsd.data(), (qint64)aPsd.size()) == (qint64)aPsd.size();
+}
+
+// -----------------------------------------------------------------------------
+// A fill layer is not a broken file. It stores its appearance in a "SoCo" block
+// and carries no RGB planes, which used to make makeInterleavedImage return an
+// empty block and the whole import fail. Now the project must open, the layer
+// must survive as an empty 1x1 placeholder, and warnings() must say which layer
+// and what kind.
+// -----------------------------------------------------------------------------
+int testUnsupportedFillLayerDegradesWithOneWarning()
+{
+    QTemporaryDir dir;
+    CHECK(dir.isValid());
+    const QString path = dir.filePath("fill.psd");
+    CHECK(writePsdFile(buildPsd({{"paint", "", "", true, {0, 0, 0}, "SoCo"}}), path));
+
+    NullAnimator animator;
+    core::Project project("psd_unsupported_fill.anie", animator, nullptr);
+    NullProgressReporter reporter;
+    ctrl::ImageFileLoader loader(gl::DeviceInfo::instance());
+
+    std::printf("assert: a solid-fill layer PSD opens instead of failing\n");
+    CHECK(loader.load(path, project, reporter));
+
+    std::printf("assert: warnings() is exactly one line naming 'paint' and its kind 'solid fill'\n");
+    CHECK(loader.warnings().size() == 1);
+    const QString note = loader.warnings().front();
+    CHECK(note.contains("paint"));
+    CHECK(note.contains("solid fill"));
+    CHECK(note.contains("imported empty"));
+    CHECK(!note.contains("flattened"));
+
+    std::printf("assert: the layer exists as a 1x1 fully transparent placeholder\n");
+    const core::ObjectNode* top = project.objectTree().topNode();
+    CHECK(top != nullptr);
+    CHECK(top->children().size() == 1);
+    const core::ObjectNode* layerNode = top->children().front();
+    CHECK(layerNode != nullptr);
+    CHECK(layerNode->name() == "paint");
+    CHECK(layerNode->initialRect() == QRect(QPoint(0, 0), QSize(1, 1)));
+
+    const img::ResourceNode* resRoot = project.resourceHolder().imageTree(0).topNode;
+    CHECK(resRoot != nullptr);
+    CHECK(resRoot->children().size() == 1);
+    const img::ResourceNode* resNode = resRoot->children().front();
+    CHECK(resNode->data().identifier() == "paint");
+    CHECK(resNode->data().hasImage());
+    CHECK(resNode->data().image().pixelSize() == QSize(1, 1));
+    const img::ColorRGBA* pixel = resNode->data().image().rawPixel<img::ColorRGBA>(0, 0);
+    CHECK(pixel != nullptr);
+    CHECK(pixel->a() == 0);
+
+    return 0;
+}
+
+// -----------------------------------------------------------------------------
+// A layer mask is parsed and re-written but never composited. The file-wide cost
+// is reported once, not once per masked layer, and it does not disturb a layer
+// that has real pixels.
+// -----------------------------------------------------------------------------
+int testLayerMaskIsReportedOnce()
+{
+    QTemporaryDir dir;
+    CHECK(dir.isValid());
+    const QString path = dir.filePath("masked.psd");
+    CHECK(writePsdFile(
+        buildPsd({
+            {"masked", "", "", true, {10, 20, 30}, nullptr, true},
+            {"plain", "", "", true, {40, 50, 60}},
+        }),
+        path
+    ));
+
+    NullAnimator animator;
+    core::Project project("psd_masked.anie", animator, nullptr);
+    NullProgressReporter reporter;
+    ctrl::ImageFileLoader loader(gl::DeviceInfo::instance());
+
+    std::printf("assert: a PSD with a layer mask imports successfully\n");
+    CHECK(loader.load(path, project, reporter));
+
+    std::printf("assert: the mask is one aggregated line for the file\n");
+    CHECK(loader.warnings().size() == 1);
+    CHECK(loader.warnings().front() == "Layer masks are not supported by AnimeEffects; 1 ignored.");
+
+    std::printf("assert: the masked layer's own pixels still import\n");
+    const img::ResourceNode* resRoot = project.resourceHolder().imageTree(0).topNode;
+    CHECK(resRoot != nullptr);
+    const img::ResourceNode* masked = nullptr;
+    for (const img::ResourceNode* child : resRoot->children()) {
+        if (child->data().identifier() == "masked") {
+            masked = child;
+        }
+    }
+    CHECK(masked != nullptr);
+    CHECK(masked->data().hasImage());
+    const img::ColorRGBA* pixel = corePixel(masked->data());
+    CHECK(pixel != nullptr);
+    CHECK(pixel->r() == 10);
+    CHECK(pixel->g() == 20);
+    CHECK(pixel->b() == 30);
+
+    return 0;
+}
+
 int run()
 {
     CHECK(testLayerIdentityIsParsed() == 0);
     CHECK(testIdentityFallsBackToName() == 0);
     CHECK(testSurvivesSourceDestruction() == 0);
     CHECK(testJsonResolutionIsUnambiguous() == 0);
+    CHECK(testUnsupportedFillLayerDegradesWithOneWarning() == 0);
+    CHECK(testLayerMaskIsReportedOnce() == 0);
     std::printf("psd_layer_identity: all checks passed\n");
     return 0;
 }
@@ -539,6 +715,17 @@ int main(int argc, char** argv)
     }
     gl::Global::setContext(glWidget);
     gl::Global::setFunctions(*funcs);
+
+    // ImageFileLoader::load() reads the GL texture limit through
+    // gl::DeviceInfo::instance(), which asserts when no instance was published.
+    // The exporters' harnesses publish a synthetic one for the same reason.
+    gl::DeviceInfo deviceInfo;
+    deviceInfo.vender = "harness";
+    deviceInfo.renderer = "harness";
+    deviceInfo.version = "5";
+    deviceInfo.maxTextureSize = 16384;
+    deviceInfo.maxRenderBufferSize = 16384;
+    gl::DeviceInfo::setInstance(&deviceInfo);
 
     return run();
 }

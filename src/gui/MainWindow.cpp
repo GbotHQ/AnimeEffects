@@ -1071,6 +1071,22 @@ void MainWindow::onNewProjectTriggered() {
 
         mMainDisplay->resetCamera();
 
+        // A successful import can still have degraded layers (see
+        // ImageFileLoader::warnings): say so now, once, while the user is looking
+        // at the file they just opened. The log keeps each line for later; the
+        // popup is what stops the silence.
+        if (!result.message.isEmpty()) {
+            for (const QString& note : result.message) {
+                mViaPoint.pushLog(note, ctrl::UILogType_Warn);
+            }
+            showInfoPopup(
+                ctrl::System::LoadResult::warningTitle(),
+                ctrl::System::LoadResult::warningSummary(),
+                "Warn",
+                result.message.join("\n")
+            );
+        }
+
         // The project is live now, so its assets are the ones to monitor. The
         // resource dialog was just handed the new project by resetProjectRefs,
         // and its tree already lists the asset the new project was created from.
