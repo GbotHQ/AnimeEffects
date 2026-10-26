@@ -281,8 +281,12 @@ void FolderNode::renderComposite(const RenderInfo& aInfo, const TimeCacheAccesso
     // pass; a folder presents an ISOLATED COMPOSITE, so the same multiply is one
     // fullscreen pass over it - and it runs HERE, after the filters, so a blurred
     // folder cannot bleed past its own matte either.
+    // a PAINTING PREVIEW suspends the matte (see LayerNode): the rubylith says where
+    // something is hidden, and composing it under the matte made it invisible
+    const bool previewingMask = aInfo.maskPreviewTarget == this
+        && (aInfo.maskPreview != nullptr || aInfo.maskPreviewKey != nullptr);
     if (const MaskKey::Data& maskData = aAccessor.get(mTimeLine).mask();
-        maskData.isValid() && maskData.isPainted()) {
+        !previewingMask && maskData.isValid() && maskData.isPainted()) {
         if (const gl::Texture* maskTexture = maskData.textureId()) {
             auto slot = std::make_unique<FilterFrame::ScopedSlot>(frame);
             srcTexture = frame.maskTexture(
@@ -294,7 +298,23 @@ void FolderNode::renderComposite(const RenderInfo& aInfo, const TimeCacheAccesso
     }
 
     // THE MASK PREVIEW (see LayerNode): a folder can be the Mask tool's target too.
-    if (aInfo.maskPreview && aInfo.maskPreviewTarget == this) {
+    // ...and a LAYER MASK being painted previews the same way: its field is the key's
+    // own, its neutral is reveal-all, so the tint lands exactly on what is hidden.
+    if (!aInfo.maskPreview && aInfo.maskPreviewKey && aInfo.maskPreviewTarget == this) {
+        MaskInput preview;
+        if (const gl::Texture* keyTexture = aInfo.maskPreviewKey->data().textureId()) {
+            preview.texture = keyTexture->id();
+            preview.rect = aInfo.maskPreviewKey->data().contentRect();
+            preview.neutral = float(core::MaskKey::kNeutral) / 255.0f;
+            auto slot = std::make_unique<FilterFrame::ScopedSlot>(frame);
+            srcTexture = frame.tintTexture(
+                slot->slot(), srcTexture, preview, contentMapping(), aInfo.maskPreviewColor
+            );
+            srcSlot = slot->slot();
+            scratchSlots.push_back(std::move(slot));
+        }
+    }
+    else if (aInfo.maskPreview && aInfo.maskPreviewTarget == this) {
         MaskInput preview;
         preview.texture = const_cast<FilterMask*>(aInfo.maskPreview)->texture();
         preview.rect = aInfo.maskPreview->contentRect();

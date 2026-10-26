@@ -5,6 +5,10 @@
 #include "XC.h"
 #include "core/CameraInfo.h"
 #include "core/TimeInfo.h"
+
+namespace core {
+class MaskKey;
+}
 namespace core {
 class ClippingFrame;
 class FilterMask;
@@ -35,6 +39,7 @@ public:
         filterFrame(),
         opacityScale(1.0f),
         maskPreview(nullptr),
+        maskPreviewKey(nullptr),
         maskPreviewTarget(nullptr),
         maskPreviewColor() {}
 
@@ -56,6 +61,9 @@ public:
     // (LayerNode/FolderNode), so the artist sees what is painted where - the field
     // lives in content space, which a screen-space overlay cannot show.
     const FilterMask* maskPreview;
+    // The LAYER MASK being painted (core/MaskKey): a key's field, not a per-lane side
+    // table, so the preview carries the key itself. Same tint pass, same rule.
+    const MaskKey* maskPreviewKey;
     const ObjectNode* maskPreviewTarget;
     QColor maskPreviewColor;
 };

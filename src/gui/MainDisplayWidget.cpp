@@ -673,13 +673,19 @@ void MainDisplayWidget::paintGL() {
         // a tint over its target's content (the tint is the deviation from the
         // channel's neutral value, so unpainted areas stay clean).
         mRenderInfo->maskPreview = nullptr;
+        mRenderInfo->maskPreviewKey = nullptr;
         mRenderInfo->maskPreviewTarget = nullptr;
         if (mDriver) {
             if (ctrl::MaskEditor* editor = mDriver->maskEditor()) {
                 mRenderInfo->maskPreview = editor->previewMask();
-                if (mRenderInfo->maskPreview) {
+                mRenderInfo->maskPreviewKey = editor->previewMaskKey();
+                if (mRenderInfo->maskPreview || mRenderInfo->maskPreviewKey) {
                     mRenderInfo->maskPreviewTarget = editor->previewTarget();
-                    mRenderInfo->maskPreviewColor = QColor(150, 120, 255, 115);
+                    // the same rubylith the thumbnail and the tree chip use
+                    mRenderInfo->maskPreviewColor =
+                        QColor(theme::Colors::current().danger.red(),
+                               theme::Colors::current().danger.green(),
+                               theme::Colors::current().danger.blue(), 120);
                 }
             }
         }

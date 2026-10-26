@@ -24,6 +24,7 @@
 #include "ctrl/ImageFileLoader.h"
 #include "gui/ResourceDialog.h"
 #include "gui/ProjectHook.h"
+#include "core/MaskKey.h"
 #include "gui/theme/Colors.h"
 #include "gui/obj/obj_MoveItem.h"
 #include "gui/obj/obj_InsertItem.h"
@@ -94,6 +95,61 @@ public:
                 aOption->palette.setBrush(QPalette::HighlightedText, brush);
             }
         }
+    }
+
+    // THE MATTE CHIP: a row says whether its node carries a mask, without being
+    // selected and without the inspector being open. It draws WHAT IS HIDDEN in the
+    // canvas overlay's ink (the same rule as the inspector's thumbnail), so an
+    // untouched mask is an empty frame and a painted one is a shape - and only a
+    // node that HAS a mask costs anything, which is why most rows pay one null test.
+    void paint(QPainter* aPainter, const QStyleOptionViewItem& aOption, const QModelIndex& aIndex) const override {
+        QStyledItemDelegate::paint(aPainter, aOption, aIndex);
+
+        auto* tree = qobject_cast<const QTreeWidget*>(aOption.widget);
+        if (!tree)
+            return;
+        auto* item = gui::obj::Item::cast(tree->itemFromIndex(aIndex));
+        if (!item)
+            return;
+        const core::TimeLine* line = item->node().timeLine();
+        if (!line)
+            return;
+        const core::MaskKey::Data& mask = line->current().mask();
+        if (!mask.isValid() || !mask.isPainted())
+            return;
+
+        constexpr int kChip = 14;
+        constexpr int kMargin = 6;
+        const QRect row = aOption.rect;
+        const QRect chip(
+            row.right() - kMargin - kChip, row.center().y() - kChip / 2, kChip, kChip
+        );
+        if (chip.width() < kChip)
+            return;
+
+        // white (kept) -> transparent, and what is HIDDEN takes the rubylith tint
+        const QImage field = mask.field().scaled(kChip, kChip, Qt::IgnoreAspectRatio, Qt::SmoothTransformation);
+        QImage preview(QSize(kChip, kChip), QImage::Format_ARGB32_Premultiplied);
+        preview.fill(Qt::transparent);
+        const QColor tint = theme::Colors::current().danger;
+        for (int y = 0; y < kChip; ++y) {
+            const uchar* src = field.constScanLine(y);
+            QRgb* dst = reinterpret_cast<QRgb*>(preview.scanLine(y));
+            for (int x = 0; x < kChip; ++x) {
+                const int hidden = 255 - int(src[x]);
+                dst[x] = qPremultiply(qRgba(tint.red(), tint.green(), tint.blue(), (hidden * 170) / 255));
+            }
+        }
+
+        aPainter->save();
+        aPainter->setRenderHint(QPainter::Antialiasing, false);
+        // the frame is the row's own hairline, so the chip reads as a field even while
+        // the matte inside it is still empty
+        aPainter->setPen(QPen(theme::Colors::current().hairline, 1));
+        aPainter->setBrush(Qt::NoBrush);
+        aPainter->drawRect(chip.adjusted(0, 0, -1, -1));
+        aPainter->drawImage(chip.topLeft() + QPoint(1, 1), preview);
+        aPainter->restore();
     }
 };
 } // namespace
@@ -665,6 +721,20 @@ void ObjectTreeWidget::onThemeUpdated(theme::Theme& aTheme) {
 //-------------------------------------------------------------------------------------------------
 void ObjectTreeWidget::onTimeLineModified(core::TimeLineEvent& aEvent, bool) {
     auto type = aEvent.type();
+
+    // A MATTE'S FIELD CHANGED (a brush stroke, an invert): nothing about the rows'
+    // geometry changes, but the row's chip draws the field - and a value event was
+    // ignored here, so the chip would stay blank until some unrelated repaint.
+    if (type == core::TimeLineEvent::Type_ChangeKeyValue) {
+        for (const auto& target : aEvent.targets()) {
+            if (target.pos.type() == core::TimeKeyType_Mask) {
+                this->viewport()->update();
+                break;
+            }
+        }
+        return;
+    }
+
     if (type != core::TimeLineEvent::Type_PushKey && type != core::TimeLineEvent::Type_RemoveKey) {
         return;
     }

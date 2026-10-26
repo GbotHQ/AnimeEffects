@@ -553,7 +553,10 @@ void LayerNode::renderLayer(const RenderInfo& aInfo, const TimeCacheAccessor& aA
     const MaskKey::Data& maskData = expans.mask();
     // a matte at its neutral changes nothing, so it does not even take the masked
     // shader variant: adding a mask stays a no-op until the first stroke
-    const bool useLayerMask = !aInfo.isGrid && maskData.isValid() && maskData.isPainted();
+    const bool previewingMask = aInfo.maskPreviewTarget == this
+        && (aInfo.maskPreview != nullptr || aInfo.maskPreviewKey != nullptr);
+    const bool useLayerMask =
+        !aInfo.isGrid && !previewingMask && maskData.isValid() && maskData.isPainted();
     auto& shader = aInfo.isGrid ? mShaderHolder.gridShader()
                                 : mShaderHolder.shader(blendMode, isClippee, useHSV, useLayerMask);
 

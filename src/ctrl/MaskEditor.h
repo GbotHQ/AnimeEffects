@@ -60,6 +60,8 @@ public:
     // carries no field for the selected lane/channel)
     const core::ObjectNode* previewTarget() const { return mTarget; }
     const core::FilterMask* previewMask() const;
+    // the matte being painted, when the target is a LAYER MASK (see RenderInfo)
+    const core::MaskKey* previewMaskKey() const;
 
 private:
     // The node's CONTENT rectangle: a layer's image box, a folder's canvas-shaped

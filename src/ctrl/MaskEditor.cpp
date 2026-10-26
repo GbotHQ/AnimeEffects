@@ -349,6 +349,15 @@ const core::FilterMask* MaskEditor::previewMask() const {
     return mask;
 }
 
+const core::MaskKey* MaskEditor::previewMaskKey() const {
+    if (!mParam.isLayerMask())
+        return nullptr;
+    const core::MaskKey* key = const_cast<MaskEditor*>(this)->currentMaskKey();
+    if (!key || !key->data().isValid() || !key->data().isPainted())
+        return nullptr;
+    return key;
+}
+
 float MaskEditor::sampleValue(const QVector2D& aWorldPos) const {
     if (!mTarget || !mTarget->timeLine())
         return -1.0f;
