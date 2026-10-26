@@ -100,19 +100,26 @@ QPixmap ThumbnailCache::layerThumbnail(const img::Buffer& aImage, int aSize, qre
         painter.drawImage(0, 0, image);
         painter.end();
     }
-    // A 1px BORDER, restored on purpose: the checker only proves the cell exists when the
-    // layer is TRANSPARENT, and a dark drawing on a dark row needs its frame (this is also
-    // what Photoshop draws around a layer thumbnail). It is drawn on the cell's own edge,
-    // over the art's outermost pixel - 1px of art, against a cell that otherwise vanishes.
+    // THE FRAME RING, in the slot's free pixel rather than over the art: a 1px ring around
+    // the cell, drawn in the palette's FIELD-BORDER token (outline), so it reads on the row's
+    // background whatever the layer's pixels are. Drawn over the art (the first version) it
+    // vanished on any bright layer, which is what "barely visible" meant.
+    const int ring = std::max(1, qRound(dpr));
+    QImage framed(w + ring * 2, h + ring * 2, QImage::Format_ARGB32_Premultiplied);
+    framed.fill(Qt::transparent);
     {
-        QPainter frame(&cell);
-        frame.setBrush(Qt::NoBrush);
-        frame.setPen(QPen(colors.hairline, 1));
-        frame.drawRect(0, 0, w - 1, h - 1);
-        frame.end();
+        QPainter painter(&framed);
+        painter.setPen(Qt::NoPen);
+        painter.setBrush(colors.outline);
+        painter.drawRect(0, 0, framed.width(), ring);                       // top
+        painter.drawRect(0, framed.height() - ring, framed.width(), ring);  // bottom
+        painter.drawRect(0, 0, ring, framed.height());                      // left
+        painter.drawRect(framed.width() - ring, 0, ring, framed.height());  // right
+        painter.drawImage(ring, ring, cell);
+        painter.end();
     }
 
-    QPixmap pixmap = QPixmap::fromImage(cell);
+    QPixmap pixmap = QPixmap::fromImage(framed);
     // the pixmap IS device pixels; this is what makes Qt paint it 1:1 instead of scaling
     // a 22px pixmap down to the 16px an unstyled QTreeWidget asks for
     pixmap.setDevicePixelRatio(dpr);

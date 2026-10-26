@@ -4663,9 +4663,15 @@ THE CHECKER AND THE FRAME, as finally decided (the review asked for both):
   back the readability that dimming costs: 4px needed 26 levels to read, 5px needs 18, and 5
   divides the 20px cell into exactly four tiles with no sliver (6px left a 2px one). Measured:
   `MEASURED checker tiles: dark light=46 dark=28, light light=236 dark=216`.
-- **A 1px `hairline` frame**, restored on purpose: a checker only proves a cell exists when
-  the layer is TRANSPARENT, and a dark drawing on a dark row needs its boundary (it is also
-  what Photoshop draws). It is drawn on the cell's outer pixel, which costs 1px of art.
+- **A 1px frame in the palette's FIELD-BORDER token (`outline`), drawn OUTSIDE the art**: a
+  checker only proves a cell exists when the layer is TRANSPARENT, and a dark drawing on a
+  dark row needs its boundary. Painting it on the art's own outermost pixel (the first version)
+  made it vanish on every bright layer - reported as "the border is barely visible" - because
+  1px of `hairline` over art is 1px of contrast you cannot rely on.
+- **The 22px slot divides exactly**: 18 art + 1 ring + 1 gap on each side. The gap is not
+  decoration - without it one row's cell touched the next and a column of layers read as a
+  single continuous strip (measured twice: at kItemSize full, and at kItemSize-2 once the ring
+  ate the gap back).
 
 Gate: `tests/layer_thumbnails.cpp` - a transparent layer still gets a cell with a two-tone
 checker; an opaque

@@ -506,10 +506,11 @@ void ObjectTreeWidget::updateItemVisibilityAppearance(QTreeWidgetItem* aItem, bo
     const img::ResourceData* resource =
         imageKey ? static_cast<const core::ImageKey*>(imageKey)->data().resource().get() : nullptr;
     const qreal dpr = this->devicePixelRatioF();
-    // ONE PIXEL INSET on every side: a cell that exactly filled the 22px row touched the
-    // cell above and below it, so a column of layers read as one continuous strip instead
-    // of one thumbnail per row (measured on a 4x point sample).
-    constexpr int kThumbBox = kItemSize - 2;
+    // THE 22px SLOT, DIVIDED: art + 1px ring + 1px gap on each side. The ring is outside
+    // the art (so it is never painted over a bright layer) and the gap is what stops one
+    // row's cell TOUCHING the next - measured twice: at kItemSize it merged into one
+    // continuous strip, and at kItemSize - 2 the ring ate the gap back.
+    constexpr int kThumbBox = kItemSize - 4;
     const quint64 thumbKey =
         resource && resource->hasImage() ? ThumbnailCache::key(resource->image(), kThumbBox, dpr) : 0;
     // file/folder icons rest at 2/3 of the text's presence, so the labels

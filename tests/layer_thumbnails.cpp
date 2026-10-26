@@ -83,7 +83,9 @@ XCErrorHandler* gXCErrorHandler = &gErrorHandler;
 int main(int argc, char** argv) {
     QGuiApplication app(argc, argv);
 
-    constexpr int kSize = 22;   // the tree row's slot (ctrl::TimeLineRow::kHeight)
+    // the box the tree asks for: ctrl::TimeLineRow::kHeight (22) - 4, which is the art plus
+    // its 1px frame ring plus a 1px gap on each side
+    constexpr int kSize = 18;
     gui::ThumbnailCache cache;
 
     // ---- [1] a fully transparent layer still gets a cell ----
@@ -93,13 +95,17 @@ int main(int argc, char** argv) {
         std::printf("MEASURED transparent layer: %dx%d device px, dpr %.2f\n", pm.width(), pm.height(),
                     pm.devicePixelRatio());
         check(!pm.isNull(), "a transparent layer still gets a cell (not 'no icon')");
-        check(pm.width() == kSize || pm.height() == kSize, "its long side fills the row's slot");
+        // the ring is OUTSIDE the cell, so the long side is the box plus the ring
+        check(
+            pm.width() == kSize + 2 || pm.height() == kSize + 2,
+            "its long side is the box plus the 1px frame ring"
+        );
         // the cell is ALL checker and the checker has two tones: a transparent layer shows
         // the backdrop, which is what keeps the column's rhythm (not a blank space)
         const QImage cell = asImage(pm);
         QSet<QRgb> tones;
-        for (int y = 1; y < cell.height() - 1; ++y) {
-            for (int x = 1; x < cell.width() - 1; ++x)
+        for (int y = 2; y < cell.height() - 2; ++y) {
+            for (int x = 2; x < cell.width() - 2; ++x)
                 tones.insert(cell.pixel(x, y));
         }
         std::printf("MEASURED transparent layer: %dx%d cell, %d distinct tones\n", pm.width(), pm.height(),
@@ -130,10 +136,17 @@ int main(int argc, char** argv) {
         check(offArt == 0, "and an opaque layer shows NO checker: the cell is the artwork's box");
         // THE BORDER: the cell's own edge, which is what makes a dark drawing on a dark row
         // read as a cell at all (the review asked whether to keep it; it is kept).
-        check(
-            distance(cell.pixelColor(0, 0), art) > 24 && distance(cell.pixelColor(cell.width() - 1, 0), art) > 24,
-            "and its outer 1px is the cell's border, not art"
+        // THE FRAME RING is OUTSIDE the cell: a 1px ring in the field-border token, so it is
+        // never painted over the art (which is why the first version vanished on a bright
+        // layer) and it reads against the row's own background
+        const QColor ring = cell.pixelColor(0, 0);
+        const QColor outline = theme::Colors::current().outline;
+        std::printf(
+            "MEASURED frame ring: (%d,%d,%d) at the corner, field border is (%d,%d,%d)\n", ring.red(),
+            ring.green(), ring.blue(), outline.red(), outline.green(), outline.blue()
         );
+        check(distance(ring, outline) <= 12, "the ring is the palette's own field-border token");
+        check(distance(cell.pixelColor(1, 1), art) <= 24, "and the art starts inside it, unwritten");
     }
 
     // ---- [3] aspect is kept: a wide source leaves checker above and below ----
@@ -142,11 +155,11 @@ int main(int argc, char** argv) {
         const img::Buffer buffer = makeBuffer(QSize(600, 100), art);
         const QImage cell = asImage(cache.layerThumbnail(buffer, kSize));
         std::printf("MEASURED wide layer: %dx%d cell\n", cell.width(), cell.height());
-        check(cell.width() == kSize && cell.height() < cell.width() / 2,
+        check(cell.width() == kSize + 2 && cell.height() < cell.width() / 2,
               "a wide source gives a WIDE cell, not a square with bands");
         int offArt = 0;
-        for (int y = 1; y < cell.height() - 1; ++y) {
-            for (int x = 1; x < cell.width() - 1; ++x) {
+        for (int y = 2; y < cell.height() - 2; ++y) {
+            for (int x = 2; x < cell.width() - 2; ++x) {
                 if (distance(cell.pixelColor(x, y), art) > 24)
                     ++offArt;
             }
@@ -246,7 +259,8 @@ int main(int argc, char** argv) {
             "MEASURED dpr: 1.0 -> %dx%d (dpr %.1f), 2.0 -> %dx%d (dpr %.1f)\n", one.width(), one.height(),
             one.devicePixelRatio(), two.width(), two.height(), two.devicePixelRatio()
         );
-        check(one.width() == 22 && two.width() == 44, "a 2x session renders the cell at 44 device px");
+        check(one.width() == kSize + 2 && two.width() == (kSize + 2) * 2,
+              "a 2x session renders the cell and its ring at twice the device pixels");
         check(two.devicePixelRatio() == 2.0, "and the pixmap says so, so Qt does not rescale it");
     }
 

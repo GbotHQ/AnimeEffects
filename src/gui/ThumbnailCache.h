@@ -34,6 +34,11 @@ public:
     // devicePixelRatio, so Qt paints it 1:1 - resampling it here and letting the view
     // resample again is what made the first version soft.
     //
+    // The returned pixmap is the cell's box PLUS a 1px frame ring, so the frame is drawn in
+    // the space the row's icon slot leaves free rather than over the art's own edge - the
+    // first version painted it on the art's outermost pixel, where it disappeared on any
+    // bright layer (reported as "the border is barely visible").
+    //
     // Its SIZE is the artwork's ASPECT (a 600x160 layer gives 22x6, not 22x22 with bands):
     // the checker is a backdrop for ALPHA, not for letterboxing, so there is nothing to
     // letterbox - the row centres the strip and the checker only shows through pixels the
