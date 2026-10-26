@@ -521,6 +521,12 @@ void ObjectTreeWidget::updateItemVisibilityAppearance(QTreeWidgetItem* aItem, bo
     // next to the full-brightness label.
     const qreal baseOpacity = 0.66;
     const qreal fade = aVisible ? (selected ? 1.2 : 1.0) : (selected ? 0.7 : 0.45);
+    // A THUMBNAIL IS CONTENT, NOT A GLYPH: the 0.66 rest exists so a file/folder icon stays
+    // quiet beside its label, and applying it to an image washed the layer's own pixels out
+    // (measured: a checker token of #363636 landed as #323232 on screen, which is what
+    // "the darker ones are 31 instead of 36" was). The glyph keeps the rest; the thumbnail
+    // is drawn at its own visibility.
+    const qreal thumbnailOpacity = aVisible ? 1.0 : 0.45;
     const qreal effectiveFade = baseOpacity * fade;
     // Skip the rebuild when the fade is unchanged (selection refreshes run
     // over every row): the foreground above already early-returns on an equal
@@ -539,6 +545,7 @@ void ObjectTreeWidget::updateItemVisibilityAppearance(QTreeWidgetItem* aItem, bo
         pm = mGUIResources.icon(isFolder ? "folder" : "file").pixmap(kItemSize, kItemSize);
     // the fade is applied to the whole cell either way, so a thumbnail dims exactly like
     // a glyph did when its layer is hidden
+    const qreal drawOpacity = (thumbKey != 0) ? thumbnailOpacity : (baseOpacity * fade);
     QPixmap faded(kItemSize, kItemSize);
     faded.fill(Qt::transparent);
     // centre in LOGICAL units: the thumbnail's width() is device pixels, so its logical
@@ -547,7 +554,7 @@ void ObjectTreeWidget::updateItemVisibilityAppearance(QTreeWidgetItem* aItem, bo
     const qreal pmDpr = pm.devicePixelRatio() > 0.0 ? pm.devicePixelRatio() : 1.0;
     const QSizeF logical(pm.width() / pmDpr, pm.height() / pmDpr);
     QPainter painter(&faded);
-    painter.setOpacity(baseOpacity * fade);
+    painter.setOpacity(drawOpacity);
     painter.setRenderHint(QPainter::SmoothPixmapTransform, false);
     painter.drawPixmap(
         QPointF((kItemSize - logical.width()) / 2.0, (kItemSize - logical.height()) / 2.0), pm

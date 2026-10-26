@@ -417,10 +417,10 @@ struct Colors {
     QColor warning; // amber-700 / amber-400
 
     // THE ALPHA CHECKER behind a layer thumbnail (and anything else that shows a matte).
-    // Translucent, and that is the point: the pair composites WITH the row it sits on, so it
-    // needs no per-theme values and never reads as a lit patch the way an opaque pair does
-    // (three absolute pairs were tried and each was reported too bright). Over the tree's
-    // #262626 row it is 55 on 33 - the calmest of the lot, and the original.
+    // These are the values the ORIGINAL translucent pair composited to over the tree's #262626
+    // row (#363636 on #202020), written out as exact channels instead of reached through
+    // alpha: a translucent pair landed one level off on screen (measured 31 for the dark tile
+    // where the specification says 32), and an opaque pair cannot drift.
     QColor checkerLight;
     QColor checkerDark;
 
@@ -494,10 +494,9 @@ struct Colors {
             // accent row): red and amber at the pale-theme columns above.
             paletteColor(kTailwindRows[kDangerRow][kTailwindLight[kDanger]]),   // danger
             paletteColor(kTailwindRows[kWarningRow][kTailwindLight[kWarning]]), // warning
-            // the alpha checker: the SAME alpha-only pair as the dark theme - over the pale
-            // row it composites the other way round (white@20 -> 249, black@36 -> 210)
-            QColor(255, 255, 255, 20), // checkerLight
-            QColor(0, 0, 0, 36),       // checkerDark
+            // the SAME two-step relationship round a pale row: centred on #e5e5e5 (229)
+            QColor(0xf0, 0xf0, 0xf0), // checkerLight  (#f0f0f0)
+            QColor(0xda, 0xda, 0xda), // checkerDark   (#dadada)
             false, // isDark
         };
         return c;
@@ -569,8 +568,8 @@ struct Colors {
             paletteColor(kTailwindRows[kWarningRow][kTailwindDark[kWarning]]), // warning
             // the alpha checker: ALPHA-ONLY, so it composites with whatever row it sits on
             // and needs no per-theme values. Over the tree's #262626 row this is 55 on 33.
-            QColor(255, 255, 255, 20), // checkerLight
-            QColor(0, 0, 0, 36),       // checkerDark
+            QColor(0x36, 0x36, 0x36), // checkerLight  (#363636)
+            QColor(0x20, 0x20, 0x20), // checkerDark   (#202020)
             true, // isDark
         };
         return c;

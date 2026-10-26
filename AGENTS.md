@@ -4654,18 +4654,19 @@ THE CHECKER AND THE FRAME, as finally decided (the review asked for both):
 
 - **4 LOGICAL-px squares**, not 2. At 2px the pattern read as dithering, not as a checker
   (reported from the running app).
-- **ALPHA-ONLY tiles, 5 LOGICAL px, one pair for both themes**: `Colors::checkerLight` =
-  `rgba(255,255,255,20)`, `checkerDark` = `rgba(0,0,0,36)`. FOUR corrections landed here and the
-  last is the lesson: opaque pairs at 90/55, then 69/43, then 46/28 were all reported too bright
-  or too flat, because an OPAQUE pair always sits at some absolute value on the row. A
-  TRANSLUCENT pair composites WITH the row - over the tree's #262626 it is 55/33, over a pale
-  row it flips to 231/197 - so it needs no per-theme values and can never read as a lit patch.
-  Tile SIZE buys readability at a low step (4px needed 26 levels, 5px needs 18, and 5 divides
-  the 20px cell into exactly four tiles with no sliver), and the two properties are measured
-  separately by the gate: COMPOSITED OVER `raised` (the row's own token - `hairline` is the same
-  value, which is why a hairline border was invisible), spread >= 18 and average within 10
-  levels of the row.
-- **The cell is ROUNDED, 3 LOGICAL px**, and the frame follows the same path. The frame is drawn
+- **Tiles are `#363636` on `#202020`, OPAQUE, 5 LOGICAL px**: `Colors::checkerLight`/`checkerDark`.
+  FIVE corrections landed here and the last two are the lesson. (1) These are the values the
+  ORIGINAL translucent pair (`rgba(255,255,255,20)`/`rgba(0,0,0,36)`) composited to over the
+  tree's #262626 row, which is what "20/36" always meant - so they are written as exact channels
+  now, because a translucent pair lands a level off on screen (measured 31 where the
+  specification says 32). (2) **A THUMBNAIL IS CONTENT, NOT A GLYPH**: the tree drew every icon
+  at `baseOpacity` 0.66, the rest that keeps a file/folder glyph quiet beside its label, so the
+  specified 54/32 arrived as 50/29 - every tone I had "specified" for three rounds was being
+  multiplied by 0.66. A thumbnail is drawn at its own visibility (1.0 visible, 0.45 hidden) and
+  the glyph alone keeps the 0.66 rest; the rendered cells then measure exactly #363636/#202020.
+  Keep the pair's AVERAGE at the row's value (`raised` is the row's token; `hairline` is the
+  same value, which is why a hairline border was invisible) or it reads as a lit patch.
+- **The cell is ROUNDED, 2 LOGICAL px**, and the frame follows the same path. The frame is drawn
   INSIDE on that path with the path INSET by half the pen (0.5px): a 1px stroke centred on the
   cell's edge half-covers the outer pixel and measured (142,77,52) - art with a hint of border,
   i.e. the same invisibility in a new place.

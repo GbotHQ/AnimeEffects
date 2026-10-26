@@ -69,7 +69,7 @@ private:
 
     // The cell's corner rounding, in LOGICAL pixels (the review asked for a few pixels of
     // it). The frame follows the same path, so the two cannot disagree at the corner.
-    static constexpr int kCornerRadius = 3;
+    static constexpr int kCornerRadius = 2;
 };
 
 } // namespace gui

@@ -211,39 +211,37 @@ int main(int argc, char** argv) {
         check(distance(centre, art) <= 24, "a large layer still lands its colour in the cell");
     }
 
-    // ---- [6] the checker's contrast, COMPOSITED over the row ----
-    // The tiles are alpha-only by design (that is what makes them calm: they composite with
-    // the row instead of sitting on it), so the numbers that matter are the ones the eye
-    // gets - the tiles over the tree's own row colour, `raised`.
+    // ---- [6] the checker's values, and its restraint against the row ----
+    // The tiles are OPAQUE and equal to the specified #363636 / #202020 (the values the first
+    // translucent pair composited to). They were translucent for three rounds, and the last
+    // one cost a level: a translucent pair lands 1 off on screen. These are exact.
     {
-        const auto over = [](const QColor& aTile, const QColor& aRow) {
-            const qreal a = aTile.alphaF();
-            return qRound(aTile.red() * a + aRow.red() * (1.0 - a));
-        };
         const theme::Colors dark = theme::Colors::dark();
         const theme::Colors light = theme::Colors::light();
-        const int darkLight = over(dark.checkerLight, dark.raised);
-        const int darkDark = over(dark.checkerDark, dark.raised);
-        const int lightLight = over(light.checkerLight, light.raised);
-        const int lightDark = over(light.checkerDark, light.raised);
         std::printf(
-            "MEASURED checker over the row: dark %d/%d on %d, light %d/%d on %d\n", darkLight, darkDark,
-            dark.raised.red(), lightLight, lightDark, light.raised.red()
+            "MEASURED checker: dark #%02x%02x%02x on #%02x%02x%02x (row #%02x%02x%02x), light "
+            "#%02x%02x%02x on #%02x%02x%02x (row #%02x%02x%02x)\n",
+            dark.checkerLight.red(), dark.checkerLight.green(), dark.checkerLight.blue(),
+            dark.checkerDark.red(), dark.checkerDark.green(), dark.checkerDark.blue(), dark.raised.red(),
+            dark.raised.green(), dark.raised.blue(), light.checkerLight.red(), light.checkerLight.green(),
+            light.checkerLight.blue(), light.checkerDark.red(), light.checkerDark.green(),
+            light.checkerDark.blue(), light.raised.red(), light.raised.green(), light.raised.blue()
         );
-        check(std::abs(darkLight - darkDark) >= 18, "the dark tiles read as a checker (>= 18 levels)");
-        check(std::abs(lightLight - lightDark) >= 18, "and so do the light theme's");
-        // the pair's AVERAGE stays at the row's own value: an opaque pair above the row is
-        // what read as a lit patch, and three of those were tried before this one
         check(
-            std::abs((darkLight + darkDark) / 2 - dark.raised.red()) <= 10,
-            "the dark pair's average sits at the row's value"
+            dark.checkerLight.red() == 0x36 && dark.checkerDark.red() == 0x20,
+            "the dark tiles ARE the specified #363636 / #202020"
         );
-        // the SAME alphas are not symmetric across themes: black@36 pulls a PALE row down 32
-        // levels while white@20 lifts a dark one by 17, so the light pair sits ~15 below its
-        // row - a slightly recessed cell on a pale panel, which is the calm direction anyway
         check(
-            std::abs((lightLight + lightDark) / 2 - light.raised.red()) <= 18,
-            "and the light pair sits at or slightly below its row"
+            dark.checkerLight.alpha() == 255 && dark.checkerDark.alpha() == 255,
+            "and they are opaque, so nothing can composite them to another value"
+        );
+        check(
+            std::abs(dark.checkerLight.red() - dark.checkerDark.red()) >= 18,
+            "they read as a checker (>= 18 levels)"
+        );
+        check(
+            std::abs((dark.checkerLight.red() + dark.checkerDark.red()) / 2 - dark.raised.red()) <= 10,
+            "and the pair's average sits at the row's value, not above it"
         );
     }
 
