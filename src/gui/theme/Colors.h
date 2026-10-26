@@ -494,9 +494,10 @@ struct Colors {
             // accent row): red and amber at the pale-theme columns above.
             paletteColor(kTailwindRows[kDangerRow][kTailwindLight[kDanger]]),   // danger
             paletteColor(kTailwindRows[kWarningRow][kTailwindLight[kWarning]]), // warning
-            // the alpha checker: two steps below the pale row, ~35 levels apart
-            QColor(0xd6, 0xd6, 0xd6), // checkerLight
-            QColor(0xb4, 0xb4, 0xb4), // checkerDark
+            // the alpha checker: two steps below the pale row, ~30 levels apart (see the
+            // dark theme's pair for why it stays close to the row's own value)
+            QColor(0xe2, 0xe2, 0xe2), // checkerLight
+            QColor(0xc4, 0xc4, 0xc4), // checkerDark
             false, // isDark
         };
         return c;
@@ -566,9 +567,12 @@ struct Colors {
             // kDangerRow/kWarningRow for why they do not follow the accent).
             paletteColor(kTailwindRows[kDangerRow][kTailwindDark[kDanger]]),   // danger
             paletteColor(kTailwindRows[kWarningRow][kTailwindDark[kWarning]]), // warning
-            // the alpha checker: two steps above the dark row, ~35 levels apart
-            QColor(0x5a, 0x5a, 0x5a), // checkerLight
-            QColor(0x37, 0x37, 0x37), // checkerDark
+            // the alpha checker: NEAR the row's own value (the first pair at 90/55 was
+            // reported as too bright on a dark panel) but still ~26 levels apart, so 4px
+            // squares read as a checker; the 1px frame draws the cell's boundary, so the
+            // tiles do not have to brighten the row to prove themselves
+            QColor(0x45, 0x45, 0x45), // checkerLight
+            QColor(0x2b, 0x2b, 0x2b), // checkerDark
             true, // isDark
         };
         return c;

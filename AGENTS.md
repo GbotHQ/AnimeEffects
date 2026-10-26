@@ -4654,10 +4654,13 @@ THE CHECKER AND THE FRAME, as finally decided (the review asked for both):
 
 - **4 LOGICAL-px squares**, not 2. At 2px the pattern read as dithering, not as a checker
   (reported from the running app).
-- **Theme tokens, ~35 levels apart**: `Colors::checkerLight`/`checkerDark`, both ABOVE the row
-  in the dark theme (90 on 55 against a #262626 row) and both BELOW it in the light one (214
-  on 180 against #f5f5f5). Two tiles on opposite sides of the row would make the cell's floor
-  flicker between themes; this pair keeps the cell reading as a field in either.
+- **Theme tokens at 69/43 (dark) and 226/196 (light)**: `Colors::checkerLight`/`checkerDark`.
+  Two corrections landed here, and the ORDER matters: at 2px the pair read as dithering, so it
+  went to 4px AND brightened (90/55) - which was then reported as too bright on a dark panel.
+  The fix is that READABILITY and BRIGHTNESS are independent: the spread stays ~26 levels
+  (what makes 4px squares read) while both tiles sit near the row's own value (69 on 43 against
+  a #262626 row, which is the same band Photoshop's dark layer panel uses, ~74/56). The light
+  theme's pair sits below its pale row the same way (226/196 against #f5f5f5).
 - **A 1px `hairline` frame**, restored on purpose: a checker only proves a cell exists when
   the layer is TRANSPARENT, and a dark drawing on a dark row needs its boundary (it is also
   what Photoshop draws). It is drawn on the cell's outer pixel, which costs 1px of art.

@@ -203,6 +203,20 @@ int main(int argc, char** argv) {
         );
         check(spread(dark) >= 24, "the dark theme's two tiles differ by at least 24 levels");
         check(spread(light) >= 18, "and so do the light theme's");
+        // BRIGHTNESS, which is what "too bright" was about: the pair has to READ as a
+        // checker without lifting the panel. The first pair (90/55) was 52 levels above a
+        // #262626 row and was reported as loud; 31 is the ceiling now.
+        // BRIGHTNESS in ABSOLUTE terms, because which surface the tree paints behind a row
+        // is the widget's business and not this gate's: the dark theme's lighter tile has to
+        // stay dim (the 0x5a pair was reported as too bright on a dark panel), and the light
+        // theme's has to stay pale.
+        std::printf(
+            "MEASURED checker tiles: dark light=%d dark=%d, light light=%d dark=%d\n",
+            dark.checkerLight.red(), dark.checkerDark.red(), light.checkerLight.red(),
+            light.checkerDark.red()
+        );
+        check(dark.checkerLight.red() <= 0x48, "the dark theme's tiles stay dim (<= 0x48)");
+        check(light.checkerLight.red() >= 0xd8, "and the light theme's stay pale (>= 0xd8)");
         // and both tiles sit on the same side of their row, so the cell reads as a field
         check(
             dark.checkerDark.red() >= dark.base.red(),
