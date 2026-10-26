@@ -2,6 +2,7 @@
 #define CTRL_MASKEDITOR_H
 
 #include "core/AbstractCursor.h"
+#include "core/CameraInfo.h"
 #include "ctrl/AssignPixels.h"
 #include "ctrl/IEditor.h"
 #include "core/MaskKey.h"
@@ -94,6 +95,9 @@ private:
     MaskParam mParam;
     BrushStroke mStroke;
     QVector2D mCursorPos;
+    // the camera the last cursor event carried: the content mapping needs it, and
+    // it is the same one the shader is drawn with
+    core::CameraInfo mCamera;
     bool mPainting;
     AssignPixels* mCommand;
     // the layer-mask stroke: the key it writes and its field before the first stamp

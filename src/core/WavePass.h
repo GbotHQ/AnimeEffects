@@ -105,6 +105,25 @@ inline QMatrix4x4 waveContentToScreen(
     return ndcToPixels * aCamera.viewMatrix() * world;
 }
 
+// THE INVERSE, and the ONLY one: a screen point (the shader's `vDestCoord`, y UP)
+// to the content pixel that lands there. The painter and the preview must agree
+// texel-for-texel - measured: the paint path's own inverse put the same press 89
+// content pixels away from where the shader sampled, so a stroke and its rubylith
+// sat apart on screen.
+inline QVector2D contentFromScreen(
+    const CameraInfo& aCamera, const QSizeF& aCompositeSize, const QMatrix4x4& aWorldMatrix,
+    const QVector2D& aImageOffset, const QVector2D& aScreenPoint, bool* aOk = nullptr
+) {
+    const QMatrix4x4 toScreen = waveContentToScreen(aCamera, aCompositeSize, aWorldMatrix, aImageOffset);
+    bool invertible = false;
+    const QMatrix4x4 inv = toScreen.inverted(&invertible);
+    if (aOk)
+        *aOk = invertible;
+    if (!invertible)
+        return QVector2D();
+    return (inv.map(QVector3D(aScreenPoint))).toVector2D();
+}
+
 // The same affine as a mat3 for the shader: the 2x2 linear part kept, the
 // TRANSLATION moved from a QMatrix4x4's column 3 into the mat3's column 2 - the
 // place vec3(q, 1) reads it from - and the bottom row set to (0,0,1). Copying

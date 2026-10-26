@@ -682,10 +682,14 @@ void MainDisplayWidget::paintGL() {
                 if (mRenderInfo->maskPreview || mRenderInfo->maskPreviewKey) {
                     mRenderInfo->maskPreviewTarget = editor->previewTarget();
                     // the same rubylith the thumbnail and the tree chip use
+                    // 0.6, not 0.45: over pale artwork a 45% wash reads as the art's own
+                    // colour (measured: a rubylith disc over a character's blush was
+                    // indistinguishable from the blush), and a mask overlay has to be
+                    // unmistakable while you paint it
                     mRenderInfo->maskPreviewColor =
                         QColor(theme::Colors::current().danger.red(),
                                theme::Colors::current().danger.green(),
-                               theme::Colors::current().danger.blue(), 120);
+                               theme::Colors::current().danger.blue(), 153);
                 }
             }
         }

@@ -1,6 +1,7 @@
 #include <QBuffer>
 #include <QByteArray>
 #include "core/Deserializer.h"
+#include <QString>
 #include "core/MaskKey.h"
 #include "core/Serializer.h"
 #include "gl/Global.h"

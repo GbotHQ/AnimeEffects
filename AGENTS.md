@@ -4572,3 +4572,40 @@ choices draws a bare rectangle, which reads as a disabled button.
 LESSON for the next screenshot argument: a CROP is not evidence that a layout fits, and a fragment
 of a panel cannot be reviewed at all. Capture the window, and crop to a whole surface (the whole
 inspector column, the whole tree width) - the chip was outside two of my crops in a row.
+
+### The mask overlay's two real defects, and the measurement traps that hid them (2026-10-26)
+
+Asked "is the masking overlay drawn wrong?", the honest answer took four probes and found TWO
+defects - and three false leads created by my own measuring.
+
+THE DEFECTS:
+
+- **A matte preview never drew on a plain layer.** `LayerNode::isPreviewTarget` tested
+  `maskPreview != nullptr` only, so a matte preview (which carries `maskPreviewKey`) left the layer
+  on the DIRECT draw path - and the overlay lives in `renderComposite`. Nothing appeared at all. It
+  accepts either pointer now, which also routes such a layer through the composite path where the
+  overlay has a surface.
+- **The paint path inverted a different matrix than the shader.** `MaskEditor::toContent` inverted
+  the node's SRT and then subtracted the image offset; the renderer inverts
+  `ndcToPixels * camera.viewMatrix() * (SRT + offset)`. Measured on a layer, the SAME press came out
+  89 content pixels apart (paint y 224.5, render y 313.5). Both call `core::contentFromScreen` now,
+  and `tests/mask_mapping.cpp` asserts the invariant: content -> screen -> content is the identity
+  (worst 0.0001 px) for a rotated, scaled, offset node - plus that the painter and the preview
+  recover the same point.
+
+THE FALSE LEADS, each worth remembering:
+
+- **`vDestCoord` is y-UP and `CameraInfo::toScreenPos` is y-DOWN.** Comparing them directly shows a
+  delta of exactly `compositeHeight - y`, which reads like a 161px offset bug. Flip one before
+  comparing: `screenUpDown = (x, H - y)`.
+- **A short diagonal stroke is a sausage whose CENTRE is behind the cursor.** Reading "the red blob
+  is 70px from the ring" off a screenshot measured the sausage's middle, not the stroke's end. Paint
+  a long axis-aligned stroke (or a single dab and measure its centroid) before calling it an offset.
+- **A red wash at 45% over pale artwork is indistinguishable from the artwork.** A rubylith over a
+  character's blush looked like the blush, so "no overlay" and "overlay" looked identical. The
+  preview alpha is 153/255 now - a mask overlay has to be unmistakable while you paint it.
+
+And one that is not a defect: a FOLDER's mask covers ITS OWN content box, which can sit anywhere on
+the canvas (measured: `Folder16`'s origin at world 285,264). A stroke pressed where the *picture* is
+lands outside that folder's box and paints nothing - correctly. Select the node you are painting, or
+fill the viewport and check the boundary.

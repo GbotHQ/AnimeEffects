@@ -8,6 +8,7 @@
 #include "core/LayerNode.h"
 #include "core/TimeKeyExpans.h"
 #include "core/TimeLineEvent.h"
+#include "core/WavePass.h"
 #include "ctrl/AssignPixels.h"
 #include "ctrl/CmndName.h"
 #include "ctrl/MaskEditor.h"
@@ -63,20 +64,25 @@ bool MaskEditor::toContent(const QVector2D& aWorldPos, QVector2D& aContentPos) c
 
     auto& expans = mTarget->timeLine()->current();
     QMatrix4x4 world = expans.srt().worldCSRTMatrix();
-    if (mTarget->type() == core::ObjectType_Layer) {
-        if (expans.bone().isAffectedByBinding())
-            world = expans.bone().outerMatrix();
-    }
+    if (mTarget->type() == core::ObjectType_Layer && expans.bone().isAffectedByBinding())
+        world = expans.bone().outerMatrix();
 
-    bool invertible = false;
-    const QMatrix4x4 inv = world.inverted(&invertible);
-    if (!invertible)
+    // THE SAME INVERSE THE SHADER SAMPLES WITH. The paint path used to invert the
+    // node's SRT alone and subtract the image offset afterwards, which put the same
+    // press 89 content pixels away from where the preview drew it (measured on a
+    // layer: paint said y 224.5, the render path 313.5). One function now, and the
+    // screen point goes in with the shader's own y-UP convention.
+    const QVector2D screen = mCamera.toScreenPos(aWorldPos);
+    const QSizeF size = mCamera.deviceScreenSize();
+    const QVector2D screenUpDown(screen.x(), size.height() - screen.y());
+
+    bool ok = false;
+    const QVector2D content =
+        contentFromScreen(mCamera, size, world, expans.imageOffset(), screenUpDown, &ok);
+    if (!ok)
         return false;
 
-    QVector2D local = (inv.map(QVector3D(aWorldPos))).toVector2D();
-    if (mTarget->type() == core::ObjectType_Layer)
-        local -= expans.imageOffset(); // the image box starts at its own (0, 0)
-    aContentPos = local;
+    aContentPos = content;
     return true;
 }
 
@@ -188,11 +194,12 @@ void MaskEditor::clearMask() {
     mProject.onTimeLineModified(event, false);
 }
 
-bool MaskEditor::updateCursor(const CameraInfo&, const AbstractCursor& aCursor) {
+bool MaskEditor::updateCursor(const CameraInfo& aCamera, const AbstractCursor& aCursor) {
     if (!mTarget)
         return false;
 
     mCursorPos = aCursor.worldPos();
+    mCamera = aCamera;
     if (!contentScale())
         return false;
 
@@ -200,36 +207,21 @@ bool MaskEditor::updateCursor(const CameraInfo&, const AbstractCursor& aCursor) 
         mCommand = nullptr;
         beginStroke();
     } else if (aCursor.emitsLeftDraggedEvent()) {
-        if (mPainting)
-            mStroke.move(mCursorPos, aCursor.pressure());
+        if (mPainting) {
+            // THE STROKE LIVES IN CONTENT SPACE, exactly like its first stamp. Passing
+            // the WORLD position here made every stamp after the first land somewhere
+            // else: on an identity node at 1:1 the two spaces coincide and the stroke
+            // looked right, but on a transformed one the stamps were interpreted as
+            // content coordinates and painted a band nowhere near the cursor (measured
+            // on a folder: a stroke from the field's own ORIGIN).
+            QVector2D content;
+            if (toContent(mCursorPos, content))
+                mStroke.move(content, aCursor.pressure());
+        }
     } else if (aCursor.emitsLeftReleasedEvent()) {
         endStroke();
     }
     return true;
-}
-
-void MaskEditor::beginStroke() {
-    const Field field = resolveField();
-    if (!field.valid())
-        return;
-
-    // the brush is sized in WORLD pixels (what every tool panel shows); the field
-    // lives in content pixels
-    BrushParam brush = mParam.brush;
-    brush.radius = std::max(mParam.brush.radius / contentScale(), 0.5f);
-
-    QVector2D content;
-    if (!toContent(mCursorPos, content))
-        return;
-
-    mPainting = true;
-    mStrokeKey = field.key;
-    mCommand = nullptr;
-    if (mStrokeKey)
-        mStrokeBefore = mStrokeKey->data();   // the field undo restores
-    // the stroke owns its own copy of the brush (BrushStroke::begin takes the param by
-    // value), so the sink only needs `this`
-    mStroke.begin(brush, content, 1.0f, [this](const BrushStamp& aStamp) { paintStamp(aStamp); });
 }
 
 void MaskEditor::endStroke() {
@@ -254,6 +246,30 @@ void MaskEditor::endStroke() {
         mProject.onTimeLineModified(event, false);
     }
     mStrokeKey = nullptr;
+}
+
+void MaskEditor::beginStroke() {
+    const Field field = resolveField();
+    if (!field.valid())
+        return;
+
+    // the brush is sized in WORLD pixels (what every tool panel shows); the field
+    // lives in content pixels
+    BrushParam brush = mParam.brush;
+    brush.radius = std::max(mParam.brush.radius / contentScale(), 0.5f);
+
+    QVector2D content;
+    if (!toContent(mCursorPos, content))
+        return;
+
+    mPainting = true;
+    mStrokeKey = field.key;
+    mCommand = nullptr;
+    if (mStrokeKey)
+        mStrokeBefore = mStrokeKey->data();   // the field undo restores
+    // the stroke owns its own copy of the brush (BrushStroke::begin takes the param by
+    // value), so the sink only needs `this`
+    mStroke.begin(brush, content, 1.0f, [this](const BrushStamp& aStamp) { paintStamp(aStamp); });
 }
 
 bool MaskEditor::paintStamp(const BrushStamp& aStamp) {

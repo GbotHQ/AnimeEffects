@@ -136,9 +136,13 @@ bool LayerNode::hasActiveHsvMask(const TimeCacheAccessor& aAccessor) const {
 }
 
 bool LayerNode::isPreviewTarget(const RenderInfo& aInfo) const {
-    // the Mask tool paints THIS node: isolate it so the preview tint can be drawn over
-    // its content, whatever the filter's own enabled state says
-    return aInfo.maskPreview != nullptr && aInfo.maskPreviewTarget == this;
+    // the Mask tool paints THIS node: isolate it so the preview can be drawn over its
+    // content, whatever the filter's own enabled state says. BOTH kinds count - a
+    // filter input AND the node's own matte - because the isolation is what gives the
+    // overlay a surface to draw on (a matte preview on a plain layer stayed on the
+    // DIRECT path while this tested only maskPreview, so the rubylith never appeared).
+    return aInfo.maskPreviewTarget == this
+        && (aInfo.maskPreview != nullptr || aInfo.maskPreviewKey != nullptr);
 }
 
 bool LayerNode::isCompositeLayer(const TimeCacheAccessor& aAccessor) const {

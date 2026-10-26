@@ -184,6 +184,22 @@ target_link_libraries(creation_select_keys PRIVATE
 # Proportional-key EDIT contract: a frame move, a value edit and a toggle each
 # stay one undo step and restore the selected keys AND the proportional keys
 # between their bounds. Drives the real TimeLineUtil commands; headless.
+# See mask_mapping.cpp: the ONE content<->screen inverse the brush and the rubylith
+# share. Pure matrix maths, so it needs nothing but the camera and the node transform.
+add_executable(mask_mapping mask_mapping.cpp)
+target_include_directories(mask_mapping PRIVATE .. ../src)
+target_compile_definitions(mask_mapping PRIVATE
+    AE_MAJOR_VERSION=1
+    AE_MINOR_VERSION=7
+    AE_MICRO_VERSION=1
+    USE_GL_CORE_PROFILE
+)
+target_link_libraries(mask_mapping PRIVATE
+    Qt6::Core Qt6::Gui Qt6::Widgets
+    Qt6::OpenGL Qt6::OpenGLWidgets
+    cmnd core gl util
+)
+
 add_executable(proportional_edits proportional_edits.cpp
     ../src/gui/theme/TimeLine.cpp)
 
