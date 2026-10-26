@@ -92,6 +92,20 @@ MainDisplayWidget::MainDisplayWidget(ViaPoint& aViaPoint, QWidget* aParent):
     this->setMouseTracking(true);
     this->setAutoFillBackground(false); // avoid autofill on QPainter::begin()
 
+    // THE VIEWPORT TAKES THE KEYBOARD BACK ON A PRESS.
+    //
+    // Qt::NoFocus was the default here (QWidget's), and it made the keyboard a
+    // one-way door: once the inspector's Qt Quick scene held focus, a click on the
+    // artwork moved nothing, so every rebindable command stayed with the panel - and
+    // Ctrl+Z with it (see KeyForwardingQuickWidget in PropertyWidget.cpp for the
+    // other half of that fix). The timeline surface uses Qt::ClickFocus for exactly
+    // this reason: it is the widget the document's own gestures live in, so a press
+    // there must make it the focus widget again. ClickFocus, not StrongFocus: Tab
+    // traversal must not start landing on the canvas. Nothing depended on the old
+    // policy - this widget's keyPressEvent ignores its events, so the window's key
+    // map still receives every key pressed over the artwork.
+    this->setFocusPolicy(Qt::ClickFocus);
+
     // key binding
     if (mViaPoint.keyCommandMap()) {
         // move canvas
