@@ -4016,7 +4016,7 @@ stops that half (**movedWhereMasked=0**) while the neutral half still moves
 (**movedWhereClear=1360**), and a time-offset mask produces a different deformation (2720px)
 from the same wave. `tests/wave_deform` [6]: both channels allocate at their neutral value,
 paint, and survive serialize/deserialize with their content rect and texel grid.
-`tests/brush_stroke` pins the falloff and the stroke. Live (Xvfb, `test.anie`, a Wave filter
+`tests/brush_stroke` pins the falloff, the stroke and the drag's axis latch. Live (Xvfb, `test.anie`, a Wave filter
 added through the catalog, the Mask tool from the toolbox): painting the left half changed
 **2720 px**, one Undo restored everything except the tool's own brush ring.
 
@@ -4076,7 +4076,32 @@ adjustment path: `[ ]` (one 1.1x notch, 5% hardness) via four rebindable command
 (horizontal = size, vertical = hardness) through `MainDisplayWidget::onBrushDragAdjusted` ->
 `ToolWidget::adjustBrush`. Right button on purpose: the compositor owns Alt + LEFT drag.
 Measured live on the mask tool: three `]` took Size 50 -> **66**, four Shift + `]` took
-Hardness 50 -> **70**, and one drag banked size **+7 / +8** steps and hardness **-1 / -1**.
+Hardness 50 -> **70**, and one drag banked size **+7 / +8** steps and hardness **-1 / -1** -
+the last number being the defect the axis lock fixes: that was ONE drag, and its 2px of
+sideways jitter moved the size.
+
+**The drag's axis is latched in `ctrl::BrushDrag`, and that is not Photoshop parity.** The
+decision lives in `src/ctrl/Brush.h` (header-only, no widgets) so the gesture is one policy
+instead of three literals in the event handler: 4px of run-up in either direction fires
+nothing, the DOMINANT axis then latches for the rest of the gesture, the other bank is
+zeroed, and the run-up travel is DISCARDED rather than banked (banking it would fire the
+first step the instant the latch engaged). After that only the latched component is banked,
+at the old rates - 8px per size step, 40px per hardness step - with the remainder kept.
+Photoshop's own Alt + RIGHT HUD is a 2D PAD: horizontal drives the size and vertical the
+hardness at the same time, and its "Vary Round Brush Hardness" preference only enables the
+hardness half; there is no dominant-axis snap to copy. The axis is not re-evaluated
+mid-drag: at ~45 degrees the winner would flip between samples and a flip would have to
+drop the other axis' bank, which moves a value the user did not ask to move.
+`tests/brush_stroke` [5] pins the slop, the latch, the discarded run-up and the rates.
+
+The two-ring brush cursor follows the pointer during the drag: the move handler calls
+`AbstractCursor::setMouseMove` (position only, gated on the same `updateCursor()` the normal
+path uses) and never `setMousePress`, so each tool's `updateCursor` re-reads the position
+without starting a stroke or moving tool state. Before this the press and every move returned
+before the tools saw them, and the ring sat frozen at the press point while the values
+changed. There is no numeric HUD: the viewport overlay engine has no `drawPath` and no
+`setClipRect` (both no-ops), so a panel with rounded corners and clipping is a design
+decision this change does not own.
 
 **A Shift binding is spoken on the unshifted key, and Qt answers with the shifted symbol.**
 `Shift + ]` arrives as `BraceRight + Shift`, and the matcher compares the key exactly - so the
@@ -4173,3 +4198,185 @@ lambda capture in `MaskEditor`, a dead `mUILogger` member, and a `-Wreorder-ctor
 caller. `touch`ing the files and rebuilding is the cheap way to ask; the `MaskEditor` logger was
 then DROPPED rather than silenced - a brush over a field never logs, so the parameter was a dead
 dependency on the driver's logger.
+
+## The `notes.md` low-entropy round (2026-10-26)
+
+Ten reported defects, each traced to one mechanism before it was touched, plus two the reports did
+not name. Every line below was measured on this tree; the review pack with the screenshots is
+`docs/review/2026-10-26.md`.
+
+**A rule that sits ON a floater uses the floater's EDGE, not `hairline`.** `QMenu::separator` painted
+`@hairline@`, and in the dark palette `hairline` and `floaterBody` are the same cell (neutral column 8,
+`#262626` on `#262626` = 1.00:1), so every menu separator was invisible while the gap it occupied was
+not. `floaterEdge` is exactly one step above the floater body in BOTH themes (dark `#404040` = 1.46:1,
+light `#e5e5e5` - pixel-identical to the old `hairline`), so the fix is one token at three sites:
+`standard.ssa`'s `QMenu::separator`, the combo popup's hand-painted rule (`AppStyle.cpp`'s
+`CE_MenuItem` separator), and `theme::Graph::mMenuSeparator`. **Do not** "fix" `@hairline@` globally:
+it also paints dock sashes, splitters, tree branch guides, the ruler line and the lane seams, all of
+which sit on `base` where the token reads 1.73:1 and is correct.
+
+**A filter is live when its BLENDED value is above identity - never when its lane has keys.** Six
+renderer gates (`LayerNode`, `FolderNode`) asked "this lane has explicit keys and the frame is at or
+after the first key" as a proxy for "this filter does something", which threw away exactly the value
+the panel shows: an edit with no keys lands on the lane's DEFAULT key (`prop_KeyAccessor`'s
+`editFrame`), `TimeKeyBlender` blends that default between keys, and the renderer then ignored it. So
+a Blur set to 20px rendered nothing until it was keyed, while a Wave (whose gate read the blended
+value) worked. `core/FilterActivity.h` is now the ONE predicate - `filterValueIsActive(type, expans)`
+- and both the isolation decision and the composite loop's `continue` read it, so a wave-isolated layer
+cannot skip a live static blur. Two consequences recorded in place: the `frame >= firstKey` clause is
+GONE (playback holds a property's first key before it, and no setting expresses "start at the first
+key"), so a keyed blur/HSV now also applies before its first key; and `hsvDataIsIdentity` moved out of
+`FolderNode.cpp`'s anonymous namespace so the two nodes cannot disagree.
+
+**`x(t) == t` when both handles sit on the thirds, so the x→t solve is the identity.** With
+P1=(1/3,y1), P2=(2/3,y2) the bezier's x-component is `t`, and `y(x)` is a plain cubic Hermite - the
+WebKit `UnitBezier`'s spline table, bracket scan and Newton steps are all doing nothing. `Easing.cpp`
+now takes a fast path for exactly that pair (≈11 flops, no division, no array, against ≈90 flops and
+three divisions) from BOTH funnels, because applying it to one would make playback and the graph panel
+disagree. Exact float equality, never an epsilon (an epsilon would make a drawn curve jump while a
+handle is dragged past the boundary), and gated to `0 <= x <= 1` so `UnitBezier::solve`'s
+endpoint-gradient extrapolation is untouched. Which modes reach it: `Vector`, `Auto`, `AutoClamped`
+(the x is thirds verbatim) and a frozen ghost, whose stored floats came from one. `Free`, `Aligned` and
+the crossed default pair `(2/3, 1/3)` do NOT, and `easing_regression` pins all three: the fast path
+agrees with the solver to **4.2e-8** (below the solver's own 1e-7 epsilon), the crossed pair still
+differs from the Hermite value by **0.1173** at x=0.355, and an arbitrary pair is still solved.
+
+**The tool panels' placing convention: a row item answers an EXTENT, a panel answers an absolute
+BOTTOM edge.** `BrushPanel::updateGeometry` chained its rows with
+`item->updateGeometry(curPos, w) + kItemGap`, which is right for a panel (whose callers do
+`panel->updateGeometry(...) + curPos.y()`) and wrong for a row item (`SliderItem` returns
+`kLabelHeight + kSliderHeight`, `CheckBoxItem` returns `height + 1`). Every row therefore landed near
+the top: measured on the FFD panel, Hardness, Flow and Pressure size all reported `y=262` and Blur
+`y=254`, i.e. three controls on one row and the card reporting 125px for ~192px of content. The two
+lambdas now accumulate, and the mask panel's Clear button no longer reads `mClear->geometry().height()`
+(a default 100x30 on the first pass, 24 after - a 6px jitter). The panel family stays manual-geometry;
+one `updateGeometry()` pass drives all of it.
+
+**Filter-card expansion is a SET keyed by `core::TimeKeyType`, and expansion may change INK, never
+GEOMETRY.** The stack held one `mSelected` type and re-derived every row from it on every refresh, so
+two cards could never be open and a reorder (which destroys and recreates every `FilterRowModel`)
+collapsed them all. It is a `QVector<TimeKeyType> mExpanded` now, pruned on add/remove and used to
+SEED each new row. The second half is the header: `x/y/width` were a function of `expanded` (a 1px
+inset to make room for the frame stroke), so every toggle shifted the header's content +1px and its
+right edge -1px. Geometry is constant now and the 1px frame is drawn ON TOP of the fills (`z: 1`), so
+the expanded card looks the same and nothing moves.
+
+**The catalog popup's keys belong to the FIELD, and its Return path was broken.** The popup's content
+is parented to the window overlay, so a `Keys` handler on the stack's root would never see a key; the
+search field opts in with `navigationKeys` + `onNavigate`/`onAccepted` (the `DestinationPicker`
+convention, pinned by `tests/picker_keyboard.cpp`). Return also called `item.entry`, which does not
+exist on the delegate (`catalogEntry` does) - so Return closed the popup and threw a `TypeError`,
+adding nothing. The rows are a clipped `Flickable` with an attached bar now, the highlight skips
+ineligible rows and clamps (no wrap), and the pre-lock rule holds: a pointer entering a row releases
+the keyboard's highlight so two never coexist.
+
+**A separator in an index-addressed dropdown is DELEGATE DECORATION, never a list row.** The blend
+list is a `ListView` whose index IS the option index (`activated(index)` -> `options[index]`), and the
+widget-era control carried its five group boundaries as `QComboBox::insertSeparator()` model items
+(`git show d8d99d1e^:src/gui/prop/prop_ConstantPanel.cpp` recovers them: after Normal, Darker Color,
+Lighter Color, Hard Mix and Divide). Putting rows back would shift every index and let the keyboard
+`activated()` a separator. The model carries `separatorAfter` and the delegate grows a 9px band with a
+1px `floaterEdge` rule 8px in from each side (the style's own geometry). The list also has the app's
+scrollbar now: a 12px lane and a 4px radius-2 pill in `theme.outline` (`theme.hover` while hot), which
+is what `AppStyle::drawComplexControl(CC_ScrollBar)` has always painted and what
+`PropertiesPanel.qml` reproduces - 28 rows do not fit a 220px popup, and the control ships it to every
+dropdown, not just Blend.
+
+**The command log is a RECORD, and it stays a text document on purpose.** "Undone : X" was an
+assembled string with a verb, a separator and an often-empty command name (plain commands return an
+empty `name()`), pushed as raw HTML through `appendHtml` - so the text was interpolated unescaped and
+the ink was frozen at push time. `gui::LogEntry` + `gui::CommandLogView` split kind from text, write
+each block with a `QTextCursor` (no markup), render the verb as a tinted badge and the name in the
+primary ink with a single space between them, and re-ink in place on a theme switch. It stays ONE
+document because cross-entry selection and copy is the requirement the note protects: a QML list of
+chips cannot be drag-selected, and no `QTextCharFormat` can round a corner - so the badge is a
+tinted run, and that limit is stated in the code. `UILogType_Warn` finally renders (the old
+`pushLog` discarded it), which needed `warning`/`danger` to become real `theme::Colors` tokens:
+`QmlTheme` had been hardcoding those hexes with a comment saying the token table had no home for them.
+
+**`QQuickWidget::keyPressEvent` never calls the base, so an in-window QML scene ends the key walk.**
+The Properties dock's `QQuickWidget` keeps `Qt::StrongFocus`; with no active focus item in the scene
+it dropped every key, and with a `TextInput` focused it handed Ctrl+Z to that field's text undo. Every
+rebindable command was dead while the inspector held focus - the command map, the binding and the
+invoker were all correct. Two changes: a small `QQuickWidget` subclass in `PropertyWidget.cpp` calls
+the base first and then `event->ignore()` ONLY when `quickWindow()->activeFocusItem()` is null (so a
+focused text field keeps its own undo and QML `Shortcut`s keep working), and `MainDisplayWidget` takes
+`Qt::ClickFocus` so a click on the artwork returns the keyboard to the document - the viewport used to
+be `NoFocus`, which is why "click the canvas, then Ctrl+Z" could not repair anything.
+`scripts/gui/probe_undo_key.sh` asserts it, including that a focused number field still swallows the
+key.
+
+**A PSD layer the app cannot reproduce imports DEGRADED and warns; it does not abort the import.**
+A solid/gradient/pattern fill layer carries no RGB channels, so `hasImage()` was false and
+`ImageFileLoader` returned failure: the whole file failed to open with a modal "Loading Error". An
+adjustment layer (zero rect) became a silent 1x1 transparent node instead. `img/PSDUtil.h` now
+classifies a layer from its `additionalInfos` keys plus the channel set, the loader creates the same
+placeholder it already made for the zero-rect case and appends one warning naming the layer and its
+kind, layer masks are aggregated into ONE line for the file ("N were ignored" - they are parsed and
+never composited, which is a large separate cause of "it looks different"), and `System::LoadResult`
+carries the lines to the GUI's log pane plus one non-blocking warning popup. The relink walker
+(`res_ResourceUpdater`) names a kind with the same vocabulary, so the two PSD walkers cannot disagree
+about one file. Gate: `psd_layer_identity` builds a fill-layer PSD and a masked PSD and asserts that
+both open, that the warnings name the layer and its kind, and that the masked layer's own pixels still
+import.
+
+**`TreeNodeBase`'s const `front()`/`back()` were ill-formed and had never been instantiated.** They
+returned `const TreeNodeType*&`, which cannot bind to what the container hands back (`TreeNodeType*
+const&`); the first const walk of a node tree (the new PSD gate) stopped the build on a header that
+had been wrong for years. They are `TreeNodeType* const&` now - a const tree still hands out a pointer
+to a mutable node, because the node's contents are the document and only the child list is const.
+
+## Driving the QML inspector from a probe (measured 2026-10-26)
+
+Three facts, none of which is visible in the code, and without them no probe can touch the QML
+Properties panel at all:
+
+- **Every Qt Quick item in the dock reports `showing=False`.** `gui::FormAccessible::state()` sets
+  `invisible = !item()->isVisible()`, and `ae_ui.py`'s `candidates()` filters on `showing()`, so
+  `extents`/`click`/`set` answered "no widget named ..." for every control in that panel.
+  `AE_UI_ANY=1` opts out of that filter (`scripts/gui/ae_ui.py`); it is deliberate and opt-in, because
+  "a hidden control is not a target" is exactly right for the export/settings dialogs.
+- **The C++ marker rects are absolute and the frame-origin heuristic is not needed for them.**
+  `FormAccessible::rect()` returns `item()->mapToGlobal()`, so SCREEN and WINDOW are identical BY
+  CONSTRUCTION for `aeAccessibleValue`/`aeAccessibleCombo`/`aeAccessibleOption`, while Qt's OWN QML
+  nodes report a widget-relative SCREEN. `cmd_extents`'s "if SCREEN == WINDOW, add the top-level
+  frame origin" therefore double-adds for a marker on a WM'd session and misses for a Qt node. Every
+  probe here runs under Xvfb with no window manager, where the frame sits at (0,0) and the correction
+  is zero either way - so this is a REAL-DESKTOP caveat, not something to "fix" with a guess. Measured
+  under openbox: the QML root SCREEN `1120,56` WINDOW `1120,35`, and a marker `1244,58` in both.
+- **The panel's rows report STALE rectangles until a layer is selected.** `PropertiesPanel.qml` binds
+  the content column's `visible` to `inspector.hasTarget`; with nothing selected the column is hidden
+  and its positioner never runs, so Position X and Rotation both report `y=37`. Select a row first,
+  then read a rect.
+
+## Writing a filter value through the inspector: a probe trap, not a proven defect (2026-10-26)
+
+The renderer's filter predicate was fixed this round (`FilterActivity.h`, gated by
+`wave_deform` [7]) and the fix is right end to end - a `Blur` whose value sits on the
+lane's DEFAULT key renders after the project is saved and reopened (measured: the
+relaunched canvas differs from the pre-filter state by 25385 px, 8.4% of the canvas crop).
+
+What is NOT settled is why the same write appeared to do nothing in the live session,
+and the evidence points at the PROBE rather than at the app:
+
+- `ae_ui.py set` takes the FIRST candidate with a `Value` interface, and a Qt Quick field
+  has TWO: the app's own `aeAccessibleValue` marker (whose `accessibleSetValue` calls the
+  field's `valueEdited`, i.e. the document path) and Qt's default node for the same
+  widget. Qt's node writes the QML property AND EMITS NOTHING, so the field shows the new
+  number while the document keeps the old one.
+- Measured consequence: after `ae set "Blur amount" 200` the panel reads 200 back from
+  its own row model whether or not the model took it (`FilterRowModel` keeps `mBlurX`/
+  `mAmount`, and `blurData()` falls back to the cached expans). "The panel shows 200" is
+  therefore NOT evidence that the document has it. `Edit -> Undo` changing the field back
+  IS evidence that a command was pushed - and one run showed that while an instrumented
+  `KeyAccessor::assignBlur` never printed in another.
+- The same trap applies to any QML field a probe writes: prefer the marker. The reliable
+  discriminators are an undo, or a save+reopen.
+
+Also worth knowing for whoever continues this: the live invalidation path is
+`Driver::updateKey` (`ctrl/Driver.cpp:107`) -> `mBlender.clearCaches(aEvent)` +
+`updateCurrents(...)`, and `TimeKeyBlender::clearCaches(TimeLineEvent&)` walks
+`targets()` ONLY - a DEFAULT-key edit pushes just a `defaultTargets()` entry, so a
+default-key edit clears no cache at all. `updateCurrents` re-blends the whole tree right
+after, which is why the display still normally catches up. And `TimeLineEvent`'s CONST
+accessor is misspelled `detaulTargets()` with no callers - a one-character landmine.
