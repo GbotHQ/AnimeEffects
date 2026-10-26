@@ -66,6 +66,10 @@ private:
     // to be 26 levels apart to read, at 5px 18 is enough, so the cell no longer lifts off
     // the row (measured: 69/43 was reported as too bright; 46/28 sits at the row's value).
     static constexpr int kCheckerSquare = 5;
+
+    // The cell's corner rounding, in LOGICAL pixels (the review asked for a few pixels of
+    // it). The frame follows the same path, so the two cannot disagree at the corner.
+    static constexpr int kCornerRadius = 3;
 };
 
 } // namespace gui

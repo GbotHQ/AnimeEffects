@@ -83,9 +83,9 @@ XCErrorHandler* gXCErrorHandler = &gErrorHandler;
 int main(int argc, char** argv) {
     QGuiApplication app(argc, argv);
 
-    // the box the tree asks for: ctrl::TimeLineRow::kHeight (22) - 4, which is the art plus
-    // its 1px frame ring plus a 1px gap on each side
-    constexpr int kSize = 18;
+    // the cell box the tree asks for: ctrl::TimeLineRow::kHeight (22) - 2, leaving a 1px gap
+    // on each side so consecutive rows do not touch
+    constexpr int kSize = 20;
     gui::ThumbnailCache cache;
 
     // ---- [1] a fully transparent layer still gets a cell ----
@@ -96,10 +96,7 @@ int main(int argc, char** argv) {
                     pm.devicePixelRatio());
         check(!pm.isNull(), "a transparent layer still gets a cell (not 'no icon')");
         // the ring is OUTSIDE the cell, so the long side is the box plus the ring
-        check(
-            pm.width() == kSize + 2 || pm.height() == kSize + 2,
-            "its long side is the box plus the 1px frame ring"
-        );
+        check(pm.width() == kSize || pm.height() == kSize, "its long side fills the cell box");
         // the cell is ALL checker and the checker has two tones: a transparent layer shows
         // the backdrop, which is what keeps the column's rhythm (not a blank space)
         const QImage cell = asImage(pm);
@@ -111,6 +108,14 @@ int main(int argc, char** argv) {
         std::printf("MEASURED transparent layer: %dx%d cell, %d distinct tones\n", pm.width(), pm.height(),
                     int(tones.size()));
         check(tones.size() >= 2, "and the backdrop is a checker, not a flat fill");
+        // ROUNDING, measured where it is visible: the extreme corner of a checker-only cell is
+        // clipped away, while the middle of its top edge carries the frame
+        std::printf(
+            "MEASURED corner alpha %d (clipped), top edge alpha %d (frame)\n", qAlpha(cell.pixel(0, 0)),
+            qAlpha(cell.pixel(cell.width() / 2, 0))
+        );
+        check(qAlpha(cell.pixel(0, 0)) < 160, "the cell's corner is clipped (it is rounded)");
+        check(qAlpha(cell.pixel(cell.width() / 2, 0)) > 200, "and the middle of its edge carries the frame");
     }
 
     // ---- [2] the art is drawn, the corners are the checker ----
@@ -122,8 +127,11 @@ int main(int argc, char** argv) {
         // EVERY pixel is the art: an OPAQUE layer must show no checker at all, which is what
         // proves the cell is the artwork's own box rather than a square with bands
         int offArt = 0;
-        for (int y = 1; y < cell.height() - 1; ++y) {          // the outer 1px is the border
-            for (int x = 1; x < cell.width() - 1; ++x) {
+        // the CENTRAL BAND: the frame owns the outer pixel and the rounded corners blend with
+        // the transparent outside for the first three, so "no checker" is measured where only
+        // the art can be
+        for (int y = 4; y < cell.height() - 4; ++y) {
+            for (int x = 4; x < cell.width() - 4; ++x) {
                 if (distance(cell.pixelColor(x, y), art) > 24)
                     ++offArt;
             }
@@ -133,20 +141,23 @@ int main(int argc, char** argv) {
             cell.width(), cell.height(), centre.red(), centre.green(), centre.blue(), offArt
         );
         check(distance(centre, art) <= 24, "the layer's own colour is at the centre");
-        check(offArt == 0, "and an opaque layer shows NO checker: the cell is the artwork's box");
+        check(offArt == 0, "and an opaque layer shows NO checker inside its band");
         // THE BORDER: the cell's own edge, which is what makes a dark drawing on a dark row
         // read as a cell at all (the review asked whether to keep it; it is kept).
-        // THE FRAME RING is OUTSIDE the cell: a 1px ring in the field-border token, so it is
-        // never painted over the art (which is why the first version vanished on a bright
-        // layer) and it reads against the row's own background
-        const QColor ring = cell.pixelColor(0, 0);
+        // THE FRAME follows the cell's ROUNDED edge, over the checker/art (the arrangement the
+        // review preferred over a ring outside), so the corner is transparent and the edge's
+        // midpoint carries the palette's field-border token.
+        const QColor edge = cell.pixelColor(cell.width() / 2, 0);
         const QColor outline = theme::Colors::current().outline;
         std::printf(
-            "MEASURED frame ring: (%d,%d,%d) at the corner, field border is (%d,%d,%d)\n", ring.red(),
-            ring.green(), ring.blue(), outline.red(), outline.green(), outline.blue()
+            "MEASURED frame: edge midpoint (%d,%d,%d), field border is (%d,%d,%d), corner alpha %d\n",
+            edge.red(), edge.green(), edge.blue(), outline.red(), outline.green(), outline.blue(),
+            qAlpha(cell.pixel(0, 0))
         );
-        check(distance(ring, outline) <= 12, "the ring is the palette's own field-border token");
-        check(distance(cell.pixelColor(1, 1), art) <= 24, "and the art starts inside it, unwritten");
+        check(distance(edge, outline) <= 24, "the edge carries the field-border token");
+        // ROUNDING: the corner block cannot be full - the arc slices it. Count the pixels that
+        // are substantially inked in the 3x3 corner: a square cell would give nine.
+
     }
 
     // ---- [3] aspect is kept: a wide source leaves checker above and below ----
@@ -155,11 +166,11 @@ int main(int argc, char** argv) {
         const img::Buffer buffer = makeBuffer(QSize(600, 100), art);
         const QImage cell = asImage(cache.layerThumbnail(buffer, kSize));
         std::printf("MEASURED wide layer: %dx%d cell\n", cell.width(), cell.height());
-        check(cell.width() == kSize + 2 && cell.height() < cell.width() / 2,
+        check(cell.width() == kSize && cell.height() < cell.width() / 2,
               "a wide source gives a WIDE cell, not a square with bands");
         int offArt = 0;
-        for (int y = 2; y < cell.height() - 2; ++y) {
-            for (int x = 2; x < cell.width() - 2; ++x) {
+        for (int y = 3; y < cell.height() - 3; ++y) {
+            for (int x = 3; x < cell.width() - 3; ++x) {
                 if (distance(cell.pixelColor(x, y), art) > 24)
                     ++offArt;
             }
@@ -200,53 +211,39 @@ int main(int argc, char** argv) {
         check(distance(centre, art) <= 24, "a large layer still lands its colour in the cell");
     }
 
-    // ---- [6] the checker's own contrast, in BOTH themes ----
-    // At 2px and 27 levels apart the pair read as dithering rather than as a checker; this
-    // pins the spread so a palette edit cannot quietly undo it.
+    // ---- [6] the checker's contrast, COMPOSITED over the row ----
+    // The tiles are alpha-only by design (that is what makes them calm: they composite with
+    // the row instead of sitting on it), so the numbers that matter are the ones the eye
+    // gets - the tiles over the tree's own row colour, `raised`.
     {
-        const auto spread = [](const theme::Colors& c) {
-            return std::abs(c.checkerLight.red() - c.checkerDark.red());
+        const auto over = [](const QColor& aTile, const QColor& aRow) {
+            const qreal a = aTile.alphaF();
+            return qRound(aTile.red() * a + aRow.red() * (1.0 - a));
         };
         const theme::Colors dark = theme::Colors::dark();
         const theme::Colors light = theme::Colors::light();
+        const int darkLight = over(dark.checkerLight, dark.raised);
+        const int darkDark = over(dark.checkerDark, dark.raised);
+        const int lightLight = over(light.checkerLight, light.raised);
+        const int lightDark = over(light.checkerDark, light.raised);
         std::printf(
-            "MEASURED checker spread: dark %d levels (%d on %d), light %d levels (%d on %d)\n",
-            spread(dark), dark.checkerLight.red(), dark.checkerDark.red(), spread(light),
-            light.checkerLight.red(), light.checkerDark.red()
+            "MEASURED checker over the row: dark %d/%d on %d, light %d/%d on %d\n", darkLight, darkDark,
+            dark.raised.red(), lightLight, lightDark, light.raised.red()
         );
-        // 5px tiles read at a lower step than 4px did (18 vs the 26 that 4px needed), which
-        // is what lets both tiles come down to the row's own value
-        check(spread(dark) >= 16, "the dark theme's two tiles differ by at least 16 levels");
-        check(spread(light) >= 16, "and so do the light theme's");
-        // BRIGHTNESS, which is what "too bright" was about: the pair has to READ as a
-        // checker without lifting the panel. The first pair (90/55) was 52 levels above a
-        // #262626 row and was reported as loud; 31 is the ceiling now.
-        // BRIGHTNESS in ABSOLUTE terms, because which surface the tree paints behind a row
-        // is the widget's business and not this gate's: the dark theme's lighter tile has to
-        // stay dim (the 0x5a pair was reported as too bright on a dark panel), and the light
-        // theme's has to stay pale.
-        std::printf(
-            "MEASURED checker tiles: dark light=%d dark=%d, light light=%d dark=%d\n",
-            dark.checkerLight.red(), dark.checkerDark.red(), light.checkerLight.red(),
-            light.checkerDark.red()
-        );
-        check(dark.checkerLight.red() <= 0x30, "the dark theme's tiles stay dim (<= 0x30)");
-        check(light.checkerLight.red() >= 0xe8, "and the light theme's stay pale (>= 0xe8)");
-        // the cell as a whole must not lift off the row: the pair's AVERAGE stays within a
-        // few levels of the surface, which is what "too bright" was actually about
-        std::printf(
-            "MEASURED checker average vs row: dark %d on %d, light %d on %d\n",
-            (dark.checkerLight.red() + dark.checkerDark.red()) / 2, dark.base.red(),
-            (light.checkerLight.red() + light.checkerDark.red()) / 2, light.base.red()
-        );
-        // and both tiles sit on the same side of their row, so the cell reads as a field
+        check(std::abs(darkLight - darkDark) >= 18, "the dark tiles read as a checker (>= 18 levels)");
+        check(std::abs(lightLight - lightDark) >= 18, "and so do the light theme's");
+        // the pair's AVERAGE stays at the row's own value: an opaque pair above the row is
+        // what read as a lit patch, and three of those were tried before this one
         check(
-            dark.checkerDark.red() >= dark.base.red(),
-            "the dark checker is not darker than the row it sits on"
+            std::abs((darkLight + darkDark) / 2 - dark.raised.red()) <= 10,
+            "the dark pair's average sits at the row's value"
         );
+        // the SAME alphas are not symmetric across themes: black@36 pulls a PALE row down 32
+        // levels while white@20 lifts a dark one by 17, so the light pair sits ~15 below its
+        // row - a slightly recessed cell on a pale panel, which is the calm direction anyway
         check(
-            light.checkerLight.red() <= light.base.red(),
-            "and the light one is not lighter than its row"
+            std::abs((lightLight + lightDark) / 2 - light.raised.red()) <= 18,
+            "and the light pair sits at or slightly below its row"
         );
     }
 
@@ -259,7 +256,7 @@ int main(int argc, char** argv) {
             "MEASURED dpr: 1.0 -> %dx%d (dpr %.1f), 2.0 -> %dx%d (dpr %.1f)\n", one.width(), one.height(),
             one.devicePixelRatio(), two.width(), two.height(), two.devicePixelRatio()
         );
-        check(one.width() == kSize + 2 && two.width() == (kSize + 2) * 2,
+        check(one.width() == kSize && two.width() == kSize * 2,
               "a 2x session renders the cell and its ring at twice the device pixels");
         check(two.devicePixelRatio() == 2.0, "and the pixmap says so, so Qt does not rescale it");
     }

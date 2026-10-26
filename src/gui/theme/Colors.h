@@ -417,10 +417,10 @@ struct Colors {
     QColor warning; // amber-700 / amber-400
 
     // THE ALPHA CHECKER behind a layer thumbnail (and anything else that shows a matte).
-    // Both tiles sit ABOVE the row's value in a dark theme and BELOW it in a light one, so
-    // the cell reads as a field on either surface; the pair is ~35 levels apart in both, so
-    // 4px squares read as a checker rather than as dithering (measured: 2px at 27 levels
-    // read as noise, which is why this exists as its own token pair).
+    // Translucent, and that is the point: the pair composites WITH the row it sits on, so it
+    // needs no per-theme values and never reads as a lit patch the way an opaque pair does
+    // (three absolute pairs were tried and each was reported too bright). Over the tree's
+    // #262626 row it is 55 on 33 - the calmest of the lot, and the original.
     QColor checkerLight;
     QColor checkerDark;
 
@@ -494,10 +494,10 @@ struct Colors {
             // accent row): red and amber at the pale-theme columns above.
             paletteColor(kTailwindRows[kDangerRow][kTailwindLight[kDanger]]),   // danger
             paletteColor(kTailwindRows[kWarningRow][kTailwindLight[kWarning]]), // warning
-            // the alpha checker: two steps below the pale row, ~30 levels apart (see the
-            // dark theme's pair for why it stays close to the row's own value)
-            QColor(0xec, 0xec, 0xec), // checkerLight  (236: the row is #f5f5f5 = 245)
-            QColor(0xd8, 0xd8, 0xd8), // checkerDark   (216)
+            // the alpha checker: the SAME alpha-only pair as the dark theme - over the pale
+            // row it composites the other way round (white@20 -> 249, black@36 -> 210)
+            QColor(255, 255, 255, 20), // checkerLight
+            QColor(0, 0, 0, 36),       // checkerDark
             false, // isDark
         };
         return c;
@@ -567,12 +567,10 @@ struct Colors {
             // kDangerRow/kWarningRow for why they do not follow the accent).
             paletteColor(kTailwindRows[kDangerRow][kTailwindDark[kDanger]]),   // danger
             paletteColor(kTailwindRows[kWarningRow][kTailwindDark[kWarning]]), // warning
-            // the alpha checker: NEAR the row's own value (the first pair at 90/55 was
-            // reported as too bright on a dark panel) but still ~26 levels apart, so 4px
-            // squares read as a checker; the 1px frame draws the cell's boundary, so the
-            // tiles do not have to brighten the row to prove themselves
-            QColor(0x2e, 0x2e, 0x2e), // checkerLight  (46: the row is #262626 = 38)
-            QColor(0x1c, 0x1c, 0x1c), // checkerDark   (28)
+            // the alpha checker: ALPHA-ONLY, so it composites with whatever row it sits on
+            // and needs no per-theme values. Over the tree's #262626 row this is 55 on 33.
+            QColor(255, 255, 255, 20), // checkerLight
+            QColor(0, 0, 0, 36),       // checkerDark
             true, // isDark
         };
         return c;

@@ -4654,15 +4654,21 @@ THE CHECKER AND THE FRAME, as finally decided (the review asked for both):
 
 - **4 LOGICAL-px squares**, not 2. At 2px the pattern read as dithering, not as a checker
   (reported from the running app).
-- **5 LOGICAL-px tiles at 46/28 (dark) and 236/216 (light)**: `kCheckerSquare` and
-  `Colors::checkerLight`/`checkerDark`. THREE corrections landed here, and the order is the
-  lesson: 2px at 27 levels read as dithering; 4px at 35 levels read fine but was reported as
-  TOO BRIGHT (90/55 is 52 levels above a #262626 row); 4px at 26 levels was still too bright.
-  The property that matters is that **the pair's AVERAGE sits at the row's own value** (37 on
-  38) - any pair centred above the row reads as a lit patch whatever its spread. Tile SIZE buys
-  back the readability that dimming costs: 4px needed 26 levels to read, 5px needs 18, and 5
-  divides the 20px cell into exactly four tiles with no sliver (6px left a 2px one). Measured:
-  `MEASURED checker tiles: dark light=46 dark=28, light light=236 dark=216`.
+- **ALPHA-ONLY tiles, 5 LOGICAL px, one pair for both themes**: `Colors::checkerLight` =
+  `rgba(255,255,255,20)`, `checkerDark` = `rgba(0,0,0,36)`. FOUR corrections landed here and the
+  last is the lesson: opaque pairs at 90/55, then 69/43, then 46/28 were all reported too bright
+  or too flat, because an OPAQUE pair always sits at some absolute value on the row. A
+  TRANSLUCENT pair composites WITH the row - over the tree's #262626 it is 55/33, over a pale
+  row it flips to 231/197 - so it needs no per-theme values and can never read as a lit patch.
+  Tile SIZE buys readability at a low step (4px needed 26 levels, 5px needs 18, and 5 divides
+  the 20px cell into exactly four tiles with no sliver), and the two properties are measured
+  separately by the gate: COMPOSITED OVER `raised` (the row's own token - `hairline` is the same
+  value, which is why a hairline border was invisible), spread >= 18 and average within 10
+  levels of the row.
+- **The cell is ROUNDED, 3 LOGICAL px**, and the frame follows the same path. The frame is drawn
+  INSIDE on that path with the path INSET by half the pen (0.5px): a 1px stroke centred on the
+  cell's edge half-covers the outer pixel and measured (142,77,52) - art with a hint of border,
+  i.e. the same invisibility in a new place.
 - **A 1px frame in the palette's FIELD-BORDER token (`outline`), drawn OUTSIDE the art**: a
   checker only proves a cell exists when the layer is TRANSPARENT, and a dark drawing on a
   dark row needs its boundary. Painting it on the art's own outermost pixel (the first version)

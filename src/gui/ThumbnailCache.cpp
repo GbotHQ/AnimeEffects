@@ -1,5 +1,6 @@
 #include <QImage>
 #include <QPainter>
+#include <QPainterPath>
 #include "gui/ThumbnailCache.h"
 #include "gui/theme/Colors.h"
 
@@ -74,52 +75,53 @@ QPixmap ThumbnailCache::layerThumbnail(const img::Buffer& aImage, int aSize, qre
     if (image.width() != w || image.height() != h)
         image = image.scaled(w, h, Qt::IgnoreAspectRatio, Qt::SmoothTransformation);
 
-    // THE CHECKER IS THE BACKDROP, the art sits on it 1:1. The tiles are THEME tokens that
-    // sit above the row in a dark theme and below it in a light one, and they are ~35 levels
-    // apart: at 2px and 27 levels the pair read as dithering rather than as a checker (the
-    // review's report). The square is LOGICAL (4px) times the DPR, so a scaled session gets
-    // a checker of the same apparent size.
+    // THE CELL: a ROUNDED, clipped field with the alpha checker under the art, and the frame
+    // drawn OVER its own edge - the arrangement the review preferred (a ring outside the art
+    // read as a second border around the row's slot rather than as the image's edge).
     const theme::Colors& colors = theme::Colors::current();
     const int square = std::max(2, qRound(double(kCheckerSquare) * dpr));
+    const qreal radius = std::min(qreal(std::min(w, h)) / 2.0, double(kCornerRadius) * dpr);
+
     QImage cell(w, h, QImage::Format_ARGB32_Premultiplied);
+    cell.fill(Qt::transparent);
     {
-        cell.fill(colors.checkerDark);
-        QPainter checker(&cell);
-        checker.setPen(Qt::NoPen);
-        checker.setBrush(colors.checkerLight);
+        QPainter painter(&cell);
+        painter.setRenderHint(QPainter::Antialiasing, true);
+
+        // the checker, clipped to the rounded cell
+        QPainterPath rounded;
+        rounded.addRoundedRect(QRectF(0, 0, w, h), radius, radius);
+        painter.setClipPath(rounded);
+        painter.fillRect(QRectF(0, 0, w, h), colors.checkerLight);
+        painter.setPen(Qt::NoPen);
+        painter.setBrush(colors.checkerDark);
         for (int y = 0; y < h; y += square) {
             for (int x = 0; x < w; x += square) {
                 if (((x / square) + (y / square)) % 2 == 0)
-                    checker.drawRect(x, y, square, square);
+                    painter.drawRect(x, y, square, square);
             }
         }
-        checker.end();
-    }
-    {
-        QPainter painter(&cell);
+
+        // the art, on top of the checker
         painter.drawImage(0, 0, image);
-        painter.end();
-    }
-    // THE FRAME RING, in the slot's free pixel rather than over the art: a 1px ring around
-    // the cell, drawn in the palette's FIELD-BORDER token (outline), so it reads on the row's
-    // background whatever the layer's pixels are. Drawn over the art (the first version) it
-    // vanished on any bright layer, which is what "barely visible" meant.
-    const int ring = std::max(1, qRound(dpr));
-    QImage framed(w + ring * 2, h + ring * 2, QImage::Format_ARGB32_Premultiplied);
-    framed.fill(Qt::transparent);
-    {
-        QPainter painter(&framed);
-        painter.setPen(Qt::NoPen);
-        painter.setBrush(colors.outline);
-        painter.drawRect(0, 0, framed.width(), ring);                       // top
-        painter.drawRect(0, framed.height() - ring, framed.width(), ring);  // bottom
-        painter.drawRect(0, 0, ring, framed.height());                      // left
-        painter.drawRect(framed.width() - ring, 0, ring, framed.height());  // right
-        painter.drawImage(ring, ring, cell);
+
+        // the frame OVER that edge: the field-border token, on the rounded path, so it lands
+        // on the checker/art rather than outside the cell. The path is INSET by half the pen
+        // width, because a 1px stroke centred on the cell's edge only half-covers the outer
+        // pixel - measured as an edge reading (142,77,52), i.e. art with a hint of frame,
+        // which is the same invisibility the ring outside was meant to fix.
+        painter.setClipping(false);
+        painter.setBrush(Qt::NoBrush);
+        QPen pen(colors.outline, 1);
+        pen.setJoinStyle(Qt::RoundJoin);
+        painter.setPen(pen);
+        QPainterPath edge;
+        edge.addRoundedRect(QRectF(0.5, 0.5, w - 1.0, h - 1.0), radius, radius);
+        painter.drawPath(edge);
         painter.end();
     }
 
-    QPixmap pixmap = QPixmap::fromImage(framed);
+    QPixmap pixmap = QPixmap::fromImage(cell);
     // the pixmap IS device pixels; this is what makes Qt paint it 1:1 instead of scaling
     // a 22px pixmap down to the 16px an unstyled QTreeWidget asks for
     pixmap.setDevicePixelRatio(dpr);
