@@ -83,9 +83,27 @@ DONE as well (`0470aac0`, `c5f419f2`, `62866b9a`):
 6. A folder's matte, on the composite path, through `FilterFrame::maskTexture` - measured 14623 px
    for one stroke over a folder subtree, and 0 px on add (a neutral matte costs nothing).
 
-REMAINING:
+DONE (`b17ee623`, `e38e6683`, `81f6967a`):
 
-7. The tree's chip (a row must show that it carries a matte without being selected) and the canvas
-   RUBYLITH while the Mask tool targets the matte. Painting already shows its result live - the
-   hidden area disappears - so the rubylith is pre-commitment feedback, not feedback.
-8. PSD import writes the mask instead of standing clipping in for one.
+7. The tree's chip - a 14px preview of the matte in the row's own right edge, in the same ink as the
+   thumbnail and the canvas overlay, shown only for a matte that hides something. And the canvas
+   RUBYLITH while the Mask tool targets the matte: the field rides the preview path filter masks
+   already had, and while a node is the preview target its matte is SUSPENDED - tinting after the
+   matte composed red onto pixels it had already made transparent.
+8. PSD import: a layer mask and a GROUP mask both arrive as a `core::MaskKey` (raw and RLE channel
+   decoding, the two compressions the reader accepts), the group's anchored to the canvas the import
+   establishes. A mask whose pixels cannot be decoded still counts into the file's warning, so
+   nothing is dropped silently.
+
+Evidence from the running application is in this directory: `card-after-a-stroke.png` (the thumbnail
+shows what the stroke hides), `tree-chip.png`, `canvas-rubylith.png`, and
+`canvas-added-no-change.png` (adding a mask changes nothing).
+
+STILL OPEN, honestly:
+
+- The chip and the rubylith are measured LIVE, not gated: `inspector_mask_card` covers the card's
+  wiring, but nothing fails if the chip stops drawing or the tint lands in the wrong place.
+- PSD import is gated by fixtures (`psd_layer_identity`), not by a real file: the application opens
+  only an `.anie` from the command line, so a real PSD goes through the Import dialog.
+- A ZIP-compressed mask channel is not decoded (the reader refuses ZIP channels outright); such a
+  file keeps the old warning.

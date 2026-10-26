@@ -234,7 +234,19 @@ void PropertyWidget::onAttributeUpdated(core::ObjectNode&, bool) {
     onVisualUpdated();
 }
 
-void PropertyWidget::onKeyUpdated(core::TimeLineEvent&, bool) { mModel->refreshKeys(); }
+void PropertyWidget::onKeyUpdated(core::TimeLineEvent& aEvent, bool) {
+    // A MATTE'S FIELD is not a value the rows read: the card draws it as an IMAGE whose
+    // URL carries a revision, and only refresh() bumps that. A brush stroke therefore
+    // left the thumbnail showing the field it had before the stroke - measured on a
+    // folder, painted, with the card still empty.
+    for (const core::TimeLineEvent::Target& target : aEvent.targets()) {
+        if (target.pos.type() == core::TimeKeyType_Mask) {
+            mModel->refresh();
+            return;
+        }
+    }
+    mModel->refreshKeys();
+}
 
 void PropertyWidget::onFrameUpdated() { mModel->refreshFrame(); }
 
@@ -243,10 +255,6 @@ void PropertyWidget::onPlayBackStateChanged(bool aIsActive) { mModel->setPlaybac
 void PropertyWidget::refreshTheme() {
     mTheme->refresh();
     mModel->refreshTheme();
-    // the card's thumbnail (image://maskthumb/<anything>?<revision>)
-    mQuick->engine()->addImageProvider(
-        QStringLiteral("maskthumb"), new MaskThumbnailProvider(mModel)
-    );
     mQuick->setClearColor(theme::Colors::current().base);
 }
 
