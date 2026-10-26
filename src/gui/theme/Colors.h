@@ -61,6 +61,13 @@ inline AccentColor accentFromName(const QString& aName) {
 // rose, slate, gray, zinc, neutral, stone, mauve, olive, mist, taupe.
 inline constexpr int kTailwindNeutralRow = 20; // the achromatic neutral row
 
+// Semantic rows. Warnings and errors must read as themselves whatever the
+// accent is (the user can pick green, and a warning in green is not a warning),
+// so they are the two hue rows the semantic roles read instead of the neutral or
+// accent row: Tailwind red for danger, amber for warning.
+inline constexpr int kDangerRow = 0;  // red
+inline constexpr int kWarningRow = 2; // amber
+
 // Token roles; the column maps are indexed by these.
 enum TokenRole {
     kBase, kRecessed, kRaised, kRaisedHover, kActive, kActiveHover,
@@ -83,6 +90,12 @@ enum TokenRole {
     kWindowText, // window label pill text
     kAccentBrightText, // text on accentBright fills (the playhead pill):
                        // max-contrast against the saturated accentBright
+    kDanger,  // semantic error ink. red-600 on the pale theme, red-400 on the
+              // deep one - both clear their background, and neither follows the
+              // accent (an error must read as one whatever hue the user picked)
+    kWarning, // semantic warning ink, same rule with amber: amber-700 on the
+              // pale theme (amber-600 is too pale for text on white) and
+              // amber-400 on the deep one
     kTokenCount
 };
 
@@ -136,6 +149,12 @@ static constexpr int kTailwindLight[] = {
     /* kWindowText        */ 0, // neutral-50
     /* kAccentBrightText  */ 0, // neutral-50: lightest text on the saturated
                                  // accentBright
+    /* kDanger            */ 6, // red-600 (#dc2626). These two index the
+                                 // red/amber rows (kDangerRow/kWarningRow), not
+                                 // the neutral row the surface tokens read
+    /* kWarning           */ 7, // amber-700 (#b45309), the step the QML facts
+                                 // rows already used: amber-600 is too pale for
+                                 // text on white
 };
 static_assert(sizeof(kTailwindLight) / sizeof(kTailwindLight[0]) == kTokenCount,
               "kTailwindLight must have one column per TokenRole");
@@ -188,6 +207,8 @@ static constexpr int kTailwindDark[] = {
     /* kWindowText        */ 9, // neutral-900
     /* kAccentBrightText  */ 9, // neutral-900: darkest text on the pale
                                  // accentBright
+    /* kDanger            */ 4, // red-400 (#f87171) on the deep theme
+    /* kWarning           */ 4, // amber-400 (#fbbf24) on the deep theme
 };
 static_assert(sizeof(kTailwindDark) / sizeof(kTailwindDark[0]) == kTokenCount,
               "kTailwindDark must have one column per TokenRole");
@@ -381,6 +402,15 @@ struct Colors {
     QColor axisY;
     QColor axisZ;
 
+    // Semantic inks, the two roles the token table has no cell for: an error and
+    // a warning have to read as such whatever the accent is, so they are the red
+    // and amber rows at their own theme column instead of a cell of the neutral
+    // (achromatic) or accent row. They live here rather than as literals in the
+    // QML bridge because the command log's warning badge and the QML facts rows
+    // must be the same ink, and a literal in a second file is how the two drift.
+    QColor danger;  // red-600 / red-400
+    QColor warning; // amber-700 / amber-400
+
     bool isDark; // which elevation model the tokens were computed with
 
     static Colors light(AccentColor aAccent = kDefaultAccent) {
@@ -446,6 +476,10 @@ struct Colors {
             paletteColor(kTailwindRows[kChannelAxisRow[kChannelAxisX]][kKeyColorColumnLight]), // axisX
             paletteColor(kTailwindRows[kChannelAxisRow[kChannelAxisY]][kKeyColorColumnLight]), // axisY
             paletteColor(kTailwindRows[kChannelAxisRow[kChannelAxisZ]][kKeyColorColumnLight]), // axisZ
+            // The semantic roles read their own hue rows (never the neutral or
+            // accent row): red and amber at the pale-theme columns above.
+            paletteColor(kTailwindRows[kDangerRow][kTailwindLight[kDanger]]),   // danger
+            paletteColor(kTailwindRows[kWarningRow][kTailwindLight[kWarning]]), // warning
             false, // isDark
         };
         return c;
@@ -510,6 +544,10 @@ struct Colors {
             paletteColor(kTailwindRows[kChannelAxisRow[kChannelAxisX]][kKeyColorColumnDark]), // axisX
             paletteColor(kTailwindRows[kChannelAxisRow[kChannelAxisY]][kKeyColorColumnDark]), // axisY
             paletteColor(kTailwindRows[kChannelAxisRow[kChannelAxisZ]][kKeyColorColumnDark]), // axisZ
+            // red-400 / amber-400: the deep theme's semantic steps (see
+            // kDangerRow/kWarningRow for why they do not follow the accent).
+            paletteColor(kTailwindRows[kDangerRow][kTailwindDark[kDanger]]),   // danger
+            paletteColor(kTailwindRows[kWarningRow][kTailwindDark[kWarning]]), // warning
             true, // isDark
         };
         return c;

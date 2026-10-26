@@ -73,6 +73,11 @@ add_executable(${PROJECT_NAME} WIN32 MACOSX_BUNDLE
     FrameRuler.cpp FrameRuler.h
     ToolWidget.cpp ToolWidget.h
     ViaPoint.cpp ViaPoint.h
+    # The Properties panel's command log: one text document whose runs carry each
+    # line's kind ink (a badge, not markup), so a selection can still cross
+    # entries. LogEntry is the widget-free description ViaPoint hands it.
+    LogEntry.h
+    CommandLogView.cpp CommandLogView.h
     # The export form: a Qt Quick scene (qml/ExportDialog.qml) in a QDialog shell,
     # with everything it decides in the widget-free view model beside it.
     ExportDialog.cpp ExportDialog.h

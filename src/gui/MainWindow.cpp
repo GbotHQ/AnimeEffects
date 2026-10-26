@@ -11,6 +11,7 @@
 
 #include "gui/ExportFacts.h"
 #include "gui/ExportDialog.h"
+#include "gui/CommandLogView.h"
 #include "gui/qml/ExportViewModel.h"
 #include "gui/DestinationPicker.h"
 #include "gui/DockSash.h"
@@ -249,13 +250,13 @@ MainWindow::MainWindow(ctrl::System& aSystem, GUIResources& aResources, LocalePa
         mProperty = new PropertyWidget(mViaPoint, splitter, &mGUIResources, mLocaleParam);
         splitter->addWidget(mProperty);
 
-        auto textEdit = new QPlainTextEdit(splitter);
-        textEdit->setUndoRedoEnabled(false);
-        textEdit->setMaximumBlockCount(32);
-        textEdit->setReadOnly(true);
-        mViaPoint.setLogView(textEdit);
-
-        splitter->addWidget(textEdit);
+        // The command log: one text document, so a selection can cross entries
+        // (see CommandLogView for why a delegate list would lose that). It owns
+        // the cap, the read-only flags and the object/accessibility names; the
+        // splitter owns the widget, ViaPoint is what everyone reports through.
+        auto* commandLog = new CommandLogView(splitter);
+        mViaPoint.setLogView(commandLog);
+        splitter->addWidget(commandLog);
         splitter->setCollapsible(0, false);
         splitter->setCollapsible(1, false);
 
@@ -697,6 +698,10 @@ void MainWindow::onThemeUpdated(theme::Theme& aTheme) {
 
     mDockPropertyWidget->setStyleSheet(aTheme.loadStylesheet("propertywidget.ssa"));
     if (mProperty) mProperty->refreshTheme();
+    // The log's colours are per-run formats, not QSS: a stylesheet change cannot
+    // reach them, so the view re-inks its own document in place from the palette
+    // GUIResources just activated (text and selection survive).
+    if (auto* logView = mViaPoint.logView()) logView->refreshTheme();
     mDockToolWidget->setStyleSheet(aTheme.loadStylesheet("toolwidget.ssa"));
 
     if (!onStartup && !themeChangeWarned) {
@@ -958,7 +963,7 @@ void MainWindow::onUndoTriggered() {
         bool undone = false;
         auto ret = mCurrent->commandStack().undo(&undone);
         if (undone) {
-            mViaPoint.pushUndoneLog(tr("Undone : ") + ret);
+            mViaPoint.pushCommandLog(false, ret);
             mMainDisplay->updateRender();
         }
     }
@@ -1021,7 +1026,7 @@ void MainWindow::onRedoTriggered() {
         bool redone = false;
         auto ret = mCurrent->commandStack().redo(&redone);
         if (redone) {
-            mViaPoint.pushRedoneLog(tr("Redone : ") + ret);
+            mViaPoint.pushCommandLog(true, ret);
             mMainDisplay->updateRender();
         }
     }

@@ -1094,6 +1094,11 @@ target_link_libraries(psd_layer_identity PRIVATE
 add_executable(psd_relink_safety psd_relink_safety.cpp
     ../src/gui/ResourceTreeWidget.cpp
     ../src/gui/ProjectHook.cpp
+    # ViaPoint::pushLog / pushCommandLog dispatch to the concrete log view, so this
+    # target links the real one (its own ViaPoint subclass overrides pushLog, but
+    # ViaPoint's body - and the vtable that names it - still needs the symbol).
+    ../src/gui/CommandLogView.cpp
+    ../src/gui/CommandLogView.h
     ../src/gui/ViaPoint.cpp
     ../src/gui/EasyDialog.cpp
     # The real ResourceDialog, not a stub: the test links its moc key functions,
@@ -1469,6 +1474,9 @@ add_executable(asset_remove_layers asset_remove_layers.cpp
     ../src/gui/GUIResources.cpp
     ../src/gui/AppStyle.cpp
     ../src/gui/ProjectHook.cpp
+    # ViaPoint's log dispatch goes through the concrete view (see psd_relink_safety).
+    ../src/gui/CommandLogView.cpp
+    ../src/gui/CommandLogView.h
     ../src/gui/ViaPoint.cpp
     ../src/gui/EasyDialog.cpp
     ../src/gui/ResourceDialog.cpp
@@ -1547,3 +1555,13 @@ target_sources(graph_panel_pixels PRIVATE
     ../src/gui/InkCanvas.cpp)
 target_compile_definitions(graph_panel_pixels PRIVATE AE_CANVAS_PAINTER=1)
 target_link_libraries(graph_panel_pixels PRIVATE Qt6::CanvasPainter)
+
+# THE COMMAND LOG'S CONTRACT (src/gui/CommandLogView.{h,cpp}): badges instead of the
+# old "Undone : X" strings, and - the load-bearing half - a selection that still
+# crosses entries, so the clipboard gets the whole log as plain text. Compiles the
+# real view and the real theme tokens; headless, no GL. See command_log.cpp.
+add_executable(command_log command_log.cpp
+    ../src/gui/CommandLogView.cpp
+    ../src/gui/CommandLogView.h)
+target_include_directories(command_log PRIVATE .. ../src)
+target_link_libraries(command_log PRIVATE Qt6::Core Qt6::Gui Qt6::Widgets)

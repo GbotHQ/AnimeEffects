@@ -52,8 +52,9 @@ public:
     Q_PROPERTY(QColor floaterEdge READ floaterEdge NOTIFY themeChanged)
     // Semantic colors. Deliberately NOT accent tokens: the accent is the user's
     // chosen hue (it can be green), and an error has to read as an error whatever
-    // that hue is. They are the two roles the token table (achromatic surfaces +
-    // the accent row) has no cell for.
+    // that hue is. They are tokens in theme::Colors now (red/amber rows at their
+    // own theme column), not literals here, so the command log's warning badge
+    // and these properties cannot disagree.
     Q_PROPERTY(QColor danger READ danger NOTIFY themeChanged)
     Q_PROPERTY(QColor warning READ warning NOTIFY themeChanged)
     Q_PROPERTY(QUrl closeIcon READ closeIcon NOTIFY themeChanged)
