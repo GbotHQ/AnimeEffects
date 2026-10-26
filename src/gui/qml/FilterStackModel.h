@@ -86,7 +86,12 @@ class FilterRowModel: public QObject {
     Q_PROPERTY(QString clearTimeMaskLabel READ clearTimeMaskLabel CONSTANT)
 
 public:
-    FilterRowModel(core::TimeKeyType aType, InspectorViewModel& aOwner, QObject* aParent = nullptr);
+    // `aExpanded` has to be a construction argument, not a follow-up call: a row
+    // is built while the stack rebuilds (add, remove, reorder), and the QML
+    // delegate reads `expanded` as soon as rowsChanged arrives. Constructing it
+    // already open keeps the card open on that same frame; setting the flag one
+    // statement later leaves a delegate that loaded collapsed.
+    FilterRowModel(core::TimeKeyType aType, InspectorViewModel& aOwner, bool aExpanded, QObject* aParent = nullptr);
 
     int type() const { return int(mType); }
     QString kind() const;
@@ -261,8 +266,6 @@ public:
     Q_INVOKABLE void setFilterEnabled(int aType, bool aEnabled);
     Q_INVOKABLE void toggleExpanded(int aType);
 
-    core::TimeKeyType selected() const { return mSelected; }
-    void clearExpansion();
     FilterRowModel* rowAt(int aIndex) const {
         return (0 <= aIndex && aIndex < mRows.size()) ? mRows.at(aIndex) : nullptr;
     }
@@ -279,7 +282,12 @@ private:
     core::Project* mProject = nullptr;
     core::ObjectNode* mTarget = nullptr;
     QVector<FilterRowModel*> mRows;
-    core::TimeKeyType mSelected = core::TimeKeyType_TERM;
+    // Which filters are open, keyed by TYPE. It cannot be one slot or a row's
+    // own flag: rebuildRows destroys every row for add, remove and reorder, so
+    // an index or a pointer would be stale by the time the next toggle reads
+    // it, and a single slot made a second card collapse the first. A row's
+    // `expanded` is only the projection of this set that QML reads.
+    QVector<core::TimeKeyType> mExpanded;
 };
 
 } // namespace gui

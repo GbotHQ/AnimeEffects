@@ -80,6 +80,28 @@ QVector<img::BlendMode> blendModes() {
         img::BlendMode_Luminosity,
     };
 }
+
+// The five group dividers the widget-era dropdown carried as
+// QComboBox::insertSeparator() items: after Normal, after DarkerColor, after
+// LighterColor, after HardMix, after Divide (prop/prop_ConstantPanel.cpp, before
+// the QML port). Named by MODE, never by row index: the delegate draws the rule
+// from `separatorAfter`, the name the export and destination tables already use
+// for a rule drawn after a block, so an index table would go stale the day
+// blendModes() is reordered or a mode is inserted - which img/BlendMode.h
+// explicitly allows, since that order is a UI convenience and not a persisted
+// contract.
+bool endsBlendGroup(img::BlendMode aMode) {
+    switch (aMode) {
+    case img::BlendMode_Normal:
+    case img::BlendMode_DarkerColor:
+    case img::BlendMode_LighterColor:
+    case img::BlendMode_HardMix:
+    case img::BlendMode_Divide:
+        return true;
+    default:
+        return false;
+    }
+}
 } // namespace
 
 InspectorViewModel::InspectorViewModel(ViaPoint* aViaPoint, QObject* aParent): QObject(aParent), mViaPoint(aViaPoint) {
@@ -97,6 +119,12 @@ InspectorViewModel::InspectorViewModel(ViaPoint* aViaPoint, QObject* aParent): Q
         QVariantMap option;
         option.insert(QStringLiteral("label"), img::getBlendNameFromBlendMode(mode));
         option.insert(QStringLiteral("value"), int(mode));
+        // Decoration for the QML delegate's 9px separator band - the only trace
+        // of the old control's insertSeparator() rows. A FLAG on the option, not
+        // an extra list entry, keeps options[index] 1:1 with the modes: `value`
+        // and `label` keep the meaning refreshAttributes and setBlendIndex read,
+        // and activated(index) keeps meaning "options[index]".
+        option.insert(QStringLiteral("separatorAfter"), endsBlendGroup(mode));
         mBlendOptions.append(option);
     }
 }

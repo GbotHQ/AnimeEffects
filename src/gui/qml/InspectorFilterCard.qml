@@ -78,7 +78,6 @@ Item {
     property var filterRow: emptyRow
     property int cardIndex: 0
     readonly property int cardRadius: 6
-    readonly property int cardInnerRadius: 5
     signal dragStarted(int index)
     signal dragMoved(int index, real sceneY)
     signal dragEnded(int index, real sceneY)
@@ -102,17 +101,24 @@ Item {
     }
 
     width: parent ? parent.width : 0
-    height: headerItem.height + body.height + (filterRow.expanded ? 2 : 0)
+    // Expansion may change INK, never GEOMETRY: the height is the two parts and
+    // nothing else. The old formula added 2 while expanded because both children
+    // were inset by the frame's 1px stroke; the children now sit at 0 and the
+    // stroke is painted OVER them, so there is nothing left to reserve.
+    height: headerItem.height + body.height
     Accessible.role: Accessible.Grouping
     Accessible.name: filterRow.name
 
-    // One card, one quiet outline. The frame is INSET by its 1px stroke on both
-    // children, and BOTH the header and the body carry rounded corners; the body
-    // being square was what covered the bottom corners of the border.
+    // One card, one quiet outline. Painting follows declaration order, and this
+    // frame is declared first, so it carries z: 1 to land OVER the header and
+    // body fills - otherwise the stroke sat under them and only the ring's outer
+    // half survived. A Rectangle without a MouseArea does not take pointer
+    // events, so the header's drag and click still reach it.
     Rectangle {
         id: cardFrame
         anchors.fill: parent
         visible: filterRow.expanded
+        z: 1
         radius: root.cardRadius
         color: "transparent"
         border.width: 1
@@ -121,11 +127,14 @@ Item {
 
     Rectangle {
         id: headerItem
-        x: filterRow.expanded ? 1 : 0
-        y: filterRow.expanded ? 1 : 0
-        width: parent.width - (filterRow.expanded ? 2 : 0)
+        x: 0
+        y: 0
+        width: parent.width
         height: 30
-        radius: filterRow.expanded ? root.cardInnerRadius : root.cardRadius
+        // The corners are the CARD's radius in both states so the arcs meet the
+        // frame's stroke; a smaller inner radius was what made expanding look
+        // like the header shrank into the border.
+        radius: root.cardRadius
         color: filterRow.expanded || headerMouse.containsMouse ? theme.raised : "transparent"
 
         // Expanded: the header's top corners stay rounded, its bottom edge
@@ -136,7 +145,7 @@ Item {
             anchors.left: parent.left
             anchors.right: parent.right
             anchors.bottom: parent.bottom
-            height: root.cardInnerRadius
+            height: root.cardRadius
             color: headerItem.color
         }
 
@@ -259,22 +268,25 @@ Item {
 
     Rectangle {
         id: body
-        x: filterRow.expanded ? 1 : 0
-        y: headerItem.height + (filterRow.expanded ? 1 : 0)
-        width: parent.width - (filterRow.expanded ? 2 : 0)
+        // Same rule as the header: the body is full width at 0 in both states.
+        // Its only expansion-dependent property is the height that reveals it.
+        x: 0
+        y: headerItem.height
+        width: parent.width
         height: filterRow.expanded ? bodyColumn.implicitHeight + 18 : 0
         visible: filterRow.expanded
         color: theme.base
-        radius: filterRow.expanded ? root.cardInnerRadius : 0
+        radius: root.cardRadius
 
         // Round the BOTTOM of the body only: the header joins it squarely and
-        // the header's own bottom patch does the same at the junction.
+        // the header's own bottom patch does the same at the junction. The patch
+        // is as tall as the radius so it covers the arcs it has to square off.
         Rectangle {
             visible: filterRow.expanded
             anchors.left: parent.left
             anchors.right: parent.right
             anchors.top: parent.top
-            height: root.cardInnerRadius
+            height: root.cardRadius
             color: body.color
         }
 

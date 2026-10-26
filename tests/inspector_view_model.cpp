@@ -4,6 +4,7 @@
 //
 // Run: QT_QPA_PLATFORM=offscreen ./inspector_view_model
 #include <QApplication>
+#include <QVariantMap>
 #include <cstdio>
 
 #include "core/Animator.h"
@@ -18,6 +19,7 @@
 #include "gui/qml/InspectorRowModel.h"
 #include "gui/qml/InspectorViewModel.h"
 #include "gui/ViaPoint.h"
+#include "img/BlendMode.h"
 #include "XCAssert.h"
 #include "XCReport.h"
 
@@ -70,6 +72,24 @@ private:
 
 const core::MoveKey::Data& moveDefault(const core::TimeLine& line) {
     return static_cast<const core::MoveKey*>(line.defaultKey(core::TimeKeyType_Move))->data();
+}
+
+// The expansion state exactly as the delegate would read it, row by row. The
+// gate prints this before the checks below so a regression names the cards it
+// left open (or closed) instead of only the line that tripped.
+QString expansionState(gui::FilterStackModel& aFilters) {
+    QString text;
+    const int count = aFilters.rows().size();
+    for (int i = 0; i < count; ++i) {
+        gui::FilterRowModel* row = aFilters.rowAt(i);
+        if (!row)
+            continue;
+        if (!text.isEmpty())
+            text += QLatin1Char(' ');
+        text += row->kind() + QLatin1Char(':')
+                + (row->expanded() ? QStringLiteral("open") : QStringLiteral("closed"));
+    }
+    return text.isEmpty() ? QStringLiteral("<no rows>") : text;
 }
 
 int run() {
@@ -151,12 +171,53 @@ int run() {
     CHECK(inspector.filters()->rows().size() == 2);
     CHECK(inspector.filters()->rowAt(1)->kind() == QStringLiteral("blur"));
 
+    // Expansion is a SET keyed by TYPE, not one slot. The second add opens its
+    // own card and leaves the first card's state alone (it was collapsed just
+    // above); the old single `mSelected` could not describe this state at all,
+    // because it re-derived every row from one type and so kept exactly one
+    // card open by construction.
+    std::printf("expanded after the second add: %s\n", qPrintable(expansionState(*inspector.filters())));
+    CHECK(!inspector.filters()->rowAt(0)->expanded());
+    CHECK(inspector.filters()->rowAt(1)->expanded());
+
+    inspector.filters()->toggleExpanded(core::TimeKeyType_HSV);
+    std::printf("expanded with both cards open: %s\n", qPrintable(expansionState(*inspector.filters())));
+    CHECK(inspector.filters()->rowAt(0)->expanded());
+    CHECK(inspector.filters()->rowAt(1)->expanded());
+
+    // A playback tick re-projects the set; with no exclusivity in it, both stay
+    // open. This is the frame-tick path that used to close all but one card.
+    inspector.refreshFrame();
+    std::printf("expanded after refreshFrame: %s\n", qPrintable(expansionState(*inspector.filters())));
+    CHECK(inspector.filters()->rowAt(0)->expanded());
+    CHECK(inspector.filters()->rowAt(1)->expanded());
+
+    // One header click flips one type and cannot touch the other card.
+    inspector.filters()->toggleExpanded(core::TimeKeyType_Blur);
+    std::printf("expanded after closing blur: %s\n", qPrintable(expansionState(*inspector.filters())));
+    CHECK(inspector.filters()->rowAt(0)->expanded());
+    CHECK(!inspector.filters()->rowAt(1)->expanded());
+    inspector.filters()->toggleExpanded(core::TimeKeyType_Blur);
+    std::printf("expanded after reopening blur: %s\n", qPrintable(expansionState(*inspector.filters())));
+    CHECK(inspector.filters()->rowAt(0)->expanded());
+    CHECK(inspector.filters()->rowAt(1)->expanded());
+
     // Reorder and the eye are stack state, both undoable.
     inspector.filters()->moveFilter(core::TimeKeyType_Blur, 0);
     CHECK(inspector.filters()->rowAt(0)->kind() == QStringLiteral("blur"));
+    // A reorder DESTROYS and recreates every row (that is why the state cannot
+    // live on a row pointer or an index); the set carries the open cards over,
+    // and the rebuilt rows are constructed already expanded.
+    std::printf("expanded after moving blur to the top: %s\n", qPrintable(expansionState(*inspector.filters())));
+    CHECK(inspector.filters()->rowAt(0)->expanded());
+    CHECK(inspector.filters()->rowAt(1)->expanded());
     project.commandStack().undo();
     inspector.refresh();
     CHECK(inspector.filters()->rowAt(0)->kind() == QStringLiteral("hsv"));
+    // The undo is another rebuild; it must not reopen or close anything either.
+    std::printf("expanded after undoing the reorder: %s\n", qPrintable(expansionState(*inspector.filters())));
+    CHECK(inspector.filters()->rowAt(0)->expanded());
+    CHECK(inspector.filters()->rowAt(1)->expanded());
     inspector.filters()->setFilterEnabled(core::TimeKeyType_Blur, false);
     CHECK(!line.filterEnabled(core::TimeKeyType_Blur));
     project.commandStack().undo();
@@ -167,6 +228,12 @@ int run() {
     inspector.filters()->removeFilter(core::TimeKeyType_HSV);
     CHECK(!inspector.filters()->hasFilter(core::TimeKeyType_HSV));
     CHECK(!line.hasTimeKey(core::TimeKeyType_HSV, 10));
+    // The removed type leaves the set with its filter; the other card is still
+    // open after the rebuild that removal forces.
+    std::printf("expanded after removing hsv: %s\n", qPrintable(expansionState(*inspector.filters())));
+    CHECK(inspector.filters()->rows().size() == 1);
+    CHECK(inspector.filters()->rowAt(0)->kind() == QStringLiteral("blur"));
+    CHECK(inspector.filters()->rowAt(0)->expanded());
     project.commandStack().undo();
     inspector.refresh();
     CHECK(inspector.filters()->hasFilter(core::TimeKeyType_HSV));
@@ -181,6 +248,59 @@ int run() {
     project.commandStack().undo();
     inspector.refresh();
     CHECK(!folder.renderer()->isClipped());
+
+    // The blend dropdown's model: 28 modes, and the widget control's five group
+    // dividers (after Normal, DarkerColor, LighterColor, HardMix, Divide) carried
+    // as a `separatorAfter` flag on the option map - and on nothing else. Named
+    // by MODE, not by index: the flag is what AeComboBox's delegate turns into the
+    // style's 9px band, so a row count or an off-by-one here would silently move
+    // a rule in the popup.
+    const QVariantList blendOptions = inspector.blendOptions();
+    if (blendOptions.size() != 28) {
+        std::printf("FAIL: blend options: %d rows, expected 28\n", int(blendOptions.size()));
+        return 1;
+    }
+    const img::BlendMode blendGroups[] = {
+        img::BlendMode_Normal,
+        img::BlendMode_DarkerColor,
+        img::BlendMode_LighterColor,
+        img::BlendMode_HardMix,
+        img::BlendMode_Divide,
+    };
+    for (int i = 0; i < blendOptions.size(); ++i) {
+        const QVariantMap option = blendOptions.at(i).toMap();
+        const int mode = option.value(QStringLiteral("value")).toInt();
+        bool expectSeparator = false;
+        for (img::BlendMode group : blendGroups)
+            expectSeparator = expectSeparator || mode == int(group);
+        const bool separator = option.value(QStringLiteral("separatorAfter")).toBool();
+        if (separator != expectSeparator) {
+            std::printf("FAIL: row %d (%s): separatorAfter %s, expected %s\n", i,
+                        qPrintable(option.value(QStringLiteral("label")).toString()),
+                        separator ? "true" : "false", expectSeparator ? "true" : "false");
+            return 1;
+        }
+    }
+
+    // The flag is decoration: the value <-> index round trip the panel edits
+    // through must still resolve every mode in both directions.
+    for (int i = 0; i < blendOptions.size(); ++i) {
+        const img::BlendMode expected =
+            img::BlendMode(blendOptions.at(i).toMap().value(QStringLiteral("value")).toInt());
+        inspector.setBlendIndex(i);
+        if (folder.renderer()->blendMode() != expected) {
+            std::printf("FAIL: setBlendIndex(%d) selected mode %d, expected %d\n", i,
+                        int(folder.renderer()->blendMode()), int(expected));
+            return 1;
+        }
+        inspector.refresh();
+        if (inspector.blendIndex() != i) {
+            std::printf("FAIL: row %d (%s) reads back as index %d\n", i,
+                        qPrintable(blendOptions.at(i).toMap().value(QStringLiteral("label")).toString()),
+                        inspector.blendIndex());
+            return 1;
+        }
+    }
 
     std::printf("OK: inspector view model passes\n");
     return 0;

@@ -46,8 +46,8 @@ QString summaryNumber(double aValue, int aDecimals) {
 }
 } // namespace
 
-FilterRowModel::FilterRowModel(core::TimeKeyType aType, InspectorViewModel& aOwner, QObject* aParent):
-    QObject(aParent), mOwner(aOwner), mType(aType) {}
+FilterRowModel::FilterRowModel(core::TimeKeyType aType, InspectorViewModel& aOwner, bool aExpanded, QObject* aParent):
+    QObject(aParent), mOwner(aOwner), mType(aType), mExpanded(aExpanded) {}
 
 QString FilterRowModel::kind() const {
     if (isHSV()) return QStringLiteral("hsv");
@@ -398,13 +398,15 @@ QString FilterStackModel::comingSoonLabel() const { return trFilter("Coming soon
 
 void FilterStackModel::setProject(core::Project* aProject) {
     mProject = aProject;
-    mSelected = core::TimeKeyType_TERM;
+    // A different document has different filters; an open card from the old
+    // one is not a state this stack can carry.
+    mExpanded.clear();
     refresh();
 }
 
 void FilterStackModel::setTarget(core::ObjectNode* aTarget) {
     mTarget = aTarget;
-    mSelected = core::TimeKeyType_TERM;
+    mExpanded.clear();
     refresh();
 }
 
@@ -421,15 +423,26 @@ void FilterStackModel::rebuildRows(const QVector<core::FilterEntry>& aEntries) {
         row->deleteLater();
     mRows.clear();
 
-    bool selectedExists = false;
+    // This rebuild runs for add, remove AND reorder, so it destroys every row
+    // and the expansion cannot live on the rows across it. Prune the set to the
+    // types the lane still has first (a removed filter would otherwise leave
+    // membership behind for a later add of the same type to inherit), then
+    // build each row already expanded: the QML delegate reads `expanded` as
+    // soon as rowsChanged lands, which is before any later setExpanded could
+    // run, and a card that briefly existed collapsed would flash closed on
+    // every drag.
+    QVector<core::TimeKeyType> present;
+    present.reserve(aEntries.size());
     for (const core::FilterEntry& entry : aEntries) {
-        auto* row = new FilterRowModel(entry.type, mOwner, this);
-        mRows.append(row);
-        if (entry.type == mSelected)
-            selectedExists = true;
+        if (mExpanded.contains(entry.type))
+            present.append(entry.type);
     }
-    if (!selectedExists)
-        mSelected = aEntries.isEmpty() ? core::TimeKeyType_TERM : aEntries.front().type;
+    mExpanded = present;
+
+    for (const core::FilterEntry& entry : aEntries) {
+        auto* row = new FilterRowModel(entry.type, mOwner, mExpanded.contains(entry.type), this);
+        mRows.append(row);
+    }
     emit rowsChanged();
 }
 
@@ -440,9 +453,12 @@ void FilterStackModel::refresh() {
             for (FilterRowModel* row : mRows)
                 row->deleteLater();
             mRows.clear();
-            mSelected = core::TimeKeyType_TERM;
             emit rowsChanged();
         }
+        // No timeline means no filters, so nothing can be open; clearing here
+        // and not only when rows existed keeps a stale type from surviving into
+        // the next target and opening its card unasked.
+        mExpanded.clear();
         return;
     }
 
@@ -459,11 +475,13 @@ void FilterStackModel::refresh() {
     if (structureChanged)
         rebuildRows(entries);
 
-    // A user who collapsed every card keeps that state across frame changes.
-    // Only a structural rebuild chooses a first card when nothing is selected.
+    // Expansion is a set of types, so every card the user opened stays open.
+    // A card they collapsed stays collapsed too: this projects the set and
+    // never picks a card on its own (the old first-entry fallback reopened a
+    // card after every structural rebuild, including an undo).
     for (FilterRowModel* row : mRows) {
         row->refresh();
-        row->setExpanded(core::TimeKeyType(row->type()) == mSelected);
+        row->setExpanded(mExpanded.contains(core::TimeKeyType(row->type())));
     }
 }
 
@@ -482,7 +500,11 @@ void FilterStackModel::addFilter(int aType) {
     if (!mProject || !mTarget || !isFilterType(type))
         return;
     ctrl::TimeLineUtil::addFilter(*mProject, *mTarget, type);
-    mSelected = type;
+    // Adding a filter opens it - the documented first-add behaviour. As a set
+    // this is additive: the second add opens that card as well instead of
+    // collapsing the one the user already had open.
+    if (!mExpanded.contains(type))
+        mExpanded.append(type);
     refresh();
 }
 
@@ -491,8 +513,9 @@ void FilterStackModel::removeFilter(int aType) {
     if (!mProject || !mTarget || !isFilterType(type))
         return;
     ctrl::TimeLineUtil::removeFilter(*mProject, *mTarget, type);
-    if (mSelected == type)
-        mSelected = core::TimeKeyType_TERM;
+    // Only the removed type leaves the set; the cards the user left open stay
+    // open across the rebuild that follows.
+    mExpanded.removeAll(type);
     refresh();
 }
 
@@ -517,15 +540,15 @@ void FilterStackModel::setFilterEnabled(int aType, bool aEnabled) {
 
 void FilterStackModel::toggleExpanded(int aType) {
     const auto type = core::TimeKeyType(aType);
-    mSelected = mSelected == type ? core::TimeKeyType_TERM : type;
+    // The header click flips THIS type's membership and nothing else: several
+    // filters can be open at once, which is what a one-slot `mSelected` made
+    // impossible (opening a second card closed the first).
+    if (mExpanded.contains(type))
+        mExpanded.removeAll(type);
+    else
+        mExpanded.append(type);
     for (FilterRowModel* row : mRows)
-        row->setExpanded(core::TimeKeyType(row->type()) == mSelected);
-}
-
-void FilterStackModel::clearExpansion() {
-    mSelected = core::TimeKeyType_TERM;
-    for (FilterRowModel* row : mRows)
-        row->setExpanded(false);
+        row->setExpanded(mExpanded.contains(core::TimeKeyType(row->type())));
 }
 
 } // namespace gui
