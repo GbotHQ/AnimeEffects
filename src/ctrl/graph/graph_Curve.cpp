@@ -247,100 +247,114 @@ void Curve::neighborsOf(const core::TimeKey& aFrom, const core::TimeKey& aTo,
 }
 
 //-------------------------------------------------------------------------------------------------
-float Curve::sampleOver(const core::TimeKey& aFrom, const core::TimeKey& aTo, float aAt, float aD) const {
+const Curve::Prepared& Curve::prepareOver(const core::TimeKey& aFrom, const core::TimeKey& aTo,
+                                          const float aD) const {
+    // THE MEMO. A drawn curve samples one segment `aSamplesPerSegment` times per repaint, and
+    // everything below used to be rebuilt per point (measured, Release: a derived evaluation
+    // costs 78.9 ns one-shot against 5.7 ns once the segment is prepared, and the panel's 8
+    // curves x 600 samples 379 us -> 27 us). The pair AND the span are the key: a wrapped
+    // pair passes the loop span as its length, so the same two keys can be evaluated over
+    // two different lengths and the span is part of what was prepared.
+    if (mPrepared.from == &aFrom && mPrepared.to == &aTo && mPrepared.d == aD)
+        return mPrepared;
+
+    Prepared prep;
+    prep.from = &aFrom;
+    prep.to = &aTo;
+    prep.d = aD;
+    prep.v0 = mChannel.value(aFrom);
+    prep.v1 = mChannel.value(aTo);
+    prep.interpolated = mChannel.isInterpolated();
+
+    // A step-held channel never blends, and this is decided before anything else because the
+    // image key does carry an easing param that playback ignores: sampling it here would
+    // draw an interpolation the document does not have.
+    if (!prep.interpolated || aD == 0.0f) {
+        // A hand-built TimeLine can hold two keys on one frame (createPusher() prevents it
+        // for edits, and Easing would divide by zero); the `from` value stands.
+        mPrepared = prep;
+        return mPrepared;
+    }
+
     const core::TimeKeyType type = mChannel.type();
-    const float v0 = mChannel.value(aFrom);
-    const float v1 = mChannel.value(aTo);
-
-    // A step-held channel never blends, and this is tested before anything else
-    // because the image key does carry an easing param that playback ignores:
-    // sampling it here would draw an interpolation the document does not have.
-    if (!mChannel.isInterpolated()) {
-        return v0;
-    }
-
-    const float d = aD;
-    if (d == 0.0f) {
-        // TimeLine::createPusher() replaces the key at an occupied frame, so a
-        // document edited through the timeline cannot hold two keys on one
-        // frame; a hand-built TimeLine could, and Easing::calculate() would
-        // divide by it. Hold the `from` value rather than crash or return NaN.
-        return v0;
-    }
-
-    // The blender evaluates the easing of the `from` key at the point's frame
-    // offset inside the segment (t = frame - k0->frame), never at the segment's
-    // endpoints and never with the `to` key's param.
-    const float t = aAt - static_cast<float>(aFrom.frame());
     const int component = mChannel.component();
     const util::Easing::Param* easing = easingOf(aFrom, type, component);
     const util::Easing::Param* toEasing = easingOf(aTo, type, component);
-    float rate = 0.0f;
-    if (!easing) {
-        // No graphable channel reaches this: types without an easing param have
-        // no components and so no Channel. A hand-made Channel gets the neutral
-        // (linear) rate instead of an invented curve.
-        rate = t / d;
-    } else if (easing->type == util::Easing::Type_Custom) {
-        // A Custom curve may DERIVE either side from the keys around the
-        // segment. This is the same derivation playback runs (core::
-        // autoEasingContext + HandleMode), so the drawn curve is the played one.
-        // The per-side decision is Curve::derivesHandle's (a Custom FROM param
-        // plus a derived mode on that side), and controlPoint applies exactly
-        // that predicate to each side - the model's ghost publication asks
-        // derivesHandle, so a published kind and the drawn/evaluated pair cannot
-        // disagree. A pair with both sides stored skips the neighbour walk
-        // entirely: the stored controls are the answer then, and they are the
-        // common case.
+
+    // The blender evaluates the easing of the `from` key, never the `to` key's param. A
+    // non-Custom type is NOT prepared here: its table is a handful of flops per sample, and
+    // only the Custom path (which derives control points) was expensive.
+    prep.param = easing;
+    if (easing && easing->type == util::Easing::Type_Custom) {
+        // A Custom curve may DERIVE either side from the keys around the segment. This is
+        // the same derivation playback runs (core::autoEasingContext + HandleMode), so the
+        // drawn curve is the played one. A pair with both sides stored skips the neighbour
+        // walk entirely - the stored controls are the answer then.
         const util::Easing::HandleMode inMode =
             toEasing ? toEasing->handleIn : util::Easing::HandleMode_Aligned;
         if (util::Easing::isDerived(easing->handleOut) || util::Easing::isDerived(inMode)) {
-            const core::TimeKey* prev = nullptr;
-            const core::TimeKey* next = nullptr;
-            neighborsOf(aFrom, aTo, prev, next);
-            util::Easing::AutoContext ctx = core::autoEasingContext(aFrom, aTo, component, prev, next);
+            neighborsOf(aFrom, aTo, prep.prev, prep.next);
+            util::Easing::AutoContext ctx =
+                core::autoEasingContext(aFrom, aTo, component, prep.prev, prep.next);
             ctx.inMode = inMode;
-            rate = util::Easing::calculate(*easing, ctx, t, 0.0f, 1.0f, d);
+            prep.easing.emplace(*easing, ctx, aD);
         } else {
-            rate = util::Easing::calculate(*easing, t, 0.0f, 1.0f, d);
+            prep.easing.emplace(*easing, aD);
         }
-    } else {
-        rate = util::Easing::calculate(*easing, t, 0.0f, 1.0f, d);
+        prep.usable = true;
     }
+    // Move's Catmull-Rom velocities read the same two neighbours even when the easing is
+    // linear or absent, so they are prepared for that type too.
+    if (!prep.prev && !prep.next && type == core::TimeKeyType_Move)
+        neighborsOf(aFrom, aTo, prep.prev, prep.next);
+
+    mPrepared = prep;
+    return mPrepared;
+}
+
+float Curve::sampleOver(const core::TimeKey& aFrom, const core::TimeKey& aTo, float aAt, float aD) const {
+    const Prepared& prep = prepareOver(aFrom, aTo, aD);
+    if (!prep.interpolated || aD == 0.0f)
+        return prep.v0;
+
+    const core::TimeKeyType type = mChannel.type();
+    // The eased fraction of the segment: the prepared segment when the pair has one, and the
+    // neutral (linear) rate otherwise - a hand-made Channel has no easing param and gets no
+    // invented curve.
+    const float t = aAt - static_cast<float>(aFrom.frame());
+    float rate = 0.0f;
+    if (prep.easing)
+        rate = prep.easing->rate(t);
+    else if (prep.param)
+        rate = util::Easing::calculate(*prep.param, t, 0.0f, 1.0f, aD);
+    else
+        rate = t / aD;   // no easing param: a hand-made Channel gets the linear rate
 
     if (type == core::TimeKeyType_Move) {
-        // Move is the one channel playback does not lerp: getMoveExpans() feeds
-        // the two key positions and their Catmull-Rom velocities into a
-        // Ferguson-Coons spline and walks it by arc length. The graph has to run
-        // the same spline, otherwise a curved move path would be drawn as the
-        // straight line it is not.
+        // Move is the one channel playback does not lerp: getMoveExpans() feeds the two key
+        // positions and their Catmull-Rom velocities into a Ferguson-Coons spline and walks
+        // it by arc length. The graph has to run the same spline, otherwise a curved move
+        // path would be drawn as the straight line it is not.
         const core::MoveKey& k0 = static_cast<const core::MoveKey&>(aFrom);
         const core::MoveKey& k1 = static_cast<const core::MoveKey&>(aTo);
-
-        // The gatherer's point(-1) and point(2): the neighbour keys that shape
-        // the velocities. Either is missing at the ends of the key list, and
-        // getCatmullRomVels() handles nulls.
-        const core::TimeKey* prev = nullptr;
-        const core::TimeKey* next = nullptr;
-        neighborsOf(aFrom, aTo, prev, next);
-        const auto knot = static_cast<const core::MoveKey*>(prev);
-        const auto knot2 = static_cast<const core::MoveKey*>(next);
-
+        const auto knot = static_cast<const core::MoveKey*>(prep.prev);
+        const auto knot2 = static_cast<const core::MoveKey*>(prep.next);
         const auto vels = core::MoveKey::getCatmullRomVels(knot, &k0, &k1, knot2);
         util::FergusonCoonsSpline<QVector3D> spline;
-        spline.set(k0.pos().toVector3D(), k1.pos().toVector3D(), vels[0].toVector3D(), vels[1].toVector3D());
+        spline.set(k0.pos().toVector3D(), k1.pos().toVector3D(), vels[0].toVector3D(),
+                   vels[1].toVector3D());
         const QVector2D pos = spline.getByLinear(rate).toVector2D();
         return (mChannel.component() == 1) ? pos.y() : pos.x();
     }
 
     if (type == core::TimeKeyType_HSV) {
-        // blendHSVKey() pushes the blended float through setHue()/setSaturation()
-        // /setValue(), which take ints, so the played value is the TRUNCATED
-        // one. Layer opacity and depth keep their float.
-        return static_cast<float>(static_cast<int>(v0 * (1.0f - rate) + v1 * rate));
+        // blendHSVKey() pushes the blended float through setHue()/setSaturation()/setValue(),
+        // which take ints, so the played value is the TRUNCATED one. Layer opacity and depth
+        // keep their float.
+        return static_cast<float>(static_cast<int>(prep.v0 * (1.0f - rate) + prep.v1 * rate));
     }
 
-    return v0 * (1.0f - rate) + v1 * rate;
+    return prep.v0 * (1.0f - rate) + prep.v1 * rate;
 }
 
 //-------------------------------------------------------------------------------------------------
