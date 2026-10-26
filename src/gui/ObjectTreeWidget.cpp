@@ -177,6 +177,10 @@ ObjectTreeWidget::ObjectTreeWidget(ViaPoint& aViaPoint, GUIResources& aResources
     this->setContextMenuPolicy(Qt::CustomContextMenu);
     this->setSelectionMode(ExtendedSelection);
     this->setHeaderHidden(true);
+    // WITHOUT THIS the view asks the style for its icon size (measured: PM_SmallIconSize
+    // = 16px) and Qt RESCALES the 22px cell down to it - a second resample, and a
+    // downscale at that. The cell is rendered at exactly this size now, in device pixels.
+    this->setIconSize(QSize(kItemSize, kItemSize));
     this->setAnimated(true);
     this->setUniformRowHeights(false);
     this->setDragDropMode(InternalMove);
@@ -501,8 +505,13 @@ void ObjectTreeWidget::updateItemVisibilityAppearance(QTreeWidgetItem* aItem, bo
     const core::TimeKey* imageKey = line ? line->defaultKey(core::TimeKeyType_Image) : nullptr;
     const img::ResourceData* resource =
         imageKey ? static_cast<const core::ImageKey*>(imageKey)->data().resource().get() : nullptr;
+    const qreal dpr = this->devicePixelRatioF();
+    // ONE PIXEL INSET on every side: a cell that exactly filled the 22px row touched the
+    // cell above and below it, so a column of layers read as one continuous strip instead
+    // of one thumbnail per row (measured on a 4x point sample).
+    constexpr int kThumbBox = kItemSize - 2;
     const quint64 thumbKey =
-        resource && resource->hasImage() ? ThumbnailCache::key(resource->image(), kItemSize) : 0;
+        resource && resource->hasImage() ? ThumbnailCache::key(resource->image(), kThumbBox, dpr) : 0;
     // file/folder icons rest at 2/3 of the text's presence, so the labels
     // carry the hierarchy; hidden items fade further on top of that, and a
     // selected hidden item fades less than an unselected one (same rule as
@@ -525,17 +534,24 @@ void ObjectTreeWidget::updateItemVisibilityAppearance(QTreeWidgetItem* aItem, bo
     // the thumbnail is already at row size; the glyph needs its own pixmap at that size
     QPixmap pm;
     if (thumbKey != 0)
-        pm = mThumbnails.layerThumbnail(resource->image(), kItemSize);
+        pm = mThumbnails.layerThumbnail(resource->image(), kThumbBox, dpr);
     if (pm.isNull())
         pm = mGUIResources.icon(isFolder ? "folder" : "file").pixmap(kItemSize, kItemSize);
     // the fade is applied to the whole cell either way, so a thumbnail dims exactly like
     // a glyph did when its layer is hidden
     QPixmap faded(kItemSize, kItemSize);
     faded.fill(Qt::transparent);
+    // centre in LOGICAL units: the thumbnail's width() is device pixels, so its logical
+    // extent is width()/dpr - drawing it at (kItemSize - width())/2 would push a 2x cell
+    // off the left edge
+    const qreal pmDpr = pm.devicePixelRatio() > 0.0 ? pm.devicePixelRatio() : 1.0;
+    const QSizeF logical(pm.width() / pmDpr, pm.height() / pmDpr);
     QPainter painter(&faded);
     painter.setOpacity(baseOpacity * fade);
-    painter.setRenderHint(QPainter::SmoothPixmapTransform, true);
-    painter.drawPixmap((kItemSize - pm.width()) / 2, (kItemSize - pm.height()) / 2, pm);
+    painter.setRenderHint(QPainter::SmoothPixmapTransform, false);
+    painter.drawPixmap(
+        QPointF((kItemSize - logical.width()) / 2.0, (kItemSize - logical.height()) / 2.0), pm
+    );
     painter.end();
     aItem->setIcon(kItemColumn, QIcon(faded));
 }

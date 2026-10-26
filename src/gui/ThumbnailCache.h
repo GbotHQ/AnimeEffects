@@ -29,13 +29,21 @@ namespace gui {
 // quality nothing at 18px and bounds the worst case at a couple of milliseconds.
 class ThumbnailCache {
 public:
-    // The pixmap for this buffer at the given square size, scaled to fit (aspect kept).
-    // Repeat calls with the same image return the same pixmap.
-    QPixmap layerThumbnail(const img::Buffer& aImage, int aSize);
+    // The pixmap for this buffer, fitted inside an aSize LOGICAL square and rendered at
+    // aDpr device pixels per logical pixel. The returned pixmap carries its own
+    // devicePixelRatio, so Qt paints it 1:1 - resampling it here and letting the view
+    // resample again is what made the first version soft.
+    //
+    // Its SIZE is the artwork's ASPECT (a 600x160 layer gives 22x6, not 22x22 with bands):
+    // the checker is a backdrop for ALPHA, not for letterboxing, so there is nothing to
+    // letterbox - the row centres the strip and the checker only shows through pixels the
+    // layer actually leaves transparent.
+    QPixmap layerThumbnail(const img::Buffer& aImage, int aSize, qreal aDpr = 1.0);
 
     // The key a caller can store beside its row to know when the image behind a
-    // thumbnail has changed (a reimport replaces the buffer).
-    static quint64 key(const img::Buffer& aImage, int aSize);
+    // thumbnail has changed (a reimport replaces the buffer) or when the size it is
+    // drawn at has.
+    static quint64 key(const img::Buffer& aImage, int aSize, qreal aDpr = 1.0);
 
     void clear() { mCache.clear(); }
 
@@ -45,8 +53,13 @@ private:
     QHash<quint64, QPixmap> mCache;
 
     // Above this many source pixels the image is halved (repeatedly) before the smooth
-    // scale: measured 32x cheaper on a 16.9 Mpx layer and indistinguishable at 18px.
+    // scale: measured 32x cheaper on a 16.9 Mpx layer and indistinguishable at 22px.
     static constexpr int kSubsamplePixels = 1024 * 1024;
+
+    // The alpha checker's square, in DEVICE pixels: 2 divides every even cell exactly, so
+    // the pattern never ends in a sliver (the first version used size/4 = 4-5px, which
+    // tiled 5.5 times into a 22px cell and read as a border rather than a backdrop).
+    static constexpr int kCheckerSquare = 2;
 };
 
 } // namespace gui

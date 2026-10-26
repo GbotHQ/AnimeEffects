@@ -20,6 +20,7 @@
 #include <QGuiApplication>
 #include <QImage>
 #include <QPixmap>
+#include <QSet>
 #include <cstdio>
 #include <cstdlib>
 #include <vector>
@@ -81,16 +82,28 @@ XCErrorHandler* gXCErrorHandler = &gErrorHandler;
 int main(int argc, char** argv) {
     QGuiApplication app(argc, argv);
 
-    constexpr int kSize = 18;
+    constexpr int kSize = 22;   // the tree row's slot (ctrl::TimeLineRow::kHeight)
     gui::ThumbnailCache cache;
 
     // ---- [1] a fully transparent layer still gets a cell ----
     {
         const img::Buffer clear = makeBuffer(QSize(200, 160), QColor(0, 0, 0, 0));
         const QPixmap pm = cache.layerThumbnail(clear, kSize);
-        std::printf("MEASURED transparent layer: %dx%d px cell\n", pm.width(), pm.height());
+        std::printf("MEASURED transparent layer: %dx%d device px, dpr %.2f\n", pm.width(), pm.height(),
+                    pm.devicePixelRatio());
         check(!pm.isNull(), "a transparent layer still gets a cell (not 'no icon')");
-        check(pm.size() == QSize(kSize, kSize), "and it fills the row's slot");
+        check(pm.width() == kSize || pm.height() == kSize, "its long side fills the row's slot");
+        // the cell is ALL checker and the checker has two tones: a transparent layer shows
+        // the backdrop, which is what keeps the column's rhythm (not a blank space)
+        const QImage cell = asImage(pm);
+        QSet<QRgb> tones;
+        for (int y = 0; y < cell.height(); ++y) {
+            for (int x = 0; x < cell.width(); ++x)
+                tones.insert(cell.pixel(x, y));
+        }
+        std::printf("MEASURED transparent layer: %dx%d cell, %d distinct tones\n", pm.width(), pm.height(),
+                    int(tones.size()));
+        check(tones.size() >= 2, "and the backdrop is a checker, not a flat fill");
     }
 
     // ---- [2] the art is drawn, the corners are the checker ----
@@ -98,15 +111,22 @@ int main(int argc, char** argv) {
         const QColor art(220, 90, 40);
         const img::Buffer buffer = makeBuffer(QSize(606, 530), art);
         const QImage cell = asImage(cache.layerThumbnail(buffer, kSize));
-        const QColor centre = cell.pixelColor(kSize / 2, kSize / 2);
+        const QColor centre = cell.pixelColor(cell.width() / 2, cell.height() / 2);
+        // EVERY pixel is the art: an OPAQUE layer must show no checker at all, which is what
+        // proves the cell is the artwork's own box rather than a square with bands
+        int offArt = 0;
+        for (int y = 0; y < cell.height(); ++y) {
+            for (int x = 0; x < cell.width(); ++x) {
+                if (distance(cell.pixelColor(x, y), art) > 24)
+                    ++offArt;
+            }
+        }
         std::printf(
-            "MEASURED opaque layer: centre (%d,%d,%d) of (%d,%d,%d)\n", centre.red(), centre.green(),
-            centre.blue(), art.red(), art.green(), art.blue()
+            "MEASURED opaque layer: %dx%d cell, centre (%d,%d,%d), %d pixels off the art\n", cell.width(),
+            cell.height(), centre.red(), centre.green(), centre.blue(), offArt
         );
         check(distance(centre, art) <= 24, "the layer's own colour is at the centre");
-        // A SQUARE-ISH source fills the cell's width, so its corners are art too; the
-        // checker is only visible where the aspect leaves a margin, which [3] asserts.
-        check(cell.size() == QSize(kSize, kSize), "and the cell is the row's slot");
+        check(offArt == 0, "and an opaque layer shows NO checker: the cell is the artwork's box");
     }
 
     // ---- [3] aspect is kept: a wide source leaves checker above and below ----
@@ -114,14 +134,17 @@ int main(int argc, char** argv) {
         const QColor art(40, 200, 120);
         const img::Buffer buffer = makeBuffer(QSize(600, 100), art);
         const QImage cell = asImage(cache.layerThumbnail(buffer, kSize));
-        const QColor topRow = cell.pixelColor(kSize / 2, 1);
-        const QColor middle = cell.pixelColor(kSize / 2, kSize / 2);
-        std::printf(
-            "MEASURED wide layer: middle (%d,%d,%d) top row (%d,%d,%d)\n", middle.red(), middle.green(),
-            middle.blue(), topRow.red(), topRow.green(), topRow.blue()
-        );
-        check(distance(middle, art) <= 24, "the wide source fills the middle of the cell");
-        check(distance(topRow, art) > 40, "and leaves the cell's top row as checker (no stretch)");
+        std::printf("MEASURED wide layer: %dx%d cell\n", cell.width(), cell.height());
+        check(cell.width() == kSize && cell.height() < cell.width() / 2,
+              "a wide source gives a WIDE cell, not a square with bands");
+        int offArt = 0;
+        for (int y = 0; y < cell.height(); ++y) {
+            for (int x = 0; x < cell.width(); ++x) {
+                if (distance(cell.pixelColor(x, y), art) > 24)
+                    ++offArt;
+            }
+        }
+        check(offArt == 0, "and every row of that strip is the art (nothing letterboxed inside it)");
     }
 
     // ---- [4] the cache is keyed on the pixels ----
@@ -130,6 +153,10 @@ int main(int argc, char** argv) {
         const img::Buffer second = makeBuffer(QSize(300, 300), QColor(60, 220, 60));
         const quint64 keyFirst = gui::ThumbnailCache::key(first, kSize);
         const quint64 keySecond = gui::ThumbnailCache::key(second, kSize);
+        check(
+            gui::ThumbnailCache::key(first, kSize, 2.0) != keyFirst,
+            "the drawn size (DPR) is part of the key: the same source at 2x is another pixmap"
+        );
         check(keyFirst != keySecond, "a reimported image has a different key");
 
         const QPixmap a = cache.layerThumbnail(first, kSize);
@@ -148,9 +175,22 @@ int main(int argc, char** argv) {
         const QColor art(240, 240, 40);
         const img::Buffer big = makeBuffer(QSize(2600, 2600), art);   // 6.8 Mpx
         const QImage cell = asImage(cache.layerThumbnail(big, kSize));
-        const QColor centre = cell.pixelColor(kSize / 2, kSize / 2);
+        const QColor centre = cell.pixelColor(cell.width() / 2, cell.height() / 2);
         std::printf("MEASURED big source: centre (%d,%d,%d)\n", centre.red(), centre.green(), centre.blue());
         check(distance(centre, art) <= 24, "a large layer still lands its colour in the cell");
+    }
+
+    // ---- [6] a scaled session renders at device pixels, painted 1:1 ----
+    {
+        const img::Buffer buffer = makeBuffer(QSize(400, 400), QColor(200, 200, 60));
+        const QPixmap one = cache.layerThumbnail(buffer, kSize, 1.0);
+        const QPixmap two = cache.layerThumbnail(buffer, kSize, 2.0);
+        std::printf(
+            "MEASURED dpr: 1.0 -> %dx%d (dpr %.1f), 2.0 -> %dx%d (dpr %.1f)\n", one.width(), one.height(),
+            one.devicePixelRatio(), two.width(), two.height(), two.devicePixelRatio()
+        );
+        check(one.width() == 22 && two.width() == 44, "a 2x session renders the cell at 44 device px");
+        check(two.devicePixelRatio() == 2.0, "and the pixmap says so, so Qt does not rescale it");
     }
 
     if (failures == 0)

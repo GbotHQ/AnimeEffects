@@ -29,21 +29,24 @@ QImage viewOf(const img::Buffer& aImage) {
 
 QImage ThumbnailCache::toImage(const img::Buffer& aImage) { return viewOf(aImage); }
 
-quint64 ThumbnailCache::key(const img::Buffer& aImage, int aSize) {
+quint64 ThumbnailCache::key(const img::Buffer& aImage, int aSize, qreal aDpr) {
     // A REIMPORT REPLACES THE BUFFER, so the data pointer and the size together identify
     // the pixels: nothing else about a resource image changes in place (the app uploads
-    // the texture from this same buffer, and a reload hands over a new block).
+    // the texture from this same buffer, and a reload hands over a new block). The drawn
+    // size is part of the key because the same source at another DPR is another pixmap.
     quint64 h = reinterpret_cast<quint64>(aImage.data());
     h ^= quint64(aImage.size()) * 0x9E3779B97F4A7C15ull;
     h ^= quint64(aImage.pixelSize().width()) << 21;
     h ^= quint64(aImage.pixelSize().height()) << 42;
     h ^= quint64(aSize) * 0xBF58476D1CE4E5B9ull;
     h ^= quint64(aImage.format()) * 0x94D049BB133111EBull;
+    h ^= quint64(qRound(aDpr * 1000.0)) * 0xC2B2AE3D27D4EB4Full;
     return h;
 }
 
-QPixmap ThumbnailCache::layerThumbnail(const img::Buffer& aImage, int aSize) {
-    const quint64 k = key(aImage, aSize);
+QPixmap ThumbnailCache::layerThumbnail(const img::Buffer& aImage, int aSize, qreal aDpr) {
+    const qreal dpr = aDpr > 0.0 ? aDpr : 1.0;
+    const quint64 k = key(aImage, aSize, dpr);
     const auto found = mCache.constFind(k);
     if (found != mCache.constEnd())
         return found.value();
@@ -52,60 +55,50 @@ QPixmap ThumbnailCache::layerThumbnail(const img::Buffer& aImage, int aSize) {
     if (image.isNull())
         return QPixmap();
 
+    const int box = std::max(2, qRound(aSize * dpr));
+    // the artwork's own aspect inside the box, in device pixels, at least 2px on each side
+    const QSize target = image.size().scaled(QSize(box, box), Qt::KeepAspectRatio);
+    const int w = std::max(2, target.width());
+    const int h = std::max(2, target.height());
+
     // SUBSAMPLE FIRST when the source is big. Measured on a 16.9 Mpx layer: 75.7 ms
-    // direct, 2.33 ms after a 1/8 fast pass, and the 18px result is indistinguishable.
+    // direct, 2.33 ms after a 1/8 fast pass, and the result is indistinguishable at this
+    // size - so the halving runs until the source is small enough to smooth cheaply.
     while (qint64(image.width()) * image.height() > kSubsamplePixels) {
         image = image.scaled(
             std::max(1, image.width() / 2), std::max(1, image.height() / 2), Qt::IgnoreAspectRatio,
             Qt::FastTransformation
         );
     }
-    // THE CELL, NOT JUST THE IMAGE: an alpha CHECKER below and the image fitted inside.
-    // A layer whose pixels are fully transparent otherwise draws as NO ICON AT ALL -
-    // measured: two rows lost their glyph and the column's rhythm with it - and a
-    // checker is how an alpha channel is shown everywhere.
-    QImage cell(aSize, aSize, QImage::Format_ARGB32_Premultiplied);
+    if (image.width() != w || image.height() != h)
+        image = image.scaled(w, h, Qt::IgnoreAspectRatio, Qt::SmoothTransformation);
+
+    // THE CHECKER IS THE BACKDROP, the art sits on it 1:1: at 2px squares the pattern
+    // divides every cell exactly and shows only where the layer leaves pixels transparent.
+    QImage cell(w, h, QImage::Format_ARGB32_Premultiplied);
     {
-        // two steps that read on a DARK row: the art of a character layer is mostly
-        // dark linework, so the cell needs a floor light enough to separate it
-        const QColor light(255, 255, 255, 26);
-        const QColor dark(0, 0, 0, 52);
-        cell.fill(dark);
+        cell.fill(QColor(255, 255, 255, 22));
         QPainter checker(&cell);
         checker.setPen(Qt::NoPen);
-        checker.setBrush(light);
-        const int square = std::max(2, aSize / 4);
-        for (int y = 0; y < aSize; y += square) {
-            for (int x = 0; x < aSize; x += square) {
-                if (((x / square) + (y / square)) % 2 == 0)
-                    checker.drawRect(x, y, square, square);
+        checker.setBrush(QColor(0, 0, 0, 34));
+        for (int y = 0; y < h; y += kCheckerSquare) {
+            for (int x = 0; x < w; x += kCheckerSquare) {
+                if (((x / kCheckerSquare) + (y / kCheckerSquare)) % 2 == 0)
+                    checker.drawRect(x, y, kCheckerSquare, kCheckerSquare);
             }
         }
         checker.end();
     }
-
-    QImage thumb = image;
-    if (thumb.width() > aSize || thumb.height() > aSize)
-        thumb = thumb.scaled(aSize, aSize, Qt::KeepAspectRatio, Qt::SmoothTransformation);
     {
         QPainter painter(&cell);
-        const int x = (aSize - thumb.width()) / 2;
-        const int y = (aSize - thumb.height()) / 2;
-        painter.drawImage(x, y, thumb);
+        painter.drawImage(0, 0, image);
         painter.end();
     }
 
-    // a 1px frame: the cell's own boundary, so a layer whose art is dark or empty still
-    // reads as an image rather than as a gap in the column
-    {
-        QPainter frame(&cell);
-        frame.setBrush(Qt::NoBrush);
-        frame.setPen(QPen(QColor(255, 255, 255, 40), 1));
-        frame.drawRect(0, 0, aSize - 1, aSize - 1);
-        frame.end();
-    }
-
-    const QPixmap pixmap = QPixmap::fromImage(cell);
+    QPixmap pixmap = QPixmap::fromImage(cell);
+    // the pixmap IS device pixels; this is what makes Qt paint it 1:1 instead of scaling
+    // a 22px pixmap down to the 16px an unstyled QTreeWidget asks for
+    pixmap.setDevicePixelRatio(dpr);
     mCache.insert(k, pixmap);
     return pixmap;
 }
