@@ -24,7 +24,9 @@
 #include "ctrl/ImageFileLoader.h"
 #include "gui/ResourceDialog.h"
 #include "gui/ProjectHook.h"
+#include "core/ImageKey.h"
 #include "core/MaskKey.h"
+#include "gui/ThumbnailCache.h"
 #include "gui/theme/Colors.h"
 #include "gui/obj/obj_MoveItem.h"
 #include "gui/obj/obj_InsertItem.h"
@@ -56,6 +58,9 @@ static const int kColumnDecorationGap = 4;
 // operator==, so setIcon would always emit dataChanged -> updateColumnWidth
 // (O(N) per row), making a full refresh O(N^2) per selection change.
 constexpr int kIconFadeRole = Qt::UserRole + 1;
+// The thumbnail's identity: the fade guard alone cannot see a REIMPORT, which hands the
+// layer a different buffer while the fade (and the selection) stay exactly the same.
+constexpr int kIconThumbRole = Qt::UserRole + 2;
 // Scrollable space kept after the last row so collapsing a branch near the
 // bottom doesn't make the view jump when the content height shrinks.
 static const int kBottomPadding = 12;
@@ -482,8 +487,22 @@ void ObjectTreeWidget::updateItemVisibilityAppearance(QTreeWidgetItem* aItem, bo
     }
     aItem->setForeground(kItemColumn, QBrush(textColor));
 
+    // A LAYER SHOWS ITS OWN PIXELS; a folder (and a layer with no image, such as a fill
+    // or adjustment layer) keeps the glyph. Recognition only: the source image is what
+    // identifies a layer, and it is what the importer already has on the CPU - a
+    // rendered thumbnail would need a GL readback per row and would go blank for a
+    // masked-out layer, which is the opposite of a navigator's job.
     const bool isFolder = (aItem->flags() & Qt::ItemIsDropEnabled) != 0;
-    QIcon icon = mGUIResources.icon(isFolder ? "folder" : "file");
+    QIcon icon;
+    const obj::Item* objItem = obj::Item::cast(aItem);
+    const core::LayerNode* layer =
+        objItem && !isFolder ? dynamic_cast<const core::LayerNode*>(&objItem->node()) : nullptr;
+    const core::TimeLine* line = layer ? layer->timeLine() : nullptr;
+    const core::TimeKey* imageKey = line ? line->defaultKey(core::TimeKeyType_Image) : nullptr;
+    const img::ResourceData* resource =
+        imageKey ? static_cast<const core::ImageKey*>(imageKey)->data().resource().get() : nullptr;
+    const quint64 thumbKey =
+        resource && resource->hasImage() ? ThumbnailCache::key(resource->image(), kItemSize) : 0;
     // file/folder icons rest at 2/3 of the text's presence, so the labels
     // carry the hierarchy; hidden items fade further on top of that, and a
     // selected hidden item fades less than an unselected one (same rule as
@@ -497,18 +516,28 @@ void ObjectTreeWidget::updateItemVisibilityAppearance(QTreeWidgetItem* aItem, bo
     // Skip the rebuild when the fade is unchanged (selection refreshes run
     // over every row): the foreground above already early-returns on an equal
     // brush, but setIcon cannot — QIcon has no operator==.
-    if (qFuzzyCompare(aItem->data(kItemColumn, kIconFadeRole).toReal(), effectiveFade))
+    if (qFuzzyCompare(aItem->data(kItemColumn, kIconFadeRole).toReal(), effectiveFade)
+        && aItem->data(kItemColumn, kIconThumbRole).toULongLong() == thumbKey)
         return;
     aItem->setData(kItemColumn, kIconFadeRole, effectiveFade);
-    const QPixmap pm = icon.pixmap(kItemSize, kItemSize);
-    QPixmap faded(pm.size());
+    aItem->setData(kItemColumn, kIconThumbRole, QVariant::fromValue<qulonglong>(thumbKey));
+
+    // the thumbnail is already at row size; the glyph needs its own pixmap at that size
+    QPixmap pm;
+    if (thumbKey != 0)
+        pm = mThumbnails.layerThumbnail(resource->image(), kItemSize);
+    if (pm.isNull())
+        pm = mGUIResources.icon(isFolder ? "folder" : "file").pixmap(kItemSize, kItemSize);
+    // the fade is applied to the whole cell either way, so a thumbnail dims exactly like
+    // a glyph did when its layer is hidden
+    QPixmap faded(kItemSize, kItemSize);
     faded.fill(Qt::transparent);
     QPainter painter(&faded);
     painter.setOpacity(baseOpacity * fade);
-    painter.drawPixmap(0, 0, pm);
+    painter.setRenderHint(QPainter::SmoothPixmapTransform, true);
+    painter.drawPixmap((kItemSize - pm.width()) / 2, (kItemSize - pm.height()) / 2, pm);
     painter.end();
-    icon = QIcon(faded);
-    aItem->setIcon(kItemColumn, icon);
+    aItem->setIcon(kItemColumn, QIcon(faded));
 }
 
 obj::Item* ObjectTreeWidget::createFolderItem(core::ObjectNode& aNode) {

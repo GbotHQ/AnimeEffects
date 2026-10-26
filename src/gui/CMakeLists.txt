@@ -51,6 +51,7 @@ add_executable(${PROJECT_NAME} WIN32 MACOSX_BUNDLE
     NewProjectDialog.cpp NewProjectDialog.h
     AppStyle.cpp AppStyle.h
     ObjectTreeWidget.cpp ObjectTreeWidget.h
+    ThumbnailCache.cpp ThumbnailCache.h
     # The dock header's channel list: the panel's ONE control is a view action, so the
     # design hosts it in the header and the list is its own widget (not a QMenu: the
     # design's 22px rows and its swatch gaps are not reachable through AppStyle's menu

@@ -4609,3 +4609,49 @@ And one that is not a defect: a FOLDER's mask covers ITS OWN content box, which 
 the canvas (measured: `Folder16`'s origin at world 285,264). A stroke pressed where the *picture* is
 lands outside that folder's box and paints nothing - correctly. Select the node you are painting, or
 fill the viewport and check the boundary.
+
+## The object tree's layer thumbnails (2026-10-26)
+
+A leaf layer's icon IS its own pixels: `gui::ThumbnailCache` (one file, cached) replaces the
+file glyph in the existing icon slot, so there is no new column, no new width, and the hidden
+row's existing fade dims a thumbnail exactly as it dimmed a glyph. Recognition only - the
+SOURCE image, never the rendered result - and a FOLDER keeps its folder glyph.
+
+Why not the rendered result, and why not folders, both measured or bounded:
+
+- A rendered thumbnail is a GL readback per row and would go BLANK for a masked-out layer,
+  which is the opposite of a navigator's job.
+- A folder has no source pixels: its content IS a composite, so a folder thumbnail can only be
+  a render through the real renderer or a second CPU compositor that drifts from it (blend
+  modes, filters, mattes, clipping). Costed anyway: compositing cached 18px child thumbnails
+  is 0.010 ms for 5 children and 0.038 ms for 40 - cheap, and still the wrong picture.
+
+COST, measured on this machine (`QImage::scaled` from a real layer buffer):
+
+| source | path | time |
+|---|---|---|
+| 606x530 | smooth to 18px | 0.408 ms |
+| 16.9 Mpx (the biggest layer in the corpus) | smooth directly | **75.7 ms** |
+| 16.9 Mpx | 1/8 fast, then smooth | **2.33 ms** |
+| cache hit | hash lookup | ~0 |
+
+So `kSubsamplePixels` (1 Mpx) halves a big source first - free at 18px and the difference
+between a hitch and not. Real projects here are 33-172 leaf layers, 2-104 Mpx total, i.e. 3-18 ms
+to thumbnail a whole typical project and ~110 ms for the heaviest, ONCE, lazily and cached -
+which is the other reason the tree must never scale inside `paint()`.
+
+TWO DEFECTS the screenshots caught, both invisible in the code:
+
+- **A fully transparent layer drew as NO ICON AT ALL** - the row lost its glyph and the column's
+  rhythm with it. A cell is always returned: an alpha CHECKER under the art (the standard
+  presentation), a 1px frame, and the art fitted inside keeping its aspect.
+- **The fade guard was the only icon key.** `kIconFadeRole` compares the fade, so a REIMPORT -
+  which hands the layer a different buffer while the fade and the selection stay identical -
+  never repainted the icon. `kIconThumbRole` carries `ThumbnailCache::key(buffer, size)` now, so
+  a live-link reload updates the thumbnail.
+
+Gate: `tests/layer_thumbnails.cpp` - a transparent layer still gets an 18x18 cell; an opaque
+source's own colour lands at the centre; a wide source keeps its aspect and leaves checker above;
+the same buffer returns the same pixmap and a new buffer a different one; a 6.8 Mpx source takes
+the subsample path and still lands its colour. Suite: 67 pass / 0 fail. Evidence:
+`docs/design/tree/layer-thumbnails.png`.

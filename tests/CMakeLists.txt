@@ -186,6 +186,23 @@ target_link_libraries(creation_select_keys PRIVATE
 # between their bounds. Drives the real TimeLineUtil commands; headless.
 # See mask_mapping.cpp: the ONE content<->screen inverse the brush and the rubylith
 # share. Pure matrix maths, so it needs nothing but the camera and the node transform.
+# See layer_thumbnails.cpp: the object tree's cached layer thumbnails - a cell always,
+# the art inside it, keyed on the pixels so a reimport updates.
+add_executable(layer_thumbnails layer_thumbnails.cpp
+    ../src/gui/ThumbnailCache.cpp)
+target_include_directories(layer_thumbnails PRIVATE .. ../src ../src/gui)
+target_compile_definitions(layer_thumbnails PRIVATE
+    AE_MAJOR_VERSION=1
+    AE_MINOR_VERSION=7
+    AE_MICRO_VERSION=1
+    USE_GL_CORE_PROFILE
+)
+target_link_libraries(layer_thumbnails PRIVATE
+    Qt6::Core Qt6::Gui Qt6::Widgets
+    Qt6::OpenGL Qt6::OpenGLWidgets
+    img util
+)
+
 add_executable(mask_mapping mask_mapping.cpp)
 target_include_directories(mask_mapping PRIVATE .. ../src)
 target_compile_definitions(mask_mapping PRIVATE
