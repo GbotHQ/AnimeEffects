@@ -56,10 +56,11 @@ private:
     // scale: measured 32x cheaper on a 16.9 Mpx layer and indistinguishable at 22px.
     static constexpr int kSubsamplePixels = 1024 * 1024;
 
-    // The alpha checker's square, in DEVICE pixels: 2 divides every even cell exactly, so
-    // the pattern never ends in a sliver (the first version used size/4 = 4-5px, which
-    // tiled 5.5 times into a 22px cell and read as a border rather than a backdrop).
-    static constexpr int kCheckerSquare = 2;
+    // The alpha checker's square, in LOGICAL pixels: 5 divides the 20px cell exactly (four
+    // tiles, no sliver), and the size is what lets the tiles stay dim - at 4px the pair had
+    // to be 26 levels apart to read, at 5px 18 is enough, so the cell no longer lifts off
+    // the row (measured: 69/43 was reported as too bright; 46/28 sits at the row's value).
+    static constexpr int kCheckerSquare = 5;
 };
 
 } // namespace gui

@@ -4654,13 +4654,15 @@ THE CHECKER AND THE FRAME, as finally decided (the review asked for both):
 
 - **4 LOGICAL-px squares**, not 2. At 2px the pattern read as dithering, not as a checker
   (reported from the running app).
-- **Theme tokens at 69/43 (dark) and 226/196 (light)**: `Colors::checkerLight`/`checkerDark`.
-  Two corrections landed here, and the ORDER matters: at 2px the pair read as dithering, so it
-  went to 4px AND brightened (90/55) - which was then reported as too bright on a dark panel.
-  The fix is that READABILITY and BRIGHTNESS are independent: the spread stays ~26 levels
-  (what makes 4px squares read) while both tiles sit near the row's own value (69 on 43 against
-  a #262626 row, which is the same band Photoshop's dark layer panel uses, ~74/56). The light
-  theme's pair sits below its pale row the same way (226/196 against #f5f5f5).
+- **5 LOGICAL-px tiles at 46/28 (dark) and 236/216 (light)**: `kCheckerSquare` and
+  `Colors::checkerLight`/`checkerDark`. THREE corrections landed here, and the order is the
+  lesson: 2px at 27 levels read as dithering; 4px at 35 levels read fine but was reported as
+  TOO BRIGHT (90/55 is 52 levels above a #262626 row); 4px at 26 levels was still too bright.
+  The property that matters is that **the pair's AVERAGE sits at the row's own value** (37 on
+  38) - any pair centred above the row reads as a lit patch whatever its spread. Tile SIZE buys
+  back the readability that dimming costs: 4px needed 26 levels to read, 5px needs 18, and 5
+  divides the 20px cell into exactly four tiles with no sliver (6px left a 2px one). Measured:
+  `MEASURED checker tiles: dark light=46 dark=28, light light=236 dark=216`.
 - **A 1px `hairline` frame**, restored on purpose: a checker only proves a cell exists when
   the layer is TRANSPARENT, and a dark drawing on a dark row needs its boundary (it is also
   what Photoshop draws). It is drawn on the cell's outer pixel, which costs 1px of art.

@@ -496,8 +496,8 @@ struct Colors {
             paletteColor(kTailwindRows[kWarningRow][kTailwindLight[kWarning]]), // warning
             // the alpha checker: two steps below the pale row, ~30 levels apart (see the
             // dark theme's pair for why it stays close to the row's own value)
-            QColor(0xe2, 0xe2, 0xe2), // checkerLight
-            QColor(0xc4, 0xc4, 0xc4), // checkerDark
+            QColor(0xec, 0xec, 0xec), // checkerLight  (236: the row is #f5f5f5 = 245)
+            QColor(0xd8, 0xd8, 0xd8), // checkerDark   (216)
             false, // isDark
         };
         return c;
@@ -571,8 +571,8 @@ struct Colors {
             // reported as too bright on a dark panel) but still ~26 levels apart, so 4px
             // squares read as a checker; the 1px frame draws the cell's boundary, so the
             // tiles do not have to brighten the row to prove themselves
-            QColor(0x45, 0x45, 0x45), // checkerLight
-            QColor(0x2b, 0x2b, 0x2b), // checkerDark
+            QColor(0x2e, 0x2e, 0x2e), // checkerLight  (46: the row is #262626 = 38)
+            QColor(0x1c, 0x1c, 0x1c), // checkerDark   (28)
             true, // isDark
         };
         return c;

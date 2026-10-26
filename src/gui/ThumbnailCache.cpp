@@ -80,7 +80,7 @@ QPixmap ThumbnailCache::layerThumbnail(const img::Buffer& aImage, int aSize, qre
     // review's report). The square is LOGICAL (4px) times the DPR, so a scaled session gets
     // a checker of the same apparent size.
     const theme::Colors& colors = theme::Colors::current();
-    const int square = std::max(2, qRound(4.0 * dpr));
+    const int square = std::max(2, qRound(double(kCheckerSquare) * dpr));
     QImage cell(w, h, QImage::Format_ARGB32_Premultiplied);
     {
         cell.fill(colors.checkerDark);

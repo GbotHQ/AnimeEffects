@@ -201,8 +201,10 @@ int main(int argc, char** argv) {
             spread(dark), dark.checkerLight.red(), dark.checkerDark.red(), spread(light),
             light.checkerLight.red(), light.checkerDark.red()
         );
-        check(spread(dark) >= 24, "the dark theme's two tiles differ by at least 24 levels");
-        check(spread(light) >= 18, "and so do the light theme's");
+        // 5px tiles read at a lower step than 4px did (18 vs the 26 that 4px needed), which
+        // is what lets both tiles come down to the row's own value
+        check(spread(dark) >= 16, "the dark theme's two tiles differ by at least 16 levels");
+        check(spread(light) >= 16, "and so do the light theme's");
         // BRIGHTNESS, which is what "too bright" was about: the pair has to READ as a
         // checker without lifting the panel. The first pair (90/55) was 52 levels above a
         // #262626 row and was reported as loud; 31 is the ceiling now.
@@ -215,8 +217,15 @@ int main(int argc, char** argv) {
             dark.checkerLight.red(), dark.checkerDark.red(), light.checkerLight.red(),
             light.checkerDark.red()
         );
-        check(dark.checkerLight.red() <= 0x48, "the dark theme's tiles stay dim (<= 0x48)");
-        check(light.checkerLight.red() >= 0xd8, "and the light theme's stay pale (>= 0xd8)");
+        check(dark.checkerLight.red() <= 0x30, "the dark theme's tiles stay dim (<= 0x30)");
+        check(light.checkerLight.red() >= 0xe8, "and the light theme's stay pale (>= 0xe8)");
+        // the cell as a whole must not lift off the row: the pair's AVERAGE stays within a
+        // few levels of the surface, which is what "too bright" was actually about
+        std::printf(
+            "MEASURED checker average vs row: dark %d on %d, light %d on %d\n",
+            (dark.checkerLight.red() + dark.checkerDark.red()) / 2, dark.base.red(),
+            (light.checkerLight.red() + light.checkerDark.red()) / 2, light.base.red()
+        );
         // and both tiles sit on the same side of their row, so the cell reads as a field
         check(
             dark.checkerDark.red() >= dark.base.red(),
