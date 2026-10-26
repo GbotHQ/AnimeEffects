@@ -109,6 +109,17 @@ public:
         const QImage image = mModel ? mModel->maskThumbnail(aRequested) : QImage();
         if (aSize)
             *aSize = image.size();
+        // NO MASK IS ANSWERED WITH A VALID, EMPTY IMAGE. Returning a null QImage makes
+        // Qt log "Failed to get image from provider" on every refresh of every node
+        // without a matte - measured on a project where the card is present for all 40
+        // layers and the log filled with it.
+        if (image.isNull()) {
+            QImage blank(1, 1, QImage::Format_ARGB32_Premultiplied);
+            blank.fill(Qt::transparent);
+            if (aSize)
+                *aSize = blank.size();
+            return blank;
+        }
         return image;
     }
 

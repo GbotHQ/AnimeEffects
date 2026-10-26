@@ -56,6 +56,7 @@
 #include "gl/DeviceInfo.h"
 #include "gl/Global.h"
 #include "core/ImageKey.h"
+#include "core/MaskKey.h"
 #include "core/Project.h"
 #include "core/Animator.h"
 #include "ctrl/ImageFileLoader.h"
@@ -176,6 +177,9 @@ struct LayerSpec {
     const char* fillKey = nullptr;
     // Write a 20-byte layer-mask record, the shape PSDReader parses into `mask`.
     bool masked = false;
+    // ...and the mask's own PIXELS: channel id -2 over the mask rect, 0 on the left
+    // column and 255 on the right (hidden / visible), so an assertion can name both.
+    bool maskChannel = false;
 };
 
 std::string layerRecord(const LayerSpec& aSpec)
@@ -185,7 +189,7 @@ std::string layerRecord(const LayerSpec& aSpec)
     // A fill layer has no RGB planes; only its mask channel may exist, and the
     // classifier must see the channels list without 0/1/2.
     const bool hasRgb = aSpec.fillKey == nullptr;
-    const int channelCount = hasRgb ? 3 : 0;
+    const int channelCount = (hasRgb ? 3 : 0) + (aSpec.maskChannel ? 1 : 0);
 
     // rect: t, l, b, r -- the layer is one 2x2 image at the origin
     w.u32(0);
@@ -196,8 +200,12 @@ std::string layerRecord(const LayerSpec& aSpec)
     // channels: 0, 1, 2, each holding the 2-byte compression id and a 2x2 plane
     // (the record's length field counts the compression id, so 6)
     w.u16((uint16)channelCount);
-    for (int c = 0; c < channelCount; ++c) {
+    for (int c = 0; c < (hasRgb ? 3 : 0); ++c) {
         w.u16((uint16)c);
+        w.u32(6);
+    }
+    if (aSpec.maskChannel) {
+        w.u16((uint16)-2);   // the user mask channel
         w.u32(6);
     }
 
@@ -270,14 +278,22 @@ std::string layerRecord(const LayerSpec& aSpec)
 std::string layerChannelData(const LayerSpec& aSpec)
 {
     ByteWriter w;
-    if (aSpec.fillKey) {
+    if (aSpec.fillKey && !aSpec.maskChannel) {
         return w.data();
     }
-    for (int c = 0; c < 3; ++c) {
+    for (int c = 0; c < (aSpec.fillKey ? 0 : 3); ++c) {
         w.u16(0); // compression id: raw
         for (int i = 0; i < 4; ++i) {
             w.u8(aSpec.rgb[c]);
         }
+    }
+    if (aSpec.maskChannel) {
+        w.u16(0);   // compression id: raw
+        // 2x2, row major: the LEFT column is hidden (0), the right is visible (255)
+        w.u8(0);
+        w.u8(255);
+        w.u8(0);
+        w.u8(255);
     }
     return w.data();
 }
@@ -626,9 +642,11 @@ int testUnsupportedFillLayerDegradesWithOneWarning()
 }
 
 // -----------------------------------------------------------------------------
-// A layer mask is parsed and re-written but never composited. The file-wide cost
-// is reported once, not once per masked layer, and it does not disturb a layer
-// that has real pixels.
+// A LAYER MASK IS IMPORTED AS A MATTE. It used to be parsed, re-written and then
+// dropped with one aggregated warning; it is now a core::MaskKey on the node, which
+// is what makes an imported file look like the source instead of "the same but
+// without the mask". A mask whose PIXELS cannot be decoded still counts into the
+// warning, so nothing is dropped silently.
 // -----------------------------------------------------------------------------
 int testLayerMaskIsReportedOnce()
 {
@@ -637,7 +655,7 @@ int testLayerMaskIsReportedOnce()
     const QString path = dir.filePath("masked.psd");
     CHECK(writePsdFile(
         buildPsd({
-            {"masked", "", "", true, {10, 20, 30}, nullptr, true},
+            {"masked", "", "", true, {10, 20, 30}, nullptr, true, true},
             {"plain", "", "", true, {40, 50, 60}},
         }),
         path
@@ -651,9 +669,32 @@ int testLayerMaskIsReportedOnce()
     std::printf("assert: a PSD with a layer mask imports successfully\n");
     CHECK(loader.load(path, project, reporter));
 
-    std::printf("assert: the mask is one aggregated line for the file\n");
-    CHECK(loader.warnings().size() == 1);
-    CHECK(loader.warnings().front() == "Layer masks are not supported by AnimeEffects; 1 ignored.");
+    std::printf("assert: an imported mask is NOT reported as ignored\n");
+    for (const QString& warning : loader.warnings()) {
+        CHECK(!warning.contains(QStringLiteral("masks are not supported")));
+    }
+
+    std::printf("assert: the mask arrives as a MATTE on the layer's node\n");
+    {
+        core::MaskKey* maskKey = nullptr;
+        for (core::ObjectNode* node : project.objectTree().topNode()->children()) {
+            if (!node->timeLine()) continue;
+            if (auto* key = static_cast<core::MaskKey*>(node->timeLine()->defaultKey(core::TimeKeyType_Mask)))
+                maskKey = key;
+        }
+        CHECK(maskKey != nullptr);
+        if (maskKey) {
+            const core::MaskKey::Data& data = maskKey->data();
+            CHECK(data.isValid());
+            CHECK(data.texelSize() == QSize(2, 2));
+            CHECK(data.isPainted());
+            // the fixture's left column is hidden (0) and its right column visible (255)
+            const uchar* row = data.field().constScanLine(0);
+            std::printf("MEASURED imported matte: texels %d %d %d %d\n", row[0], row[1], row[0], row[1]);
+            CHECK(row[0] == 0);
+            CHECK(row[1] == 255);
+        }
+    }
 
     std::printf("assert: the masked layer's own pixels still import\n");
     const img::ResourceNode* resRoot = project.resourceHolder().imageTree(0).topNode;

@@ -116,8 +116,9 @@ Item {
             Image {
                 anchors.fill: parent
                 anchors.margins: 1
-                // the revision in the URL is what re-asks the provider after a stroke
-                source: "image://maskthumb/mask?" + inspector.maskRevision
+                // the revision in the URL is what re-asks the provider after a stroke;
+                // an absent mask asks for nothing at all
+                source: root.present ? "image://maskthumb/mask?" + inspector.maskRevision : ""
                 fillMode: Image.PreserveAspectFit
                 smooth: true
                 // white texels are "kept"; show them as the artwork's own ink so a
