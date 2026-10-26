@@ -1,6 +1,7 @@
 #include <QImage>
 #include <QPainter>
 #include "gui/ThumbnailCache.h"
+#include "gui/theme/Colors.h"
 
 namespace gui {
 
@@ -73,18 +74,23 @@ QPixmap ThumbnailCache::layerThumbnail(const img::Buffer& aImage, int aSize, qre
     if (image.width() != w || image.height() != h)
         image = image.scaled(w, h, Qt::IgnoreAspectRatio, Qt::SmoothTransformation);
 
-    // THE CHECKER IS THE BACKDROP, the art sits on it 1:1: at 2px squares the pattern
-    // divides every cell exactly and shows only where the layer leaves pixels transparent.
+    // THE CHECKER IS THE BACKDROP, the art sits on it 1:1. The tiles are THEME tokens that
+    // sit above the row in a dark theme and below it in a light one, and they are ~35 levels
+    // apart: at 2px and 27 levels the pair read as dithering rather than as a checker (the
+    // review's report). The square is LOGICAL (4px) times the DPR, so a scaled session gets
+    // a checker of the same apparent size.
+    const theme::Colors& colors = theme::Colors::current();
+    const int square = std::max(2, qRound(4.0 * dpr));
     QImage cell(w, h, QImage::Format_ARGB32_Premultiplied);
     {
-        cell.fill(QColor(255, 255, 255, 22));
+        cell.fill(colors.checkerDark);
         QPainter checker(&cell);
         checker.setPen(Qt::NoPen);
-        checker.setBrush(QColor(0, 0, 0, 34));
-        for (int y = 0; y < h; y += kCheckerSquare) {
-            for (int x = 0; x < w; x += kCheckerSquare) {
-                if (((x / kCheckerSquare) + (y / kCheckerSquare)) % 2 == 0)
-                    checker.drawRect(x, y, kCheckerSquare, kCheckerSquare);
+        checker.setBrush(colors.checkerLight);
+        for (int y = 0; y < h; y += square) {
+            for (int x = 0; x < w; x += square) {
+                if (((x / square) + (y / square)) % 2 == 0)
+                    checker.drawRect(x, y, square, square);
             }
         }
         checker.end();
@@ -93,6 +99,17 @@ QPixmap ThumbnailCache::layerThumbnail(const img::Buffer& aImage, int aSize, qre
         QPainter painter(&cell);
         painter.drawImage(0, 0, image);
         painter.end();
+    }
+    // A 1px BORDER, restored on purpose: the checker only proves the cell exists when the
+    // layer is TRANSPARENT, and a dark drawing on a dark row needs its frame (this is also
+    // what Photoshop draws around a layer thumbnail). It is drawn on the cell's own edge,
+    // over the art's outermost pixel - 1px of art, against a cell that otherwise vanishes.
+    {
+        QPainter frame(&cell);
+        frame.setBrush(Qt::NoBrush);
+        frame.setPen(QPen(colors.hairline, 1));
+        frame.drawRect(0, 0, w - 1, h - 1);
+        frame.end();
     }
 
     QPixmap pixmap = QPixmap::fromImage(cell);

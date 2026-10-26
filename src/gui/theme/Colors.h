@@ -416,6 +416,14 @@ struct Colors {
     QColor danger;  // red-600 / red-400
     QColor warning; // amber-700 / amber-400
 
+    // THE ALPHA CHECKER behind a layer thumbnail (and anything else that shows a matte).
+    // Both tiles sit ABOVE the row's value in a dark theme and BELOW it in a light one, so
+    // the cell reads as a field on either surface; the pair is ~35 levels apart in both, so
+    // 4px squares read as a checker rather than as dithering (measured: 2px at 27 levels
+    // read as noise, which is why this exists as its own token pair).
+    QColor checkerLight;
+    QColor checkerDark;
+
     bool isDark; // which elevation model the tokens were computed with
 
     static Colors light(AccentColor aAccent = kDefaultAccent) {
@@ -486,6 +494,9 @@ struct Colors {
             // accent row): red and amber at the pale-theme columns above.
             paletteColor(kTailwindRows[kDangerRow][kTailwindLight[kDanger]]),   // danger
             paletteColor(kTailwindRows[kWarningRow][kTailwindLight[kWarning]]), // warning
+            // the alpha checker: two steps below the pale row, ~35 levels apart
+            QColor(0xd6, 0xd6, 0xd6), // checkerLight
+            QColor(0xb4, 0xb4, 0xb4), // checkerDark
             false, // isDark
         };
         return c;
@@ -555,6 +566,9 @@ struct Colors {
             // kDangerRow/kWarningRow for why they do not follow the accent).
             paletteColor(kTailwindRows[kDangerRow][kTailwindDark[kDanger]]),   // danger
             paletteColor(kTailwindRows[kWarningRow][kTailwindDark[kWarning]]), // warning
+            // the alpha checker: two steps above the dark row, ~35 levels apart
+            QColor(0x5a, 0x5a, 0x5a), // checkerLight
+            QColor(0x37, 0x37, 0x37), // checkerDark
             true, // isDark
         };
         return c;

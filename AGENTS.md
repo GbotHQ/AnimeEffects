@@ -4650,7 +4650,20 @@ TWO DEFECTS the screenshots caught, both invisible in the code:
   never repainted the icon. `kIconThumbRole` carries `ThumbnailCache::key(buffer, size)` now, so
   a live-link reload updates the thumbnail.
 
-Gate: `tests/layer_thumbnails.cpp` - a transparent layer still gets an 18x18 cell; an opaque
+THE CHECKER AND THE FRAME, as finally decided (the review asked for both):
+
+- **4 LOGICAL-px squares**, not 2. At 2px the pattern read as dithering, not as a checker
+  (reported from the running app).
+- **Theme tokens, ~35 levels apart**: `Colors::checkerLight`/`checkerDark`, both ABOVE the row
+  in the dark theme (90 on 55 against a #262626 row) and both BELOW it in the light one (214
+  on 180 against #f5f5f5). Two tiles on opposite sides of the row would make the cell's floor
+  flicker between themes; this pair keeps the cell reading as a field in either.
+- **A 1px `hairline` frame**, restored on purpose: a checker only proves a cell exists when
+  the layer is TRANSPARENT, and a dark drawing on a dark row needs its boundary (it is also
+  what Photoshop draws). It is drawn on the cell's outer pixel, which costs 1px of art.
+
+Gate: `tests/layer_thumbnails.cpp` - a transparent layer still gets a cell with a two-tone
+checker; an opaque
 source's own colour lands at the centre; a wide source keeps its aspect and leaves checker above;
 the same buffer returns the same pixmap and a new buffer a different one; a 6.8 Mpx source takes
 the subsample path and still lands its colour. Suite: 67 pass / 0 fail. Evidence:

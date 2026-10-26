@@ -27,6 +27,7 @@
 
 #include "XC.h"
 #include "gui/ThumbnailCache.h"
+#include "gui/theme/Colors.h"
 #include "img/Buffer.h"
 
 namespace {
@@ -97,8 +98,8 @@ int main(int argc, char** argv) {
         // the backdrop, which is what keeps the column's rhythm (not a blank space)
         const QImage cell = asImage(pm);
         QSet<QRgb> tones;
-        for (int y = 0; y < cell.height(); ++y) {
-            for (int x = 0; x < cell.width(); ++x)
+        for (int y = 1; y < cell.height() - 1; ++y) {
+            for (int x = 1; x < cell.width() - 1; ++x)
                 tones.insert(cell.pixel(x, y));
         }
         std::printf("MEASURED transparent layer: %dx%d cell, %d distinct tones\n", pm.width(), pm.height(),
@@ -115,18 +116,24 @@ int main(int argc, char** argv) {
         // EVERY pixel is the art: an OPAQUE layer must show no checker at all, which is what
         // proves the cell is the artwork's own box rather than a square with bands
         int offArt = 0;
-        for (int y = 0; y < cell.height(); ++y) {
-            for (int x = 0; x < cell.width(); ++x) {
+        for (int y = 1; y < cell.height() - 1; ++y) {          // the outer 1px is the border
+            for (int x = 1; x < cell.width() - 1; ++x) {
                 if (distance(cell.pixelColor(x, y), art) > 24)
                     ++offArt;
             }
         }
         std::printf(
-            "MEASURED opaque layer: %dx%d cell, centre (%d,%d,%d), %d pixels off the art\n", cell.width(),
-            cell.height(), centre.red(), centre.green(), centre.blue(), offArt
+            "MEASURED opaque layer: %dx%d cell, centre (%d,%d,%d), %d interior pixels off the art\n",
+            cell.width(), cell.height(), centre.red(), centre.green(), centre.blue(), offArt
         );
         check(distance(centre, art) <= 24, "the layer's own colour is at the centre");
         check(offArt == 0, "and an opaque layer shows NO checker: the cell is the artwork's box");
+        // THE BORDER: the cell's own edge, which is what makes a dark drawing on a dark row
+        // read as a cell at all (the review asked whether to keep it; it is kept).
+        check(
+            distance(cell.pixelColor(0, 0), art) > 24 && distance(cell.pixelColor(cell.width() - 1, 0), art) > 24,
+            "and its outer 1px is the cell's border, not art"
+        );
     }
 
     // ---- [3] aspect is kept: a wide source leaves checker above and below ----
@@ -138,13 +145,13 @@ int main(int argc, char** argv) {
         check(cell.width() == kSize && cell.height() < cell.width() / 2,
               "a wide source gives a WIDE cell, not a square with bands");
         int offArt = 0;
-        for (int y = 0; y < cell.height(); ++y) {
-            for (int x = 0; x < cell.width(); ++x) {
+        for (int y = 1; y < cell.height() - 1; ++y) {
+            for (int x = 1; x < cell.width() - 1; ++x) {
                 if (distance(cell.pixelColor(x, y), art) > 24)
                     ++offArt;
             }
         }
-        check(offArt == 0, "and every row of that strip is the art (nothing letterboxed inside it)");
+        check(offArt == 0, "and the strip's interior is the art (nothing letterboxed inside it)");
     }
 
     // ---- [4] the cache is keyed on the pixels ----
@@ -180,7 +187,34 @@ int main(int argc, char** argv) {
         check(distance(centre, art) <= 24, "a large layer still lands its colour in the cell");
     }
 
-    // ---- [6] a scaled session renders at device pixels, painted 1:1 ----
+    // ---- [6] the checker's own contrast, in BOTH themes ----
+    // At 2px and 27 levels apart the pair read as dithering rather than as a checker; this
+    // pins the spread so a palette edit cannot quietly undo it.
+    {
+        const auto spread = [](const theme::Colors& c) {
+            return std::abs(c.checkerLight.red() - c.checkerDark.red());
+        };
+        const theme::Colors dark = theme::Colors::dark();
+        const theme::Colors light = theme::Colors::light();
+        std::printf(
+            "MEASURED checker spread: dark %d levels (%d on %d), light %d levels (%d on %d)\n",
+            spread(dark), dark.checkerLight.red(), dark.checkerDark.red(), spread(light),
+            light.checkerLight.red(), light.checkerDark.red()
+        );
+        check(spread(dark) >= 24, "the dark theme's two tiles differ by at least 24 levels");
+        check(spread(light) >= 18, "and so do the light theme's");
+        // and both tiles sit on the same side of their row, so the cell reads as a field
+        check(
+            dark.checkerDark.red() >= dark.base.red(),
+            "the dark checker is not darker than the row it sits on"
+        );
+        check(
+            light.checkerLight.red() <= light.base.red(),
+            "and the light one is not lighter than its row"
+        );
+    }
+
+    // ---- [7] a scaled session renders at device pixels, painted 1:1 ----
     {
         const img::Buffer buffer = makeBuffer(QSize(400, 400), QColor(200, 200, 60));
         const QPixmap one = cache.layerThumbnail(buffer, kSize, 1.0);
