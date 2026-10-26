@@ -1,5 +1,20 @@
 # Layer masks — the UX
 
+## What was wrong with the first cut, and why (review round)
+
+- The canvas overlay was a **tint** on the artwork: red appeared only on inked pixels, so a stroke
+  across transparent areas showed nothing and a stroke across linework dyed the lines. It is now a
+  **flat overlay** over the hidden region, content or not - the quick-mask meaning.
+- The card's thumbnail and the tree's chip were **red on grey** (they showed what is hidden, in the
+  overlay's ink). Both are now the **matte itself in grayscale**: white visible, black hidden.
+- The key dot was the panel's text colour, so it read as "no state", and `TimeKeyType_Mask` had no
+  row in the key-hue table - the timeline lane was neutral too. The matte has its own hue (violet)
+  in both views now.
+- The evidence is captured as WHOLE surfaces - the whole window, the whole inspector column, the tree's
+  full width - because a crop cannot be reviewed and hid one of these defects twice.
+
+## What a mask is
+
 A **mask** is an alpha field in a node's content space: the matte that says how much of the node is
 visible. It is a `TimeKeyType` channel, not a tree node and not a filter-stack entry, so it inherits
 everything this application already has: a timeline lane, keys with easing, proportional keys,

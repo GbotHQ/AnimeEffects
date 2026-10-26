@@ -245,25 +245,11 @@ QImage InspectorViewModel::maskThumbnail(const QSize& aRequested) const {
     if (aRequested.isValid() && !aRequested.isEmpty())
         field = field.scaled(aRequested, Qt::KeepAspectRatio, Qt::SmoothTransformation);
 
-    // THE THUMBNAIL SHOWS WHAT IS HIDDEN, in the same ink the canvas overlay uses, so
-    // the two read as one thing. A matte is stored as VISIBILITY (255 = kept), and a
-    // thumbnail of that is a solid white square on a dark panel - loud, and it says
-    // nothing about the state ("reveal all" and "almost reveal all" look identical).
-    // Inverted, an untouched mask is an EMPTY box and a painted one is a shape.
-    QImage preview(field.size(), QImage::Format_ARGB32_Premultiplied);
-    preview.fill(Qt::transparent);
-    const QColor tint = theme::Colors::current().danger;   // the rubylith
-    for (int y = 0; y < field.height(); ++y) {
-        const uchar* src = field.constScanLine(y);
-        QRgb* dst = reinterpret_cast<QRgb*>(preview.scanLine(y));
-        for (int x = 0; x < field.width(); ++x) {
-            const int hidden = 255 - int(src[x]);
-            // the overlay draws the hidden area at ~45 %; the thumbnail is small, so it
-            // takes a little more weight to stay visible at 56px
-            dst[x] = qPremultiply(qRgba(tint.red(), tint.green(), tint.blue(), (hidden * 170) / 255));
-        }
-    }
-    return preview;
+    // THE THUMBNAIL IS THE MATTE ITSELF: white = visible, black = hidden, which is how
+    // an alpha channel reads anywhere. (The first version showed only what was HIDDEN,
+    // in the rubylith ink - red on grey - which invented a meaning the reader had to be
+    // told, and made an untouched matte look like a filled control.)
+    return field;
 }
 
 void InspectorViewModel::addMask() {

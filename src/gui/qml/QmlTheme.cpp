@@ -40,6 +40,10 @@ QColor QmlTheme::floaterEdge() const { return theme::Colors::current().floaterEd
 // the neutral or accent row) so the QML facts rows and the command log's warning
 // badge share one ink. They used to be literals right here, which is why a theme
 // change could not re-ink them anywhere but QML.
+QColor QmlTheme::maskKey() const {
+    return theme::keyTypeColor(theme::Colors::current(), core::TimeKeyType_Mask);
+}
+
 QColor QmlTheme::danger() const { return theme::Colors::current().danger; }
 
 QColor QmlTheme::warning() const { return theme::Colors::current().warning; }

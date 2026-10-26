@@ -368,18 +368,35 @@ void LayerNode::renderComposite(const RenderInfo& aInfo, const TimeCacheAccessor
         }
     }
 
-    // 2b. THE MASK PREVIEW: one pass tinting where the painted field deviates from its
-    // neutral value, so the artist sees the field while painting it.
+    // 2b. THE MASK PREVIEW, and the two kinds are shown differently on purpose:
+    //   * a FILTER input is a VALUE field, and the artist wants to see it over the
+    //     artwork - a tint where it deviates from its neutral (unchanged behaviour);
+    //   * a LAYER MASK is the node's VISIBILITY, so painting it shows the RUBYLITH: a
+    //     flat translucent overlay on what the matte hides, over the content and over
+    //     nothing. A tint cannot do that - it only lands where the composite has
+    //     colour, which dyed the artwork's own lines.
     if (isPreviewTarget(aInfo)) {
-        MaskInput preview;
-        preview.texture = const_cast<FilterMask*>(aInfo.maskPreview)->texture();
-        preview.rect = aInfo.maskPreview->contentRect();
-        preview.neutral = float(aInfo.maskPreview->neutral()) / 255.0f;
-
         auto slot = std::make_unique<FilterFrame::ScopedSlot>(frame);
-        srcTexture = frame.tintTexture(slot->slot(), srcTexture, preview, contentMapping(), aInfo.maskPreviewColor);
-        srcSlot = slot->slot();
-        scratchSlots.push_back(std::move(slot));
+        if (aInfo.maskPreviewKey) {
+            if (const gl::Texture* keyTexture = aInfo.maskPreviewKey->data().textureId()) {
+                srcTexture = frame.maskOverlayTexture(
+                    slot->slot(), srcTexture, keyTexture->id(), aInfo.maskPreviewKey->data().contentRect(),
+                    contentMapping(), aInfo.maskPreviewColor
+                );
+                srcSlot = slot->slot();
+                scratchSlots.push_back(std::move(slot));
+            }
+        } else if (aInfo.maskPreview) {
+            MaskInput preview;
+            preview.texture = const_cast<FilterMask*>(aInfo.maskPreview)->texture();
+            preview.rect = aInfo.maskPreview->contentRect();
+            preview.neutral = float(aInfo.maskPreview->neutral()) / 255.0f;
+            srcTexture = frame.tintTexture(
+                slot->slot(), srcTexture, preview, contentMapping(), aInfo.maskPreviewColor
+            );
+            srcSlot = slot->slot();
+            scratchSlots.push_back(std::move(slot));
+        }
     }
 
     // 3. present onto the scene with the layer's blend mode and accumulated opacity.

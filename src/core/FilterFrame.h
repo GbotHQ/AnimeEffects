@@ -30,6 +30,7 @@ public:
         Kind_Mix,      // `mix(sharp, blurred, mask)` for a masked blur (see mixTexture)
         Kind_Tint,     // the mask preview over the content (see tintTexture)
         Kind_LayerMask, // the node's own matte over its isolated composite (see maskTexture)
+        Kind_MaskOverlay, // the painting RUBYLITH over a matte's hidden region
         Kind_TERM
     };
 
@@ -159,6 +160,14 @@ public:
     GLuint maskTexture(
         int aTargetSlot, GLuint aSrcTexture, GLuint aMaskTexture, const QRectF& aMaskRect,
         const QMatrix4x4& aScreenToLayer
+    );
+
+    // The painting RUBYLITH: a flat translucent overlay where the field says HIDDEN,
+    // over the content and over nothing (a tint cannot do that - it only shows where the
+    // composite has colour, which dyed the artwork's lines instead of marking the area).
+    GLuint maskOverlayTexture(
+        int aTargetSlot, GLuint aSrcTexture, GLuint aMaskTexture, const QRectF& aMaskRect,
+        const QMatrix4x4& aScreenToLayer, const QColor& aOverlayColor
     );
 
     GLuint mixTexture(

@@ -4541,3 +4541,34 @@ the selection owner.
 cards through a `visualTree()` that pushes children onto a stack, so with two cards `first` was the
 SECOND one and the gate failed on a correct layout ("expanding the second moved the first"). Sort
 markers by their Y in the panel, which is what the helper's own comment always meant.
+
+### A MASK OVERLAY IS NOT A TINT, and a matte is not shown in red (2026-10-26, from the first review)
+
+Three things in the mask's first cut read wrong to the person using it, and all three were a
+meaning I invented rather than the one the reader already knows:
+
+- **The rubylith was a TINT.** `kTintFrag` adds colour where a field deviates from its neutral,
+  which is right for a filter's VALUE field - but on a node's VISIBILITY field it only lands where
+  the composite has colour: a stroke across transparent pixels drew no red, and a stroke across
+  linework dyed the lines themselves ("why are some of the lines red?"). The overlay is now its own
+  pass (`FilterFrame::maskOverlayTexture`, `Kind_MaskOverlay`): a FLAT premultiplied src-over at
+  coverage = hidden x alpha, over the content and over nothing. Measured on the same stroke, the
+  frame's change went 14713 px (tint) -> 36672 px (overlay), i.e. the overlay marks the whole hidden
+  REGION. The tint stays for filter masks; only the matte uses the overlay.
+- **The thumbnail and the tree chip were red-on-grey.** They showed only what is HIDDEN, in the
+  rubylith ink, which invented a meaning and made an untouched matte look like a filled control.
+  Both are now the MATTE ITSELF in grayscale - white visible, black hidden - which is how an alpha
+  channel reads anywhere.
+- **The key dot was `theme.text`.** A channel's dot carries its TYPE's hue (`theme::keyTypeColor`),
+  and a white dot read as "no state" beside every other channel. `TimeKeyType_Mask` had no row in
+  `kKeyColorRow` at all, so the timeline's Mask lane was also neutral: it has `maskKey` (violet,
+  row 12) now, and both views ink the matte with it - adjacent-hue reuse is already this app's
+  practice (Move and HSV share indigo; Scale and Blur share fuchsia).
+
+Also from that pass: the toolbox panel's title follows its TARGET ("Layer mask" / "Filter mask"),
+and the target chooser's fourth slot needed its own glyph - a `SingleOutItem` with fewer icons than
+choices draws a bare rectangle, which reads as a disabled button.
+
+LESSON for the next screenshot argument: a CROP is not evidence that a layout fits, and a fragment
+of a panel cannot be reviewed at all. Capture the window, and crop to a whole surface (the whole
+inspector column, the whole tree width) - the chip was outside two of my crops in a row.

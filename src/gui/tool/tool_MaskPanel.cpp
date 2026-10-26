@@ -21,16 +21,20 @@ namespace tool {
     MaskPanel::MaskPanel(QWidget* aParent, GUIResources& aResources):
         QGroupBox(aParent), mResources(aResources), mParam(), mLaneGroup(), mChannelGroup(), mValue(), mBrush(),
         mClear() {
-        this->setTitle(tr("Filter mask"));
+        this->setTitle(tr("Filter mask"));   // see setLayerMask: the title follows the target
         mResources.onThemeChanged.connect(this, &MaskPanel::onThemeUpdated);
         createItems();
     }
 
     void MaskPanel::applyIcons() {
         // the lane row reuses the filter icons the stack already uses
+        // one icon per TARGET, including the node's own matte: a choice with no glyph
+        // reads as a disabled button (measured: the fourth slot was a bare rectangle).
+        // `circle-half` is the alpha/mask glyph the channel row already uses, and that
+        // row is hidden while the matte is the target, so the two cannot collide.
         mLaneGroup->setIcons(
             QVector<QIcon>() << mResources.icon("faders-horizontal") << mResources.icon("ffd")
-                             << mResources.icon("paint-brush"),
+                             << mResources.icon("paint-brush") << mResources.icon("circle-half"),
             QSize(18, 18)
         );
         mChannelGroup->setIcons(
@@ -55,9 +59,11 @@ namespace tool {
         mLaneGroup->connect([=](int aIndex) {
             if (aIndex == kLayerMaskChoice) {
                 this->mParam.setKind(ctrl::MaskTargetKind_LayerMask);
+                this->setTitle(tr("Layer mask"));
             } else {
                 this->mParam.setKind(ctrl::MaskTargetKind_FilterInput);
                 this->mParam.lane = kLanes[aIndex];
+                this->setTitle(tr("Filter mask"));
             }
             // a filter input has an amount/time choice; a matte does not
             this->mChannelGroup->setVisible(!this->mParam.isLayerMask());
@@ -108,6 +114,10 @@ namespace tool {
 
     void MaskPanel::setLayerMask() {
         mParam.setKind(ctrl::MaskTargetKind_LayerMask);
+        // the title says WHAT you are painting: a matte is not a filter's input, and a
+        // panel headed "Filter mask" while editing a layer's visibility names the wrong
+        // thing
+        this->setTitle(tr("Layer mask"));
         mLaneGroup->setChoice(kLayerMaskChoice);
         mChannelGroup->setVisible(false);
         mValue->setAttribute(util::Range(0, 100), int(mParam.value * 100.0f), 10);
@@ -115,6 +125,7 @@ namespace tool {
     }
 
     void MaskPanel::setLaneAndChannel(core::TimeKeyType aLane, core::FilterMaskChannel aChannel) {
+        this->setTitle(tr("Filter mask"));
         mChannelGroup->setVisible(true);
         setLane(aLane);
         mParam.setChannel(aChannel);

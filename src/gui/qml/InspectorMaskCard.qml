@@ -82,7 +82,7 @@ Item {
             visible: root.present
             enabled: !inspector.playbackActive
             state: root.dotState
-            ink: theme.text
+            ink: theme.maskKey
             label: qsTr("Mask")
             onClicked: inspector.toggleMaskKey()
         }

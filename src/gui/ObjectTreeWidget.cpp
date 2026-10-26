@@ -127,19 +127,10 @@ public:
         if (chip.width() < kChip)
             return;
 
-        // white (kept) -> transparent, and what is HIDDEN takes the rubylith tint
-        const QImage field = mask.field().scaled(kChip, kChip, Qt::IgnoreAspectRatio, Qt::SmoothTransformation);
-        QImage preview(QSize(kChip, kChip), QImage::Format_ARGB32_Premultiplied);
-        preview.fill(Qt::transparent);
-        const QColor tint = theme::Colors::current().danger;
-        for (int y = 0; y < kChip; ++y) {
-            const uchar* src = field.constScanLine(y);
-            QRgb* dst = reinterpret_cast<QRgb*>(preview.scanLine(y));
-            for (int x = 0; x < kChip; ++x) {
-                const int hidden = 255 - int(src[x]);
-                dst[x] = qPremultiply(qRgba(tint.red(), tint.green(), tint.blue(), (hidden * 170) / 255));
-            }
-        }
+        // THE MATTE ITSELF at 14px: white = visible, black = hidden, the same reading as
+        // the inspector's thumbnail and as an alpha channel anywhere
+        const QImage preview =
+            mask.field().scaled(kChip, kChip, Qt::IgnoreAspectRatio, Qt::SmoothTransformation);
 
         aPainter->save();
         aPainter->setRenderHint(QPainter::Antialiasing, false);

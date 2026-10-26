@@ -246,6 +246,32 @@ static const char* kLayerMaskFrag =
     "  oFragColor = color * visible;"
     "}";
 
+// THE RUBYLITH. A mask overlay is NOT a tint on the artwork: a tint only shows where
+// the composite has colour, so a stroke across transparent pixels left the red out and
+// a stroke across linework dyed the lines - "why are some of the lines red?". An
+// overlay paints the hidden region as a FLAT translucent red, over whatever is there
+// and over nothing, which is what Photoshop's quick mask means.
+static const char* kMaskOverlayFrag =
+    "#version 330 \n"
+    "uniform sampler2D uTexture;"
+    "uniform sampler2D uLayerMask;"
+    "uniform vec4 uLayerMaskRect;"
+    "uniform vec4 uOverlayColor;"   // rgb + alpha
+    "uniform mat3 uScreenToLayer;"
+    "in vec2 vDestCoord;"
+    "layout(location = 0, index = 0) out vec4 oFragColor;"
+    "void main() {"
+    "  vec4 color = texture(uTexture, vDestCoord / vec2(textureSize(uTexture, 0)));"
+    "  vec2 q = (uScreenToLayer * vec3(vDestCoord, 1.0)).xy;"
+    "  vec2 uv = (q - uLayerMaskRect.xy) / uLayerMaskRect.zw;"
+    "  float hidden = 0.0;"
+    "  if (0.0 <= uv.x && uv.x <= 1.0 && 0.0 <= uv.y && uv.y <= 1.0)"
+    "      hidden = 1.0 - texture(uLayerMask, uv).r;"
+    "  float k = hidden * uOverlayColor.a;"
+    // src-over with a premultiplied overlay: the composite is premultiplied too
+    "  oFragColor = color * (1.0 - k) + vec4(uOverlayColor.rgb * k, k);"
+    "}";
+
 } // namespace
 
 namespace core {
@@ -568,6 +594,26 @@ GLuint FilterFrame::maskTexture(
     return texture(aTargetSlot);
 }
 
+GLuint FilterFrame::maskOverlayTexture(
+    int aTargetSlot, GLuint aSrcTexture, GLuint aMaskTexture, const QRectF& aMaskRect,
+    const QMatrix4x4& aScreenToLayer, const QColor& aOverlayColor
+) {
+    MaskInput mask;
+    mask.texture = aMaskTexture;
+    mask.rect = aMaskRect;
+
+    bind(aTargetSlot);
+    gl::Util::setViewportAsActualPixels(size());
+    gl::Util::resetRenderState();
+    gl::Global::functions().glClearColor(0.0f, 0.0f, 0.0f, 0.0f);
+    gl::Global::functions().glClear(GL_COLOR_BUFFER_BIT);
+    drawQuad(
+        aSrcTexture, Kind_MaskOverlay, QList<int>(), BlurParams(), 1.0f, false, QSizeF(), QSizeF(), false,
+        img::BlendMode_Normal, 0, nullptr, nullptr, aScreenToLayer, 0, nullptr, nullptr, aOverlayColor, &mask
+    );
+    return texture(aTargetSlot);
+}
+
 GLuint FilterFrame::mixTexture(
     int aTargetSlot, GLuint aSharpTexture, GLuint aBlurredTexture, const MaskInput& aMask,
     const QMatrix4x4& aScreenToLayer
@@ -645,6 +691,7 @@ void FilterFrame::createShaders() {
     build(Kind_Mix, kFullscreenVert, kMixFrag);
     build(Kind_Tint, kFullscreenVert, kTintFrag);
     build(Kind_LayerMask, kFullscreenVert, kLayerMaskFrag);
+    build(Kind_MaskOverlay, kFullscreenVert, kMaskOverlayFrag);
 
     // HSV pass: shared layer fragment shader with variations
     fBuildLayerDrawingVariant(mPassShaders[Kind_HSV], QString("BlendNormal"), 0, 1, 1, 0, 0);
@@ -835,6 +882,23 @@ void FilterFrame::drawQuad(
             "uTintColor", QVector4D(aTintColor.redF(), aTintColor.greenF(), aTintColor.blueF(), aTintColor.alphaF())
         );
         shader->setUniformValue("uTintNeutral", aTintMask->neutral);
+    } else if (aKind == Kind_MaskOverlay) {
+        XC_PTR_ASSERT(aLayerMask);
+        ggl.glActiveTexture(GL_TEXTURE1);
+        ggl.glBindTexture(GL_TEXTURE_2D, aLayerMask->texture);
+        ggl.glActiveTexture(GL_TEXTURE0);
+        shader->setUniformValue("uLayerMask", 1);
+        shader->setUniformValue(
+            "uLayerMaskRect",
+            QVector4D(
+                float(aLayerMask->rect.x()), float(aLayerMask->rect.y()), float(aLayerMask->rect.width()),
+                float(aLayerMask->rect.height())
+            )
+        );
+        shader->setUniformValue("uScreenToLayer", waveAffine3(aScreenToLayer));
+        shader->setUniformValue(
+            "uOverlayColor", QVector4D(aTintColor.redF(), aTintColor.greenF(), aTintColor.blueF(), aTintColor.alphaF())
+        );
     } else if (aKind == Kind_LayerMask) {
         XC_PTR_ASSERT(aLayerMask);
         ggl.glActiveTexture(GL_TEXTURE1);

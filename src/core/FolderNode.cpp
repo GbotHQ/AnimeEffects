@@ -307,8 +307,9 @@ void FolderNode::renderComposite(const RenderInfo& aInfo, const TimeCacheAccesso
             preview.rect = aInfo.maskPreviewKey->data().contentRect();
             preview.neutral = float(core::MaskKey::kNeutral) / 255.0f;
             auto slot = std::make_unique<FilterFrame::ScopedSlot>(frame);
-            srcTexture = frame.tintTexture(
-                slot->slot(), srcTexture, preview, contentMapping(), aInfo.maskPreviewColor
+            srcTexture = frame.maskOverlayTexture(
+                slot->slot(), srcTexture, preview.texture, preview.rect, contentMapping(),
+                aInfo.maskPreviewColor
             );
             srcSlot = slot->slot();
             scratchSlots.push_back(std::move(slot));
