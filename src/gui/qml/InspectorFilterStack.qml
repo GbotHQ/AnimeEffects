@@ -316,7 +316,6 @@ Item {
         parent: root
         width: Math.min(320, root.width - 16)
         x: Math.max(8, root.width - width - 12)
-        y: header.height
         padding: 0
         closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutside
         modal: false
@@ -329,7 +328,32 @@ Item {
         }
         onClosed: search.text = ""
 
-        height: Math.min(root.catalogMaxHeight, contentItem.implicitHeight + 12)
+        // THE HOST'S EDGE IS THE POPUP'S EDGE, AND THE ROOM IS ABOVE THE HEADER.
+        // A Popup renders inside the QQuickWidget's own window, so whatever the
+        // widget's rectangle does not cover is simply cut - and the Filters section is
+        // the LAST thing in the panel, which leaves ~70px below this header on a
+        // normal window. Measured 2026-10-26: the popup opened DOWNWARD, its rows were
+        // laid out correctly (the accessibility bus reported their real rectangles)
+        // and the user saw only the search field and a sliver of the first row.
+        //
+        // So it opens UPWARD from the header, where the property rows are, and its
+        // height is capped against the HOST's height rather than against a guessed
+        // offset: the rows then scroll under a popup that is guaranteed to fit inside
+        // the widget (see listHeight below, and the Flickable and bar that follow).
+        // This section is always last, which is what makes 'upward' the correct side
+        // rather than a preference.
+        readonly property real wantedHeight: Math.min(root.catalogMaxHeight,
+                                                     search.implicitHeight
+                                                     + pickerContent.spacing
+                                                     + catalogColumn.implicitHeight + 12)
+        readonly property real hostHeight: root.Window.height > 0 ? root.Window.height
+                                                                  : root.height
+        y: header.height - height - 4
+        height: Math.max(120, Math.min(wantedHeight, hostHeight - 120))
+        // What is left for the rows once the search field has taken its row - the
+        // Flickable's height, so a constrained popup SCROLLS instead of hiding rows.
+        readonly property real listHeight: Math.max(0, height - 12 - search.implicitHeight
+                                                       - pickerContent.spacing)
         background: Rectangle {
             radius: 4
             color: theme.floaterBody
@@ -401,9 +425,10 @@ Item {
                 // the popup never exceeds catalogMaxHeight. When the catalog is
                 // shorter, the rows take their own height and the bar below stays
                 // hidden.
-                height: Math.min(root.catalogMaxHeight - 12 - search.implicitHeight
-                                 - pickerContent.spacing,
-                                 catalogColumn.implicitHeight)
+                // The popup tells us the room it has (picker.listHeight), so a popup
+                // clamped by the host widget's edge scrolls its rows instead of
+                // drawing them past its own bottom.
+                height: picker.listHeight
 
                 Flickable {
                     id: catalogView
