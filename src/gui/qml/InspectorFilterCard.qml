@@ -186,6 +186,25 @@ Item {
             }
         }
 
+        // THE CARD CAN BE EXPANDED WITHOUT A MOUSE. The header is a MouseArea, so it is
+        // not a keyboard stop and has no accessibility protocol of its own; this marker
+        // (see gui/qml/QmlFormAccessibility) gives it a Press action and a rectangle, so
+        // a screen reader - and scripts/gui/ae_ui.py - can expand and collapse a card.
+        // It carries no pointer handlers, so hover, the drag-reorder gesture and the
+        // click pass through to headerMouse below.
+        Item {
+            objectName: "aeAccessibleDisclosure"
+            anchors.fill: parent
+            property string accessibleName: filterRow.expanded
+                                            ? qsTr("Collapse %1").arg(filterRow.name)
+                                            : qsTr("Expand %1").arg(filterRow.name)
+            property string accessibleValue: filterRow.expanded
+                                             ? qsTr("Expanded") : qsTr("Collapsed")
+            function accessiblePress() { filterRow.toggleExpanded() }
+            Accessible.role: Accessible.Button
+            Accessible.name: accessibleName
+        }
+
         RowLayout {
             anchors.fill: parent
             anchors.leftMargin: 8
