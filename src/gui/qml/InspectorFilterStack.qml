@@ -13,6 +13,16 @@ Item {
     property int dragIndex: -1
     property int dropIndex: -1
     property int insertionIndex: -1
+    // ---- the catalog picker's keyboard state ---------------------------------
+    // The picker is a Repeater of rows in a Column, not a ListView over a model, so
+    // there is no currentIndex to lean on: this index IS the chooser's keyboard
+    // state, and -1 means nothing is highlighted. It lives on the root because the
+    // field that owns the focus and the rows that paint it are different branches of
+    // this file.
+    property int highlightIndex: -1
+    // The popup's height cap. The rows scroll under it instead of being clipped away:
+    // before this, any row past the fold was unreachable at all on a short window.
+    readonly property int catalogMaxHeight: 420
 
     width: parent ? parent.width : 0
     implicitHeight: collapsed ? header.height : header.height + body.height
@@ -22,12 +32,119 @@ Item {
         picker.close();
         inspector.filters.addFilter(entry.type);
     }
-    function addFirstMatching() {
+    // One statement of the match rule, shared by the rows' `visible` binding, the
+    // highlight walk and resetHighlight(). The query is a PARAMETER rather than a read
+    // of search.text inside, so the BINDING that calls this names its dependency at
+    // the call site: hasFilter() taught this file that an invokable call is not a
+    // dependency, and a binding that reads nothing never updates.
+    function queryMatches(index, query) {
+        const entry = inspector.filters.catalog[index];
+        if (!entry)
+            return false;
+        const needle = query.trim().toLowerCase();
+        if (needle === "")
+            return true;
+        return String(entry.name).toLowerCase().indexOf(needle) >= 0
+            || String(entry.description).toLowerCase().indexOf(needle) >= 0;
+    }
+    // Whether the row can be TAKEN right now: it exists in this build, it is not
+    // already in the stack, and the query keeps it. Derived from the catalog and the
+    // model, never from the delegate's `visible`: visibility is a binding, and a key
+    // that arrives in the same event as the text that changed it cannot be made
+    // dependent on that binding having been re-evaluated first.
+    function canChoose(index) {
+        const entry = inspector.filters.catalog[index];
+        if (!entry || !entry.available)
+            return false;
+        if (inspector.filters.hasFilter(entry.type))
+            return false;
+        return queryMatches(index, search.text);
+    }
+    function firstEligible() {
         for (let i = 0; i < catalogRepeater.count; ++i) {
-            const item = catalogRepeater.itemAt(i);
-            if (item && item.visible && item.enabledEntry)
-                return addEntry(item.entry);
+            if (canChoose(i))
+                return i;
         }
+        return -1;
+    }
+    // Step the highlight by up to `delta` choosable rows. Rows that cannot be taken
+    // are stepped OVER - an `added` or `coming soon` line never holds the highlight -
+    // and the ends CLAMP: the press that runs out of rows changes nothing and never
+    // wraps around to the other end.
+    function step(delta) {
+        if (delta === 0)
+            return;
+        const forward = delta > 0;
+        // A highlight that no longer points at a row that can be taken (the stack
+        // changed under it) is not a position to step from: drop it first, so the
+        // press starts from the matching end like a fresh one.
+        if (highlightIndex >= 0 && !canChoose(highlightIndex))
+            highlightIndex = -1;
+        // Nothing highlighted yet: the first press starts from the matching end, so
+        // it lands on a row instead of spending itself doing nothing.
+        let next = highlightIndex;
+        if (next < 0)
+            next = forward ? -1 : catalogRepeater.count;
+        for (let n = 0; n < Math.abs(delta); ++n) {
+            let candidate = next + (forward ? 1 : -1);
+            while (candidate >= 0 && candidate < catalogRepeater.count
+                   && !canChoose(candidate))
+                candidate += forward ? 1 : -1;
+            if (candidate < 0 || candidate >= catalogRepeater.count)
+                break;          // the clamp: no further row this way, so stay put
+            next = candidate;
+        }
+        if (next < 0 || next >= catalogRepeater.count || next === highlightIndex)
+            return;
+        highlightIndex = next;
+        revealHighlight();
+    }
+    // Keep the highlighted row on screen: the popup is capped at catalogMaxHeight, so
+    // PageDown can land below the fold. The row's y is its position in the Column,
+    // which is the Flickable's content space; nothing renumbers rows while stepping -
+    // only a query change does, and that path goes back to the top instead.
+    function revealHighlight() {
+        const item = catalogRepeater.itemAt(highlightIndex);
+        if (!item)
+            return;
+        const top = item.y;
+        const bottom = top + item.height;
+        if (top < catalogView.contentY) {
+            catalogView.contentY = top;
+        } else if (bottom > catalogView.contentY + catalogView.height) {
+            const limit = Math.max(0, catalogView.contentHeight - catalogView.height);
+            catalogView.contentY = Math.min(bottom - catalogView.height, limit);
+        }
+    }
+    // On open and on every query change: the FIRST row that can be taken becomes the
+    // target, so Return always has one and typing re-aims it at the first match
+    // instead of leaving it on a row the query just hid. The list goes back to the top
+    // with it - an offset that was right for the old result set is not a position in
+    // the new one.
+    function resetHighlight() {
+        highlightIndex = firstEligible();
+        catalogView.contentY = 0;
+    }
+    // The pointer taking over: hover and the keyboard never light two rows at once, so
+    // a pointer that reaches a row releases the keyboard's highlight and leaves the
+    // hovered row as the one highlight.
+    function clearHighlight() {
+        highlightIndex = -1;
+    }
+    // Return: the highlighted row, or - when nothing is highlighted, or what was
+    // highlighted can no longer be taken - the first row that can. Eligibility is
+    // re-checked rather than trusted: the old handler read an `entry` property no
+    // delegate declared (the delegate's is `catalogEntry`), so Return closed the popup
+    // and then threw on the missing type instead of adding anything.
+    function acceptHighlighted() {
+        let index = highlightIndex;
+        if (index < 0 || !canChoose(index))
+            index = firstEligible();
+        if (index < 0)
+            return;             // nothing can be taken: Return leaves the popup open
+        const entry = inspector.filters.catalog[index];
+        if (entry)
+            addEntry(entry);
     }
     function insertionAt(sceneY) {
         for (let i = 0; i < cards.count; ++i) {
@@ -182,6 +299,18 @@ Item {
         }
     }
 
+    // The catalog chooser. Its keyboard contract is the app's one keyboard contract,
+    // the same one tests/picker_keyboard.cpp pins for DestinationPicker: typing
+    // filters, Up/Down and PageUp/PageDown walk the visible rows WITHOUT leaving the
+    // field (the field keeps the caret), Return takes the highlighted row, Escape
+    // closes this popup through the closePolicy below, and Left/Right stay with the
+    // caret. Stepping clamps at the ends and skips rows that cannot be taken.
+    //
+    // Every one of those keys is handled BY THE FIELD, not by a Keys handler here,
+    // and that is not a style choice: a Popup's contentItem is parented into the
+    // window overlay, outside the item tree under root, so a Keys handler on root
+    // would never see a key pressed while the field has focus. The field is where the
+    // focus is, so the field is where the handler has to be.
     Popup {
         id: picker
         parent: root
@@ -192,10 +321,15 @@ Item {
         closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutside
         modal: false
         dim: false
-        onOpened: search.forceActiveFocus()
+        // Opening aims Return at the first row that can be taken, so the popup is
+        // usable the moment a key is pressed rather than only after an arrow.
+        onOpened: {
+            root.resetHighlight();
+            search.forceActiveFocus();
+        }
         onClosed: search.text = ""
 
-        height: Math.min(420, contentItem.implicitHeight + 12)
+        height: Math.min(root.catalogMaxHeight, contentItem.implicitHeight + 12)
         background: Rectangle {
             radius: 4
             color: theme.floaterBody
@@ -204,6 +338,12 @@ Item {
         }
 
         contentItem: Column {
+            id: pickerContent
+            // NOTE: x and width are overwritten by QQuickPagePrivate::relayout(), which
+            // also sets this item's height: a Popup's content item is stretched to the
+            // available size, so only its implicitHeight and its spacing mean anything
+            // to the popup's own height formula. They are kept because they were here
+            // before this picker learned to scroll.
             x: 6
             width: picker.width - 12
             spacing: 4
@@ -216,69 +356,212 @@ Item {
                 textFont: uiFont
                         placeholderText: inspector.filters.searchLabel
                 accessibleName: inspector.filters.searchLabel
-                Keys.onReturnPressed: root.addFirstMatching()
+                // The field keeps the caret and hands Up/Down/PageUp/PageDown back as
+                // navigate(); Left/Right never come through that signal and stay with
+                // the text cursor. That is AeTextField's contract, and the one the
+                // destination picker is driven by.
+                navigationKeys: true
+                onNavigate: (key) => {
+                    switch (key) {
+                    case Qt.Key_Down: root.step(1); break;
+                    case Qt.Key_Up: root.step(-1); break;
+                    case Qt.Key_PageDown: root.step(10); break;
+                    case Qt.Key_PageUp: root.step(-10); break;
+                    default: break;
+                    }
+                }
+                // Return is the field's own accepted(), not a Keys handler. A
+                // TextField already turns Return/Enter into accepted() after its own
+                // key handling; a Keys handler on top of that fires first, treats the
+                // delegate's `entry` as if it existed, and then lets the editor act on
+                // the same key - which is exactly how Return came to close this popup
+                // and throw instead of adding anything.
+                onAccepted: root.acceptHighlighted()
             }
 
-            Repeater {
-                id: catalogRepeater
-                model: inspector.filters.catalog.length
-                delegate: Item {
-                    id: catalogItem
-                    required property int index
-                    property var catalogEntry: inspector.filters.catalog[index]
-                    property var modelData: catalogEntry
-                    // `rows.length` is read as a dependency: hasFilter() is a call,
-                    // and a call registers no binding dependency in QML.
-                    property bool added: modelData.available && inspector.filters.rows.length >= 0
-                                         && inspector.filters.hasFilter(modelData.type)
-                    property bool enabledEntry: modelData.available && !added
-                    width: parent.width
-                    height: visible ? (modelData.available ? 34 : 38) : 0
-                    visible: search.text.trim() === ""
-                          || String(modelData.name).toLowerCase().indexOf(search.text.trim().toLowerCase()) >= 0
-                          || String(modelData.description).toLowerCase().indexOf(search.text.trim().toLowerCase()) >= 0
-                    opacity: enabledEntry ? 1.0 : 0.55
+            // Typing re-aims the highlight at the first match. A Connections rather
+            // than a binding, because resetHighlight() WRITES highlightIndex: a
+            // binding that assigns its own dependency is broken by QML on the first
+            // assignment.
+            Connections {
+                target: search
+                function onTextChanged() { root.resetHighlight() }
+            }
 
-                    Rectangle {
-                        anchors.fill: parent
-                        radius: 3
-                        color: mouse.containsMouse && parent.enabledEntry ? theme.raisedHover : "transparent"
-                    }
+            // The rows, in a clipped Flickable: the popup's height is capped, and a
+            // Column on its own had no way to reach the rows past the cap. It stays a
+            // Column of the same delegates - the filtering, the row heights and the
+            // "added" state already live there, and a ListView would need a second
+            // model beside inspector.filters.catalog, which is a second place for the
+            // rows to disagree with the stack.
+            Item {
+                id: catalogArea
+                width: parent.width
+                // The cap, minus the popup's own `+ 12` and the search field's row, so
+                // the popup never exceeds catalogMaxHeight. When the catalog is
+                // shorter, the rows take their own height and the bar below stays
+                // hidden.
+                height: Math.min(root.catalogMaxHeight - 12 - search.implicitHeight
+                                 - pickerContent.spacing,
+                                 catalogColumn.implicitHeight)
+
+                Flickable {
+                    id: catalogView
+                    anchors.fill: parent
+                    clip: true
+                    contentWidth: width
+                    contentHeight: catalogColumn.implicitHeight
+                    flickableDirection: Flickable.VerticalFlick
+                    // The ends are the ends: no rubber band, so contentY is always a
+                    // position that maps to a row (revealHighlight() writes it).
+                    boundsBehavior: Flickable.StopAtBounds
+                    // Nothing to drag when everything fits, so the pointer keeps
+                    // behaving like a plain list there.
+                    interactive: contentHeight > height
+
                     Column {
-                        anchors.left: parent.left
+                        id: catalogColumn
+                        // The right 10 px are the scroll bar's lane, so a highlighted
+                        // row stops short of it.
+                        width: catalogView.width - 10
+                        spacing: 4
+
+                        Repeater {
+                            id: catalogRepeater
+                            model: inspector.filters.catalog.length
+                            delegate: Item {
+                                id: catalogItem
+                                required property int index
+                                property var catalogEntry: inspector.filters.catalog[index]
+                                property var modelData: catalogEntry
+                                // `rows.length` is read as a dependency: hasFilter() is
+                                // a call, and a call registers no binding dependency in
+                                // QML.
+                                property bool added: modelData.available && inspector.filters.rows.length >= 0
+                                                     && inspector.filters.hasFilter(modelData.type)
+                                property bool enabledEntry: modelData.available && !added
+                                // This row is the popup's keyboard target. The fill
+                                // below reads it, and it is announced as the row's
+                                // selected state, so the keyboard's position exists for
+                                // a screen reader as well as for the eye.
+                                readonly property bool keyboardTarget: root.highlightIndex === index
+                                width: parent.width
+                                height: visible ? (modelData.available ? 34 : 38) : 0
+                                // The rule itself is stated once, in root.queryMatches();
+                                // search.text is named HERE because that is what this
+                                // binding has to depend on.
+                                visible: root.queryMatches(index, search.text)
+                                opacity: enabledEntry ? 1.0 : 0.55
+
+                                Rectangle {
+                                    anchors.fill: parent
+                                    radius: 3
+                                    // One highlight, never two. The keyboard's target is
+                                    // painted with the same raised token hover uses, and
+                                    // while the keyboard highlight is live the hover fill
+                                    // is suppressed: a pointer that reaches a row releases
+                                    // the keyboard's highlight instead (see the MouseArea),
+                                    // so the two never show at once.
+                                    color: catalogItem.enabledEntry
+                                           && (catalogItem.keyboardTarget
+                                               || (mouse.containsMouse && root.highlightIndex < 0))
+                                           ? theme.raisedHover : "transparent"
+                                }
+                                Column {
+                                    anchors.left: parent.left
+                                    anchors.right: parent.right
+                                    anchors.leftMargin: 8
+                                    anchors.rightMargin: 8
+                                    anchors.verticalCenter: parent.verticalCenter
+                                    Text {
+                                        width: parent.width
+                                        text: modelData.name
+                                                 + (!modelData.available ? "  ·  " + inspector.filters.comingSoonLabel
+                                                                         : catalogItem.added ? "  ·  " + inspector.filters.addedLabel : "")
+                                        color: theme.text
+                                        font: uiFont
+                                                        elide: Text.ElideRight
+                                    }
+                                    Text {
+                                        width: parent.width
+                                        visible: modelData.available
+                                        text: modelData.description
+                                        color: theme.textMuted
+                                        font: uiFont
+                                                        elide: Text.ElideRight
+                                    }
+                                }
+                                MouseArea {
+                                    id: mouse
+                                    anchors.fill: parent
+                                    hoverEnabled: true
+                                    enabled: parent.enabledEntry
+                                    cursorShape: Qt.PointingHandCursor
+                                    onClicked: root.addEntry(parent.catalogEntry)
+                                    // The pointer reaching a row takes the highlight over:
+                                    // the keyboard's is released so only the row under the
+                                    // pointer is lit. Released, not moved - a stray
+                                    // mouse-over must not rewrite which row Return takes.
+                                    onContainsMouseChanged: {
+                                        if (containsMouse)
+                                            root.clearHighlight();
+                                    }
+                                    // A MouseArea that HAS a wheel handler accepts wheel
+                                    // events (Qt's qquickmousearea.cpp:
+                                    // we.setAccepted(isWheelConnected())), which would leave
+                                    // the rows unscrollable by wheel the moment they exceed
+                                    // the cap. Declining them hands the wheel back to the
+                                    // Flickable.
+                                    onWheel: (wheel) => wheel.accepted = false
+                                }
+                                Accessible.role: Accessible.ListItem
+                                Accessible.name: modelData.name
+                                Accessible.description: modelData.description
+                                Accessible.selected: catalogItem.keyboardTarget
+                            }
+                        }
+                    }
+
+                    // The scroll bar is the app's one scroll affordance, ATTACHED so its
+                    // position, size and active state come from the Flickable's
+                    // visibleArea (Qt's QQuickScrollBarAttached wires exactly those three
+                    // and nothing else). Two things are stated rather than inherited,
+                    // both from the Basic style's ScrollBar.qml:
+                    //  - the style's contentItem is TRANSIENT (a fade-in that times out
+                    //    450 ms after the last interaction). The design has no fade, so
+                    //    contentItem is replaced outright, which also removes the state
+                    //    that drove it;
+                    //  - with the fade gone, the style's `visible: policy !== AlwaysOff`
+                    //    would draw an empty track when nothing overflows, so visible is
+                    //    the ratio test the design asks for: show it only when the
+                    //    content does not fit.
+                    // It is parented to the catalog AREA, not to the Flickable: QML
+                    // children of a Flickable are stacked into its contentItem and would
+                    // scroll with the rows, and Qt only positions a bar whose parentItem
+                    // IS the flickable - which is also why the geometry is stated here.
+                    ScrollBar.vertical: ScrollBar {
+                        id: catalogBar
+                        parent: catalogArea
                         anchors.right: parent.right
-                        anchors.leftMargin: 8
-                        anchors.rightMargin: 8
-                        anchors.verticalCenter: parent.verticalCenter
-                        Text {
-                            width: parent.width
-                            text: modelData.name
-                                     + (!modelData.available ? "  ·  " + inspector.filters.comingSoonLabel
-                                                             : catalogItem.added ? "  ·  " + inspector.filters.addedLabel : "")
-                            color: theme.text
-                            font: uiFont
-                                            elide: Text.ElideRight
-                        }
-                        Text {
-                            width: parent.width
-                            visible: modelData.available
-                            text: modelData.description
-                            color: theme.textMuted
-                            font: uiFont
-                                            elide: Text.ElideRight
-                        }
-                    }
-                    MouseArea {
-                        id: mouse
-                        anchors.fill: parent
+                        anchors.top: parent.top
+                        anchors.bottom: parent.bottom
+                        width: 8
+                        orientation: Qt.Vertical
+                        policy: ScrollBar.AsNeeded
+                        visible: size < 1.0
                         hoverEnabled: true
-                        enabled: parent.enabledEntry
-                        cursorShape: Qt.PointingHandCursor
-                        onClicked: root.addEntry(parent.catalogEntry)
+                        // The design's minimum thumb length, expressed in the units
+                        // minimumSize takes: a fraction of the bar's own length.
+                        minimumSize: height > 0 ? 28 / height : 0
+                        background: Rectangle { color: "transparent" }
+                        contentItem: Rectangle {
+                            implicitWidth: 6
+                            radius: 3
+                            color: catalogBar.pressed ? theme.textMuted
+                                 : catalogBar.hovered ? theme.textMuted
+                                 : theme.raisedHover
+                        }
                     }
-                    Accessible.role: Accessible.ListItem
-                    Accessible.name: modelData.name
-                    Accessible.description: modelData.description
                 }
             }
 
