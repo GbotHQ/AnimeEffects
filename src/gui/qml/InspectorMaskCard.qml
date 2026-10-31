@@ -59,6 +59,7 @@ Column {
             height: 22
             // TEXT ONLY: the glyph in a small button was noise next to the toolbox, which already
             // names the tool (reported).
+            id: paintButton
             text: qsTr("Paint")
             Layout.fillWidth: true
             enabled: !inspector.playbackActive
@@ -67,15 +68,19 @@ Column {
             property string tipText: root.paintable
                                          ? qsTr("Paint this matte with the Mask tool")
                                          : qsTr("This frame blends two keys. Key the matte here to paint it.")
-            AeToolTip {
-                ownerItem: parent
-                text: parent.tipText
-                shown: parent.rowHovered
-            }
-            // `hovered` is AbstractButton's OWN read-only property: declaring another one is
-            // "Cannot override FINAL property" (and the whole card fails to load)
+            // THE DECLARATIONS COME FIRST: a binding that reads `parent.tipText` while the parent
+            // is still being built throws "Cannot read property ... of null" and writes nothing
+            // (measured: two TypeErrors per load). `hovered` is AbstractButton's OWN read-only
+            // property - declaring another one is "Cannot override FINAL property".
             property bool rowHovered: false
             HoverHandler { onHoveredChanged: parent.rowHovered = hovered }
+            AeToolTip {
+                ownerItem: paintButton
+                // BY ID, NOT BY `parent`: a `parent.*` binding is evaluated while the tooltip is
+                // still unparented and throws "Cannot read property ... of null" (two per load).
+                text: paintButton.tipText
+                shown: paintButton.rowHovered
+            }
             // ONE PRESS, ALWAYS THE SAME OUTCOME: painting. A frame that does not own the key first
             // keys it (which by definition does not change the picture), then arms the tool - so a
             // matte is never one dead button away from the user.
@@ -109,30 +114,6 @@ Column {
         }
     }
 
-    InspectorRow {
-        visible: root.present
-        label: qsTr("Invert")
-        // INVERT IS A STATE, NOT AN ACTION - so it is a check box, the control every other
-        // Boolean property here uses. It was an icon button wearing `circle-half`, which is the
-        // OPACITY glyph: reusing an icon for a second meaning is exactly how a vocabulary rots
-        // (reported).
-        AeCheckBox {
-            anchors.fill: parent
-            text: ""
-            checked: inspector.maskInverted
-            enabled: !inspector.playbackActive && root.paintable
-            onClicked: inspector.invertMask()
-        }
-        AeIconButton {
-            Layout.preferredWidth: 22
-            Layout.preferredHeight: 22
-            iconName: "trash"
-            label: qsTr("Remove mask")
-            size: 22
-            iconSize: 14
-            showTip: true
-            enabled: !inspector.playbackActive
-            onClicked: inspector.removeMask()
-        }
-    }
+    // (the Remove action lives IN the row above: one 27px line carries state, the action, the
+    // matte itself and the bin, so the card does not grow a second row for a single icon)
 }
