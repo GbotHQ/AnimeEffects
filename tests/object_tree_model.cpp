@@ -63,8 +63,6 @@ public:
 
 HarnessAssertHandler gAssertHandler;
 HarnessErrorHandler gErrorHandler;
-XCAssertHandler* gXCAssertHandler = &gAssertHandler;
-XCErrorHandler* gXCErrorHandler = &gErrorHandler;
 
 int failures = 0;
 int checks = 0;
@@ -170,6 +168,10 @@ void dragTo(gui::ObjectTreeModel& aModel, int aRow, qreal aContentY) {
 }
 
 } // namespace
+
+// LINKED BY NAME FROM libcore - file scope, not the anonymous namespace (see object_tree_panel.cpp)
+XCAssertHandler* gXCAssertHandler = &gAssertHandler;
+XCErrorHandler* gXCErrorHandler = &gErrorHandler;
 
 int main(int argc, char** argv) {
     QApplication app(argc, argv);

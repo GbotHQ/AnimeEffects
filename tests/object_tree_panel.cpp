@@ -82,8 +82,6 @@ public:
 };
 HarnessAssertHandler gAssertHandler;
 HarnessErrorHandler gErrorHandler;
-XCAssertHandler* gXCAssertHandler = &gAssertHandler;
-XCErrorHandler* gXCErrorHandler = &gErrorHandler;
 
 class TestAnimator: public core::Animator {
 public:
@@ -174,6 +172,12 @@ void doubleClick(QQuickItem* aItem, const QPointF& aLocal) {
 
 } // namespace
 
+// THE ENGINE'S HANDLERS ARE LINKED BY NAME, so these two live OUTSIDE the anonymous namespace:
+// inside it they have internal linkage and every other TU that raises XC_ASSERT - libcore,
+// ObjectTreeModel - fails to link (measured: gXCAssertHandler undefined from TreeNodeBase.h).
+XCAssertHandler* gXCAssertHandler = &gAssertHandler;
+XCErrorHandler* gXCErrorHandler = &gErrorHandler;
+
 int main(int argc, char** argv) {
     QApplication app(argc, argv);
     QQuickStyle::setStyle(QStringLiteral("Basic"));
@@ -261,6 +265,51 @@ int main(int argc, char** argv) {
     window.requestActivate();
     (void)QTest::qWaitForWindowExposed(&window);
     QCoreApplication::processEvents();
+
+    // ---- 1. every row is a named, reachable table cell -----------------------------------
+    check(model.rowCount() == 3, QStringLiteral("the model has the document and two rows (%1)")
+                                     .arg(model.rowCount()));
+    const QList<QQuickItem*> rowCells = cells(root);
+    check(rowCells.size() == model.rowCount(),
+          QStringLiteral("every row publishes one cell (%1 of %2)").arg(rowCells.size()).arg(model.rowCount()));
+    QQuickItem* docRow = cell(root, QStringLiteral("doc"));
+    QQuickItem* groupRow = cell(root, QStringLiteral("group"));
+    QQuickItem* leafRow = cell(root, QStringLiteral("leaf"));
+    check(docRow && groupRow && leafRow, "the rows are addressable by the layer names");
+    if (docRow && groupRow && leafRow) {
+        QAccessibleInterface* docIface = accessible(docRow);
+        QAccessibleInterface* groupIface = accessible(groupRow);
+        check(docIface && docIface->state().selectable == false,
+              "the document row is published as NOT selectable (a document is not a layer)");
+        check(groupIface && groupIface->state().expandable,
+              "a folder with children is published as expandable");
+        check(groupIface && !groupIface->state().expanded,
+              "and collapsed, so a screen reader says so");
+        check(groupIface && groupIface->state().checkable && groupIface->state().checked,
+              "its eye is published as a checked check state");
+        QTextStream(stdout) << "MEASURED  doc row: "
+                            << accessible(docRow)->text(QAccessible::Description) << " / group row: "
+                            << groupIface->text(QAccessible::Description) << "\n";
+    }
+
+    // ---- 2. the rows are the model's rows, at the model's heights ------------------------
+    if (docRow && groupRow && leafRow) {
+        check(qAbs(topOf(docRow, root)) < 0.5, "the document row is first");
+        check(qAbs(topOf(groupRow, root) - model.rows()[1].top) < 0.5,
+              QStringLiteral("the folder's row starts at the model's offset (%1 vs %2)")
+                  .arg(topOf(groupRow, root))
+                  .arg(model.rows()[1].top));
+        check(qAbs(groupRow->height() - model.rows()[1].height) < 0.5,
+              QStringLiteral("and is the model's height (%1 vs %2)")
+                  .arg(groupRow->height())
+                  .arg(model.rows()[1].height));
+        check(qAbs(leafRow->height() - model.rows().last().height) < 0.5,
+              QStringLiteral("the KEYED layer's row is its lane block's height (%1 vs %2)")
+                  .arg(leafRow->height())
+                  .arg(model.rows().last().height));
+        QTextStream(stdout) << "MEASURED  doc h=" << docRow->height() << " group h=" << groupRow->height()
+                            << " leaf h=" << leafRow->height() << "\n";
+    }
 
     // ---- 2a00. A REBUILD KEEPS THE SCROLL (adding a key used to scroll both views) ------
     // Reported: "adding a key resets timeline scroll" and "masking caused the tree's scroll to
@@ -960,51 +1009,6 @@ int main(int argc, char** argv) {
             project.commandStack().undo();
             QCoreApplication::processEvents();
         }
-    }
-
-    // ---- 1. every row is a named, reachable table cell -----------------------------------
-    check(model.rowCount() == 3, QStringLiteral("the model has the document and two rows (%1)")
-                                     .arg(model.rowCount()));
-    const QList<QQuickItem*> rowCells = cells(root);
-    check(rowCells.size() == model.rowCount(),
-          QStringLiteral("every row publishes one cell (%1 of %2)").arg(rowCells.size()).arg(model.rowCount()));
-    QQuickItem* docRow = cell(root, QStringLiteral("doc"));
-    QQuickItem* groupRow = cell(root, QStringLiteral("group"));
-    QQuickItem* leafRow = cell(root, QStringLiteral("leaf"));
-    check(docRow && groupRow && leafRow, "the rows are addressable by the layer names");
-    if (docRow && groupRow && leafRow) {
-        QAccessibleInterface* docIface = accessible(docRow);
-        QAccessibleInterface* groupIface = accessible(groupRow);
-        check(docIface && docIface->state().selectable == false,
-              "the document row is published as NOT selectable (a document is not a layer)");
-        check(groupIface && groupIface->state().expandable,
-              "a folder with children is published as expandable");
-        check(groupIface && !groupIface->state().expanded,
-              "and collapsed, so a screen reader says so");
-        check(groupIface && groupIface->state().checkable && groupIface->state().checked,
-              "its eye is published as a checked check state");
-        QTextStream(stdout) << "MEASURED  doc row: "
-                            << accessible(docRow)->text(QAccessible::Description) << " / group row: "
-                            << groupIface->text(QAccessible::Description) << "\n";
-    }
-
-    // ---- 2. the rows are the model's rows, at the model's heights ------------------------
-    if (docRow && groupRow && leafRow) {
-        check(qAbs(topOf(docRow, root)) < 0.5, "the document row is first");
-        check(qAbs(topOf(groupRow, root) - model.rows()[1].top) < 0.5,
-              QStringLiteral("the folder's row starts at the model's offset (%1 vs %2)")
-                  .arg(topOf(groupRow, root))
-                  .arg(model.rows()[1].top));
-        check(qAbs(groupRow->height() - model.rows()[1].height) < 0.5,
-              QStringLiteral("and is the model's height (%1 vs %2)")
-                  .arg(groupRow->height())
-                  .arg(model.rows()[1].height));
-        check(qAbs(leafRow->height() - model.rows().last().height) < 0.5,
-              QStringLiteral("the KEYED layer's row is its lane block's height (%1 vs %2)")
-                  .arg(leafRow->height())
-                  .arg(model.rows().last().height));
-        QTextStream(stdout) << "MEASURED  doc h=" << docRow->height() << " group h=" << groupRow->height()
-                            << " leaf h=" << leafRow->height() << "\n";
     }
 
     if (failures) {

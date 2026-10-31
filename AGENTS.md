@@ -25,6 +25,12 @@ cmake --build build --config Debug -j"$(nproc)"
 - **`ninja`'s own state can corrupt** (`stl_vector.h: operator[]: Assertion '__n < this->size()'`):
   `rm -f build/.ninja_deps build/.ninja_log`. After any build whose effect you cannot see, check the
   binary's mtime or `strings <bin> | grep <new string>` **before** instrumenting anything.
+- **`cp -a` / `rsync -a` INTO a tree that has a build dir keeps the sources' OLD mtimes, and ninja
+  trusts mtime**: a header change that arrives older than the objects is never compiled, and the
+  resulting binary mixes two layouts of the same struct. Measured: `MainDisplayWidget::requestFrame`
+  segfaulted in `QTimer::isActive` after four strokes because one object still had the pre-smoothing
+  `ViewportInput`; a clean rebuild of the same sources survived 12 rounds. `touch` the copied files
+  or build `--clean-first`.
 - **A `-W` warning is only absent from the run that COMPILED that TU.** An incremental build can miss
   warnings in files it did not rebuild; `touch` the files and rebuild to ask.
 - Do not `dnf remove 'qt6-*'` to "remove the old Qt": 80 packages depend on it, including the KDE
