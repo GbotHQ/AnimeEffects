@@ -33,6 +33,8 @@ LayerNode::LayerNode(const QString& aName, ShaderHolder& aShaderHolder):
     mIsClipped(),
     mMeshTransformer(":/shaders/MeshTransformVert.glsl"),
     mCurrentMesh(),
+    mTransformKey(),
+    mTransformKeyValid(),
     mClippees() {}
 
 void LayerNode::setDefaultImage(const img::ResourceHandle& aHandle) {
@@ -94,12 +96,17 @@ void LayerNode::setBlendMode(img::BlendMode aMode) {
 }
 
 void LayerNode::prerender(const RenderInfo& aInfo, const TimeCacheAccessor& aAccessor) {
-    mCurrentMesh = nullptr;
-
-    if (!mIsVisible)
+    // HIDDEN nodes draw nothing (renderLayer/renderComposite guard on !mCurrentMesh),
+    // and the cache may not survive a later show: it would be skipped for inputs that
+    // did not pass through a transformShape run.
+    if (!mIsVisible) {
+        mCurrentMesh = nullptr;
+        mTransformKeyValid = false;
         return;
+    }
 
-    // transform shape by current keys
+    // transform shape by current keys (transformShape skips the GL pass when the
+    // key says its output buffers already hold this exact result)
     transformShape(aInfo, aAccessor);
 }
 
@@ -647,8 +654,13 @@ void LayerNode::transformShape(const RenderInfo& aInfo, const TimeCacheAccessor&
 
     // current mesh
     LayerMesh* mesh = expans.ffdMesh();
-    if (!mesh || mesh->vertexCount() <= 0)
+    if (!mesh || mesh->vertexCount() <= 0) {
+        // no source geometry: nothing may be drawn from a previous frame, and no old
+        // key may make a later valid pass look cached
+        mCurrentMesh = nullptr;
+        mTransformKeyValid = false;
         return;
+    }
 
     // positions
     util::ArrayBlock<const gl::Vector3> positions;
@@ -659,8 +671,11 @@ void LayerNode::transformShape(const RenderInfo& aInfo, const TimeCacheAccessor&
         useInfluence = false;
         if (expans.areaImageKey()) {
             mesh = &(expans.areaImageKey()->data().gridMesh());
-            if (!mesh || mesh->vertexCount() <= 0)
+            if (!mesh || mesh->vertexCount() <= 0) {
+                mCurrentMesh = nullptr;
+                mTransformKeyValid = false;
                 return;
+            }
         }
         positions = util::ArrayBlock<const gl::Vector3>(mesh->positions(), mesh->vertexCount());
     }
@@ -673,12 +688,31 @@ void LayerNode::transformShape(const RenderInfo& aInfo, const TimeCacheAccessor&
     }
     XC_ASSERT(positions);
 
+    TransformKey key = {};
+    key.frame = aInfo.time.frame;
+    key.blendRevision = expans.revision();
+    key.mesh = mesh;
+    key.positions = positions.array();
+    key.positionsCount = positions.count();
+    key.nonPosed = aInfo.nonPosed;
+    key.originMesh = aInfo.originMesh;
+    key.useInfluence = useInfluence;
+    key.boneTargetMesh = expans.bone().targetMesh();
+
+    // IDENTICAL inputs: the buffers callGL wrote last time are still mounted and still
+    // hold this result, and the draw reads them (it applies the camera itself). No GL
+    // state is touched here, so the transformer stays bound exactly as it was left.
+    if (mTransformKeyValid && mCurrentMesh && mTransformKey == key)
+        return;
+
     // transform
     mMeshTransformer.callGL(
         expans, mesh->getMeshBuffer(), mesh->originOffset(), positions, aInfo.nonPosed, useInfluence
     );
 
     mCurrentMesh = mesh;
+    mTransformKey = key;
+    mTransformKeyValid = true;
 }
 
 // The inverse of the matrices this layer is drawn with: screen pixels -> the
