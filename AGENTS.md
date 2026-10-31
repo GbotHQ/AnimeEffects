@@ -198,15 +198,14 @@ hand it over. Its one question is `Sampling`:
 - A move with **no** gesture still feeds the tool (the brush ring follows the pointer).
 - The drag's buttons come from the **cursor**, not from the event's `buttons()`.
 - Gate: `tests/viewport_input.cpp` (fake host + a real `AbstractCursor`).
-- **The brush size dial is `sqrt` - chosen by hand on 2026-10-31, not by the numbers alone.** The
-  two laws were built and run side by side: "sqrt definitely works a lot better" was the verdict. One drag step
-  is 8 screen px (`ctrl::BrushDrag`). sqrt moves `sqrt(radius)` by 0.25 per step, so the same hand
-  travel buys the same EFFORT across the range: measured **+11.5 % at radius 20 (22.30)** and
-  **+2.5 % at 400 (410.06)**. linear adds a flat 2 px: **+10 % at 20 (22)** and **+0.5 % at 400
-  (402)** - it crawls exactly where the sqrt law is right. The old multiplicative law was x1.1 at
-  both ends (x2.36 across the same drag at either size), which is the report that started this.
-  The keyboard notch always keeps the ratio (`adjustSize`); `tests/tool_view_model.cpp` pins all
-  four numbers.
+- **The brush size dial moves `sqrt(radius)` by 0.25 per step.** One drag step is 8 screen px
+  (`ctrl::BrushDrag`), so the same hand travel buys the same EFFORT across the range: measured
+  **+11.5 % at radius 20 (22.30)** and **+2.5 % at 400 (410.06)**. Two alternatives were built and
+  run beside it on 2026-10-31 - a flat +2 px per step (it crawls at the top: +0.5 % at 400) and the
+  old x1.1 multiplicative law (too coarse at the top, too fine at the bottom, the report that
+  started this) - and the hand picked this one. No switch remains: the selector used for that
+  comparison was removed with it. The keyboard notch always keeps the ratio (`adjustSize`);
+  `tests/tool_view_model.cpp` pins both ends of the range.
 - **The brush path is SMOOTHED by arc length, in screen pixels** (`gui::PointerSmoothing`, the SMA
   measured in `~/dev/input-smoothing-lab`): the mean of the last **D = 12 px** of the pointer's
   path, which cancels a 4-px staircase outright (12 px is three periods). `AE_POINTER_SMOOTH=<px>`

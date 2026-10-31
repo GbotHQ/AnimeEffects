@@ -90,16 +90,6 @@ public:
     void adjustSize(int aSteps);
     void adjustHardness(int aSteps);
 
-    // The drag dial's law. `sqrt` is the CHOSEN law (picked by hand on 2026-10-31 against a build
-    // running `linear`): it moves sqrt(radius) by a constant per step, so the same hand travel means
-    // the same effort across the whole 1..1000 px range, while linear - 2 px per step - crawls at a
-    // large brush (+0.5 % at radius 400 against sqrt's +2.5 %). `AE_BRUSH_DIAL=linear` still selects
-    // the other one so the pair can be re-run, and the gate pins both by calling setDialLaw.
-    enum class DialLaw { Sqrt, Linear };
-    static DialLaw dialLawFromEnvironment();
-    void setDialLaw(DialLaw aLaw) { mDialLaw = aLaw; }
-    DialLaw dialLaw() const { return mDialLaw; }
-
 signals:
     // Every value AND the visibility flag notify here: a QML binding must re-read them
     // when the ACTIVE BRUSH moves (a tool switch), which is not an edit.
@@ -112,7 +102,6 @@ signals:
 
 private:
     ctrl::BrushParam* mParam = nullptr;
-    DialLaw mDialLaw = dialLawFromEnvironment();
 };
 
 // The live key bindings the dock SPEAKS. Every one of them is rebindable, so the

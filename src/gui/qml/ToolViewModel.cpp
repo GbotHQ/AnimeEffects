@@ -124,42 +124,25 @@ void ToolBrushModel::setPressureFlow(bool aValue) {
 // size keeps a float (a size of 1.1 px is legal) and the panel's slider was the only
 // thing that quantised it.
 namespace {
-// ONE DRAG STEP IS 8 SCREEN PX OF TRAVEL (ctrl::BrushDrag::kSizePxPerStep). The two laws:
-//
-//   sqrt (default)  sqrt(radius) moves by a constant per step, so the SAME hand travel means the same
-//                   EFFORT across the whole 1..1000 range: at radius 20 one step is +2.9px (14%) and at
-//                   radius 400 it is +10px (2.5%). The old multiplicative law (x1.1 per step) was
-//                   14% at both ends, which is too coarse at the top and too fine at the bottom -
-//                   exactly the report that started this.
-//   linear          `AE_BRUSH_DIAL=linear`: a constant number of PIXELS per step, if the sqrt law
-//                   feels too slow at the top of the range.
+// ONE DRAG STEP IS 8 SCREEN PX OF TRAVEL (ctrl::BrushDrag::kSizePxPerStep), AND IT MOVES sqrt(radius)
+// BY A CONSTANT: the same hand travel buys the same EFFORT across the whole 1..1000 range - measured
+// +11.5 % at radius 20 (22.30) and +2.5 % at 400 (410.06). A linear law (+2 px per step) was built
+// and run beside this one (2026-10-31): it crawls at the top (+0.5 % at 400), and the hand picked
+// this one. The old multiplicative law was x1.1 at both ends, too coarse at the top and too fine at
+// the bottom - the report that started this.
 constexpr double kSqrtPerStep = 0.25;
-constexpr double kLinearRadiusPerStep = 2.0;
 } // namespace
-
-ToolBrushModel::DialLaw ToolBrushModel::dialLawFromEnvironment() {
-    return qEnvironmentVariable("AE_BRUSH_DIAL") == QStringLiteral("linear")
-        ? DialLaw::Linear : DialLaw::Sqrt;
-}
 
 void ToolBrushModel::nudge(double aSizeSteps, double aHardnessSteps) {
     if (!mParam)
         return;
     bool changed = false;
-    // TWO DIAL LAWS, selectable so the hand can pick one (documented in AGENTS.md):
-    //   AE_BRUSH_DIAL=linear       -> a fixed number of PIXELS of radius per step
-    //   anything else (default)    -> the keyboard notch's ratio, x1.1 per step
-    // The keyboard notch always keeps `adjustSize`'s ratio: it is one press, one ratio, and a linear
-    // contribution there would depend on the current size anyway.
+    // The keyboard notch keeps `adjustSize`'s ratio (one press, one x1.1); the DRAG follows the
+    // sqrt law above, because it is continuous and the hand asked for equal effort, not equal ratio.
     if (aSizeSteps != 0.0) {
         const double radius = double(mParam->radius);
-        double scaled = radius;
-        if (mDialLaw == DialLaw::Linear) {
-            scaled = radius + kLinearRadiusPerStep * aSizeSteps;
-        } else {
-            const double root = std::sqrt(std::max(radius, 1.0)) + kSqrtPerStep * aSizeSteps;
-            scaled = root * root;
-        }
+        const double root = std::sqrt(std::max(radius, 1.0)) + kSqrtPerStep * aSizeSteps;
+        const double scaled = root * root;
         mParam->radius = float(std::min(std::max(scaled, double(radiusMin())), double(radiusMax())));
     }
     if (aHardnessSteps != 0.0)
