@@ -198,7 +198,8 @@ hand it over. Its one question is `Sampling`:
 - A move with **no** gesture still feeds the tool (the brush ring follows the pointer).
 - The drag's buttons come from the **cursor**, not from the event's `buttons()`.
 - Gate: `tests/viewport_input.cpp` (fake host + a real `AbstractCursor`).
-- **The brush size dial: `sqrt` by default, `linear` behind `AE_BRUSH_DIAL=linear`.** One drag step
+- **The brush size dial is `sqrt` - chosen by hand on 2026-10-31, not by the numbers alone.** The
+  two laws were built and run side by side: "sqrt definitely works a lot better" was the verdict. One drag step
   is 8 screen px (`ctrl::BrushDrag`). sqrt moves `sqrt(radius)` by 0.25 per step, so the same hand
   travel buys the same EFFORT across the range: measured **+11.5 % at radius 20 (22.30)** and
   **+2.5 % at 400 (410.06)**. linear adds a flat 2 px: **+10 % at 20 (22)** and **+0.5 % at 400
