@@ -112,3 +112,16 @@ The brush alt + rmb drag UX is rough, shows no photoshop style brush preview and
 FFD and Filter mask paint menus in the Tools panel have broken layout, controls draw over each other.
 
 Tooltips in the filter cards items draw behind the cards so theyre invisible.
+
+Do we have a global tooltip delay variable somewhere? Hovering over mesh cell size in the properties panel for more than tooltip amount should show the mesh overlay for that node. Also when in text edit mode or while scrubbing, it should show the overlay. Consider whether it should linger for a timer amount before disappearing like tooltips or whether it should disappear instantly it loses hover, text edit, or scrubbing. Also rename the property label to something that makes more sense "Mesh cell" doesnt mean anything and exposes internals. The user knows what a mesh is, but not what a cell is.
+
+The old number fields allowed mouse wheel and up/down arrows to increment/decrement the value when in text edit state, makes sure this is still supported.
+
+Tooltips in the QML UI seem to be unstyled.
+In the tools panel the tools buttons have accent active color, but hover seems to be non accent gray?
+QML dropdowns seem to reserve a ridiculous amount of space on the right for a scrollbar even if theyre not long enough to be scrollable, and whether they should reserve at all instead of the scrollbar being over is questionable. Also the scrollbar seems to be inset in the popup, which is wrong, its several pixels away from the right edge.
+The mask paint tool seems to have a label for what its currently painting with a button that puts a dropdown below the label and then lets the user pick any channel, even ones the layer doesnt have and there is no feedback. The user just paints and nothing happens. Horrible UX, this needs to be rethought.
+
+Properties > Mask > Paint should be disabled when already painting.
+
+The transform tool is broken when there is no transform keyframe. Its grayed out for no reason, behaves strange and automatically creates a key. It should only create keys if there is an existing position/rotation/scale key or when one of the key checkboxes are checked.

@@ -38,7 +38,8 @@ Column {
         visible: !root.present
         label: qsTr("Mask")
         AeButton {
-            anchors.fill: parent
+            // the row is a LAYOUT: `anchors.fill` on a layout-managed item is undefined behaviour
+            Layout.fillWidth: true
             height: 22
             text: qsTr("Add mask")
             enabled: inspector.hasTarget && !inspector.playbackActive
@@ -62,12 +63,19 @@ Column {
             id: paintButton
             text: qsTr("Paint")
             Layout.fillWidth: true
-            enabled: !inspector.playbackActive
+            // ALREADY PAINTING THIS MATTE IS NOT A REASON TO PRESS IT AGAIN: the tool is up and
+            // aimed here, so the button reports that state instead of re-arming it.
+            enabled: !inspector.playbackActive && !inspector.maskPaintActive
             // A frame that does not own the key shows a BLEND you cannot paint; the HOVER TIP is
-            // where that is said, not a sentence in the row.
-            property string tipText: root.paintable
-                                         ? qsTr("Paint this matte with the Mask tool")
-                                         : qsTr("This frame blends two keys. Key the matte here to paint it.")
+            // where that is said, not a sentence in the row - and the same tip explains the other
+            // two disabled states (already painting, playback).
+            property string tipText: inspector.playbackActive
+                                         ? qsTr("Stop playback to paint")
+                                         : !root.paintable
+                                               ? qsTr("This frame blends two keys. Key the matte here to paint it.")
+                                               : inspector.maskPaintActive
+                                                     ? qsTr("The Mask tool is already painting this matte")
+                                                     : qsTr("Paint this matte with the Mask tool")
             // THE DECLARATIONS COME FIRST: a binding that reads `parent.tipText` while the parent
             // is still being built throws "Cannot read property ... of null" and writes nothing
             // (measured: two TypeErrors per load). `hovered` is AbstractButton's OWN read-only

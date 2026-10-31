@@ -189,6 +189,13 @@ void InspectorViewModel::setPlaybackActive(bool aActive) {
     emit changed();
 }
 
+void InspectorViewModel::setMaskPaintActive(bool aActive) {
+    if (mMaskPaintActive == aActive)
+        return;
+    mMaskPaintActive = aActive;
+    emit maskPaintActiveChanged();
+}
+
 
 // ---- the node's MATTE -------------------------------------------------------
 //

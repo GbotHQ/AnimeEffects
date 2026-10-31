@@ -62,6 +62,10 @@ public:
     // Ctrl+I with the Mask tool in hand: the properties dock owns the matte's edit
     util::Signaler<void()> onInvertMaskRequested;
     util::Signaler<void(ctrl::ToolType)> onToolChanged;
+    // the Mask tool is painting THIS LAYER's own matte (see ToolViewModel::maskPaintingLayerMask)
+    bool maskPaintingLayerMask() const;
+    // the mask editor's TARGET changed (a filter card's Paint switches it without switching tools)
+    util::Signaler<void()> onMaskTargetChanged;
     util::Signaler<void(ctrl::ToolType)> onFinalizeTool;
     util::Signaler<void(const MainViewSetting&)> onViewSettingChanged;
 

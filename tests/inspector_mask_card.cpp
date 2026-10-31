@@ -61,10 +61,12 @@ class StubInspector: public QObject {
     Q_PROPERTY(bool maskHasKeyAtFrame READ maskHasKeyAtFrame NOTIFY changed)
     Q_PROPERTY(int maskRevision READ maskRevision NOTIFY changed)
     Q_PROPERTY(int currentFrame READ currentFrame NOTIFY changed)
+    Q_PROPERTY(bool maskPaintActive READ maskPaintActive NOTIFY changed)
 
 public:
     bool hasTarget() const { return true; }
     bool playbackActive() const { return false; }
+    bool maskPaintActive() const { return mMaskPaintActive; }
     bool maskPresent() const { return mPresent; }
     bool maskKeyed() const { return mKeyed; }
     bool maskHasKeyAtFrame() const { return mOnKey; }
@@ -101,6 +103,11 @@ public:
     }
     Q_INVOKABLE void requestLayerMaskPaint() { calls << QStringLiteral("requestLayerMaskPaint"); }
 
+    void setMaskPaintActive(bool aActive) {
+        mMaskPaintActive = aActive;
+        bump();
+    }
+
     // --- knobs the gate drives, in place of the document ---
     void setState(bool aPresent, bool aKeyed, bool aOnKey, int aFrame) {
         mPresent = aPresent;
@@ -119,6 +126,7 @@ private:
         emit changed();
     }
     bool mPresent = false;
+    bool mMaskPaintActive = false;
     bool mKeyed = false;
     bool mOnKey = false;
     int mRevision = 0;
@@ -287,6 +295,23 @@ int main(int argc, char** argv) {
         check(paint != nullptr && QMetaObject::invokeMethod(paint, "clicked"), "Paint is a live button");
         check(inspector.calls.contains(QStringLiteral("requestLayerMaskPaint")),
               "and it asks the window for the tool");
+    }
+
+    // ---- ALREADY PAINTING THIS MATTE: the button reports it, it does not re-arm it ------
+    {
+        QObject* paint = controlWithText(root, QStringLiteral("Paint"));
+        check(paint != nullptr && paint->property("enabled").toBool(),
+              "with the Mask tool elsewhere, Paint is live");
+        inspector.setMaskPaintActive(true);
+        QCoreApplication::processEvents();
+        check(!paint->property("enabled").toBool(),
+              "with the Mask tool already painting this matte, Paint is DISABLED");
+        check(paint->property("tipText").toString().contains(QStringLiteral("already")),
+              "and the tip says why");
+        inspector.setMaskPaintActive(false);
+        QCoreApplication::processEvents();
+        check(paint->property("enabled").toBool(),
+              "and live again once the tool leaves the Mask one");
     }
 
     // ---- the one edit: Remove, as a TRASH, found by its accessible name --------------

@@ -297,6 +297,11 @@ public:
     Q_INVOKABLE void setMaskField(int aIndex);
     QString maskFieldLabel() const;
     bool maskPinned() const { return mMaskPinned; }
+    // The Mask tool is up AND its target is a LAYER's own matte (not a filter lane's input):
+    // the card that offers "Paint this layer's matte" is only redundant in that case.
+    bool maskPaintingLayerMask() const {
+        return mTool == ctrl::ToolType_Mask && mMask.kind == ctrl::MaskTargetKind_LayerMask;
+    }
     // The caption's disclosure: open the chooser for a field a card chose.
     Q_INVOKABLE void unpinMaskTarget();
     double maskValue() const { return double(mMask.value); }

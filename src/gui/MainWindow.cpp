@@ -312,6 +312,15 @@ MainWindow::MainWindow(ctrl::System& aSystem, GUIResources& aResources, LocalePa
         via.onVisualUpdated.connect(&disp, &MainDisplayWidget::onVisualUpdated);
 
         tool.onToolChanged.connect(&disp, &MainDisplayWidget::onToolChanged);
+        // THE CARD'S PAINT BUTTON IS ARMED, NOT ARMED AGAIN: with the Mask tool already painting
+        // THIS LAYER's matte, pressing Paint would re-arm what is already armed, so the card
+        // disables it. The host is the only place that knows the tool AND its mask target, and
+        // the target can move without the tool moving (a filter card's Paint).
+        const auto updateMaskPaintState = [this, &prop]() {
+            prop.setMaskPaintActive(mTool && mTool->maskPaintingLayerMask());
+        };
+        tool.onToolChanged.connect([updateMaskPaintState](ctrl::ToolType) { updateMaskPaintState(); });
+        tool.onMaskTargetChanged.connect(updateMaskPaintState);
 
         // the temporary eyedropper: the viewport recognises it (it owns the modifiers)
         // and the mask panel takes the value

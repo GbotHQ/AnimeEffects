@@ -91,6 +91,9 @@ ToolWidget::ToolWidget(ViaPoint& aViaPoint,
 
     // ---- the model's two-way wiring -----------------------------------------
     connect(mModel, &ToolViewModel::toolChanged, this, &ToolWidget::onModelToolChanged);
+    // the mask editor's TARGET can move without the tool moving (a filter card's Paint switches a
+    // Mask tool that is already up), so the "already painting this matte" state has its own signal
+    connect(mModel, &ToolViewModel::maskChanged, this, [this]() { onMaskTargetChanged(); });
     connect(mModel, &ToolViewModel::changed, this, &ToolWidget::onParamUpdated);
     connect(mModel, &ToolViewModel::viewSettingsChanged, this, [this]() { onViewSettingChanged(viewSetting()); });
     connect(mModel, &ToolViewModel::clearMaskRequested, this, [this]() {
@@ -223,6 +226,10 @@ void ToolWidget::beginMaskPaint(core::TimeKeyType aLane, core::FilterMaskChannel
     // nothing at all (the editor still thought it was writing another lane's mask).
     // updateParam is idempotent, so the second push after a switch costs nothing.
     onParamUpdated();
+}
+
+bool ToolWidget::maskPaintingLayerMask() const {
+    return mModel ? mModel->maskPaintingLayerMask() : false;
 }
 
 void ToolWidget::beginLayerMaskPaint() {

@@ -37,6 +37,8 @@ public:
     void onKeyUpdated(core::TimeLineEvent& aEvent, bool aUndo);
     void onFrameUpdated();
     void onPlayBackStateChanged(bool aIsActive);
+    // the Mask tool is up (the host knows; the card disables its Paint button accordingly)
+    void setMaskPaintActive(bool aActive);
     void refreshTheme();
     // the matte's invert (Ctrl+I with the Mask tool in hand): one door onto the model's own edit
     void invertMask();

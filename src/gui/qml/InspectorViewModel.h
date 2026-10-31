@@ -56,6 +56,10 @@ class InspectorViewModel: public QObject {
 
     Q_PROPERTY(bool hasTarget READ hasTarget NOTIFY changed)
     Q_PROPERTY(bool playbackActive READ playbackActive NOTIFY changed)
+    // The Mask tool is up and its paint target is this node, i.e. the card's Paint button would
+    // re-arm what is already armed. The host says so (it is the only place that knows the active
+    // tool), and the card disables the button rather than pretending to do something.
+    Q_PROPERTY(bool maskPaintActive READ maskPaintActive NOTIFY maskPaintActiveChanged)
 
     Q_PROPERTY(QString blendLabel READ blendLabel CONSTANT)
     Q_PROPERTY(QString clippedLabel READ clippedLabel CONSTANT)
@@ -110,6 +114,7 @@ public:
     void setProject(core::Project* aProject);
     void setTarget(core::ObjectNode* aTarget);
     void setPlaybackActive(bool aActive);
+    void setMaskPaintActive(bool aActive);
     void refresh();
     void refreshAttributes();
     void refreshKeys();
@@ -128,6 +133,7 @@ public:
 
     bool hasTarget() const { return mProject && mTarget && mTarget->timeLine(); }
     bool playbackActive() const { return mPlaybackActive; }
+    bool maskPaintActive() const { return mMaskPaintActive; }
     core::TimeLine* timeLine() const;
     int frame() const;
     gui::prop::KeyAccessor& accessor() { return mAccessor; }
@@ -211,6 +217,7 @@ public:
 
 signals:
     void changed();
+    void maskPaintActiveChanged();
 
 private:
     friend class InspectorRowModel;
@@ -224,6 +231,7 @@ private:
     core::Project* mProject = nullptr;
     core::ObjectNode* mTarget = nullptr;
     bool mPlaybackActive = false;
+    bool mMaskPaintActive = false;
     gui::prop::KeyAccessor mAccessor;
 
     InspectorRowModel* mMove = nullptr;

@@ -172,6 +172,8 @@ void PropertyWidget::onFrameUpdated() { mModel->refreshFrame(); }
 
 void PropertyWidget::onPlayBackStateChanged(bool aIsActive) { mModel->setPlaybackActive(aIsActive); }
 
+void PropertyWidget::setMaskPaintActive(bool aActive) { mModel->setMaskPaintActive(aActive); }
+
 void PropertyWidget::invertMask() {
     if (mModel)
         mModel->invertMask();
