@@ -6,6 +6,8 @@
 #include <QVector2D>
 #include <Qt>
 
+#include "gui/PointerSmoothing.h"
+
 class QTabletEvent;
 #include "ctrl/ToolType.h"
 
@@ -77,7 +79,6 @@ public:
     virtual QPoint mapToGlobal(const QPoint& aPos) = 0;
     // the canvas grab's closed hand
     virtual void setGrabCursor(bool aClosed) = 0;
-    // what the next frame must repaint (see dirtyRect)
 };
 
 // THE VIEWPORT'S ONE INPUT ROUTER.
@@ -99,18 +100,27 @@ public:
     // sample was applied.
     bool frameTick();
 
-    // what the next paint must cover: the union of what the gestures reported
-    QRect takeDirty();
-    void addDirty(const QRect& aRect);
 
     Sampling sampling() const { return mSampling; }
     bool isBusy() const { return mGesture != Gesture::None; }
+
+    // the brush's path smoother (see PointerSmoothing): the host may tune or disable it
+    PointerSmoothing& smoothing() { return mSmoothing; }
+    const PointerSmoothing& smoothing() const { return mSmoothing; }
 
 private:
     enum class Gesture { None, Eyedropper, BrushResize, Tool };
 
     // the ONE place that answers "may this sample be dropped?"
     static Sampling policyFor(Gesture aGesture, ctrl::ToolType aToolType, const PointerSample& aSample);
+
+    // Which samples the smoother may touch: a DRAWING PATH, and only a mouse. A pen is excluded
+    // because its ink has to stay under the nib (a stylus reports sub-pixel motion at its own rate),
+    // a pan because its end state is the only thing that matters, and a hover because the brush's
+    // ring must follow the pointer exactly.
+    bool smoothingApplies(const PointerSample& aSample) const;
+    // The sample the tool is actually fed: the smoothed position when the seam applies.
+    PointerSample smoothedSample(const PointerSample& aSample);
 
     bool pressEyedropper(const PointerSample& aSample);
     bool pressBrushResize(const PointerSample& aSample);
@@ -133,6 +143,8 @@ private:
     ViewportHost& mHost;
     Gesture mGesture = Gesture::None;
     Sampling mSampling = Sampling::Latest;
+    // the brush's path smoother, in screen pixels (see PointerSmoothing)
+    PointerSmoothing mSmoothing;
     // the Latest gesture's held position; a QPointF(-1,-1) means "nothing held"
     PointerSample mPending;
     PointerSample mLast;

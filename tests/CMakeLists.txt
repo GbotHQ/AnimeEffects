@@ -225,6 +225,7 @@ target_link_libraries(brush_tip_pixels PRIVATE
 # while a button was held, and a stroke that painted ONE dab) had no gate; this is it.
 add_executable(viewport_input viewport_input.cpp
     ../src/gui/ViewportInput.cpp
+    ../src/gui/PointerSmoothing.cpp
     ../src/gui/theme/TimeLine.cpp)
 target_include_directories(viewport_input PRIVATE .. ../src ../src/gui)
 target_compile_definitions(viewport_input PRIVATE

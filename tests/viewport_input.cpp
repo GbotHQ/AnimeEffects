@@ -15,6 +15,7 @@
 #include <QMouseEvent>
 #include <Qt>
 
+#include <cmath>
 #include <cstdio>
 #include <cstdlib>
 #include <vector>
@@ -103,8 +104,6 @@ struct FakeHost: gui::ViewportHost {
     void endBrushDial() override {}
     QPoint mapToGlobal(const QPoint& aPos) override { return aPos; }
     void setGrabCursor(bool) override {}
-    void addDirty(const QRect&) override {}
-    QRect viewportRect() const override { return QRect(0, 0, 640, 480); }
 
     ctrl::ToolType mTool = ctrl::ToolType_SRT;
 };
@@ -121,6 +120,9 @@ gui::PointerSample sample(QPointF aPos, Qt::MouseButton aButton, Qt::MouseButton
 
 int main(int argc, char** argv) {
     QCoreApplication app(argc, argv);
+    // The smoother's default comes from AE_POINTER_SMOOTH; the checks below assert RAW positions,
+    // so the default is pinned here and the smoothing block turns its window on explicitly.
+    qputenv("AE_POINTER_SMOOTH", "0");
 
     // ---- 1. HOVER: a move with no gesture still reaches the tool -----------------------------
     {
@@ -197,6 +199,54 @@ int main(int argc, char** argv) {
         pen.precise = true;
         input.press(pen);
         check(input.sampling() == gui::Sampling::Every, "a pen press is Every, whatever the tool");
+    }
+
+    // ---- 5. THE SMOOTHER: a path, its trail, and the anchor on release ----------------------
+    {
+        FakeHost host;
+        host.mTool = ctrl::ToolType_Mask;
+        host.cameraInfo.setScreenSize(QSize(640, 480));
+        host.cameraInfo.setImageSize(QSize(640, 480));
+        host.cameraInfo.setScale(1.0f);
+        gui::ViewportInput input(host);
+        input.smoothing().setWindowPx(12.0);
+        check(input.smoothing().lagPx() == 6.0, "the trail is half the window");
+
+        input.press(sample(QPointF(100, 100), Qt::LeftButton, Qt::LeftButton));
+        // a straight drag of 40 px in 1 px steps: the mean trails by 6 px once the window is full
+        for (int i = 1; i <= 40; ++i)
+            input.move(sample(QPointF(100.0 + i, 100.0), Qt::NoButton, Qt::NoButton));
+
+        const QPointF tip = host.fed.back().pos;
+        check(std::abs(tip.x() - 134.0) < 0.75 && std::abs(tip.y() - 100.0) < 0.001,
+              "the smoothed tip trails the pointer by the window's half length");
+        check(!host.fed.empty() && host.fed.front().pos == QPointF(100.0, 100.0),
+              "the stroke starts exactly under the pen");
+
+        // the release lands the RAW position, so the stroke ends under the nib
+        input.release(sample(QPointF(140, 100), Qt::LeftButton, Qt::NoButton));
+        check(host.fed.back().pos == QPointF(140.0, 100.0),
+              "the release lands the raw pointer position after the smoothed tip");
+
+        // a hover is never smoothed: the ring follows the pointer exactly
+        const size_t before = host.fed.size();
+        input.move(sample(QPointF(300, 200), Qt::NoButton, Qt::NoButton));
+        check(host.fed.size() == before + 1 && host.fed.back().pos == QPointF(300.0, 200.0),
+              "a hover is fed unsmoothed");
+    }
+
+    // ---- 6. A DISABLED SMOOTHER IS THE IDENTITY --------------------------------------------
+    {
+        FakeHost host;
+        host.mTool = ctrl::ToolType_Mask;
+        host.cameraInfo.setScreenSize(QSize(640, 480));
+        host.cameraInfo.setImageSize(QSize(640, 480));
+        host.cameraInfo.setScale(1.0f);
+        gui::ViewportInput input(host);
+        input.smoothing().setWindowPx(0.0);
+        input.press(sample(QPointF(10, 10), Qt::LeftButton, Qt::LeftButton));
+        input.move(sample(QPointF(17, 10), Qt::NoButton, Qt::NoButton));
+        check(host.fed.back().pos == QPointF(17.0, 10.0), "window 0 passes the sample through");
     }
 
     if (gFailures == 0)

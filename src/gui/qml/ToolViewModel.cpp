@@ -137,6 +137,11 @@ constexpr double kSqrtPerStep = 0.25;
 constexpr double kLinearRadiusPerStep = 2.0;
 } // namespace
 
+ToolBrushModel::DialLaw ToolBrushModel::dialLawFromEnvironment() {
+    return qEnvironmentVariable("AE_BRUSH_DIAL") == QStringLiteral("linear")
+        ? DialLaw::Linear : DialLaw::Sqrt;
+}
+
 void ToolBrushModel::nudge(double aSizeSteps, double aHardnessSteps) {
     if (!mParam)
         return;
@@ -147,10 +152,9 @@ void ToolBrushModel::nudge(double aSizeSteps, double aHardnessSteps) {
     // The keyboard notch always keeps `adjustSize`'s ratio: it is one press, one ratio, and a linear
     // contribution there would depend on the current size anyway.
     if (aSizeSteps != 0.0) {
-        static const bool linear = qEnvironmentVariable("AE_BRUSH_DIAL") == QStringLiteral("linear");
         const double radius = double(mParam->radius);
         double scaled = radius;
-        if (linear) {
+        if (mDialLaw == DialLaw::Linear) {
             scaled = radius + kLinearRadiusPerStep * aSizeSteps;
         } else {
             const double root = std::sqrt(std::max(radius, 1.0)) + kSqrtPerStep * aSizeSteps;

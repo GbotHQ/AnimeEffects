@@ -1,6 +1,7 @@
 #include "gui/ViewportInput.h"
 
 #include <QGuiApplication>
+#include <QLineF>
 #include <QMouseEvent>
 #include <QTabletEvent>
 
@@ -88,6 +89,13 @@ bool ViewportInput::press(const PointerSample& aSample) {
     mSampling = policyFor(mGesture, mHost.toolType(), aSample);
     mLast = aSample;
     mPending = aSample;
+
+    // A DRAWING PATH STARTS EXACTLY UNDER THE PEN: the smoother anchors its window at the press.
+    // Any other gesture resets it, so no sample ever carries across gestures.
+    if (mGesture == Gesture::Tool && smoothingApplies(aSample))
+        mSmoothing.begin(aSample.pos);
+    else
+        mSmoothing.reset();
 
     switch (mGesture) {
     case Gesture::Eyedropper:
@@ -186,9 +194,17 @@ bool ViewportInput::release(const PointerSample& aSample) {
     mPending = aSample;
     if (mSampling == Sampling::Latest)
         frameTick();
-    else if (mGesture == Gesture::Tool)
+    else if (mGesture == Gesture::Tool) {
         sampleTool(aSample);
-    else if (mGesture == Gesture::Eyedropper)
+        // THE MEAN ENDS D/2 px BEHIND THE NIB, and a stroke must end under the pen. The lab's
+        // "finished" pane re-evaluates the tail; a stamping editor cannot re-draw what it already
+        // put down, so the RAW release is fed last and the tool draws one short segment from the
+        // smoothed tip to it (measured: at most lagPx(), 6 px at the default window).
+        if (smoothingApplies(aSample)
+            && QLineF(mSmoothing.value(), aSample.pos).length() > 0.25) {
+            feedTool(aSample);
+        }
+    } else if (mGesture == Gesture::Eyedropper)
         sampleEyedropper(aSample);
 
     releaseGesture(aSample);
@@ -200,6 +216,8 @@ void ViewportInput::releaseGesture(const PointerSample& aSample) {
     const Gesture gesture = mGesture;
     mGesture = Gesture::None;
     mPending.pos = QPointF(-1.0, -1.0);
+    // the path's smoother never carries a sample into the next gesture
+    mSmoothing.reset();
 
     if (gesture == Gesture::BrushResize) {
         mHost.endBrushDial();
@@ -263,7 +281,30 @@ void ViewportInput::sampleBrushResize(const PointerSample& aSample) {
     mHost.stepBrushDial(aSample.pos);
 }
 
-void ViewportInput::sampleTool(const PointerSample& aSample) { feedTool(aSample); }
+void ViewportInput::sampleTool(const PointerSample& aSample) { feedTool(smoothedSample(aSample)); }
+
+bool ViewportInput::smoothingApplies(const PointerSample& aSample) const {
+    if (mGesture != Gesture::Tool || mSampling != Sampling::Every)
+        return false;                       // only a drawing path; a pan's end state is not a path
+    if (!mSmoothing.isEnabled())
+        return false;
+    if (aSample.tablet)
+        return false;                       // a pen's ink stays under the nib (see the header)
+    // NO BUTTON TEST: a drag sample often carries an empty `buttons` (the press may have been
+    // consumed elsewhere), and the gesture itself is the proof - a hover has no gesture at all
+    // (see hoverTool), so it never reaches this seam.
+    if ((aSample.buttons & (Qt::MiddleButton | Qt::RightButton)) != Qt::NoButton)
+        return false;                       // a pan that happens to be an Every tool
+    return true;
+}
+
+PointerSample ViewportInput::smoothedSample(const PointerSample& aSample) {
+    if (!smoothingApplies(aSample))
+        return aSample;
+    PointerSample out = aSample;
+    out.pos = mSmoothing.step(aSample.pos);
+    return out;
+}
 
 void ViewportInput::hoverTool(const PointerSample& aSample) {
     // the same call the drag makes, with no button held: `AbstractCursor` derives "dragged" from its

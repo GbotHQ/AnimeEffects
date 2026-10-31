@@ -185,6 +185,39 @@ int main(int argc, char** argv) {
     model.adjustBrush(+1, -1);
     check(near(model.brush()->radius(), 123.0 * 1.1),
           QStringLiteral("one size notch is x1.1 (%1)").arg(model.brush()->radius()));
+
+    // THE DRAG DIAL'S TWO LAWS, pinned at both ends of the range. One step is the same HAND TRAVEL
+    // (8 screen px) either way; what differs is how much size that buys. sqrt keeps the effort
+    // constant across 1..1000 px; linear buys a fixed number of pixels, which is the whole point of
+    // having both (AE_BRUSH_DIAL=linear selects it by hand).
+    {
+        const auto sqrtLaw = [](double aRadius) {
+            const double root = std::sqrt(aRadius) + 0.25;   // kSqrtPerStep
+            return root * root;
+        };
+        using Law = gui::ToolBrushModel::DialLaw;
+        model.brush()->setDialLaw(Law::Sqrt);
+        model.brush()->setRadius(20.0);
+        model.brush()->nudge(1.0, 0.0);
+        check(near(model.brush()->radius(), sqrtLaw(20.0)),
+              QStringLiteral("sqrt law at 20: %1 (want %2)")
+                  .arg(model.brush()->radius()).arg(sqrtLaw(20.0)));
+        model.brush()->setRadius(400.0);
+        model.brush()->nudge(1.0, 0.0);
+        check(near(model.brush()->radius(), sqrtLaw(400.0)),
+              QStringLiteral("sqrt law at 400: %1 (want %2)")
+                  .arg(model.brush()->radius()).arg(sqrtLaw(400.0)));
+        model.brush()->setDialLaw(Law::Linear);
+        model.brush()->setRadius(20.0);
+        model.brush()->nudge(1.0, 0.0);
+        check(near(model.brush()->radius(), 22.0),
+              QStringLiteral("linear law at 20: +2 px (%1)").arg(model.brush()->radius()));
+        model.brush()->setRadius(400.0);
+        model.brush()->nudge(1.0, 0.0);
+        check(near(model.brush()->radius(), 402.0),
+              QStringLiteral("linear law at 400: +2 px (%1)").arg(model.brush()->radius()));
+        model.brush()->setDialLaw(Law::Sqrt);
+    }
     check(near(model.brush()->hardness(), 0.55), QStringLiteral("one hardness notch is 5 %% (%1)")
                                                     .arg(model.brush()->hardness()));
 

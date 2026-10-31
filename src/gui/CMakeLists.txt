@@ -64,6 +64,7 @@ add_executable(${PROJECT_NAME} WIN32 MACOSX_BUNDLE
     ProjectTabBar.cpp ProjectTabBar.h
     PropertyWidget.cpp PropertyWidget.h
     ViewportInput.cpp ViewportInput.h
+    PointerSmoothing.cpp PointerSmoothing.h
     ResourceDialog.cpp ResourceDialog.h
     ResourceTreeWidget.cpp ResourceTreeWidget.h
     TabCloseButton.cpp TabCloseButton.h

@@ -192,10 +192,25 @@ hand it over. Its one question is `Sampling`:
 - A move with **no** gesture still feeds the tool (the brush ring follows the pointer).
 - The drag's buttons come from the **cursor**, not from the event's `buttons()`.
 - Gate: `tests/viewport_input.cpp` (fake host + a real `AbstractCursor`).
-- **The brush size dial is multiplicative today** (`radius *= 1.1` per step, so a big brush changes
-  fast and a small one crawls: measured ×2.36 for the same 80px drag at size 20 and at size 400).
-  `AE_BRUSH_DIAL=linear` selects an additive law (+2px of radius per 8px of travel) so the two can be
-  compared by hand; the keyboard notch always keeps the ratio.
+- **The brush size dial: `sqrt` by default, `linear` behind `AE_BRUSH_DIAL=linear`.** One drag step
+  is 8 screen px (`ctrl::BrushDrag`). sqrt moves `sqrt(radius)` by 0.25 per step, so the same hand
+  travel buys the same EFFORT across the range: measured **+11.5 % at radius 20 (22.30)** and
+  **+2.5 % at 400 (410.06)**. linear adds a flat 2 px: **+10 % at 20 (22)** and **+0.5 % at 400
+  (402)** - it crawls exactly where the sqrt law is right. The old multiplicative law was x1.1 at
+  both ends (x2.36 across the same drag at either size), which is the report that started this.
+  The keyboard notch always keeps the ratio (`adjustSize`); `tests/tool_view_model.cpp` pins all
+  four numbers.
+- **The brush path is SMOOTHED by arc length, in screen pixels** (`gui::PointerSmoothing`, the SMA
+  measured in `~/dev/input-smoothing-lab`): the mean of the last **D = 12 px** of the pointer's
+  path, which cancels a 4-px staircase outright (12 px is three periods). `AE_POINTER_SMOOTH=<px>`
+  sets the window, `0` disables it. It trails by **D/2 = 6 px of path** - ~60 ms at 100 px/s, ~300 ms
+  at 20 px/s: the latency of a distance parameterisation is the speed's, not a constant. Rules, each
+  measured: the window is in SCREEN px (a sample-count window changes strength with the event rate,
+  a document-px one with the zoom); only a DRAWING PATH is smoothed (a pan's end state is not a
+  path, and a hover feeds the ring unsmoothed); a PEN is never smoothed; and the RAW release sample
+  lands after the last smoothed one, because the mean ends 6 px short of the nib and a stroke must
+  end under it. `tests/viewport_input.cpp` pins the trail, the start anchor, the release and the
+  hover.
 - **There is no scissored "band" repaint.** One was built and deleted: with it engaged (5 scissored
   frames) a 40-position drag still delivered 6 samples of stroke, so it never addressed delivery, and
   its only effect was a mode that could leave parts of the surface unpainted.
