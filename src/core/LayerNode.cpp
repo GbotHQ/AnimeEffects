@@ -103,8 +103,41 @@ void LayerNode::prerender(const RenderInfo& aInfo, const TimeCacheAccessor& aAcc
 }
 
 
+namespace {
+// does this node's blended state deform its geometry at all? (mesh/FFD keys, or a bone binding)
+bool layersDeformationActive(TimeKeyExpans& aExpans) {
+    // A BONE BINDING deforms the draw, and so does an FFD/mesh KEY - the mesh the layer draws with
+    // is `ffdMesh()` and its DEFORMATION is `ffd()`'s positions, so a mesh that merely exists (the
+    // base grid) is not a deformation.
+    if (aExpans.bone().isAffectedByBinding())
+        return true;
+    return aExpans.ffd().count() > 0;
+}
+} // namespace
+
 void LayerNode::render(const RenderInfo& aInfo, const TimeCacheAccessor& aAccessor) {
     if (!mIsVisible || aAccessor.get(mTimeLine).opa().isZero()) return;
+
+    // THE MASK TOOL PAINTS AN UNDISTORTED LAYER, and that is a RULE, not a shortcut. A matte
+    // lives in the layer's CONTENT space, and the mask pass samples it through the node's SRT -
+    // a matrix. A mesh/FFD/bone deformation is NOT a matrix, so with it in the draw the pixels on
+    // screen come from content points the matte pass cannot name, and the stroke, its rubylith
+    // and the masked result end up in three different places (reported: "mask painting paints on
+    // the untransformed mesh ... what you see is not what you get"). Drawing the node's ORIGINAL
+    // mesh while its matte is painted (originMesh: the grid without its deformation) makes the
+    // three one mapping. The alternatives are a per-pixel mesh INVERSE in both the paint path and
+    // the mask pass, or limiting a mask to the deformed silhouette - the first is a pipeline
+    // change, the second takes away exactly what a matte is for.
+    // ...and `!aInfo.originMesh` is what makes it happen ONCE: the recursive call below still
+    // carries the preview target, so testing only that recursed forever (a crash on the first
+    // stroke of a matte on a deformed layer).
+    if (!aInfo.originMesh && aInfo.maskPreviewTarget == this && aInfo.maskPreviewKey != nullptr
+        && layersDeformationActive(const_cast<TimeKeyExpans&>(aAccessor.get(mTimeLine)))) {
+        RenderInfo undistorted(aInfo);
+        undistorted.originMesh = true;
+        render(undistorted, aAccessor);
+        return;
+    }
 
     // The direct path's HSV comes from the BLENDED value, like every other filter
     // decision: an HSV edited on its default key must bake into the layer shader
@@ -276,7 +309,10 @@ void LayerNode::renderComposite(const RenderInfo& aInfo, const TimeCacheAccessor
             if (!aInfo.nonPosed && expans.bone().isAffectedByBinding())
                 world = expans.bone().outerMatrix();
             const QMatrix4x4 toScreen =
-                waveContentToScreen(aInfo.camera, QSizeF(frame.size()), world, expans.imageOffset());
+                waveContentToScreen(
+                    aInfo.camera, QSizeF(frame.size()), world,
+                    maskContentImageOffset(ObjectType_Layer, expans.imageOffset())
+                );
             bool invertible = false;
             screenToLayer = toScreen.inverted(&invertible);
             haveMapping = true;

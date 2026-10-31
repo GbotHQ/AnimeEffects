@@ -294,14 +294,6 @@
 #include "gui/AudioPlaybackWidget.h"
 bool AudioPlaybackWidget::deserialize(const QJsonObject&, std::vector<audioConfig>*) { return false; }
 
-// ctrl's timeline editor references two GUI symbols that only matter on paths
-// this test does not drive. Stub them (same pattern) instead of linking the
-// whole gui library.
-#include "gui/ObjectTreeWidget.h"
-bool gui::obj::Item::isTopNode() const { return false; }
-std::pair<core::TimeKey*, core::LayerMesh*> gui::ObjectTreeWidget::getAreaMeshImpl(core::ObjectNode&, int) {
-    return { nullptr, nullptr };
-}
 
 // Section 23 drives a REAL ctrl::TimeLineEditor (the panel's selection source is
 // the timeline's own live set, so the round trip has to go through the real

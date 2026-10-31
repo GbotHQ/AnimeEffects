@@ -203,6 +203,42 @@ target_link_libraries(layer_thumbnails PRIVATE
     img util
 )
 
+# See brush_tip_pixels.cpp. The brush tip is a fragment shader (gl::PrimitiveDrawer's
+# Type_BrushTip), so its contract - a flat core, a brushFalloff band, nothing past the rim -
+# is only measurable by reading pixels back from the overlay's own drawing path.
+add_executable(brush_tip_pixels brush_tip_pixels.cpp)
+target_include_directories(brush_tip_pixels PRIVATE .. ../src)
+target_compile_definitions(brush_tip_pixels PRIVATE
+    AE_MAJOR_VERSION=1
+    AE_MINOR_VERSION=7
+    AE_MICRO_VERSION=1
+    USE_GL_CORE_PROFILE
+)
+target_link_libraries(brush_tip_pixels PRIVATE
+    Qt6::Core Qt6::Core5Compat Qt6::Gui Qt6::Widgets
+    Qt6::OpenGL Qt6::OpenGLWidgets
+    ctrl core gl img util
+)
+
+# See viewport_input.cpp. The viewport's pointer router: hover feeds the tool, a brush stroke is
+# applied per sample, a state-only drag once per frame. Two live defects (the brush ring only moving
+# while a button was held, and a stroke that painted ONE dab) had no gate; this is it.
+add_executable(viewport_input viewport_input.cpp
+    ../src/gui/ViewportInput.cpp
+    ../src/gui/theme/TimeLine.cpp)
+target_include_directories(viewport_input PRIVATE .. ../src ../src/gui)
+target_compile_definitions(viewport_input PRIVATE
+    AE_MAJOR_VERSION=1
+    AE_MINOR_VERSION=7
+    AE_MICRO_VERSION=1
+    USE_GL_CORE_PROFILE
+)
+target_link_libraries(viewport_input PRIVATE
+    Qt6::Core Qt6::Core5Compat Qt6::Gui Qt6::Widgets
+    Qt6::Svg Qt6::Xml Qt6::Concurrent Qt6::Multimedia
+    cmnd core ctrl gl img thr util pugixml
+)
+
 add_executable(mask_mapping mask_mapping.cpp)
 target_include_directories(mask_mapping PRIVATE .. ../src)
 target_compile_definitions(mask_mapping PRIVATE
@@ -909,6 +945,105 @@ target_link_libraries(inspector_view_model PRIVATE
     cmnd core ctrl gl img thr util pugixml
 )
 
+# The Tools dock's MODEL: the tool registry, each tool's own parameters, which rows a
+# mode shows, the brush retargeting, the mask targets and the signals the host acts on.
+# Headless and widget-free - the same split as inspector_view_model, on the other side
+# of the dock. See tool_view_model.cpp.
+add_executable(tool_view_model
+    tool_view_model.cpp
+    ../src/gui/qml/ToolViewModel.cpp
+    ../src/ctrl/PoseParam.cpp)
+target_include_directories(tool_view_model PRIVATE .. ../src)
+target_compile_definitions(tool_view_model PRIVATE
+    AE_MAJOR_VERSION=1
+    AE_MINOR_VERSION=7
+    AE_MICRO_VERSION=1
+    USE_GL_CORE_PROFILE
+)
+target_link_libraries(tool_view_model PRIVATE
+    Qt6::Core Qt6::Gui Qt6::OpenGL
+)
+
+# The Tools dock's SCENE: loads the REAL ToolsPanel.qml and drives its controls through
+# QAccessible, i.e. the same route a screen reader and scripts/gui/ae_ui.py take. Every
+# assertion is a defect the widget dock had (unaddressable icons, the seventh tool
+# wrapped onto its own row, unlabeled mask glyphs, a read-only hardness readout, no
+# scrollbar). See tools_panel.cpp.
+add_executable(tools_panel
+    tools_panel.cpp
+    ../src/gui/qml/ToolViewModel.cpp
+    ../src/gui/qml/QmlTheme.cpp
+    ../src/gui/qml/QmlFormAccessibility.cpp
+    ../src/gui/theme/Icons.cpp
+    ../src/ctrl/PoseParam.cpp)
+target_include_directories(tools_panel PRIVATE .. ../src ../src/gui)
+target_compile_definitions(tools_panel PRIVATE
+    AE_MAJOR_VERSION=1
+    AE_MINOR_VERSION=7
+    AE_MICRO_VERSION=1
+    USE_GL_CORE_PROFILE
+    AE_QML_DIR="${CMAKE_SOURCE_DIR}/src/gui/qml"
+    AE_ICON_SRC="${CMAKE_SOURCE_DIR}/assets/icons"
+)
+target_link_libraries(tools_panel PRIVATE
+    Qt6::Core Qt6::Gui Qt6::Widgets Qt6::Xml
+    Qt6::Qml Qt6::Quick Qt6::QuickControls2 Qt6::Test Qt6::OpenGL
+)
+
+# The Animation dock's TREE, as a model: the rows (height-identical to the lane blocks the
+# timeline draws), the selection's anchor/cursor rules, the keyboard verbs, the drop target a
+# drag computes, and that every action is ONE undo step. Headless apart from the GL a
+# core::LayerNode needs to exist. See object_tree_model.cpp.
+add_executable(object_tree_model
+    object_tree_model.cpp
+    ../src/gui/qml/ObjectTreeModel.cpp
+    ../src/gui/ThumbnailCache.cpp
+    # a core::LayerNode compiles its mesh shader from :/shaders, which only the app's resource
+    # bundle provides (the same reason asset_remove_layers links it)
+    ${CMAKE_SOURCE_DIR}/assets/assets.qrc)
+target_include_directories(object_tree_model PRIVATE .. ../src ../src/gui)
+target_compile_definitions(object_tree_model PRIVATE
+    AE_MAJOR_VERSION=1
+    AE_MINOR_VERSION=7
+    AE_MICRO_VERSION=1
+    USE_GL_CORE_PROFILE
+)
+target_link_libraries(object_tree_model PRIVATE
+    Qt6::Core Qt6::Core5Compat Qt6::Widgets
+    Qt6::Gui Qt6::OpenGL Qt6::OpenGLWidgets
+    Qt6::Svg Qt6::Xml Qt6::Concurrent Qt6::Multimedia
+    cmnd core ctrl gl img thr util pugixml
+)
+
+# The Animation dock's tree SCENE: loads the real ObjectTreePanel.qml over the real model and
+# drives it through QAccessible - the route a screen reader and scripts/gui/ae_ui.py take. The
+# row protocol (marker "aeAccessibleRow", role Cell so AT-SPI still says "table cell") is what
+# makes the tree addressable at all: a Qt Quick item's own accessible object reports itself
+# invisible here. See object_tree_panel.cpp.
+add_executable(object_tree_panel
+    object_tree_panel.cpp
+    ${CMAKE_SOURCE_DIR}/assets/assets.qrc
+    ../src/gui/qml/ObjectTreeModel.cpp
+    ../src/gui/qml/QmlTheme.cpp
+    ../src/gui/qml/QmlFormAccessibility.cpp
+    ../src/gui/ThumbnailCache.cpp
+    ../src/gui/theme/Icons.cpp)
+target_include_directories(object_tree_panel PRIVATE .. ../src ../src/gui)
+target_compile_definitions(object_tree_panel PRIVATE
+    AE_MAJOR_VERSION=1
+    AE_MINOR_VERSION=7
+    AE_MICRO_VERSION=1
+    USE_GL_CORE_PROFILE
+    AE_QML_DIR="${CMAKE_SOURCE_DIR}/src/gui/qml"
+    AE_ICON_SRC="${CMAKE_SOURCE_DIR}/assets/icons"
+)
+target_link_libraries(object_tree_panel PRIVATE
+    Qt6::Core Qt6::Core5Compat Qt6::Widgets Qt6::Gui Qt6::Xml
+    Qt6::Qml Qt6::Quick Qt6::QuickControls2 Qt6::Test Qt6::OpenGL
+    Qt6::OpenGLWidgets Qt6::Svg Qt6::Concurrent Qt6::Multimedia
+    cmnd core ctrl gl img thr util pugixml
+)
+
 # Filter stack command grain: add creates the entry and a key as one undo step,
 # remove drops the entry and its explicit keys together, and reorder/eye are
 # independently undoable. See filter_stack_model.cpp.
@@ -1593,7 +1728,7 @@ target_link_libraries(overlay_engine_primitives PRIVATE
 )
 
 # Regression test for removing an asset that layers still use
-# (core::ObjectTree::findNodesUsingResource, gui::ObjectTreeWidget::pushDeleteObjects,
+# (core::ObjectTree::findNodesUsingResource, ctrl::tree::appendDeleteNodes,
 # gui::res::ResourceUpdater::remove): the removal used to be refused outright when
 # any layer rendered from the asset. It now deletes those layers in the same undo
 # step, so the search must walk the asset's whole subtree, the resource must be
@@ -1601,8 +1736,11 @@ target_link_libraries(overlay_engine_primitives PRIVATE
 # its layers IN ORDER. Builds the real object tree and asset tree and drives the
 # real removal; needs a GL context for core::LayerNode's default ImageKey, so it
 # runs under xvfb (cf. psd_layer_identity). See asset_remove_layers.cpp.
+#
+# It builds no tree VIEW at all any more: the layer deletions are DOCUMENT commands
+# (ctrl/TreeActions.h), and the QML tree derives its rows from the document, so there is
+# no view state to keep in step - which is why the host source is not in this list.
 add_executable(asset_remove_layers asset_remove_layers.cpp
-    ../src/gui/ObjectTreeWidget.cpp
     ../src/gui/GUIResources.cpp
     ../src/gui/AppStyle.cpp
     ../src/gui/ProjectHook.cpp
@@ -1616,12 +1754,6 @@ add_executable(asset_remove_layers asset_remove_layers.cpp
     ../src/gui/res/res_ResourceUpdater.cpp
     ../src/gui/res/res_Item.cpp
     ../src/gui/res/res_Notifier.cpp
-    ../src/gui/obj/obj_Item.cpp
-    ../src/gui/obj/obj_InsertItem.cpp
-    ../src/gui/obj/obj_MoveItem.cpp
-    ../src/gui/obj/obj_Notifiers.cpp
-    ../src/gui/obj/obj_RemoveItem.cpp
-    ../src/gui/obj/obj_Util.cpp
     ../src/gui/theme/Theme.cpp
     ../src/gui/theme/Icons.cpp
     ../src/gui/theme/TimeLine.cpp

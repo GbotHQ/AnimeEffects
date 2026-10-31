@@ -38,6 +38,8 @@ public:
     void onFrameUpdated();
     void onPlayBackStateChanged(bool aIsActive);
     void refreshTheme();
+    // the matte's invert (Ctrl+I with the Mask tool in hand): one door onto the model's own edit
+    void invertMask();
 
     util::Signaler<void()> onVisualUpdated;
     // a filter row asked to paint its mask (see InspectorViewModel)

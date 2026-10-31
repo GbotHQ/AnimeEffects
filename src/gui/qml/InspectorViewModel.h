@@ -198,6 +198,9 @@ public:
     Q_INVOKABLE void removeMask();
     Q_INVOKABLE void invertMask();
     Q_INVOKABLE void toggleMaskKey();
+    // re-announce the matte facts (present/keyed/key-at-frame/thumbnail revision): every key and
+    // frame notification calls it, so the card cannot lag behind the lane
+    void notifyMaskState();
     // The card points at the tool, like a filter row's "paint mask" does.
     Q_INVOKABLE void requestLayerMaskPaint();
 

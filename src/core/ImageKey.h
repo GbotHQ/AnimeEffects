@@ -10,9 +10,11 @@
 #include "img/BlendMode.h"
 #include "core/GridMesh.h"
 #include "core/TimeKey.h"
-#include "gui/obj/obj_Item.h"
+#include "util/LifeLink.h"
 
 namespace core {
+
+class Project;
 
 class ImageKey: public TimeKey {
 public:

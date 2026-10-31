@@ -855,14 +855,25 @@ namespace TimeLineUtil {
             notifier->event().pushTarget(aTarget, tType, aFrame);
             macro.grabListener(notifier);
 
-            // create commands
-            auto& stack = aProject.commandStack();
-            stack.push(new cmnd::GrabNewObject<tKey>(aKey));
-            stack.push(aTarget.timeLine()->createPusher(tType, aFrame, aKey));
+            appendNewKey(aProject, aTarget, aFrame, aKey, aParentKey);
+        }
+    }
 
-            if (aParentKey) {
-                stack.push(new cmnd::PushBackTree<TimeKey>(&aParentKey->children(), aKey));
-            }
+    // The COMMAND half of pushNewKey, with no macro and no notifier: the caller owns
+    // both, so it decides how many keys are one undo step and which event names them.
+    // "Add default keys" on a layer with six animated channels is one step, not six -
+    // which is what the tree's own action had to be, and the per-key macro could not
+    // express. The key's own type() is the map it lands in.
+    void appendNewKey(
+        Project& aProject, ObjectNode& aTarget, int aFrame, TimeKey* aKey, TimeKey* aParentKey
+    ) {
+        XC_PTR_ASSERT(aKey);
+        XC_ASSERT(aTarget.timeLine());
+        auto& stack = aProject.commandStack();
+        stack.push(new cmnd::GrabNewObject<TimeKey>(aKey));
+        stack.push(aTarget.timeLine()->createPusher(aKey->type(), aFrame, aKey));
+        if (aParentKey) {
+            stack.push(new cmnd::PushBackTree<TimeKey>(&aParentKey->children(), aKey));
         }
     }
 
