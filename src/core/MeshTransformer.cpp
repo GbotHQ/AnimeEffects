@@ -1,3 +1,4 @@
+#include "gl/FrameStats.h"
 #include "gl/Global.h"
 #include "gl/Util.h"
 #include "core/MeshTransformer.h"
@@ -29,6 +30,9 @@ void MeshTransformer::callGL(
     bool aNonPosed,
     bool aUseInfluence
 ) {
+    // THE PASS COUNTER: this runs for every layer on every painted frame (see FrameStats.h)
+    gl::FrameStats::instance().meshPass();
+
     XC_ASSERT(aPositions);
 
     auto& buffer = aMeshBuffer;

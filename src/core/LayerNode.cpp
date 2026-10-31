@@ -2,6 +2,7 @@
 #include <QOpenGLFunctions>
 #include <QOpenGLContext>
 #include <cmath>
+#include "gl/FrameStats.h"
 #include "gl/Global.h"
 #include "gl/Util.h"
 #include "img/BlendMode.h"
@@ -113,10 +114,105 @@ bool layersDeformationActive(TimeKeyExpans& aExpans) {
         return true;
     return aExpans.ffd().count() > 0;
 }
+
+// ONE half-plane clip of a convex polygon (Sutherland-Hodgman): keep the points on the
+// `aKeepGreater` side of the axis-aligned line (`aAxis` 0 = x, 1 = y) `aBound`.
+std::vector<QVector2D> clipToHalfPlane(
+    const std::vector<QVector2D>& aPolygon, int aAxis, float aBound, bool aKeepGreater
+) {
+    std::vector<QVector2D> out;
+    const int count = int(aPolygon.size());
+    for (int i = 0; i < count; ++i) {
+        const QVector2D& current = aPolygon[i];
+        const QVector2D& previous = aPolygon[(i + count - 1) % count];
+        const auto coordinate = [aAxis](const QVector2D& aPoint) {
+            return aAxis == 0 ? aPoint.x() : aPoint.y();
+        };
+        const float currentValue = coordinate(current);
+        const float previousValue = coordinate(previous);
+        const bool currentInside = aKeepGreater ? currentValue >= aBound : currentValue <= aBound;
+        const bool previousInside = aKeepGreater ? previousValue >= aBound : previousValue <= aBound;
+        // the edge crosses the line: keep its intersection on the inside
+        if (currentInside != previousInside) {
+            const float delta = currentValue - previousValue;
+            const float t = delta != 0.0f ? (aBound - previousValue) / delta : 0.0f;
+            out.push_back(previous + (current - previous) * t);
+        }
+        if (currentInside)
+            out.push_back(current);
+    }
+    return out;
+}
+
+double polygonAreaPx(const std::vector<QVector2D>& aPolygon) {
+    const int count = int(aPolygon.size());
+    double twiceArea = 0.0;
+    for (int i = 0; i < count; ++i) {
+        const QVector2D& a = aPolygon[i];
+        const QVector2D& b = aPolygon[(i + 1) % count];
+        twiceArea += double(a.x()) * double(b.y()) - double(b.x()) * double(a.y());
+    }
+    return std::abs(twiceArea) * 0.5;
+}
+
+// THE FILL ONE LAYER ASKS FOR, in screen pixels: the node's content rectangle (the
+// image's pixel box, the space the mesh texcoords span) mapped by EXACTLY the matrices
+// the layer draw maps it with (`contentMappingFor` inverts the same forward mapping),
+// then clipped to the viewport. Only reached with the counter enabled.
+double screenAreaPx(const RenderInfo& aInfo, const TimeKeyExpans& aExpans, const QSize& aContentSize) {
+    if (aContentSize.isEmpty())
+        return 0.0;
+    const QSize viewSize = aInfo.camera.screenSize();
+    if (viewSize.width() <= 0 || viewSize.height() <= 0)
+        return 0.0;
+
+    QMatrix4x4 world = aExpans.srt().worldCSRTMatrix();
+    if (!aInfo.nonPosed && aExpans.bone().isAffectedByBinding())
+        world = aExpans.bone().outerMatrix();
+    const QMatrix4x4 contentToScreen =
+        waveContentToScreen(aInfo.camera, QSizeF(viewSize), world, aExpans.imageOffset());
+
+    const float width = float(aContentSize.width());
+    const float height = float(aContentSize.height());
+    std::vector<QVector2D> quad{
+        contentToScreen.map(QVector3D(0.0f, 0.0f, 0.0f)).toVector2D(),
+        contentToScreen.map(QVector3D(width, 0.0f, 0.0f)).toVector2D(),
+        contentToScreen.map(QVector3D(width, height, 0.0f)).toVector2D(),
+        contentToScreen.map(QVector3D(0.0f, height, 0.0f)).toVector2D()
+    };
+
+    // the viewport rect (0, 0, camera.screenSize()): four half planes, in order
+    const float maxX = float(viewSize.width());
+    const float maxY = float(viewSize.height());
+    quad = clipToHalfPlane(quad, 0, 0.0f, true);
+    quad = clipToHalfPlane(quad, 0, maxX, false);
+    quad = clipToHalfPlane(quad, 1, 0.0f, true);
+    quad = clipToHalfPlane(quad, 1, maxY, false);
+    return polygonAreaPx(quad);
+}
 } // namespace
 
 void LayerNode::render(const RenderInfo& aInfo, const TimeCacheAccessor& aAccessor) {
-    if (!mIsVisible || aAccessor.get(mTimeLine).opa().isZero()) return;
+    // AE_FRAME_STATS: ONE `considered` per layer, no matter how often this function is
+    // entered for it. The mask-preview recursion below re-enters with `originMesh` for
+    // the SAME node, and the grid pass draws the node a second time - neither is
+    // another layer, so neither counts again. With the counter off this is one branch.
+    gl::FrameStats& frameStats = gl::FrameStats::instance();
+    const bool frameStatsOn = frameStats.enabled();
+    bool countsLayer = false;
+    if (frameStatsOn) {
+        const bool previewRecursion = aInfo.originMesh && aInfo.maskPreviewTarget == this
+            && aInfo.maskPreviewKey != nullptr;
+        countsLayer = !aInfo.isGrid && !previewRecursion;
+        if (countsLayer)
+            frameStats.layerConsidered();
+    }
+
+    if (!mIsVisible || aAccessor.get(mTimeLine).opa().isZero()) {
+        if (countsLayer)
+            frameStats.layerCulled();
+        return;
+    }
 
     // THE MASK TOOL PAINTS AN UNDISTORTED LAYER, and that is a RULE, not a shortcut. A matte
     // lives in the layer's CONTENT space, and the mask pass samples it through the node's SRT -
@@ -146,9 +242,24 @@ void LayerNode::render(const RenderInfo& aInfo, const TimeCacheAccessor& aAccess
         && filterValueIsActive(TimeKeyType_HSV, aAccessor.get(mTimeLine));
     const QList<int> hsvData = useHSV ? aAccessor.get(mTimeLine).hsv().hsv() : QList<int>{};
 
+    // AE_FRAME_STATS: the node ISSUES its draw here, on one of the two paths below. A
+    // path that will bail (no mesh, no image texture) draws nothing and is not counted;
+    // the grid pass is left out like it already is for `countsLayer`.
+    const auto countDrawnLayer = [&]() {
+        if (!frameStatsOn || aInfo.isGrid || !mCurrentMesh)
+            return;
+        const TimeKeyExpans& expans = aAccessor.get(mTimeLine);
+        const gl::Texture* texture = expans.areaTexture();
+        if (!texture)
+            return;
+        frameStats.layerDrawn(screenAreaPx(aInfo, expans, texture->size()));
+    };
+
     if (!aInfo.isGrid && (isCompositeLayer(aAccessor) || isPreviewTarget(aInfo))) {
+        countDrawnLayer();
         renderComposite(aInfo, aAccessor);
     } else {
+        countDrawnLayer();
         renderLayer(aInfo, aAccessor, useHSV, hsvData);
     }
 

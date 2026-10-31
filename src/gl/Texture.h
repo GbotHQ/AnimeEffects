@@ -31,6 +31,7 @@ public:
 private:
     GLuint mId;
     QSize mSize;
+    qint64 mBytes;
 };
 
 } // namespace gl

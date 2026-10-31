@@ -1,3 +1,4 @@
+#include "gl/FrameStats.h"
 #include "gl/Global.h"
 #include "gl/Texture.h"
 
@@ -58,7 +59,7 @@ private:
 namespace gl {
 
 
-Texture::Texture(): mId(0), mSize() {}
+Texture::Texture(): mId(0), mSize(), mBytes(0) {}
 
 Texture::~Texture() { destroy(); }
 
@@ -97,6 +98,21 @@ void Texture::create(
     ggl.glBindTexture(GL_TEXTURE_2D, 0);
 
     XC_ASSERT(ggl.glGetError() == GL_NO_ERROR);
+
+    if (mId != 0) {
+        qint64 bytesPerPixel = 4;
+
+        switch (aFormat) {
+        case GL_RED: bytesPerPixel = 1; break;
+        case GL_RG: bytesPerPixel = 2; break;
+        case GL_RGB: bytesPerPixel = 3; break;
+        case GL_RGBA: bytesPerPixel = 4; break;
+        default: break;
+        }
+
+        mBytes = (qint64)mSize.width() * mSize.height() * bytesPerPixel;
+        FrameStats::instance().textureCreated(mBytes);
+    }
 }
 
 void Texture::setFilter(GLint aParam) {
@@ -130,6 +146,8 @@ void Texture::destroy() {
         Global::functions().glDeleteTextures(1, &mId);
         mId = 0;
         mSize = QSize();
+        FrameStats::instance().textureDestroyed(mBytes);
+        mBytes = 0;
         GL_CHECK_ERROR();
     }
 }

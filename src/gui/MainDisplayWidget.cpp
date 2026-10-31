@@ -11,6 +11,7 @@
 #include "XC.h"
 #include "util/Finally.h"
 #include "gl/Util.h"
+#include "gl/FrameStats.h"
 #include "gl/Framebuffer.h"
 #include "gl/Texture.h"
 #include "core/ClippingFrame.h"
@@ -699,6 +700,13 @@ void MainDisplayWidget::paintEvent(QPaintEvent* aEvent) {
 }
 
 void MainDisplayWidget::paintGL() {
+    // AE_FRAME_STATS: one line per painted frame, opened before any layer draws and
+    // closed on the way out - a frame that draws nothing still writes its line. The
+    // size is the framebuffer's DEVICE-pixel grid, the one the draws count in.
+    const QSize frameSize = deviceSize();
+    gl::FrameStats& frameStats = gl::FrameStats::instance();
+    frameStats.beginFrame();
+
     gl::Global::Functions& ggl = gl::Global::functions();
 
     // clear clipping
@@ -814,6 +822,8 @@ void MainDisplayWidget::paintGL() {
 
     ggl.glFlush();
     GL_CHECK_ERROR();
+
+    frameStats.endFrame(frameSize.width(), frameSize.height());
 }
 
 // ---------------------------------------------------------------- gui::ViewportHost
