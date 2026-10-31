@@ -1006,7 +1006,7 @@ void MainDisplayWidget::mouseReleaseEvent(QMouseEvent* aEvent) {
 
 void MainDisplayWidget::wheelEvent(QWheelEvent* aEvent) {
     if (mCanvasMover.updateByWheel(
-            QVector2D(aEvent->position()), aEvent->angleDelta().y(), mViaPoint.mouseSetting().invertMainViewScaling
+            QVector2D(aEvent->position()), aEvent->angleDelta().y(), mViaPoint.mouseSetting().invertZoom
         )) {
         requestFrame();
     }

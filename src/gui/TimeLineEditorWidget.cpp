@@ -335,7 +335,7 @@ bool TimeLineEditorWidget::updateCursor(const core::AbstractCursor& aCursor, Qt:
 bool TimeLineEditorWidget::updateWheel(QWheelEvent* aEvent, int aMouseX, int& aPixelAfter) {
     const double oldSpacing = mEditor->pixelsPerFrame();
     const bool changed =
-        mEditor->updateWheel(aEvent->angleDelta().y(), mViaPoint.mouseSetting().invertTimeLineScaling);
+        mEditor->updateWheel(aEvent->angleDelta().y(), mViaPoint.mouseSetting().invertZoom);
     if (changed) {
         // Pixel-exact zoom anchor: the content point under the mouse stays put,
         // regardless of whether it lies inside the frame range.
