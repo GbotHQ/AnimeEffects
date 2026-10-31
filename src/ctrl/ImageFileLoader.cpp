@@ -71,8 +71,8 @@ QImage decodePsdMask(const img::PSDFormat::Layer& aLayer, const img::PSDFormat::
     return QImage();   // ZIP-compressed masks are not decoded here; the layer still loads
 }
 
-// Attach a decoded matte to a freshly created node, at the node's own content rect and
-// within the field cap (core::MaskKey::kMaxTexels).
+// Attach a decoded matte to a freshly created node, at the node's own content rect. The field is
+// stored as it came: masks are one texel per content pixel (see core/MaskKey.h).
 void attachMask(core::ObjectNode& aNode, const QImage& aField, const QRectF& aContentRect) {
     if (aField.isNull() || !aContentRect.isValid() || aContentRect.isEmpty())
         return;

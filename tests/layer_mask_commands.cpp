@@ -187,8 +187,8 @@ int main(int argc, char** argv) {
         check(mask->data().contentRect() == QRectF(0.0, 0.0, 1024.0, 768.0), "the field covers the canvas");
         const QSize texels = mask->data().texelSize();
         std::printf("MEASURED fresh mask: %dx%d texels over 1024x768 content\n", texels.width(), texels.height());
-        check(texels.width() == core::MaskKey::kMaxTexels, "the long side is at the field cap");
-        check(texels.height() < texels.width(), "the aspect is kept");
+        // ONE TEXEL PER CONTENT PIXEL: the artwork's own resolution, not a downscaled grid
+        check(texels == QSize(1024, 768), "the field is the content's own grid (1 texel per pixel)");
         check(
             countTexels(mask->data().field(), core::MaskKey::kNeutral)
                 == texels.width() * texels.height(),

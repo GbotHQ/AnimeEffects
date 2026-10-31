@@ -19,13 +19,10 @@ void FilterMask::reset(const QRectF& aContentRect, int aNeutralValue) {
         clear();
         return;
     }
-    // The texel grid is the content rectangle scaled down so its long side fits
-    // kMaxTexels. A mask is low frequency: at that cap a 15000px canvas still gets
-    // ~15 pixels per texel.
-    const float longSide = float(qMax(aContentRect.width(), aContentRect.height()));
-    const float scale = longSide > float(kMaxTexels) ? float(kMaxTexels) / longSide : 1.0f;
+    // The texel grid is the content rectangle itself: one texel per content pixel (see the
+    // header - no cap, the artwork's own resolution).
     const QSize size(
-        qMax(1, qRound(aContentRect.width() * scale)), qMax(1, qRound(aContentRect.height() * scale))
+        qMax(1, qRound(aContentRect.width())), qMax(1, qRound(aContentRect.height()))
     );
     mImage = QImage(size, QImage::Format_Grayscale8);
     mImage.fill(uchar(mNeutral));
@@ -80,25 +77,29 @@ GLuint FilterMask::texture() {
 void FilterMask::uploadAll() {
     if (mImage.isNull())
         return;
-    // the pass multiplies .r, so the field is uploaded as opaque grey RGBA
-    QImage rgba = mImage.convertToFormat(QImage::Format_RGBA8888);
-    {
-        // a grayscale image converted to RGBA repeats the value and sets alpha; the
-        // shader reads .r, so nothing else to do
-    }
+    // ONE BYTE PER TEXEL, uploaded as GL_R8: the shaders read .r, and the field is now the
+    // content's own resolution - as RGBA it would be four times the RAM and four times the VRAM
+    // (a 15000 px canvas would cost 900 MB instead of 225).
+    gl::Global::Functions& ggl = gl::Global::functions();
+    const int stride = mImage.bytesPerLine();
+    // QImage pads each scanline to four bytes; GL reads the padding as texels unless it is told
+    // the row length and that a texel is one byte
+    ggl.glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
+    ggl.glPixelStorei(GL_UNPACK_ROW_LENGTH, stride);
     if (!mCreated) {
-        mTexture.create(mImage.size(), rgba.constBits());
+        mTexture.create(mImage.size(), mImage.constBits(), GL_RED, GL_R8, GL_UNSIGNED_BYTE);
         mTexture.setFilter(GL_LINEAR);
         mTexture.setWrap(GL_CLAMP_TO_EDGE);
         mCreated = true;
     } else {
-        gl::Global::Functions& ggl = gl::Global::functions();
         ggl.glBindTexture(GL_TEXTURE_2D, mTexture.id());
         ggl.glTexSubImage2D(
-            GL_TEXTURE_2D, 0, 0, 0, mImage.width(), mImage.height(), GL_RGBA, GL_UNSIGNED_BYTE, rgba.constBits()
+            GL_TEXTURE_2D, 0, 0, 0, mImage.width(), mImage.height(), GL_RED, GL_UNSIGNED_BYTE, mImage.constBits()
         );
         ggl.glBindTexture(GL_TEXTURE_2D, 0);
     }
+    ggl.glPixelStorei(GL_UNPACK_ROW_LENGTH, 0);
+    ggl.glPixelStorei(GL_UNPACK_ALIGNMENT, 4);
     mUploadedRevision = mRevision;
     mDirtyAll = false;
     mDirtyBox = QRect();
@@ -111,14 +112,18 @@ void FilterMask::uploadBox(const QRect& aTexels) {
     if (box.isEmpty())
         return;
 
-    // the sub-image is converted on its own so the upload is one contiguous box
-    const QImage sub = mImage.copy(box).convertToFormat(QImage::Format_RGBA8888);
+    // the sub-image is cut on its own so the upload is one contiguous box (and its stride is the
+    // box's, not the field's)
+    const QImage sub = mImage.copy(box);
     gl::Global::Functions& ggl = gl::Global::functions();
     ggl.glBindTexture(GL_TEXTURE_2D, mTexture.id());
-    ggl.glPixelStorei(GL_UNPACK_ROW_LENGTH, 0);
+    ggl.glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
+    ggl.glPixelStorei(GL_UNPACK_ROW_LENGTH, sub.bytesPerLine());
     ggl.glTexSubImage2D(
-        GL_TEXTURE_2D, 0, box.x(), box.y(), box.width(), box.height(), GL_RGBA, GL_UNSIGNED_BYTE, sub.constBits()
+        GL_TEXTURE_2D, 0, box.x(), box.y(), box.width(), box.height(), GL_RED, GL_UNSIGNED_BYTE, sub.constBits()
     );
+    ggl.glPixelStorei(GL_UNPACK_ROW_LENGTH, 0);
+    ggl.glPixelStorei(GL_UNPACK_ALIGNMENT, 4);
     ggl.glBindTexture(GL_TEXTURE_2D, 0);
 }
 
@@ -149,7 +154,7 @@ bool FilterMask::deserialize(Deserializer& aIn) {
     if (!aIn.readWithAlloc(blob)) {
         return aIn.errored("invalid filter mask bytes");
     }
-    if (size.isEmpty() || size.width() > kMaxTexels || size.height() > kMaxTexels) {
+    if (size.isEmpty() || size.width() > kMaxStoredTexels || size.height() > kMaxStoredTexels) {
         delete[] blob.data;
         return aIn.errored("invalid filter mask size");
     }

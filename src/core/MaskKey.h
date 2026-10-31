@@ -31,11 +31,12 @@ class MaskKey: public TimeKey {
 public:
     static constexpr int kComponents = easingStorageCount(TimeKeyType_Mask);
 
-    // The texel cap the painted filter masks already use (core/FilterMask.h):
-    // a matte is low frequency, and 1024 texels on the long side is 1 MiB as an
-    // 8-bit field instead of the 225 MiB the same field would cost at the
-    // document's own resolution.
-    static constexpr int kMaxTexels = 1024;
+    // A MASK IS STORED AT THE CONTENT'S OWN RESOLUTION: one 8-bit texel per content pixel, which
+    // is a QUARTER of the layer's RGBA image - the same rule the artwork itself follows, and the
+    // only one that keeps a painted edge sharp at 100% zoom. The old 1024-texel cap was an
+    // unforced optimisation (it turned a 15000 px canvas into a 15 px grid) that nothing shipped
+    // with, so it is gone. This constant is a SANITY BOUND for a corrupt file, not a design limit.
+    static constexpr int kMaxStoredTexels = 32768;
 
     // The value a fresh mask starts at: REVEAL ALL. Unlike a filter mask, whose
     // neutral is per input, a layer mask's neutral is "nothing hidden", so

@@ -243,9 +243,13 @@ hand it over. Its one question is `Sampling`:
 
 ## Masks and filters
 
-- `core::FilterMask` is one 8-bit field in the node's content space, capped at **1024** texels on the
-  long side; the neutral value is **per channel** (amount starts white, time offset starts black) and a
-  neutral mask must cost **nothing** (`isPainted`, `filterValueIsActive`).
+- `core::FilterMask` / `core::MaskKey` are one 8-bit field in the node's content space at the
+  **content's own resolution** - one texel per content pixel, a quarter of the layer's RGBA image.
+  The 1024-texel cap they used to carry was an unforced optimisation (a 15000 px canvas became a
+  15 px grid); no release shipped masks, so nothing is kept compatible, and `kMaxStoredTexels`
+  (32768) is only a sanity bound against a corrupt file. The neutral value is **per channel**
+  (amount starts white, time offset starts black) and a neutral mask must cost **nothing**
+  (`isPainted`, `filterValueIsActive`).
 - A layer mask's overlay is a flat rubylith **over** the composite (`Kind_MaskOverlay`), not a tint; the
   thumbnail and tree chip show the matte itself in grayscale.
 - The brush is one model (`ctrl/Brush.h`): `BrushStroke` walks spacing between samples and carries the

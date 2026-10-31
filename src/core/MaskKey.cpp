@@ -19,24 +19,26 @@ const gl::Texture* MaskKey::Data::textureId() const {
     if (mTexture->uploaded && mTexture->key == key)
         return &mTexture->texture;
 
-    // the pass multiplies .r, so the field rides as opaque grey RGBA - the same
-    // choice the painted filter masks make, and the reason the shaders read .r
-    const QImage rgba = mField.convertToFormat(QImage::Format_RGBA8888);
+    // ONE BYTE PER TEXEL as GL_R8 (see core/FilterMask.cpp): the pass multiplies .r, and the field
+    // is the content's own resolution now, so an RGBA upload would be four times the VRAM.
+    gl::Global::Functions& ggl = gl::Global::functions();
+    ggl.glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
+    ggl.glPixelStorei(GL_UNPACK_ROW_LENGTH, mField.bytesPerLine());
     if (!mTexture->uploaded) {
-        mTexture->texture.create(mField.size(), rgba.constBits());
+        mTexture->texture.create(mField.size(), mField.constBits(), GL_RED, GL_R8, GL_UNSIGNED_BYTE);
         mTexture->texture.setFilter(GL_LINEAR);
         mTexture->texture.setWrap(GL_CLAMP_TO_EDGE);
         mTexture->uploaded = true;
     } else {
-        gl::Global::Functions& ggl = gl::Global::functions();
         ggl.glActiveTexture(GL_TEXTURE0);
         ggl.glBindTexture(GL_TEXTURE_2D, mTexture->texture.id());
-        ggl.glPixelStorei(GL_UNPACK_ROW_LENGTH, 0);
         ggl.glTexSubImage2D(
-            GL_TEXTURE_2D, 0, 0, 0, mField.width(), mField.height(), GL_RGBA, GL_UNSIGNED_BYTE, rgba.constBits()
+            GL_TEXTURE_2D, 0, 0, 0, mField.width(), mField.height(), GL_RED, GL_UNSIGNED_BYTE, mField.constBits()
         );
         ggl.glBindTexture(GL_TEXTURE_2D, 0);
     }
+    ggl.glPixelStorei(GL_UNPACK_ROW_LENGTH, 0);
+    ggl.glPixelStorei(GL_UNPACK_ALIGNMENT, 4);
     mTexture->key = key;
     return &mTexture->texture;
 }
@@ -63,12 +65,9 @@ void MaskKey::Data::write(const QImage& aField, const QRectF& aContentRect) {
         return;
     }
     QImage image = aField;
-    if (image.size().width() > kMaxTexels || image.size().height() > kMaxTexels) {
-        // The cap belongs to the FIELD, not to whoever set it: a matte is low
-        // frequency, and downscaling here keeps the serialized blob bounded
-        // whatever a caller hands over.
-        image = image.scaled(kMaxTexels, kMaxTexels, Qt::KeepAspectRatio, Qt::SmoothTransformation);
-    }
+    // NO DOWNSCALE HERE: the field is the content's own resolution (see kMaxStoredTexels), so
+    // whatever a caller hands over is kept as it is - a resampled matte is a blurrier matte, and
+    // the caller (TimeLineUtil::maskTexelSize) already builds the right grid.
     if (image.format() != QImage::Format_Grayscale8)
         image = image.convertToFormat(QImage::Format_Grayscale8);
     mField = image;
@@ -168,7 +167,7 @@ bool MaskKey::deserialize(Deserializer& aIn) {
     if (!aIn.readWithAlloc(blob)) {
         return aIn.errored("invalid mask bytes");
     }
-    if (size.isEmpty() || size.width() > kMaxTexels || size.height() > kMaxTexels) {
+    if (size.isEmpty() || size.width() > kMaxStoredTexels || size.height() > kMaxStoredTexels) {
         delete[] blob.data;
         return aIn.errored("invalid mask size");
     }

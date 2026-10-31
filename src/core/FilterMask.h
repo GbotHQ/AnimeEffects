@@ -47,14 +47,14 @@ class Deserializer;
 // mask is megabytes of pixels - it must never travel through them. Removing the
 // filter drops the field with it.
 //
-// RESOLUTION is capped (kMaxTexels on the long side) because a mask is a soft,
-// low-frequency field: 1024 across a 1102-pixel layer is effectively 1:1, and
-// across a 15000-pixel canvas it is ~15 canvas pixels per texel - plenty, at
-// 1 MiB instead of 225.
+// RESOLUTION is the content's OWN: one 8-bit texel per content pixel. The 1024-texel cap this
+// class used to carry was an unforced optimisation - it made a 15000 px canvas a 15 px grid - and
+// nothing shipped with masks, so it is gone rather than versioned. A field now costs a quarter of
+// the layer's RGBA image, the same rule the artwork follows.
 class FilterMask: private util::NonCopyable {
 public:
-    // The long side's texel cap. See the header's note: masks are low frequency.
-    static constexpr int kMaxTexels = 1024;
+    // A SANITY BOUND for a corrupt file, not a design limit (see the class note).
+    static constexpr int kMaxStoredTexels = 32768;
 
     FilterMask();
 

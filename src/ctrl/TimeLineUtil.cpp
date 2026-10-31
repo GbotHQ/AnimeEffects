@@ -982,16 +982,15 @@ namespace TimeLineUtil {
             return QRectF(QPointF(0.0, 0.0), QSizeF(canvas));
         }
 
-        // A fresh field's grid: the content box scaled down to the field cap, keeping
-        // the aspect. Computed once per authored key, never per frame.
+        // A fresh field's grid is the CONTENT BOX ITSELF: one texel per content pixel, so a
+        // painted matte has the artwork's own resolution (a quarter of its RGBA image). Computed
+        // once per authored key, never per frame.
         QSize maskTexelSize(const QRectF& aRect) {
-            const double longest = std::max(aRect.width(), aRect.height());
-            if (longest <= 0.0)
+            if (aRect.isEmpty())
                 return QSize(1, 1);
-            const double scale = std::min(1.0, double(MaskKey::kMaxTexels) / longest);
             return QSize(
-                std::max(1, int(std::lround(aRect.width() * scale))),
-                std::max(1, int(std::lround(aRect.height() * scale)))
+                std::max(1, int(std::lround(aRect.width()))),
+                std::max(1, int(std::lround(aRect.height())))
             );
         }
 
