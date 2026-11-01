@@ -111,18 +111,22 @@ frame does not need. The cost is the sync, not the bytes. (Worth measuring both 
   every open, and the pixels are the ones the authoring session produced rather than whatever the
   driver's shader arithmetic yields that day.
   The GPU downsample path therefore serves only (a) legacy projects and pre-chunk imports, built once
-  at load, and (b) masks, whose chains are painted after the import and need only the stroke's dirty
-  boxes updated - never a rebuild.
+  at load, and (b) a mask that is being PAINTED - and only the stroke's dirty boxes, never a rebuild.
+  An imported mask that has not been painted is stored and loaded exactly like an image.
 - **RAM**: decoded at load into RAM - all levels, coarse ones cost 1/3 of the base - so that no
   frame ever decodes. `nene` goes from ~1.94 GiB to ~2.6 GiB of decoded images **[D]**.
 - **Content rules**: the `feat/mipmapping` branch's - premultiplied, halo-free, levels past the
   alignment cap rebuilt on the CPU, `GL_TEXTURE_LOD_BIAS = -0.5` as a policy on top.
 - **Masks get mips too, for the same reason images do** - they are sampled minified exactly like a
-  layer, so a mask without a chain aliases at fit zoom. What differs is maintenance, not need: a mask
-  is painted, so its chain is updated **incrementally from the stroke's dirty box**, level by level
-  (each level's box halves), never regenerated whole. Deferring this was a staging choice that cost
-  real quality in the meantime; it belongs in the same stage as the image chain, immediately after
-  the import fix below, not in a later one.
+  layer, so a mask without a chain aliases at fit zoom. And like an image, a mask is often IMPORTED
+  (a PSD mask arrives through `ImageFileLoader::attachMask`), so the default case is identical: the
+  chain is built once at import or creation, stored with the field, and decoded at load.
+  The one difference is that a mask is not immutable: the first stroke makes it mutable, and from
+  then on its chain is updated **incrementally from the dirty box**, level by level (each level's
+  box halves) - never regenerated whole. So "built once" for a mask means "until the first stroke",
+  and the incremental path is a continuation, not a separate mechanism.
+  Deferring mask chains was a staging choice that cost real quality in the meantime; they belong in
+  the same stage as the image chain, immediately after the import fix below, not in a later one.
 - **The importer's 1-texel ring must go** (`img::Util::recreateForBiLinearSampling`): it copies the
   artwork at texel (1,1) with a transparent border, so every level from 1 down averages across the
   content's own 2x2 blocks with a half-texel phase error - the branch measured 112/255 at 2x. It is
