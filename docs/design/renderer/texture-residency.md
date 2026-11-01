@@ -702,7 +702,12 @@ from the truth, "fetches" the texture reads per pixel (the built-in trilinear is
 | Catmull-Rom 4-tap, one level | 16 | 12.8 % | 1.692 |
 | bilinear on both levels (ships) | 8 | 14.4 % | 0.913 |
 | cubic on the dominant level, bilinear on the other | 20 | 14.9 % | 0.845 |
-| cubic on both levels | 32 | 9.7 % | 0.914 |
+| Catmull-Rom (sharp cubic) on both levels | 32 | 9.7 % | 0.914 |
+| Mitchell (B = C = 1/3) on both levels | 32 | **6.9 %** | **0.851**, at 6.71 sharpness against the truth's 7.47 |
+
+The two 32-fetch kernels are the final dial: Catmull-Rom keeps the sharpness closest to the truth (7.23
+against 7.47 at half phase) with a 9.7 % swing; Mitchell is the steadiest (6.9 %) and about 10 % softer.
+Both beat bilinear on the axis that was visible (sharpness at half phase: 6.40 for bilinear).
 
 Three conclusions. (1) 4 taps per axis is the cheapest INTERPOLATING kernel - a 3-tap kernel is a
 B-spline, i.e. an approximating one, and measured it is soft everywhere (sharpness 4.8 -> 1.7 across the
