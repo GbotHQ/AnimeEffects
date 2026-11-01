@@ -146,11 +146,12 @@ void Texture::create(
         // area weights the level grid implies. That makes every level of every chain the exact
         // average it claims to be, for any size. A power-of-two size has no such levels and pays
         // nothing; otherwise the cost is that readback (side / 2^exactLevels texels across) plus a
-        // pass over it per rebuilt level. Layer uploads align their size to a multiple of 128
-        // (img::Util::mipAlignedTextureSize), so exactLevels >= 7 for any texture of 128 texels or
-        // more and the readback is at most 128^2: kilobytes and microseconds. A caller that hands
-        // this an UNALIGNED size - an odd one, say, where exactLevels is 0 - pays a full-texture
-        // readback and a couple of passes over it instead, so align the size if you can.
+        // pass over it per rebuilt level. Layer uploads are the CONTENT's own size, with no padding
+        // (img::Util::makeTextureUpload), so exactLevels is whatever the content's trailing zero
+        // bits allow: 0 for an odd side, where the cost is one readback of level 0 and a pass over
+        // it per level, and 7 or more for a side that happens to be a multiple of 128. What that
+        // buys is memory: padding a thin layer up to a power of two costs up to +98% of it, and
+        // this rebuild is what makes the padding unnecessary rather than what makes it cheap.
         const int exactLevels =
             std::min(trailingZeroBits(mSize.width()), trailingZeroBits(mSize.height()));
         if (exactLevels + 1 < mMipmapLevels) {

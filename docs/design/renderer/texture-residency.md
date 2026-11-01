@@ -105,8 +105,14 @@ frame does not need. The cost is the sync, not the bytes. (Worth measuring both 
 
 - **Scope**: one pyramid per **image resource**, not per key - `ImageKey::serialize` stores only a
   resource id, so every layer using the same image shares one.
-- **Storage**: in the project, as an optional chunk (new format minor). Legacy projects build it at
-  load; imports build it at import.
+- **Storage**: in the project, as an optional chunk (new format minor). **Built once, at import, and
+  read back at load** - the chain is authoring data, so a load decodes and uploads it and runs no
+  GPU downsample at all. That is what "once per image" means: the cost lands on the import, never on
+  every open, and the pixels are the ones the authoring session produced rather than whatever the
+  driver's shader arithmetic yields that day.
+  The GPU downsample path therefore serves only (a) legacy projects and pre-chunk imports, built once
+  at load, and (b) masks, whose chains are painted after the import and need only the stroke's dirty
+  boxes updated - never a rebuild.
 - **RAM**: decoded at load into RAM - all levels, coarse ones cost 1/3 of the base - so that no
   frame ever decodes. `nene` goes from ~1.94 GiB to ~2.6 GiB of decoded images **[D]**.
 - **Content rules**: the `feat/mipmapping` branch's - premultiplied, halo-free, levels past the

@@ -92,20 +92,30 @@ void ImageKey::resetTextureCache() {
         const uint8* imageData = image.data();
         const QSize pixelSize = image.pixelSize();
 
-        // The image is uploaded premultiplied, unpadded on its left and top but padded to the
-        // right and bottom up to a size whose mip level grids divide evenly. Both are conditions on
-        // the chain, and both are documented where they are decided:
-        // img::Util::makeTextureUpload for the premultiply and the padding, and
-        // img::Util::mipAlignedTextureSize for the size. The transparent neighbour a minified or
-        // edge read needs on the other two sides comes from the border colour set below; the texture
-        // is created with GL_CLAMP_TO_BORDER, which the hardware applies to every mip level.
-        const QSize textureSize = img::Util::mipAlignedTextureSize(pixelSize);
-        const std::vector<uint8> upload =
-            img::Util::makeTextureUpload(imageData, pixelSize, textureSize);
+        // The texture is the CONTENT's own size - no padding, no alignment unit - and holds
+        // ALPHA-PREMULTIPLIED bytes. Both are conditions on the chain, and both are documented
+        // where they are decided: img::Util::makeTextureUpload. Premultiplied because
+        // glGenerateMipmap box-filters each channel independently (a straight chain drags the
+        // transparent region's RGB into every level's silhouette).
+        //
+        // Content-sized, two reasons. Memory: a right/bottom pad up to a multiple of 2^l costs up
+        // to +98% of a thin layer (144 texels rounds up to 256) and its only job was to let
+        // glGenerateMipmap generate the first levels - gl::Texture::create now rebuilds every level
+        // that does not halve exactly from the deepest one that does, with the area weights the
+        // grid implies, so every level is the average it claims to be for ANY size, odd sides
+        // included. Geometry: the texture's texel (x, y) has to be the content's texel (x, y). The
+        // mesh's texture coordinates are content pixels (core::GridMesh), the layer's vertex shader
+        // divides them by uImageSize (LayerNode sets it from areaTexture()->size()), so those two
+        // sizes being equal is what keeps the mapping identity.
+        //
+        // The transparent neighbour a minified or edge read needs comes from the border colour set
+        // below; the texture is created with GL_CLAMP_TO_BORDER, which the hardware applies to every
+        // mip level.
+        const std::vector<uint8> upload = img::Util::makeTextureUpload(imageData, pixelSize);
 
         // make a gl texture
         mCache.texture().create(
-            textureSize, upload.data(), GL_RGBA, GL_RGBA8, GL_UNSIGNED_BYTE, gl::Texture::GenerateMipmap
+            pixelSize, upload.data(), GL_RGBA, GL_RGBA8, GL_UNSIGNED_BYTE, gl::Texture::GenerateMipmap
         );
         // trilinear minification; magnification must stay non-mipmap (see gl::Texture)
         mCache.texture().setFilter(GL_LINEAR_MIPMAP_LINEAR, GL_LINEAR);
