@@ -718,4 +718,20 @@ trick removes the swing by being uniformly soft - the same trap the temporal-std
 So cubic on both levels (32 fetches when the LOD is fractional) is the one that works, and its cost can
 be gated: the layer's scale is known on the CPU, so the 4-tap path only needs to run when the layer is
 MINIFIED (or rotated); magnification is exact with bilinear. A non-uniform scale can drop to 4 taps on
-one axis only. Verify with the existing `AE_FRAME_STATS` `ms` column rather than by estimate.
+one axis only.
+
+WHAT IT COSTS, MEASURED rather than estimated (`/tmp/texbench`: EGL pbuffer, 1920x1080, 200 frames per
+case, a 2048^2 mipmapped texture, independent `textureLod` fetches, AMD R9 380 / Mesa 26.2.2):
+
+| taps/pixel | magnified (LOD 0) | minified (LOD 2.5) |
+|---|---|---|
+| 4 | 0.143 ms | 0.160 ms |
+| 8 (ships) | 0.222 ms | 0.298 ms |
+| 16 | 0.415 ms | 0.596 ms |
+| 32 (4-tap both levels) | 0.828 ms | 1.195 ms |
+| 64 | 1.639 ms | 2.447 ms |
+
+So the delta from the shipped 8 to 32 is **0.61 ms per screen-covering layer at LOD 0 and 0.90 ms at a
+minified level** - ~1.2-3.6 ms per frame at the 2-4x overdraw of a character sheet, against a 16.7 ms
+budget at 60 fps. The ceiling is 55-80 Gtexel/s of fetch throughput, so treat these as an upper bound
+(the benchmark has a warm cache and no blending). The in-situ figure is `AE_FRAME_STATS`'s `ms` column.
