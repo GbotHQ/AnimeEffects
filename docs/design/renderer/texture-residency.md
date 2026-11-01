@@ -721,17 +721,23 @@ MINIFIED (or rotated); magnification is exact with bilinear. A non-uniform scale
 one axis only.
 
 WHAT IT COSTS, MEASURED rather than estimated (`/tmp/texbench`: EGL pbuffer, 1920x1080, 200 frames per
-case, a 2048^2 mipmapped texture, independent `textureLod` fetches, AMD R9 380 / Mesa 26.2.2):
+case, a 2048^2 mipmapped texture on an AMD R9 380 / Mesa 26.2.2). The baseline matters: what ships today
+is ONE trilinear `texture()` call, which the hardware implements internally - my first benchmark compared
+against "8 taps" that the sampler never takes:
 
-| taps/pixel | magnified (LOD 0) | minified (LOD 2.5) |
-|---|---|---|
-| 4 | 0.143 ms | 0.160 ms |
-| 8 (ships) | 0.222 ms | 0.298 ms |
-| 16 | 0.415 ms | 0.596 ms |
-| 32 (4-tap both levels) | 0.828 ms | 1.195 ms |
-| 64 | 1.639 ms | 2.447 ms |
+| sampling | ms per screen-covering layer (1080p) |
+|---|---|
+| 1 trilinear `texture()` - what ships | **0.196** |
+| 2 `texture()` (the two levels of a trilinear blend) | 0.199 |
+| 32 `texelFetch` (4-tap per axis on both levels) | **0.630** |
+| 32 `textureLod` (filtered taps - do not do this) | 1.194 |
+| 16 `texelFetch` (4-tap on one level) | 0.328 |
 
-So the delta from the shipped 8 to 32 is **0.61 ms per screen-covering layer at LOD 0 and 0.90 ms at a
-minified level** - ~1.2-3.6 ms per frame at the 2-4x overdraw of a character sheet, against a 16.7 ms
-budget at 60 fps. The ceiling is 55-80 Gtexel/s of fetch throughput, so treat these as an upper bound
-(the benchmark has a warm cache and no blending). The in-situ figure is `AE_FRAME_STATS`'s `ms` column.
+So a 4-tap implementation costs **+0.43 ms per screen-covering layer** at 1x coverage (0.85-1.7 ms at a
+character sheet's 2-4x overdraw) - and, more usefully, it bounds the whole question: the ENTIRE texture
+sampling of a full-screen layer is 0.2 ms of a 16.7 ms frame today, so sampling is not where this app's
+frame time goes and the addition cannot move it much either way. Use `texelFetch`, not `textureLod`:
+asking the hardware to filter each of 32 taps doubles the cost for nothing.
+
+These are synthetic (warm cache, no blending). The figure that decides shipping is the same experiment in
+the app - run the project with `AE_FRAME_STATS` on both shader variants and compare `ms`.
