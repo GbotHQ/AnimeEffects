@@ -32,17 +32,8 @@ int trailingZeroBits(int aValue) {
 
 /// The shader that builds the mip levels glGenerateMipmap cannot be trusted to fill: one destination
 /// texel is the area-weighted average of the source texels its footprint overlaps, with the
-/// fractional weights at the ends. A level-to-level step is always between 2:1 and 3:1 - level l has
-/// floor(side / 2^l) texels and floor(floor(side / 2^l) / 2) == floor(side / 2^(l+1)) - so the
-/// footprint never spans more than 3 source texels per axis. When the step IS exactly 2:1 the four
-/// weights are all 1/4, i.e. a plain 2x2 box (what a linear blit would also give).
-///
-/// This is the only mip-level builder left: the CPU rebuild that read the deepest exact level back
-/// (glGetTexImage + a resample per level) could not be used for a size where nothing halves - a
-/// 15001^2 image would read back its whole 900 MB base, and a 1023^2 one would do it for each of its
-/// ten levels. The GPU path costs no readback and no sync: the tail levels together hold a third of
-/// the base texels, each built with 4 fetches (2x2 step) or at most 9, i.e. a few milliseconds for a
-/// 15001^2 base at import and well under a millisecond for a mask stroke's dirty box.
+/// fractional weights at the ends. The source is a finer level of the SAME texture, fetched by index
+/// (texelFetch) so no sampler state or filtering is involved.
 const char* kMipTailVertexShader = R"(#version 330
 void main() {
     vec2 p = vec2(float((gl_VertexID << 1) & 2), float(gl_VertexID & 2));
@@ -52,8 +43,11 @@ void main() {
 
 const char* kMipTailFragmentShader = R"(#version 330
 uniform sampler2D uSrc;
+uniform int uSrcLevel;
 uniform vec2 uSrcSize;
 uniform vec2 uDstSize;
+uniform int uTapsX;
+uniform int uTapsY;
 out vec4 fragColor;
 
 void main() {
@@ -64,21 +58,21 @@ void main() {
     vec2 hi = (j + vec2(1.0)) * uSrcSize / uDstSize;
     vec4 acc = vec4(0.0);
     float wsum = 0.0;
-    for (int ty = 0; ty < 3; ++ty) {
+    for (int ty = 0; ty < uTapsY; ++ty) {
         int i = int(floor(lo.y)) + ty;
         if (i >= int(uSrcSize.y))
             continue;
         float oy = min(hi.y, float(i) + 1.0) - max(lo.y, float(i));
         if (oy <= 0.0)
             continue;
-        for (int tx = 0; tx < 3; ++tx) {
+        for (int tx = 0; tx < uTapsX; ++tx) {
             int k = int(floor(lo.x)) + tx;
             if (k >= int(uSrcSize.x))
                 continue;
             float ox = min(hi.x, float(k) + 1.0) - max(lo.x, float(k));
             if (ox <= 0.0)
                 continue;
-            acc += texelFetch(uSrc, ivec2(k, i), 0) * (ox * oy);
+            acc += texelFetch(uSrc, ivec2(k, i), uSrcLevel) * (ox * oy);
             wsum += ox * oy;
         }
     }
@@ -111,21 +105,39 @@ gl::EasyShaderProgram& mipTailProgram() {
     return *gMipTailProgram;
 }
 
-/// Builds levels aExactLevels+1 .. aLevelCount-1 from level aExactLevels, on the GPU, with the area
-/// weights the level grids imply.
+/// Builds levels aExactLevels+1 .. aLevelCount-1 with the area weights the level grids imply.
 ///
-/// The source of every step is the level immediately above it, copied into a scratch texture first:
-/// level-to-level area integration is exact (each source texel already holds the exact average of its
-/// own footprint, and the overlap weights decompose that footprint exactly), while a single step from
-/// the deepest exact level would need side/2^l taps per axis - 15001 of them at the deepest level of
-/// a 15001^2 image. The copy also keeps the shader from sampling the texture it is rendering into
-/// (a rendering feedback loop, undefined by the spec).
+/// WHICH SOURCE. A destination texel's footprint must be integrated over the FINE grid: a step whose
+/// boundaries cut a source texel uses that texel's average for the cut part, which is exact only
+/// when the source texel IS the finest grid (level 0). So each level is built from level 0 while its
+/// footprint is at most kMipTailMaxTaps source texels per axis (2x..128x minification, for any size),
+/// and from the level above it beyond that - where a step is always between 2:1 and 3:1, because
+/// floor(floor(s / 2^l) / 2) == floor(s / 2^(l+1)), so at most 3 taps per axis. Chaining from the
+/// level above is exact whenever the step halves (each source texel already holds the exact average
+/// of its own footprint, and no boundary is cut); when it does not, the cut texels are a sub-texel
+/// approximation bounded by the detail that level carries - which is what a level past 128x of a
+/// side whose tail does not halve gets, and what the CPU resample this replaced avoided only by
+/// reading the whole base back for every level (900 MB for a 15001^2 image, and again for each of a
+/// 1023^2 one's ten).
+///
+/// WHY LEVEL 0 AND NOT A SCRATCH COPY. Rendering level l while fetching a different mip level of the
+/// same texture is the standard way to build a chain by hand: GL's feedback rule is per IMAGE (level
+/// and layer), and the levels here are distinct images. That avoids a scratch texture as large as the
+/// base - which for a 15001^2 artwork would cost another 900 MB, more than the padding this path
+/// exists to remove.
+///
+/// COST. An exact level reads the base once - ratio^2 taps over base/ratio^2 destination texels - so
+/// a side whose first seven levels are exact costs seven passes over the base; the chained tail after
+/// them holds a third of the base texels in total. A 15001^2 artwork therefore costs a handful of
+/// passes over its 900 MB base once, at import, in exchange for the up-to-+98% of residency the
+/// padding cost for the life of the layer. A mask stroke rebuilds one rectangular dirty box, where the
+/// same rule is sub-millisecond.
 ///
 /// Every piece of GL state this touches is saved and restored: a texture is created inside paint and
 /// import code that has its own framebuffer, viewport, vertex array and render state set up.
-void buildMipTailOnGpu(
-    GLuint aTextureId, const QSize& aSize, int aExactLevels, int aLevelCount, GLint aInternalFormat
-) {
+const int kMipTailMaxTaps = 128;
+
+void buildMipTailOnGpu(GLuint aTextureId, const QSize& aSize, int aExactLevels, int aLevelCount) {
     Global::Functions& ggl = Global::functions();
 
     GLint prevDrawFbo = 0;
@@ -145,33 +157,12 @@ void buildMipTailOnGpu(
     ggl.glGetIntegerv(GL_POLYGON_MODE, prevPolygonMode);
     ggl.glGetBooleanv(GL_COLOR_WRITEMASK, prevColorMask);
 
-    struct Restore {
-        GLboolean blend, depth, scissor, cull, dither, stencil;
-    };
-    Restore enabled = {
-        ggl.glIsEnabled(GL_BLEND), ggl.glIsEnabled(GL_DEPTH_TEST), ggl.glIsEnabled(GL_SCISSOR_TEST),
-        ggl.glIsEnabled(GL_CULL_FACE), ggl.glIsEnabled(GL_DITHER), ggl.glIsEnabled(GL_STENCIL_TEST),
-    };
-
-    // unit 0 is where create() left this texture bound, so that is the unit this pass may clobber
-    // (and it restores the caller's unit number at the end)
-    ggl.glActiveTexture(GL_TEXTURE0);
-
-    // the scratch holds the level being read; it is never attached, so nothing is both read and
-    // written
-    const int srcW0 = std::max(1, aSize.width() >> aExactLevels);
-    const int srcH0 = std::max(1, aSize.height() >> aExactLevels);
-    GLuint scratch = 0;
-    ggl.glGenTextures(1, &scratch);
-    ggl.glBindTexture(GL_TEXTURE_2D, scratch);
-    ggl.glTexImage2D(
-        GL_TEXTURE_2D, 0, aInternalFormat, srcW0, srcH0, 0, GL_RGBA, GL_UNSIGNED_BYTE, nullptr
-    );
-    ggl.glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-    ggl.glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-    ggl.glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-    ggl.glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-    ggl.glBindTexture(GL_TEXTURE_2D, 0);
+    const GLboolean prevBlend = ggl.glIsEnabled(GL_BLEND);
+    const GLboolean prevDepth = ggl.glIsEnabled(GL_DEPTH_TEST);
+    const GLboolean prevScissor = ggl.glIsEnabled(GL_SCISSOR_TEST);
+    const GLboolean prevCull = ggl.glIsEnabled(GL_CULL_FACE);
+    const GLboolean prevDither = ggl.glIsEnabled(GL_DITHER);
+    const GLboolean prevStencil = ggl.glIsEnabled(GL_STENCIL_TEST);
 
     GLuint fbo = 0;
     ggl.glGenFramebuffers(1, &fbo);
@@ -196,37 +187,44 @@ void buildMipTailOnGpu(
     program.bind();
     program.setUniformValue("uSrc", 0);
     ggl.glActiveTexture(GL_TEXTURE0);
+    ggl.glBindTexture(GL_TEXTURE_2D, aTextureId);
     vao.bind();
 
+    const int baseW = aSize.width();
+    const int baseH = aSize.height();
+
     for (int l = aExactLevels + 1; l < aLevelCount; ++l) {
-        const int srcW = std::max(1, aSize.width() >> (l - 1));
-        const int srcH = std::max(1, aSize.height() >> (l - 1));
-        const int dstW = std::max(1, aSize.width() >> l);
-        const int dstH = std::max(1, aSize.height() >> l);
+        const int dstW = std::max(1, baseW >> l);
+        const int dstH = std::max(1, baseH >> l);
+        const int prevW = std::max(1, baseW >> (l - 1));
+        const int prevH = std::max(1, baseH >> (l - 1));
 
-        // 1. copy the source level out, so this pass never reads what it renders into
-        ggl.glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, aTextureId, l - 1);
-        XC_ASSERT(
-            ggl.glCheckFramebufferStatus(GL_FRAMEBUFFER) == GL_FRAMEBUFFER_COMPLETE
-        );
-        ggl.glBindTexture(GL_TEXTURE_2D, scratch);
-        ggl.glCopyTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, 0, 0, srcW, srcH);
+        // level 0 while the footprint is short enough, the level above otherwise (see above)
+        const int baseTapsX = (baseW + dstW - 1) / dstW;
+        const int baseTapsY = (baseH + dstH - 1) / dstH;
+        const bool fromBase = std::max(baseTapsX, baseTapsY) <= kMipTailMaxTaps;
+        const int srcLevel = fromBase ? 0 : l - 1;
+        const int srcW = fromBase ? baseW : prevW;
+        const int srcH = fromBase ? baseH : prevH;
+        const int tapsX = (srcW + dstW - 1) / dstW;
+        const int tapsY = (srcH + dstH - 1) / dstH;
 
-        // 2. render the destination level as the area average of that source
         ggl.glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, aTextureId, l);
-        XC_ASSERT(
-            ggl.glCheckFramebufferStatus(GL_FRAMEBUFFER) == GL_FRAMEBUFFER_COMPLETE
-        );
+        XC_ASSERT(ggl.glCheckFramebufferStatus(GL_FRAMEBUFFER) == GL_FRAMEBUFFER_COMPLETE);
         ggl.glViewport(0, 0, dstW, dstH);
+        program.setUniformValue("uSrcLevel", srcLevel);
         program.setUniformValue("uSrcSize", QVector2D((float)srcW, (float)srcH));
         program.setUniformValue("uDstSize", QVector2D((float)dstW, (float)dstH));
+        program.setUniformValue("uTapsX", tapsX);
+        program.setUniformValue("uTapsY", tapsY);
         ggl.glDrawArrays(GL_TRIANGLES, 0, 3);
     }
 
     vao.release();
     program.release();
+    ggl.glBindTexture(GL_TEXTURE_2D, 0);
 
-    // 3. back to the caller's state, then release what this pass owned
+    // back to the caller's state, then release what this pass owned
     ggl.glBindFramebuffer(GL_DRAW_FRAMEBUFFER, prevDrawFbo);
     ggl.glBindFramebuffer(GL_READ_FRAMEBUFFER, prevReadFbo);
     ggl.glViewport(prevViewport[0], prevViewport[1], prevViewport[2], prevViewport[3]);
@@ -242,15 +240,14 @@ void buildMipTailOnGpu(
         else
             ggl.glDisable(aState);
     };
-    restore(GL_BLEND, enabled.blend);
-    restore(GL_DEPTH_TEST, enabled.depth);
-    restore(GL_SCISSOR_TEST, enabled.scissor);
-    restore(GL_CULL_FACE, enabled.cull);
-    restore(GL_DITHER, enabled.dither);
-    restore(GL_STENCIL_TEST, enabled.stencil);
+    restore(GL_BLEND, prevBlend);
+    restore(GL_DEPTH_TEST, prevDepth);
+    restore(GL_SCISSOR_TEST, prevScissor);
+    restore(GL_CULL_FACE, prevCull);
+    restore(GL_DITHER, prevDither);
+    restore(GL_STENCIL_TEST, prevStencil);
 
     ggl.glDeleteFramebuffers(1, &fbo);
-    ggl.glDeleteTextures(1, &scratch);
 }
 
 } // namespace
@@ -270,8 +267,9 @@ void Texture::create(
     destroy();
 
     XC_ASSERT(!aSize.isNull());
-    // a mip chain can only be built from uploaded content
-    XC_ASSERT(aMipmap != GenerateMipmap || aData != nullptr);
+    // a chain that create() builds (or whose level 0 it allocates from the caller's pixels) needs
+    // those pixels
+    XC_ASSERT(aMipmap == NoMipmap || aData != nullptr);
 
     mSize = aSize;
     mMipmapLevels = 1;
@@ -306,19 +304,35 @@ void Texture::create(
         // 255 (on a 1920-texel side's deepest level, where the layer is under 2 screen pixels), and
         // 17 of 255 at the first non-dividing level, where the layer can still be 7 pixels across.
         //
-        // So the tail is built here, from the deepest level that DOES halve, with the area weights
-        // the level grid implies - on the GPU, level by level (see buildMipTailOnGpu). Every level of
-        // every chain is then the average it claims to be, for any size. A power-of-two size has no
-        // such levels and pays nothing; an odd side (exactLevels 0) has nothing glGenerateMipmap can
-        // be trusted for and gets every level from level 0 - which costs a copy per level and no
-        // readback, so it stays cheap where the CPU resample this replaced would have read back the
-        // whole base (900 MB for a 15001^2 image, and again for each level of a 1023^2 one).
+        // So the tail is built here, with the area weights the level grid implies, on the GPU: from
+        // level 0 while a footprint is at most 128 texels per axis - so levels up to 128x
+        // minification are exact for ANY size, odd sides included - and from the level above beyond
+        // that, where the step halves or is between 2:1 and 3:1 (see buildMipTailOnGpu). A
+        // power-of-two size has no tail and pays nothing; an odd side (exactLevels 0) has nothing
+        // glGenerateMipmap can be trusted for and pays one pass over its base per exact level - no
+        // readback, where the CPU resample this replaced would have read the whole base back (900 MB
+        // for a 15001^2 image, and again for each level of a 1023^2 one).
         const int exactLevels =
             std::min(trailingZeroBits(mSize.width()), trailingZeroBits(mSize.height()));
         if (exactLevels + 1 < mMipmapLevels) {
             XC_ASSERT(aFormat == GL_RGBA && aChannelType == GL_UNSIGNED_BYTE);
-            buildMipTailOnGpu(mId, mSize, exactLevels, mMipmapLevels, aInternalFormat);
+            buildMipTailOnGpu(mId, mSize, exactLevels, mMipmapLevels);
         }
+    } else if (aMipmap == Manual) {
+        // The whole chain is ALLOCATED and BOOKED here, and filled by the caller: the levels above
+        // 0 exist, at the sizes GL mandates, so the texture is complete and the residency counter
+        // is honest, but their contents are undefined until the caller writes them (a mask patched
+        // a box at a time fills them per box). Nothing is drawn or read back, and the filters and
+        // wrap mode are left alone - the caller owns the sampling policy.
+        const float maxDim = (float)std::max(mSize.width(), mSize.height());
+        mMipmapLevels = 1 + (int)std::floor(std::log2(maxDim));
+        for (int l = 1; l < mMipmapLevels; ++l) {
+            ggl.glTexImage2D(
+                GL_TEXTURE_2D, l, aInternalFormat, std::max(1, mSize.width() >> l),
+                std::max(1, mSize.height() >> l), 0, aFormat, aChannelType, nullptr
+            );
+        }
+        ggl.glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAX_LEVEL, mMipmapLevels - 1);
     } else {
         // Pin the chain to level 0. Without this, GL_TEXTURE_MAX_LEVEL defaults to 1000, so
         // a texture holding only level 0 is *incomplete* and any mipmap minification filter

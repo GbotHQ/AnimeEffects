@@ -131,14 +131,25 @@ frame does not need. The cost is the sync, not the bytes. (Worth measuring both 
   and the incremental path is a continuation, not a separate mechanism.
   Deferring mask chains was a staging choice that cost real quality in the meantime; they belong in
   the same stage as the image chain, immediately after the import fix below, not in a later one.
-- **The importer's 1-texel ring must go** (`img::Util::recreateForBiLinearSampling`): it copies the
-  artwork at texel (1,1) with a transparent border, so every level from 1 down averages across the
-  content's own 2x2 blocks with a half-texel phase error - the branch measured 112/255 at 2x. It is
-  project-wide (every imported image) and it is a *phase* error, not an exclusion: level-0 pages are
-  exact, higher pages inherit the same half-texel shift. The ring predates `CLAMP_TO_BORDER`, which
-  the layer sampler already sets, so the fix is to drop the ring and let the border colour handle the
-  edge - which touches `recreateForBiLinearSampling`'s callers, the `uImageSize` uniform (it must be
-  the aligned texture size, not content+2) and any content rect that accounted for the ring.
+- **The importer's 1-texel ring is GONE (done).** It copied the artwork at texel (1,1) with a
+  transparent border, so every level from 1 down averaged across the content's own 2x2 blocks with a
+  half-texel phase error (the branch measured 112/255 at 2x). `prepareForSampling` now copies the
+  image size for size at (0,0), `mipAlignedTextureSize` and the 128-texel alignment are deleted, the
+  upload is the content size, and `uImageSize` is that same size - so content texel (x,y) is texture
+  texel (x,y), pinned by the probe's 1:1 checkerboard.
+- **Resolution rule: ceil-div, NO padding, and the chain is built on the GPU.** GL's mip level sizes
+  are `max(1, side >> l)`, so a size with no trailing zero bits makes level 1 already non-halving
+  (a 15001^2 base, or every level of a 1023^2 one) - the case that decides the design, because a CPU
+  rebuild there reads back the whole base. Levels are therefore built by a GPU area pass:
+  - **anchor at level 0 while a footprint needs <= `kMipTailMaxTaps` (128) samples per axis** - exact
+    for any size, odd included, at one base pass per level (<= 7 such levels);
+  - past that, **chain from the level above** (always a 2:1-3:1 step, <= 3 taps/axis): chaining is
+    inexact when a step's boundary cuts a coarse texel (measured 17/255 on noise, 6/255 on curved
+    content at a 25->12 step), and that is the stated price of the bound - <= 5/255 on curved content.
+  Masks follow the same rule for a whole-field build; their per-stroke update anchors at the deepest
+  exact level because the box is box-sized and the anchoring is then free.
+  No readback, no sync, no per-upload CPU work; the pass saves and restores the full GL state
+  (FBOs, viewport, VAO, program, blend/depth/scissor/cull) because it runs inside the caller's draw.
 - **Open [O]**: premultiplied vs straight for the *stored* levels needs the written analysis against
   the branch's halo evidence, the blend path (`img::Util::makeTextureUpload` premultiplies today),
   the storage size and the export path.

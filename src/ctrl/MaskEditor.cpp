@@ -372,9 +372,9 @@ bool MaskEditor::paintStamp(const BrushStamp& aStamp) {
             mCommand->addAfter(clipped);
         mDirtyFilter = true;
     } else if (field.key) {
-        // one whole-field upload at most per event (a field is capped at 1024 texels on the long
-        // side, so this is a 1 MiB copy, not a per-stamp one)
-        field.key->data().markDirty();
+        // the box this stamp wrote, at the field's own grid: the matte's chain is patched there
+        // (level 0's upload plus one box per level), so a stroke never rebuilds the field
+        field.key->data().markDirty(clipped);
         mDirtyKey = true;
     }
     mDirty = true;

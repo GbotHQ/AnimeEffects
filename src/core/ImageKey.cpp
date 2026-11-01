@@ -100,10 +100,11 @@ void ImageKey::resetTextureCache() {
         //
         // Content-sized, two reasons. Memory: a right/bottom pad up to a multiple of 2^l costs up
         // to +98% of a thin layer (144 texels rounds up to 256) and its only job was to let
-        // glGenerateMipmap generate the first levels - gl::Texture::create now rebuilds every level
-        // that does not halve exactly from the deepest one that does, with the area weights the
-        // grid implies, so every level is the average it claims to be for ANY size, odd sides
-        // included. Geometry: the texture's texel (x, y) has to be the content's texel (x, y). The
+        // glGenerateMipmap generate the first levels - gl::Texture::create now builds every level
+        // that does not halve exactly, on the GPU, with the area weights the grid implies (from
+        // level 0 while the footprint is short, from the level above after that), so every level is
+        // the average it claims to be for ANY size, odd sides included. Geometry: the texture's
+        // texel (x, y) has to be the content's texel (x, y). The
         // mesh's texture coordinates are content pixels (core::GridMesh), the layer's vertex shader
         // divides them by uImageSize (LayerNode sets it from areaTexture()->size()), so those two
         // sizes being equal is what keeps the mapping identity.

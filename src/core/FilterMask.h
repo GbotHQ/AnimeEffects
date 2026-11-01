@@ -2,6 +2,7 @@
 #define CORE_FILTERMASK_H
 
 #include <QImage>
+#include <QRect>
 #include <QRectF>
 #include <QSize>
 #include "gl/Texture.h"
@@ -32,6 +33,127 @@ inline int filterMaskNeutral(FilterMaskChannel aChannel) {
 class Serializer;
 class Deserializer;
 
+// THE MIP CHAIN OF A MASK FIELD, shared by the two field types (MaskKey::Data and
+// FilterMask below) - they differ in who owns the level-0 pixels, not in how the chain
+// above them is kept.
+//
+// WHY A MASK HAS A CHAIN AT ALL. A mask is sampled minified exactly like a layer's
+// image - every camera scale below 1 and the fit zoom read it through the minification
+// filter - so without a chain the painted edge aliases at those zooms. A layer's chain
+// is built once at import; a mask's changes with every brush stamp, so this keeps ONE
+// BOX OF DAMAGE PER LEVEL and rebuilds only that box.
+//
+// THE GRID HAS NO PADDING, like every other sampled texture now: the field is the content's
+// own resolution, one texel per content pixel, and its texture is exactly that size - content
+// texel (x, y) is texture texel (x, y). The alignment padding an upload used to carry (so that
+// the driver's own levels divide) must NOT be used here: every mask shader maps content pixels
+// onto the texture with `uv = (q - rect.xy) / rect.zw` (LayerDrawingFrag's LAYER_MASK,
+// FilterFrame's mask passes), i.e. normalized coordinates over the rect's size - a texture
+// larger than the rect would stretch the field across the padding. The chain is exact without
+// it because the levels are computed from the data instead of asked of the driver.
+//
+// WHERE A LEVEL COMES FROM
+//   * level l has max(1, side >> l) texels (gl/Texture.cpp's rule), so level l is an
+//     EXACT halving of level l-1 while 2^l divides both sides, i.e. while
+//     l <= exactLevels(). Those levels are the aligned 2x2 average of the level above:
+//     2 taps per axis (4 per output texel), and the box has the same shape as the one
+//     above it.
+//   * The FIRST level that does not halve, and every level below it, is the area-weighted
+//     reduction of the deepest exact level, with the weights gl/Texture.cpp's GPU tail applies:
+//     destination texel j covers [j * srcSide / dstSide, (j + 1) * srcSide / dstSide) of the
+//     source and every source texel contributes the length of its overlap. Reading the deepest
+//     exact level rather than the level above is what keeps a level the average it claims to be:
+//     chaining spreads the fractional remainder of a footprint over a whole texel of the level
+//     below (the branch measured -13 of 255 at level 8 of a 1920-texel side when chained, 0 when
+//     taken from the exact level). For a side where NOTHING halves, exactLevels() is 0 and those
+//     levels are the exact area integral of the FIELD itself - the analytic answer a driver does
+//     not promise: glGenerateMipmap is free to weight only a band of a source that does not halve
+//     (measured 118 of 255 off on a 1920-texel side's deepest level).
+//   * The ANCHOR is one level finer than the image path's: gl::Texture::create's GPU tail reads
+//     level 0 while a footprint is at most gl/Texture.cpp's kMipTailMaxTaps (128) per axis and the
+//     level above beyond that, which bounds the cost of building a whole chain for a huge artwork.
+//     A mask has no whole-chain moment - it is patched a box at a time, and the box is small - so
+//     it keeps the deepest exact level as the anchor at every depth, which makes an odd side's
+//     chain the analytic area average all the way down.
+//
+// HOW MANY TAPS THE TAIL NEEDS. One per source texel the destination texel's span
+// overlaps, so ceil(srcSide / dstSide) + 1 per axis - NOT the 4 taps per output a
+// chained reduction would cost. The first non-halving level spans between 2 and 3 source
+// texels, so it needs 3 taps per axis; every octave deeper doubles the span, and the
+// deepest level of a grid where nothing halves spans the whole side. Two taps per axis
+// cannot express three weights: for a span of exactly 3 the box is 1/3 on each of three
+// texels, and a two-tap scheme carries at most two of them - a third of the value, 85 of
+// 255, dropped. With ceil taps nothing is dropped, and the extra (+1) tap is slack: the
+// shader skips a tap whose overlap is zero and divides by the SUM of the weights it took,
+// so a span that ends on a texel boundary cannot under-normalize.
+//
+// HOW THE BOXES PROPAGATE. The damage is a level-0 box (a stroke's stamp). Level l's box
+// is the box of the level above it halved and rounded OUTWARDS (core::coveredBox in
+// FilterMask.cpp), then clamped into the level. Outward rounding is not slack: a
+// destination texel's footprint can cross the box edge, and such a texel must be
+// recomputed because part of what it averages changed. Rounding out can never under-cover,
+// so composing the halvings is a superset of the level's true damage; a texel rebuilt
+// without needing to be comes out with the value it already had.
+//
+// WHY THE BUILD RUNS ON THE GPU. The same arithmetic could run on the CPU (the level-0
+// pixels are in RAM), and it would be exact - but a paint happens dozens of times a second
+// in the UI thread, and a CPU pass would cost a box per level per stamp plus an upload per
+// level. Here each level's box is one small draw: the level (or the exact level) is sampled
+// with texelFetch on the GPU, nothing is read back, and the UI thread only issues the draws.
+// It is SEPARABLE (x into a scratch, then y from it), so a fragment costs span taps, not span
+// squared - a 15001-wide deepest level would
+// otherwise be 225 M fetches in ONE fragment - and the intermediate is at most
+// (destination width x source height).
+//
+// COST, stated where it is largest. A stroke's box costs about the box per level
+// (thousands of fetches, sub-millisecond). A FULL build (creation, clear, undo) of a grid
+// where nothing halves reads the whole field once per level: a 15001-texel side has 14
+// levels above level 0, i.e. ~14 x 225 M texel fetches (~3 G), not the 1/3 of the field a
+// chained reduction would need - chaining is the rule that is measurably wrong, so it is
+// not what is built. A grid that halves down to level 8 pays the box rule for the seven
+// exact levels and the tail only over the 128-texel level, i.e. kilobytes.
+//
+// WHAT gl::Texture IS TOLD. create() is called with MipmapPolicy::Manual: the class allocates and
+// books the WHOLE chain - level 0 from the field's pixels, levels 1..n-1 at their GL-mandated
+// sizes, MAX_LEVEL = n-1 - so its mipmapLevels() and its residency counter describe every level,
+// and it builds and draws nothing. Under that policy the filters and the wrap are the caller's
+// too, and are set here: trilinear minification, GL_LINEAR magnification, GL_CLAMP_TO_EDGE. What
+// the class does not own is the part that matters for a mask: the CONTENTS above level 0, which
+// are this chain's, written box by box.
+class MaskMipChain: private util::NonCopyable {
+public:
+    MaskMipChain();
+
+    // Has a grid been established (i.e. has create() built a chain)?
+    bool isValid() const { return !mBaseSize.isEmpty(); }
+    QSize baseSize() const { return mBaseSize; }
+
+    // The damage, in LEVEL-0 texels. A stroke reports the box it painted; `all` is a
+    // whole-field change (a restored image, a clear, a deserialization). They stay two
+    // calls because they are two costs: a box rebuilds a box per level, `all` rebuilds
+    // every level.
+    void markDirty(const QRect& aTexels);
+    void markDirtyAll();
+    bool isDirty() const { return mDirtyAll || !mDirtyBox.isNull(); }
+
+    // Creates aTexture at aLevelZero's size (level 0 from its pixels, every level above
+    // it allocated) and fills the whole chain. aLevelZero must be Grayscale8.
+    void create(gl::Texture& aTexture, const QImage& aLevelZero);
+
+    // Brings an existing chain in step with the accumulated damage: uploads level 0's
+    // box from aLevelZero and rebuilds the boxes above it. Requires a current GL context
+    // and a chain created by create() for aLevelZero's size.
+    void update(gl::Texture& aTexture, const QImage& aLevelZero);
+
+private:
+    // Fills aBaseBox's footprint at every level above 0 (see the class note for the rule).
+    void rebuild(gl::Texture& aTexture, const QRect& aBaseBox);
+
+    QSize mBaseSize;
+    QRect mDirtyBox;
+    bool mDirtyAll;
+};
+
 // A PAINTED FILTER MASK: one 8-bit field in the node's CONTENT space that a
 // filter takes as an input. Wallpaper Engine calls these paintable effect
 // textures; the concept is the same - the artist paints where an effect applies
@@ -51,6 +173,12 @@ class Deserializer;
 // class used to carry was an unforced optimisation - it made a 15000 px canvas a 15 px grid - and
 // nothing shipped with masks, so it is gone rather than versioned. A field now costs a quarter of
 // the layer's RGBA image, the same rule the artwork follows.
+//
+// The field's TEXTURE carries a mip chain (see MaskMipChain above) because the filter passes
+// sample it minified at any camera scale below 1; the chain is kept incrementally from the boxes
+// markDirty reports, so a stroke uploads the texels it touched at every level and nothing else.
+// There is no padding, so the channel's neutral is the value every level of a fresh field holds -
+// filterMaskNeutral per channel - and a fresh mask still costs nothing and changes nothing.
 class FilterMask: private util::NonCopyable {
 public:
     // A SANITY BOUND for a corrupt file, not a design limit (see the class note).
@@ -80,8 +208,8 @@ public:
     int neutral() const { return mNeutral; }
 
     // The GL texture the filter pass samples, created lazily and updated by the
-    // dirty box (a stroke uploads the box it touched, not the whole field). The
-    // caller must have a current GL context - the renderer does.
+    // dirty box (a stroke uploads the box it touched at every level, not the whole
+    // field). The caller must have a current GL context - the renderer does.
     GLuint texture();
     // the revision the texture was last uploaded at (the gates read it)
     quint64 uploadedRevision() const { return mUploadedRevision; }
@@ -91,18 +219,14 @@ public:
     bool deserialize(Deserializer& aIn);
 
 private:
-    void uploadAll();
-    void uploadBox(const QRect& aTexels);
-
     QRectF mContentRect;
     QImage mImage; // Format_Grayscale8
     int mNeutral;  // the value clear() restores (filterMaskNeutral)
     gl::Texture mTexture;
+    MaskMipChain mMip;
     quint64 mRevision;
     quint64 mUploadedRevision;
     bool mCreated;
-    bool mDirtyAll;
-    QRect mDirtyBox;
 };
 
 } // namespace core

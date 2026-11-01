@@ -4,7 +4,6 @@
 #include <QString>
 #include "core/MaskKey.h"
 #include "core/Serializer.h"
-#include "gl/Global.h"
 
 namespace core {
 
@@ -15,38 +14,46 @@ const gl::Texture* MaskKey::Data::textureId() const {
         return nullptr;
     if (!mTexture)
         mTexture = std::make_shared<TextureHolder>();
-    const quint64 key = mField.cacheKey();
-    if (mTexture->uploaded && mTexture->key == key)
-        return &mTexture->texture;
 
-    // ONE BYTE PER TEXEL as GL_R8 (see core/FilterMask.cpp): the pass multiplies .r, and the field
-    // is the content's own resolution now, so an RGBA upload would be four times the VRAM.
-    gl::Global::Functions& ggl = gl::Global::functions();
-    ggl.glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
-    ggl.glPixelStorei(GL_UNPACK_ROW_LENGTH, mField.bytesPerLine());
+    // A holder that does not describe THIS image is dropped rather than patched: it can be shared
+    // with another Data (a blend result, an undo state) that still points at the image it was
+    // built from, and rebuilding over it would replace THEIR texture with this one's pixels. See
+    // markDirty for how a holder comes to be ahead of an image.
+    if (mTexture->uploaded && mTexture->key != mField.cacheKey())
+        mTexture = std::make_shared<TextureHolder>();
+
     if (!mTexture->uploaded) {
-        mTexture->texture.create(mField.size(), mField.constBits(), GL_RED, GL_R8, GL_UNSIGNED_BYTE);
-        mTexture->texture.setFilter(GL_LINEAR);
-        mTexture->texture.setWrap(GL_CLAMP_TO_EDGE);
+        // the whole field, once: ONE BYTE PER TEXEL as GL_R8 (see core/FilterMask.cpp) - the pass
+        // multiplies .r, so an RGBA upload would be four times the VRAM - plus the mip chain its
+        // minified sampling needs
+        mTexture->mip.create(mTexture->texture, mField);
         mTexture->uploaded = true;
-    } else {
-        ggl.glActiveTexture(GL_TEXTURE0);
-        ggl.glBindTexture(GL_TEXTURE_2D, mTexture->texture.id());
-        ggl.glTexSubImage2D(
-            GL_TEXTURE_2D, 0, 0, 0, mField.width(), mField.height(), GL_RED, GL_UNSIGNED_BYTE, mField.constBits()
-        );
-        ggl.glBindTexture(GL_TEXTURE_2D, 0);
+        mTexture->key = mField.cacheKey();
+        return &mTexture->texture;
     }
-    ggl.glPixelStorei(GL_UNPACK_ROW_LENGTH, 0);
-    ggl.glPixelStorei(GL_UNPACK_ALIGNMENT, 4);
-    mTexture->key = key;
+
+    // the accumulated damage: level 0's box from the image and one box per level above it
+    mTexture->mip.update(mTexture->texture, mField);
     return &mTexture->texture;
 }
 
-void MaskKey::Data::markDirty() {
-    mTexture.reset();
+void MaskKey::Data::markDirty(const QRect& aTexels) {
     // the brush wrote into the pixels, so the matte now hides something
     mPainted = true;
+    if (!mTexture || !mTexture->uploaded)
+        return;   // nothing built yet: the next textureId() builds the field it finds
+
+    // THE BOX IS THE WHOLE DIFFERENCE. A paint writes through the image's scanlines, which detaches
+    // the pixels (QImage's copy-on-write) and changes cacheKey, but the holder's chain still
+    // describes the pre-stamp image and the only pixels that differ are the box the brush reports.
+    // So the chain is patched there - one box per level, on the GPU - and the holder is moved on to
+    // the detached image. A copy taken before the stamp keeps the old key, so undo rebuilds.
+    if (mTexture->mip.isValid() && mTexture->mip.baseSize() == mField.size()) {
+        mTexture->mip.markDirty(aTexels);
+        mTexture->key = mField.cacheKey();
+    } else {
+        mTexture.reset();   // a different grid: this chain is not this field's
+    }
 }
 
 void MaskKey::Data::alloc(const QSize& aSize, const QRectF& aContentRect, uchar aValue) {
@@ -90,10 +97,15 @@ void MaskKey::Data::assign(const Data& aRhs) {
     mContentRect = aRhs.mContentRect;
     mEasings = aRhs.mEasings;
     mPainted = aRhs.mPainted;
-    // Sharing the holder is what keeps a STATIC mask free: the same image means the
-    // same texture, so a node whose mask has one key uploads it once and then only
-    // binds it. Nothing can write through a shared holder - every mutator detaches.
-    mTexture = aRhs.mTexture;
+    // Sharing the holder is what keeps a STATIC mask free: the same image means the same
+    // texture, so a node whose mask has one key uploads it once and then only binds it. Nothing
+    // can write through a shared holder - every whole-field mutator sheds it - and a holder that
+    // was patched ahead of its image (markDirty) is not shared either, because the copy would then
+    // show pixels its own image does not have.
+    if (aRhs.mTexture && aRhs.mTexture->uploaded && aRhs.mTexture->key == aRhs.mField.cacheKey())
+        mTexture = aRhs.mTexture;
+    else
+        mTexture.reset();
 }
 
 void MaskKey::Data::swap(Data& aRhs) {
@@ -123,7 +135,9 @@ bool MaskKey::serialize(Serializer& aOut) const {
     // easing
     aOut.writeEasings(&mData.easing(0), kComponents);
 
-    // the field: presence, where it lives, its texel grid, then a PNG blob
+    // the field: presence, where it lives, its texel grid, then a PNG blob. The grid is the
+    // CONTENT's own - the mip chain is an allocation detail of the texture and never reaches the
+    // file.
     const bool valid = mData.isValid();
     aOut.write(valid);
     if (valid) {

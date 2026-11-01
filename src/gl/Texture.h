@@ -9,16 +9,29 @@ namespace gl {
 
 class Texture: private util::NonCopyable {
 public:
-    // Whether create() also builds the mipmap chain. Opt-in, because mipmaps are only
-    // correct for data that is ALPHA-PREMULTIPLIED: glGenerateMipmap box-filters each
-    // channel independently, so averaging STRAIGHT color blends the RGB of transparent
-    // texels into the edge texels of every level, which renders as a dark (or light)
-    // fringe once the texture is minified. Render targets, mask textures and glyph caches
-    // must not ask for it - and pay nothing for the default: a texture created without it
-    // behaves exactly as before (level 0 pinned as the whole chain, filters as set).
+    // Whether create() also gives the texture a mipmap chain, and who fills it.
+    //
+    // NoMipmap: level 0 only, GL_TEXTURE_MAX_LEVEL pinned to 0, filters and wrap untouched. The
+    // default, and what render targets, glyph caches and straight (non-premultiplied) data use.
+    //
+    // GenerateMipmap: mipmaps are only correct for data that is ALPHA-PREMULTIPLIED, because
+    // glGenerateMipmap box-filters each channel independently and averaging STRAIGHT colour blends
+    // the RGB of transparent texels into the edge texels of every level (the dark/light fringe once
+    // the texture is minified). create() generates the levels that halve exactly and BUILDS every
+    // level that does not, on the GPU, with the area weights the level grid implies (see
+    // Texture.cpp) - so it needs no readback, but it does build the whole chain, with a tap cap that
+    // bounds the cost of a very large base.
+    //
+    // Manual: the whole chain is allocated and booked (levels 1..n-1 exist at their GL-mandated
+    // sizes, GL_TEXTURE_MAX_LEVEL is n-1, mipmapLevels() and the residency counter report every
+    // level), but the levels above 0 hold nothing until the caller fills them. create() builds and
+    // draws nothing, and does not touch the filters or the wrap mode - the caller owns the sampling
+    // policy and the per-level uploads (a mask patched a box at a time, for which a whole-chain
+    // build would be the wrong unit of work).
     enum MipmapPolicy {
         NoMipmap,
         GenerateMipmap,
+        Manual,
     };
 
     Texture();

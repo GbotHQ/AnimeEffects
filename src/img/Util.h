@@ -59,8 +59,10 @@ public:
     /// The size is the image's own because a padded texture would cost up to +98% of the layer's
     /// memory for nothing: aligning a 144-texel side rounds it up to 256, and padding exists only so
     /// that glGenerateMipmap can generate the first levels - which gl::Texture::create no longer
-    /// needs, because it rebuilds every level that does not halve exactly from the deepest level
-    /// that does (the area weights the grid implies). Uploading the content's own size is also what
+    /// needs, because it builds every level that does not halve exactly itself, on the GPU, with the
+    /// area weights the grid implies (from level 0 while a footprint is at most 128 texels per axis,
+    /// so up to 128x minification is exact for any size, and from the level above beyond that).
+    /// Uploading the content's own size is also what
     /// makes the two ends of the texture-coordinate path agree: the mesh's coordinates are content
     /// pixels (core::GridMesh), the layer's vertex shader divides them by uImageSize, and LayerNode
     /// sets uImageSize from areaTexture()->size(), so content texel (x, y) is sampled at texture

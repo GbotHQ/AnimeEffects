@@ -43,9 +43,9 @@
 // SUITES
 //   M1  the generated chain vs the analytic CPU reference (production gl::Texture)
 //   M2  the production core::ImageKey texture: content-sized, exact at an odd size, premultiplied
-//   M3  the production RENDER path: minified layer, no halo; and the 1:1 texel phase (UV path)
 //   M18 chain exactness at EVERY level for a sweep of sizes, odd sides included, plus the raw
 //       driver chain as the mutation control
+//   M3  the production RENDER path: minified layer, no halo; and the 1:1 texel phase (UV path)
 //
 // Run: QT_QPA_PLATFORM=offscreen ./build/tests/Debug/verify_mipmap
 // Exit code: 0 = all pass, 1 = test failures, 2 = GL bootstrap failure.
@@ -94,7 +94,6 @@
 #include "img/BlendMode.h"
 #include "img/ResourceData.h"
 #include "img/ResourceNode.h"
-#include "img/Util.h"
 #include "util/Range.h"
 
 //-------------------------------------------------------------------------------------------------
@@ -245,21 +244,24 @@ Img makeOpaqueChecker(int aSize) {
     return img;
 }
 
-// Opaque broadband content, deterministic: every texel differs from its neighbours, so a level that
-// averages the wrong footprint (or a band of the side) cannot coincidentally match the box.
-Img makeOpaqueNoise(int aW, int aH) {
+// Opaque content with curvature: a quadratic in x and y plus a product of sinusoids. Smooth content
+// is what artwork is, and curvature is what makes the test have power - a LINEAR ramp integrates to
+// the same average under any symmetric kernel, so a wrong channel or a displaced/truncated support
+// would not show. (The step sweep below is the sharp instrument for support: it reads a hard edge.)
+Img makeCurved(int aW, int aH) {
     Img img;
     img.w = aW;
     img.h = aH;
     img.d.assign((size_t)aW * aH * 4, 0);
-    uint32_t r = 0x9e3779b9u;
     for (int y = 0; y < aH; ++y) {
         for (int x = 0; x < aW; ++x) {
-            r = r * 1664525u + 1013904223u;
+            const double u = (x + 0.5) / aW;
+            const double v = (y + 0.5) / aH;
+            const auto clamp8 = [](double t) { return (uint8_t)std::lround(std::max(0.0, std::min(255.0, t))); };
             uint8_t* p = img.at(x, y);
-            p[0] = (uint8_t)(r >> 24);
-            p[1] = (uint8_t)((r >> 16) & 0xffu);
-            p[2] = (uint8_t)((r >> 8) & 0xffu);
+            p[0] = clamp8(255.0 * u * u);
+            p[1] = clamp8(255.0 * v * v);
+            p[2] = clamp8(255.0 * (0.5 + 0.5 * std::sin(6.283185307179586 * u) * std::cos(4.0 * v)));
             p[3] = 255;
         }
     }
@@ -454,18 +456,6 @@ int maxAnyChannelDelta(const std::vector<uint8_t>& aA, const std::vector<uint8_t
     return worst;
 }
 
-/// The number of trailing zero bits of a side: the deepest level whose grid still halves exactly, and
-/// so the deepest level glGenerateMipmap is trusted to fill. Every level below it is rebuilt by
-/// gl::Texture::create from that one.
-int trailingZeroBits(int aValue) {
-    int n = 0;
-    while (aValue > 1 && (aValue & 1) == 0) {
-        aValue >>= 1;
-        ++n;
-    }
-    return n;
-}
-
 //-------------------------------------------------------------------------------------------------
 // M1: is the generated chain the premultiplied one (and not the straight one)?
 
@@ -591,18 +581,17 @@ void suiteChain() {
 
 //-------------------------------------------------------------------------------------------------
 // M2: the production core::ImageKey texture must be the content's own size, and its chain - the
-// rebuilt tail included - must be exact. An ODD size is the interesting one: its trailing zero bit
-// count is 0, so glGenerateMipmap can be trusted for no level at all and the rebuild produces every
-// one of them from level 0.
+// tail gl::Texture::create builds on the GPU included - must be the analytic area average.
+//
+// 129x77 is the interesting shape: an odd width, and no power of two in either side (129 = 3 * 43,
+// 77 = 7 * 11), so the deepest level is 1x1 over a 129-texel base. The size assertion is what keeps
+// the alignment padding from coming back - aligning to 128 would have uploaded 256x128.
 
 void suiteImageKey() {
     suiteHeader("M2 production core::ImageKey texture: content-sized, exact at an odd size");
 
-    // 129x77: odd width, and no power of two in either side (129 = 3 * 43, 77 = 7 * 11). With the
-    // size aligned to 128 - what this code used to upload - the texture would have been 256x128, so
-    // a size assertion here is what keeps the padding from coming back.
     const QSize size(129, 77);
-    const Img src = makeOpaqueNoise(size.width(), size.height());
+    const Img src = makeCurved(size.width(), size.height());
     img::ResourceNode* node = makeResource("mip_probe_geometry", src);
 
     core::ImageKey key;
@@ -615,7 +604,8 @@ void suiteImageKey() {
     expect(tex.id() != 0, QString("%1: must be created").arg(prefix));
     expect(tex.size() == size,
         QString("%1: the texture must be the content's own size (%2x%3), got %4x%5 - padding it puts "
-                "level 0's texels off the grid the level-l boxes divide into and costs memory")
+                "level 0's texels off the grid the level-l boxes divide into and costs up to +98% of "
+                "a thin layer")
             .arg(prefix).arg(size.width()).arg(size.height())
             .arg(tex.size().width()).arg(tex.size().height()));
 
@@ -626,14 +616,13 @@ void suiteImageKey() {
     // the sampling parameters the path depends on
     {
         auto& ggl = gl::Global::functions();
-        gl::Global::Functions& functions = ggl;
-        functions.glBindTexture(GL_TEXTURE_2D, tex.id());
+        ggl.glBindTexture(GL_TEXTURE_2D, tex.id());
         GLint minF = 0, magF = 0, maxLevel = -1, wrapS = 0;
-        functions.glGetTexParameteriv(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, &minF);
-        functions.glGetTexParameteriv(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, &magF);
-        functions.glGetTexParameteriv(GL_TEXTURE_2D, GL_TEXTURE_MAX_LEVEL, &maxLevel);
-        functions.glGetTexParameteriv(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, &wrapS);
-        functions.glBindTexture(GL_TEXTURE_2D, 0);
+        ggl.glGetTexParameteriv(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, &minF);
+        ggl.glGetTexParameteriv(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, &magF);
+        ggl.glGetTexParameteriv(GL_TEXTURE_2D, GL_TEXTURE_MAX_LEVEL, &maxLevel);
+        ggl.glGetTexParameteriv(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, &wrapS);
+        ggl.glBindTexture(GL_TEXTURE_2D, 0);
         expect(minF == GL_LINEAR_MIPMAP_LINEAR,
             QString("%1: minification must be trilinear (got 0x%2)").arg(prefix).arg(minF, 0, 16));
         expect(magF == GL_LINEAR, QString("%1: magnification must be GL_LINEAR (got 0x%2)").arg(prefix).arg(magF, 0, 16));
@@ -642,8 +631,10 @@ void suiteImageKey() {
         expect(wrapS == GL_CLAMP_TO_BORDER, QString("%1: wrap must stay CLAMP_TO_BORDER").arg(prefix));
     }
 
-    // EVERY level, against the analytic box of the premultiplied upload. Level 0 is exact-halved by
-    // glGenerateMipmap, which is only trusted while it halves - for this size, never.
+    // Every level against the analytic area average of the premultiplied upload. gl::Texture::create
+    // builds each level from level 0 while its footprint is at most kMipTailMaxTaps texels (128), so
+    // at this size every level but the 1x1 is base-sourced and this is an exactness assertion; the
+    // 1x1 is a 2:1 step from the 2x1 level and exact as well.
     const Img upload = premultipliedUpload(src);
     int worstAll = 0;
     for (int l = 1; l < tex.mipmapLevels(); ++l) {
@@ -654,27 +645,49 @@ void suiteImageKey() {
         const int delta = maxAnyChannelDelta(got, want);
         worstAll = std::max(worstAll, delta);
         expect(delta <= 3,
-            QString("%1: level %2 (%3x%4) must be the area box of the premultiplied content (delta %5)")
+            QString("%1: level %2 (%3x%4) must be the area average of the premultiplied content (delta %5)")
                 .arg(prefix).arg(l).arg(dw).arg(dh).arg(delta));
     }
 
-    // and the chain must be real: level 1 is not a copy of level 0
+    // The premultiply itself, on the pattern that can see it: transparent texels carrying WHITE.
+    // (With transparent BLACK the two chains are numerically identical - premultiplying an opaque
+    // texel is the identity and the transparent one contributes nothing either way - so a bright
+    // shape on transparent black cannot see a missing premultiply at all.) Level 1 of a 129-texel
+    // side is a ~3-texel footprint from level 0, i.e. exact.
     {
-        const std::vector<uint8_t> lvl0 = readLevel(tex.id(), 0, size);
-        const std::vector<uint8_t> lvl1 =
-            readLevel(tex.id(), 1, QSize(std::max(1, size.width() >> 1), std::max(1, size.height() >> 1)));
-        expect(maxAnyChannelDelta(lvl1, lvl0) > 30,
-            QString("%1: level 1 must differ from level 0").arg(prefix));
+        const Pattern& pat = kPatterns[1]; // black on transparent white
+        const int side = 129;
+        const Img checker = makeChecker(pat, side);
+        img::ResourceNode* checkerNode = makeResource("mip_probe_premultiply", checker);
+        core::ImageKey checkerKey;
+        checkerKey.setImage(checkerNode->handle());
+
+        const int dw = std::max(1, side >> 1);
+        const std::vector<uint8_t> got = readLevel(checkerKey.cache().texture().id(), 1, QSize(dw, dw));
+        const std::vector<uint8_t> wantPremult =
+            areaLevel(premultipliedUpload(checker).d, side, side, dw, dw);
+        const std::vector<uint8_t> wantStraight = areaLevel(checker.d, side, side, dw, dw);
+        const int vsPremult = maxAnyChannelDelta(got, wantPremult);
+        const int vsStraight = maxAnyChannelDelta(got, wantStraight);
+
+        expect(vsPremult <= 3,
+            QString("ImageKey premultiply: level 1 must be the premultiplied chain (delta %2)")
+                .arg(vsPremult));
+        expect(vsStraight > 30,
+            QString("ImageKey premultiply: this pattern's straight chain must differ, or the check "
+                    "above is vacuous (delta %2)").arg(vsStraight));
+        expect(vsPremult < vsStraight,
+            QString("ImageKey premultiply: level 1 must be the premultiplied chain, not the straight "
+                    "one (deltas %2 vs %3)").arg(vsPremult).arg(vsStraight));
     }
 
     caseReport(
         prefix,
         gFails == failsBefore,
-        QString("%1x%2 at %3x%4, %5 levels, exactLevels=%6, worst level delta %7")
+        QString("%1x%2 at %3x%4, %5 levels, worst level delta %6")
             .arg(tex.size().width()).arg(tex.size().height())
             .arg(size.width()).arg(size.height())
             .arg(tex.mipmapLevels())
-            .arg(std::min(trailingZeroBits(size.width()), trailingZeroBits(size.height())))
             .arg(worstAll)
     );
 }
@@ -683,23 +696,27 @@ void suiteImageKey() {
 // M18: is the chain the exact box at EVERY level, for every size - odd sides included?
 //
 // Level l has max(1, side >> l) texels spanning the whole [0, 1] of normalized coordinates, so it is
-// an exact grid of 2^l-texel boxes only while 2^l divides the side. Past that the level must still
-// be the area average of its own footprint, and that is what gl::Texture::create rebuilds for it.
-// This driver's own glGenerateMipmap does NOT do that with a source that does not halve: measured
-// here by the mutation control below (a step swept through a 384-texel side, level 8, read out of a
-// raw chain with no rebuild), which weights only rows [128, 256) - the middle third - and none of
+// an exact grid of 2^l-texel boxes only while 2^l divides the side. Past that the level must still be
+// the area average of its own footprint, and that is what gl::Texture::create builds: from level 0
+// while the footprint is at most kMipTailMaxTaps texels per axis (128), from the level above after
+// that, where a step is between 2:1 and 3:1.
+//
+// This driver's own glGenerateMipmap does NOT do that with a source that does not halve, and the
+// mutation control below measures it: a step swept through a 384-texel side, level 8, read out of a
+// RAW chain (plain GL, no tail builder) weights only rows [128, 256) - the middle third - and none of
 // the rest. A truncated support makes the level the wrong COLOUR, not merely a soft one, so the
 // sweep's worst deviation from the box is what a layer at that zoom is wrong by per unit of contrast:
 // -83.7 of 255 on this driver for the 384 side, -117.5 at level 10 of 1920.
 //
-// Sizes: a power of two (nothing to rebuild), sizes with 1 and 2 trailing zero bits, an odd 300 and
-// odd 129/501/513 sides (nothing exact to inherit - every level is rebuilt from level 0). Every level
-// of every chain is compared with the area box of the level-0 upload, texel by texel.
+// Sizes: a power of two (nothing to build), sizes with 1 and 2 trailing zero bits, and odd 129/300/
+// 501/513 sides (nothing exact to inherit - every level is base-sourced up to 128x).
 
-// The raw driver chain's level aLev of a step image (rows [0, aRow) white, the rest black), read at
-// level texel (0, 0): 255 * the weight the level gives the rows above the step. Built with plain GL
-// calls on purpose - gl::Texture::create would rebuild the level and measure nothing.
-double rawDriverLevelStep(int aSide, int aLev, int aWidth, int aRow) {
+const int kMipTailMaxTaps = 128; // gl/Texture.cpp's rule: level 0 while the footprint is this short
+
+// The level aLev of a step image (rows [0, aRow) white, the rest black), read at level texel (0, 0):
+// 255 * the weight the level gives the rows above the step. aRaw builds the chain with plain GL
+// (the driver's own levels); otherwise the product's gl::Texture::create builds it.
+double levelStep(int aSide, int aLev, int aWidth, int aRow, bool aRaw) {
     Img src;
     src.w = aWidth;
     src.h = aSide;
@@ -711,6 +728,10 @@ double rawDriverLevelStep(int aSide, int aLev, int aWidth, int aRow) {
             p[0] = p[1] = p[2] = v;
             p[3] = 255;
         }
+    }
+
+    if (!aRaw) {
+        return (double)readChain(src, true)[(size_t)aLev].at(0, 0)[0];
     }
 
     auto& ggl = gl::Global::functions();
@@ -728,94 +749,157 @@ double rawDriverLevelStep(int aSide, int aLev, int aWidth, int aRow) {
     return (double)px[0];
 }
 
+// The worst deviation of a level's weight profile from the box its grid promises, over a step swept
+// through the side. The ideal profile is 255 * clamp(r / nominalRows, 0, 1), where nominalRows is
+// the number of base rows the level's texels stand for; a level that weights a band of its source
+// stalls where the ideal keeps rising, which is the defect this measures.
+struct StepProfile {
+    double worstDev = 0.0;
+    int worstAt = -1;
+    double midpoint = -1.0;
+    bool monotone = true;
+};
+
+StepProfile scanStep(int aSide, int aLev, int aWidth, bool aRaw) {
+    StepProfile p;
+    const int nominalRows = std::max(1, aSide >> aLev);
+    const int step = std::max(1, aSide / 128);
+    double prev = -1.0;
+    for (int r = 0; r <= aSide; r += step) {
+        const double v = levelStep(aSide, aLev, aWidth, r, aRaw);
+        const double ideal = 255.0 * std::min(1.0, r / (double)nominalRows);
+        if (std::fabs(v - ideal) > std::fabs(p.worstDev)) {
+            p.worstDev = v - ideal;
+            p.worstAt = r;
+        }
+        if (prev >= 0.0) {
+            if (v < prev - 1.0)
+                p.monotone = false;
+            if (p.midpoint < 0.0 && ((prev < 127.5 && v >= 127.5) || (prev > 127.5 && v <= 127.5))) {
+                const double t = (prev == v) ? 0.5 : (127.5 - prev) / (v - prev);
+                p.midpoint = (r - step) + t * step;
+            }
+        }
+        prev = v;
+    }
+    return p;
+}
+
 void suiteChainExactness() {
     suiteHeader("M18 chain exactness at every level, odd sizes included");
 
     const int kSizes[] = {64, 100, 129, 300, 384, 501, 513};
     for (size_t si = 0; si < sizeof(kSizes) / sizeof(kSizes[0]); ++si) {
         const int size = kSizes[si];
-        const Img src = makeOpaqueNoise(size, size);
+        const Img src = makeCurved(size, size);
         const std::vector<Img> chain = readChain(src, true);
         const int expectedLevels = 1 + (int)std::floor(std::log2((double)size));
-        const int exactLevels = std::min(trailingZeroBits(size), trailingZeroBits(size));
 
-        const QString label = QString("M18 %1x%1 (exactLevels %2)").arg(size).arg(exactLevels);
+        const QString label = QString("M18 %1x%1").arg(size);
         const int failsBefore = gFails;
 
         expect((int)chain.size() == expectedLevels,
             QString("%1: %2 levels expected, got %3").arg(label).arg(expectedLevels).arg(chain.size()));
 
-        int worstAll = 0;
-        int worstLevel = 0;
+        int worstExact = 0;
+        int firstChained = -1;
         for (int l = 1; l < (int)chain.size(); ++l) {
             const int dw = std::max(1, size >> l);
             const int dh = dw;
+            const int taps = std::max((size + dw - 1) / dw, (size + dh - 1) / dh);
             const std::vector<uint8_t> want = areaLevel(src.d, size, size, dw, dh);
             const int delta = maxAnyChannelDelta(chain[(size_t)l].d, want);
-            if (delta > worstAll) {
-                worstAll = delta;
-                worstLevel = l;
+            if (taps <= kMipTailMaxTaps) {
+                // base-sourced: this is an exactness assertion
+                worstExact = std::max(worstExact, delta);
+                expect(delta <= 3,
+                    QString("%1: level %2 (%3x%4, %5 taps from level 0) must be the area average of "
+                            "its own footprint (delta %6)")
+                        .arg(label).arg(l).arg(dw).arg(dh).arg(taps).arg(delta));
+            } else {
+                // past 128x the source is the level above; the cut texels are a sub-texel
+                // approximation, so the bound is wider (measured a few units on this content)
+                if (firstChained < 0)
+                    firstChained = l;
+                expect(delta <= 8,
+                    QString("%1: level %2 (%3x%4, chained from the level above) must stay close to "
+                            "the area average of the base (delta %5)")
+                        .arg(label).arg(l).arg(dw).arg(dh).arg(delta));
             }
-            expect(delta <= 3,
-                QString("%1: level %2 (%3x%4) must be the area box of its own footprint (delta %5)")
-                    .arg(label).arg(l).arg(dw).arg(dh).arg(delta));
         }
 
-        // the levels past the exact halvings are the ones the rebuild produces; the report says how
-        // much of the chain that is, so a regression that stops rebuilding shows a number
         caseReport(
             label, gFails == failsBefore,
-            QString("%1 levels, rebuilt from level %2 down, worst delta %3 at level %4")
+            QString("%1 levels, %2 exact from level 0 (worst delta %3)%4")
                 .arg(chain.size())
-                .arg(std::min(exactLevels + 1, (int)chain.size() - 1))
-                .arg(worstAll)
-                .arg(worstLevel)
+                .arg(firstChained < 0 ? chain.size() - 1 : firstChained - 1)
+                .arg(worstExact)
+                .arg(firstChained < 0 ? QString(" - every level")
+                                     : QString(", chained from level %1").arg(firstChained))
         );
     }
 
-    // ---- THE MUTATION CONTROL: the raw driver chain, without the rebuild, is NOT that box.
+    // ---- THE SHIPPED CHAIN at the level that used to be filled with a band: a 384-texel side's
+    // level 8 is one texel over the whole side, and the product's chain must be the exact box there.
     {
-        const int side = 384;   // 384 = 3 * 128: level 8 is the first level that does not halve
+        const int side = 384;
         const int lev = 8;
-        const int nominalRows = std::max(1, side >> lev); // rows the level's grid promises per texel
-        const int step = 3;
-        double worstDev = 0.0;
-        int worstAt = -1;
-        double midR = -1.0;
-        double prev = -1.0;
-        for (int r = 0; r <= side; r += step) {
-            const double v = rawDriverLevelStep(side, lev, 8, r);
-            const double ideal = 255.0 * std::min(1.0, r / (double)nominalRows);
-            const double dev = v - ideal;
-            if (std::fabs(dev) > std::fabs(worstDev)) {
-                worstDev = dev;
-                worstAt = r;
-            }
-            if (midR < 0.0 && prev >= 0.0 && ((prev < 127.5 && v >= 127.5) || (prev > 127.5 && v <= 127.5))) {
-                const double t = (prev == v) ? 0.5 : (127.5 - prev) / (v - prev);
-                midR = (r - step) + t * step;
-            }
-            prev = v;
-        }
+        const int nominalRows = std::max(1, side >> lev);
+        const StepProfile shipped = scanStep(side, lev, 8, false);
+        const QString label = QString("M18 shipped chain, %1 square level %2").arg(side).arg(lev);
+        expect(shipped.monotone,
+            QString("%1: the weight profile must rise monotonically").arg(label));
+        expect(std::fabs(shipped.worstDev) <= 1.0,
+            QString("%1: the level must be the box of its own footprint (%2 base rows) - worst "
+                    "deviation %3 at r=%4, midpoint %5")
+                .arg(label).arg(nominalRows).arg(shipped.worstDev, 0, 'f', 1).arg(shipped.worstAt)
+                .arg(shipped.midpoint, 0, 'f', 1));
 
-        const QString label = QString("M18 raw driver chain, %1 square level %2").arg(side).arg(lev);
-
-        // The wave band the driver weights lies inside the level's footprint, so its profile stalls
-        // where the box keeps rising. This is the measurement the rebuild replaced; if a future
-        // driver fills a non-halving level correctly, this control fails and should be re-recorded -
-        // it is a statement about the driver, not about this project.
-        expect(std::fabs(worstDev) > 5.0,
-            QString("%1: the unrebuilt chain must NOT be the box of its own footprint (worst "
-                    "deviation %2 of 255 at r=%3, midpoint %4 of %5 rows) - this is the defect the "
-                    "rebuild removes, and the control that says the exactness assertions above can "
-                    "see it")
-                .arg(label).arg(worstDev, 0, 'f', 1).arg(worstAt).arg(midR, 0, 'f', 1).arg(nominalRows));
+        // flat content must reduce to itself: no halo, dark or bright, from the level's shape
+        Img flat;
+        flat.w = flat.h = side;
+        flat.d.assign((size_t)side * side * 4, 0);
+        for (int y = 0; y < side; ++y)
+            for (int x = 0; x < side; ++x) {
+                uint8_t* q = flat.at(x, y);
+                q[0] = q[1] = q[2] = 200;
+                q[3] = 255;
+            }
+        const uint8_t* deep = readChain(flat, true)[(size_t)lev].at(0, 0);
+        expect(std::abs((int)deep[0] - 200) <= 1 && deep[3] >= 254,
+            QString("%1: uniform content must reduce to itself (rgb %2, alpha %3)")
+                .arg(label).arg((int)deep[0]).arg((int)deep[3]));
 
         caseReport(
             label, true,
-            QString("footprint %1 rows, weight profile midpoint at r=%2, worst deviation from the "
-                    "box %3 at r=%4 (the box is what gl::Texture::create builds)")
-                .arg(nominalRows).arg(midR, 0, 'f', 1).arg(worstDev, 0, 'f', 1).arg(worstAt)
+            QString("footprint %1 rows, midpoint at r=%2, worst deviation from the box %3 at r=%4")
+                .arg(nominalRows).arg(shipped.midpoint, 0, 'f', 1)
+                .arg(shipped.worstDev, 0, 'f', 1).arg(shipped.worstAt)
+        );
+    }
+
+    // ---- THE MUTATION CONTROL: the raw driver chain, with no tail builder, is NOT that box. This is
+    // the measurement the builder replaced. If a future driver fills a non-halving level correctly,
+    // this control fails and should be re-recorded - it is a statement about the driver, not about
+    // this project, and without it the exactness assertions above would not be shown to have power.
+    {
+        const int side = 384;
+        const int lev = 8;
+        const int nominalRows = std::max(1, side >> lev);
+        const StepProfile raw = scanStep(side, lev, 8, true);
+        const QString label = QString("M18 raw driver chain, %1 square level %2").arg(side).arg(lev);
+        expect(std::fabs(raw.worstDev) > 5.0,
+            QString("%1: the unrebuilt chain must NOT be the box of its own footprint (worst "
+                    "deviation %2 of 255 at r=%3, midpoint %4 of %5 rows) - this is the defect the "
+                    "tail builder removes")
+                .arg(label).arg(raw.worstDev, 0, 'f', 1).arg(raw.worstAt)
+                .arg(raw.midpoint, 0, 'f', 1).arg(nominalRows));
+        caseReport(
+            label, true,
+            QString("weight profile midpoint at r=%1 of %2 rows, worst deviation from the box %3 at "
+                    "r=%4 (the box is what the tail builder produces)")
+                .arg(raw.midpoint, 0, 'f', 1).arg(nominalRows)
+                .arg(raw.worstDev, 0, 'f', 1).arg(raw.worstAt)
         );
     }
 }

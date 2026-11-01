@@ -1854,3 +1854,34 @@ add_executable(command_log command_log.cpp
     ../src/gui/CommandLogView.h)
 target_include_directories(command_log PRIVATE .. ../src)
 target_link_libraries(command_log PRIVATE Qt6::Core Qt6::Gui Qt6::Widgets)
+
+# MIPMAP VERIFICATION GATE (tools/verify_mipmap): the layer texture's mip chain against an analytic
+# CPU reference, and the production render path that consumes it. Four suites: M1 (the chain is the
+# premultiplied box, with the straight chain as the positive control), M2 (the production ImageKey
+# texture is the CONTENT's own size and its levels are the area average of the premultiplied content),
+# M18 (every level, every size, odd sides included, plus the raw driver chain as the mutation control)
+# and M3 (a minified layer renders source*coverage, and a 1-texel checkerboard at 1:1 comes back at
+# full contrast, which is the texel-phase/UV check).
+#
+# It is a registered target rather than a hand-rolled script because tools/verify_blur rotted into not
+# compiling at all when nothing kept building it. Needs a real GL context, so it runs under xvfb (the
+# GL branch in scripts/run_suites.sh) or with QT_QPA_PLATFORM=offscreen; exit code 0 = pass, 1 = test
+# failures, 2 = GL bootstrap failure. assets.qrc is embedded because core::LayerNode compiles its
+# shaders from :/shaders.
+add_executable(verify_mipmap
+    ../tools/verify_mipmap/mip_probe.cpp
+    ${CMAKE_SOURCE_DIR}/assets/assets.qrc
+)
+target_include_directories(verify_mipmap PRIVATE ..)
+target_compile_definitions(verify_mipmap PRIVATE
+    AE_MAJOR_VERSION=1
+    AE_MINOR_VERSION=7
+    AE_MICRO_VERSION=1
+    USE_GL_CORE_PROFILE
+)
+target_link_libraries(verify_mipmap PRIVATE
+    Qt6::Core Qt6::Core5Compat Qt6::Widgets
+    Qt6::Gui Qt6::OpenGL Qt6::OpenGLWidgets
+    Qt6::Svg Qt6::Xml Qt6::Concurrent Qt6::Multimedia
+    cmnd core ctrl gl img thr util pugixml
+)
