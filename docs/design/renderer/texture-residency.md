@@ -117,26 +117,90 @@ frame does not need. The cost is the sync, not the bytes. (Worth measuring both 
   the branch's halo evidence, the blend path (`img::Util::makeTextureUpload` premultiplies today),
   the storage size and the export path.
 
-## 5. Residency and upload
+## 5. The page pool, in detail
 
-- **Unit**: a page (start at 256²) at a level, in a pool; a page table per resource maps (level, x, y)
-  to a slot. On GL 4.0 there are no sparse textures: the pool is a 2D atlas, the indirection is a
-  small texture sampled in the layer shader, and the fallback for a page that is not resident is the
-  resident coarser chain of the same resource (never a hole).
-- **Demand**: a feedback pass records which pages the frame sampled; priorities = visible area x
-  deficit (levels below what the metric asks for).
-- **Scheduling**: a per-frame upload budget (bytes), a quality floor expressed in "levels of
-  deficit", and no sync: uploads are state changes, not readbacks.
-- **Eviction**: capacity-driven, never change-driven. The cost asymmetry is the policy: a **sharp**
-  page can only come back from RAM (an upload), a **coarse** page can be regenerated from any
-  resident sharper page at almost no cost - so protect sharp pages, let coarse ones go. This is also
-  what makes oscillation ("the layer jumps between two levels") free: both stay if they fit, and the
-  budget is what decides, not hysteresis.
-- **A 10x jump in one frame**: the frame samples what is resident (coarser than ideal: blur, not a
-  hole), the deficit goes to the top of the queue, and the budget bounds how fast the sharp pages
-  land. No N-frame rule; no oscillation stall.
-- **At 1:1** the deepest zoom needs the viewport's pages, not the base level: that is the ceiling
-  that disappears.
+### 5.1 Units, addressing, table
+
+- A resource is one image (a layer's `ImageKey` resource, or a mask field). Its levels come from the
+  pyramid (§4). A **page** is 256x256 texels of one level.
+- Pools: one atlas texture per format - RGBA8 for images, R8 for masks - at 4096x4096, i.e. 16x16 =
+  256 slots. Pages sit 4 texels apart and the gutter repeats the edge texel, so a bilinear tap inside
+  a page can never reach a neighbour's content.
+- **Page table**: per resource, an `R16UI` texture of `(levels, pagesX, pagesY)` mapping a page to a
+  slot, with 0 meaning "not resident". A 15000² resource at 256² pages is 59x59 at level 0 and a
+  handful at each level below - the whole table is tens of KB, not MB **[D]**.
+- The shader replaces one `texture()` with: fragment -> content px (the existing `uScreenToLayer`) ->
+  the level from a per-vertex Jacobian varying -> page coords -> table fetch -> pool fetch. Two extra
+  fetches. Their cost is measured before anything ships (a dedicated `ms` A/B on the big project).
+
+### 5.2 Demand is ANALYTIC, not sampled feedback
+
+The density pass already walks every triangle of every drawn layer with the deformed positions. The
+same data yields, per triangle, the level it needs and the page rectangle it covers; their union per
+resource is this frame's demand.
+
+- **No feedback pass, no lag.** Demand is exact for the frame being drawn, so nothing has to be
+  conservative "because the answer is two frames old".
+- **No GL 4.2 dependency.** Sampled feedback wants image load/store; analytic demand does not, and
+  this engine targets `QOpenGLFunctions_4_0_Core`.
+- The error is one-sided: a page fully occluded by another layer still counts as demanded. That costs
+  a bounded over-fetch (measured with the counter), never a hole.
+- Feedback remains a possible *later* optimisation to trim over-fetch; it is not on the path.
+
+### 5.3 No holes, no pop-out: the always-resident coarse chain
+
+Every resource keeps its **coarse chain resident and complete** (all levels at or below a size where
+one level costs a few pages). A page that is not resident samples the coarse chain: **blur, never a
+hole**. A page arriving is a quality *increase*, which is not a pop; the thing that would pop - a
+resident page vanishing while still sampled - is prevented by 5.4.
+
+### 5.4 Eviction, budget, and what staleness actually costs
+
+- Capacity is pool slots, per format. Priority to keep: the coarse chain > pages demanded in this
+  frame > pages demanded within the last N frames (N = 3) > everything else, oldest first.
+- Demand is analytic, so "last demanded" is exact; the N-frame window exists only so that a one-frame
+  occlusion or a jitter at a boundary cannot evict a page that is about to be sampled again.
+- Under pressure the **sharpest, oldest** pages go: the result is local blur, bounded by the budget,
+  never a hole and never a colour pop.
+- A 10x zoom in one frame: demand is exact for that frame, so the top-priority upload starts
+  immediately; until it lands the coarse chain is sampled (blur), and the per-frame budget bounds the
+  landing rate. No N-frame rule, no oscillation.
+- Eviction is capacity-driven, never change-driven. The cost asymmetry is the policy: a sharp page can
+  only come back from RAM (an upload), a coarse page regenerates from a resident sharper one at
+  almost no cost - so under pressure sharp pages are the ones worth protecting *only while demanded*.
+
+### 5.5 Upload scheduling
+
+Queue from the RAM pyramid (§4), never from a decode. Per-frame byte budget, priority by
+(deficit levels x visible area), no readbacks, no sync. The counter grows a `pages=` field: resident,
+demanded, uploaded bytes this frame, evicted.
+
+### 5.6 What can regress, and the gates that catch it
+
+The page path is shipped behind a switch, and the switch exists **only** as the control for these
+gates and for A/B measurement - not as a user-facing fallback. Its removal criterion is stated in §6:
+when every gate is green on every project and the counter shows no regression, the switch is deleted.
+
+| regression | gate |
+|---|---|
+| a wrong pixel vs the full-resolution path | pixel equality against the control at a matrix of zooms and poses, including the extreme FFD/bone case from §1 |
+| a hole (a sample with no resident level) | assert every sample resolves through the chain; a sentinel in the table must never reach the shader |
+| a pop-out (resident page evicted while sampled) | a zoom/pan sequence asserts residency never drops a page demanded within N frames |
+| upload spikes | `pages=` shows uploaded bytes per frame <= the cap, on the big project while playing |
+| shader cost | `ms` A/B, page path vs control, same scene and view |
+| editing a mask | the page path's result equals the control within the same frame budget, from the dirty box only |
+| export | export reads the RAM pyramid and is independent of pool state (a gate with the pool emptied) |
+| two formats in one frame | a layer and a mask painted in the same frame, both paged |
+
+### 5.7 Risks and unknowns
+
+- **Shader addressing cost**: two extra fetches per fragment; measure before committing to the design.
+- **Trilinear across levels**: bilinear inside a page is the gutter's job; sampling between two levels
+  needs both tables - the coarse chain covers it, at the cost of a hard transition at the boundary.
+- **Table size for 15000²**: small, but the *page count* at level 0 is 3481 pages per resource, more
+  than one pool: the budget and the coarse chain are what make that fine.
+- **Anisotropy** (§3): page level from `s_max`; the sampler needs `GL_TEXTURE_MAX_ANISOTROPY_EXT`
+  where available, and the gutter widens if it is used.
 
 ## 6. Staged path
 
@@ -146,10 +210,15 @@ frame does not need. The cost is the sync, not the bytes. (Worth measuring both 
   minification aliasing. Gate: `verify_mipmap` (exists) plus an anisotropy case.
 - **Stage 2 - the pyramid**: resources carry levels; generated at import/load, stored, decoded into
   RAM; no GPU change. Gate: format roundtrip, memory accounting, legacy load.
-- **Stage 3 - pages**: pool + table + feedback + fallback + eviction behind a switch, with the
-  current base-level path as the control. Gate: residency tracks the screen-derived bytes on the
-  15000² project **while playing**, pixel equality against a full-chain reference, frame time inside
-  budget.
+- **Stage 3 - pages**: the pool, the table, analytic demand, the coarse chain and the eviction of
+  §5, behind a switch. The switch is **a control, not a crutch**: it exists so the gates can compare
+  the page path against the base-level path on the same frame, and so the two can be A/B'd for `ms`.
+  It is not shipped as a user-facing fallback. **Removal criterion**: every gate in §5.6 green on the
+  small, the mid-size and the 15000² project, and the counter showing no regression (residency,
+  uploads within cap, `ms` within budget) - then the switch and the base-level draw path are
+  deleted. If a project cannot pass, that is a design bug to fix, not a reason to keep the switch.
+  Gate: residency tracks the screen-derived bytes on the 15000² project **while playing**, pixel
+  equality against a full-chain reference, frame time inside budget.
 - **Stage 4**: masks in the pool (incremental page updates from the stroke).
 - **What to skip**: a per-layer level manager as a shipping state. It is throwaway once pages land,
   and Stage 3's coarse fallback gives the same behaviour at the right granularity. The one useful
