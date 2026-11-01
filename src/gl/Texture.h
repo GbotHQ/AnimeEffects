@@ -59,6 +59,16 @@ public:
     /// black. Cost of the three: 1.33 base reads (span 1), 3.33 (span 3: levels 1-3 from base, then
     /// base/4 + base/16 + ...), 8.33 for the old anchor-through-level-7 rule.
     ///
+    /// WHEN A CHAINED LEVEL IS EXACT, stated so it can be checked: level L is the box of the base
+    /// exactly while both sides are divisible by 2^L. The first step that does not divide is where
+    /// the source texel stops being an exact block - the builder must hand over a WHOLE source texel
+    /// for a partial footprint, so each destination texel borrows from one neighbour and loses part of
+    /// its own, i.e. a 1-source-texel smear and therefore blur, not noise. MEASURED as high-frequency
+    /// energy against the exact level: level 1 identical (0.0 % on all 45 corpus samples), level 2 of a
+    /// 1575x1050 image -10.6 % (its height does not divide by 4), level 2 of a 1920x1080 image +0.1 %
+    /// (it does). Levels 1..3 are built from level 0 under this rule, so the blur can only start at
+    /// level 4 - 16x minification - and only below the first dividing power of two.
+    ///
     /// The same rule serves a mask's whole-field build; a mask stroke's BOX may anchor freely at any
     /// depth because a box is box-sized, so exactness costs nothing there.
     static const int kMipChainSpan = 3;
