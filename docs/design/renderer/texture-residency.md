@@ -111,8 +111,20 @@ frame does not need. The cost is the sync, not the bytes. (Worth measuring both 
   frame ever decodes. `nene` goes from ~1.94 GiB to ~2.6 GiB of decoded images **[D]**.
 - **Content rules**: the `feat/mipmapping` branch's - premultiplied, halo-free, levels past the
   alignment cap rebuilt on the CPU, `GL_TEXTURE_LOD_BIAS = -0.5` as a policy on top.
-- **Masks**: not low frequency (hard edges and painted texture are legitimate). Their pyramid is
-  maintained **incrementally from the stroke's dirty box**, level by level, never regenerated whole.
+- **Masks get mips too, for the same reason images do** - they are sampled minified exactly like a
+  layer, so a mask without a chain aliases at fit zoom. What differs is maintenance, not need: a mask
+  is painted, so its chain is updated **incrementally from the stroke's dirty box**, level by level
+  (each level's box halves), never regenerated whole. Deferring this was a staging choice that cost
+  real quality in the meantime; it belongs in the same stage as the image chain, immediately after
+  the import fix below, not in a later one.
+- **The importer's 1-texel ring must go** (`img::Util::recreateForBiLinearSampling`): it copies the
+  artwork at texel (1,1) with a transparent border, so every level from 1 down averages across the
+  content's own 2x2 blocks with a half-texel phase error - the branch measured 112/255 at 2x. It is
+  project-wide (every imported image) and it is a *phase* error, not an exclusion: level-0 pages are
+  exact, higher pages inherit the same half-texel shift. The ring predates `CLAMP_TO_BORDER`, which
+  the layer sampler already sets, so the fix is to drop the ring and let the border colour handle the
+  edge - which touches `recreateForBiLinearSampling`'s callers, the `uImageSize` uniform (it must be
+  the aligned texture size, not content+2) and any content rect that accounted for the ring.
 - **Open [O]**: premultiplied vs straight for the *stored* levels needs the written analysis against
   the branch's halo evidence, the blend path (`img::Util::makeTextureUpload` premultiplies today),
   the storage size and the export path.
@@ -271,6 +283,10 @@ when every gate is green on every project and the counter shows no regression, t
   with the branch's rules, correct MAX_LEVEL bookkeeping, `GL_TEXTURE_LOD_BIAS = -0.5`, and
   anisotropic filtering where the extension exists. Adds 33 % to resident memory; removes the
   minification aliasing. Gate: `verify_mipmap` (exists) plus an anisotropy case.
+- **Stage 1.5 - the ring and mask chains**: drop the 1-texel import ring in favour of the border
+  colour, fix `uImageSize` and the content rects, and give masks a chain maintained from the stroke's
+  dirty box. Gate: `verify_mipmap` ported as a build target (its M1/M3/M17/M20 already measure
+  exactly this), plus a mask-stroke case that asserts the chain tracks the paint.
 - **Stage 2 - the pyramid**: resources carry levels; generated at import/load, stored, decoded into
   RAM; no GPU change. Gate: format roundtrip, memory accounting, legacy load.
 - **Stage 3 - pages**: the pool, the table, analytic demand, the coarse chain and the eviction of
