@@ -123,9 +123,16 @@ frame does not need. The cost is the sync, not the bytes. (Worth measuring both 
 
 - A resource is one image (a layer's `ImageKey` resource, or a mask field). Its levels come from the
   pyramid (§4). A **page** is 256x256 texels of one level.
-- Pools: one atlas texture per format - RGBA8 for images, R8 for masks - at 4096x4096, i.e. 16x16 =
-  256 slots. Pages sit 4 texels apart and the gutter repeats the edge texel, so a bilinear tap inside
-  a page can never reach a neighbour's content.
+- The pool is a **growable set of atlases**, not one fixed texture: atlases of 4096x4096 (16x16 = 256
+  slots of 256^2) per format - RGBA8 for images, R8 for masks - allocated in steps as demand exceeds
+  capacity, and released when the budget says so. A fixed single atlas is wrong for this engine: a
+  4K viewport needs ~32 MB of RGBA pages at 1:1 **[D: 3840x2160 x 4 B]**, an 8K export target needs
+  ~132 MB, and the GPUs in use differ by an order of magnitude in VRAM.
+  Pages sit 4 texels apart and the gutter repeats the edge texel, so a bilinear tap inside a page can
+  never reach a neighbour's content.
+- A slot is therefore `(atlas, index)`: the table entry carries the atlas index and the slot index, or
+  a flat page id that the pool resolves. `R16UI` still holds it (4 bits atlas, 8 bits slot, a valid
+  bit).
 - **Page table**: per resource, an `R16UI` texture of `(levels, pagesX, pagesY)` mapping a page to a
   slot, with 0 meaning "not resident". A 15000² resource at 256² pages is 59x59 at level 0 and a
   handful at each level below - the whole table is tens of KB, not MB **[D]**.
@@ -169,7 +176,24 @@ resident page vanishing while still sampled - is prevented by 5.4.
   only come back from RAM (an upload), a coarse page regenerates from a resident sharper one at
   almost no cost - so under pressure sharp pages are the ones worth protecting *only while demanded*.
 
-### 5.5 Where a new page goes, and how the frame stays consistent
+### 5.5 Pool growth, budget and hardware variance
+
+- **Budget**: one number, in bytes, enforced across formats. Default derived from the hardware where
+  it can be read (`GL_MAX_TEXTURE_SIZE`, the renderer string) and, more usefully, **configurable** -
+  the same project must run on a 2 GB and a 24 GB card, and the user is the one who knows.
+- **Growth**: when demand exceeds capacity and the budget allows, allocate another atlas (a step of
+  64 MB for RGBA8, 16 MB for R8) and add it to the free list. Growth is bounded by the budget, never
+  by the driver: an allocation that fails with `GL_OUT_OF_MEMORY` is caught, the last atlas is
+  dropped and the budget is lowered for the session - the frame degrades to blur, it never crashes.
+- **Shrink**: an atlas with no demanded pages for a sustained period is released (its slots evicted
+  first). A window that is resized smaller, or a project closed, returns memory without a restart.
+- **Both paths share it**: the exporter is the same paged renderer with a policy object -
+  `demand = synchronous`, `budget = export budget`, `target = output size` - not a second
+  implementation. The viewport's policy is `demand = analytic/async`, `budget = viewport budget`.
+  That is the whole difference; a project export renders at a different resolution, and its demand
+  follows its target, not the canvas.
+
+### 5.6 Where a new page goes, and how the frame stays consistent
 
 Allocation is a slot in the pool's fixed grid; there is no size fragmentation because every page is
 the same size.
@@ -198,7 +222,7 @@ is resident by construction. Its cost is the coarse levels themselves - at a 512
 512² x 4 B = 1.4 MB per resource **[D]**; a 256 px threshold costs 0.35 MB and is the knob for
 projects with many resources.
 
-### 5.6 What can regress, and the gates that catch it
+### 5.7 What can regress, and the gates that catch it
 
 The page path is shipped behind a switch, and the switch exists **only** as the control for these
 gates and for A/B measurement - not as a user-facing fallback. Its removal criterion is stated in §6:
@@ -215,7 +239,7 @@ when every gate is green on every project and the counter shows no regression, t
 | export | export reads the RAM pyramid and is independent of pool state (a gate with the pool emptied) |
 | two formats in one frame | a layer and a mask painted in the same frame, both paged |
 
-### 5.7 Risks and unknowns
+### 5.8 Risks and unknowns
 
 - **Shader addressing cost**: two extra fetches per fragment; measure before committing to the design.
 - **Trilinear across levels**: bilinear inside a page is the gutter's job; sampling between two levels
@@ -286,10 +310,11 @@ equality against the current path, and the counter showing the pixels saved.
 - **Filters that need sharper-than-screen input**: a blur or wave samples the layer texture at the
   frame's resolution; a page/level chosen from the screen can starve the filter. Each filter needs a
   stated demand (measure with the counter), and a policy for layers that carry one.
-- **Export is time-unbounded but MEMORY-bounded.** "It may take as long as its output needs" is
-  only half true: GPU memory is finite, and a 15000² layer's base level is 900 MB, so an export that
-  uploads every layer at full resolution does not fit either. The export uses the same pyramid and
-  the same pool, with a **different scheduling policy**:
+- **Export has no frame budget, but a hard memory budget.** "Time is free" was the wrong phrase:
+  there is no *frame* budget, so a blocking upload is acceptable - but GPU memory is finite, and a
+  15000² layer's base level is 900 MB, so an export that uploads every layer at full resolution does
+  not fit either. The export is the same paged renderer with a different **policy**, not a different
+  implementation:
   - *synchronous demand*: the analytic demand of the frame being exported is uploaded immediately and
     the draw waits for it - time is free here, latency is not a concern;
   - *a hard memory cap*: the pool evicts by LRU between layers (a layer is drawn once and never
