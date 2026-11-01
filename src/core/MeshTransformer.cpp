@@ -22,9 +22,12 @@ namespace {
 // percentile, and a percentile needs the shape of the distribution, not its maximum.
 //
 // One extra draw of the same indexed triangles into a 16x1 R32F target, additive, with a
-// geometry shader that turns each triangle into a single point at its bin. Two
-// attachments: the triangle's uv area (added into its bin) and its density (max-blended),
-// so one 128-byte copy per frame carries both the histogram and the true maximum. The mesh
+// geometry shader that turns each triangle into points at its bins. The three distributions
+// share the target and the draw because a triangle already has its uv edges and its deformed
+// edges in the geometry shader: density (area ratio), s_max (the larger singular value of the
+// uv->mesh Jacobian) and anisotropy (s_max / s_min, the ratio a trilinear level over-blurs by).
+// Six attachments carry them: each histogram's uv-area sum (added) and its maximum (max-blended),
+// so one 384-byte copy per frame carries all three histograms and all three maxima. The mesh
 // is not a regular grid (MeshKey meshes are arbitrary triangle soups), which is why this is
 // a geometry shader and not a per-vertex Jacobian from neighbour fetches.
 //
@@ -36,9 +39,21 @@ namespace {
 //==============================================================================
 
 const int kBinCount = gl::FrameStats::kDensityBins;
-const int kAttachmentCount = 2; // 0: uv area per bin, 1: the largest density per bin
+// attachment layout: one uv-area-weighted histogram and one maximum per measured quantity.
+// kBinCount pixels wide (the anisotropy histogram's 8 bins use the first 8).
+enum Attachment {
+    Attach_DensityWeight = 0, // uv area added into its log2(density) bin
+    Attach_DensityMax = 1,    // the largest density
+    Attach_SmaxWeight = 2,    // uv area added into its log2(s_max) bin
+    Attach_SmaxMax = 3,       // the largest s_max
+    Attach_AnisoWeight = 4,   // uv area added into its s_max / s_min bin
+    Attach_AnisoMax = 5,      // the largest s_max / s_min
+    Attach_Count = 6,
+};
+static_assert(gl::FrameStats::kSmaxBins == kBinCount, "the s_max histogram shares the target width");
+static_assert(gl::FrameStats::kAnisoBins <= kBinCount, "the anisotropy histogram fits the target");
 const GLsizeiptr kBinBytes = sizeof(float) * kBinCount;
-const GLsizeiptr kReadbackBytes = kBinBytes * kAttachmentCount;
+const GLsizeiptr kReadbackBytes = kBinBytes * Attach_Count;
 
 // A triangle whose uv area is under this many content pixels covers less than one texel at
 // 1:1, so its area ratio is a quotient of two numbers at the float noise floor rather than a
@@ -70,10 +85,14 @@ void main() {
 
 const char* const kDensityGeometryShader = R"(#version 330
 layout(triangles) in;
-layout(points, max_vertices = 1) out;
+layout(points, max_vertices = 3) out;
 in vec2 vTexCoord[];
-out float vWeight;
-out float vDensity;
+out float vDensWeight;
+out float vDensMax;
+out float vSmaxWeight;
+out float vSmaxMax;
+out float vAnisoWeight;
+out float vAnisoMax;
 uniform float uBinBase;
 uniform float uBinStep;
 uniform int uBinCount;
@@ -83,12 +102,38 @@ float triangleArea(vec2 a, vec2 b, vec2 c) {
     return abs((b.x - a.x) * (c.y - a.y) - (c.x - a.x) * (b.y - a.y)) * 0.5;
 }
 
+// CENTRED BINS: bin b spans uBinStep around uBinBase + b * uBinStep, so 1.0 - every
+// undeformed triangle - lands in the middle of its bin instead of on the edge between two,
+// where one ulp of log2 would flip it. `uMin` is the clamp for log2's argument.
+float binOf(float value, float uMin) {
+    return clamp(
+        floor((log2(max(value, uMin)) - uBinBase) / uBinStep + 0.5), 0.0, float(uBinCount - 1)
+    );
+}
+
+// ONE POINT PER HISTOGRAM, because the three bins of a triangle are three different pixels.
+// Each point writes its own histogram and zeroes the other two: zero adds nothing to a sum
+// and can never win a max.
+void emitAt(float bin, float densW, float densMax, float smaxW, float smaxMax, float anisoW, float anisoMax) {
+    gl_Position = vec4((bin + 0.5) / float(uBinCount) * 2.0 - 1.0, 0.0, 0.0, 1.0);
+    gl_PointSize = 1.0;
+    vDensWeight = densW;
+    vDensMax = densMax;
+    vSmaxWeight = smaxW;
+    vSmaxMax = smaxMax;
+    vAnisoWeight = anisoW;
+    vAnisoMax = anisoMax;
+    EmitVertex();
+    EndPrimitive();
+}
+
 void main() {
     float uvArea = triangleArea(vTexCoord[0], vTexCoord[1], vTexCoord[2]);
 
-    // A triangle below this uv area covers less than a texel: its density is a quotient of
-    // two numbers at the float noise floor, so it is not a fact about any visible surface.
-    // Dropped rather than clamped - a clamped value would still be a lie in the histogram.
+    // A triangle below this uv area covers less than a texel: its ratios are quotients of
+    // two numbers at the float noise floor, so they are not a fact about any visible
+    // surface. Dropped rather than clamped - a clamped value would still be a lie in the
+    // histogram. It contributes to none of the three.
     if (uvArea >= uMinUvArea) {
         float deformedArea =
             triangleArea(gl_in[0].gl_Position.xy, gl_in[1].gl_Position.xy, gl_in[2].gl_Position.xy);
@@ -96,32 +141,77 @@ void main() {
         if (!(density > 0.0))
             density = 0.0; // collapsed by the deformation: bin 0, and never a NaN into log2
 
-        // CENTRED BINS: bin b spans uBinStep around uBinBase + b * uBinStep, so density 1.0 -
-        // every undeformed triangle - lands in the middle of its bin instead of on the edge
-        // between two, where one ulp of log2 would flip it.
-        float bin = clamp(
-            floor((log2(max(density, 1.0e-8)) - uBinBase) / uBinStep + 0.5), 0.0, float(uBinCount - 1)
-        );
+        // THE JACOBIAN of uv edges -> deformed mesh edges: J * (uv1 - uv0) = p1 - p0 and
+        // J * (uv2 - uv0) = p2 - p0, so J = E * U^-1 with E and U holding those edges.
+        vec2 d1 = vTexCoord[1] - vTexCoord[0];
+        vec2 d2 = vTexCoord[2] - vTexCoord[0];
+        vec2 e1 = gl_in[1].gl_Position.xy - gl_in[0].gl_Position.xy;
+        vec2 e2 = gl_in[2].gl_Position.xy - gl_in[0].gl_Position.xy;
+        float detU = d1.x * d2.y - d2.x * d1.y;
 
-        // the pixel center of this triangle's bin in the kBinCount x 1 target
-        gl_Position = vec4((bin + 0.5) / float(uBinCount) * 2.0 - 1.0, 0.0, 0.0, 1.0);
-        gl_PointSize = 1.0;
-        vWeight = uvArea;
-        vDensity = density;
-        EmitVertex();
-        EndPrimitive();
+        // uvArea >= uMinUvArea means |detU| >= 2 * uMinUvArea, so U is never singular here;
+        // the clamps below still cover a DEFORMATION that collapses the triangle.
+        vec2 j1 = (e1 * d2.y - e2 * d1.y) / detU;
+        vec2 j2 = (e2 * d1.x - e1 * d2.x) / detU;
+
+        // the singular values of J: the eigenvalues of J^T J are their squares, and for a 2x2
+        // matrix they follow from trace and determinant alone
+        float a = dot(j1, j1) + dot(j2, j2);
+        float det = j1.x * j2.y - j2.x * j1.y;
+        float disc = max(a * a - 4.0 * det * det, 0.0);
+        float sMax = sqrt(0.5 * (a + sqrt(disc)));
+        float sMin = sqrt(max(0.5 * (a - sqrt(disc)), 0.0));
+        // a degenerate Jacobian can round either value to a NaN or a negative zero; the
+        // !(x >= 0) form catches NaN, which a plain clamp does not
+        if (!(sMax >= 0.0)) sMax = 0.0;
+        if (!(sMin >= 0.0)) sMin = 0.0;
+
+        // s_max / s_min, clamped (never logged) so a singular minimum cannot produce an
+        // infinity. Ratios below 1 are rounding, not anisotropy, so they join bin 0.
+        float aniso = sMax / max(sMin, 1.0e-8);
+        if (!(aniso >= 1.0)) aniso = 1.0;
+        aniso = min(aniso, 1.0e8);
+        // a relative epsilon puts a ratio that IS an edge (2x in x is exactly 2) in the
+        // higher bin even when the matrix inverse rounded a hair below it; 1e-4 is still two
+        // orders of magnitude below the spacing of the edges themselves
+        float r = aniso * (1.0 + 1.0e-4);
+        // the same interior edges as gl::FrameStats::kAnisoBinEdges (GLSL cannot read them)
+        int anisoBin = 0;
+        if (r >= 1.5) anisoBin = 1;
+        if (r >= 2.0) anisoBin = 2;
+        if (r >= 3.0) anisoBin = 3;
+        if (r >= 4.0) anisoBin = 4;
+        if (r >= 6.0) anisoBin = 5;
+        if (r >= 8.0) anisoBin = 6;
+        if (r >= 16.0) anisoBin = 7;
+
+        emitAt(binOf(density, 1.0e-8), uvArea, density, 0.0, 0.0, 0.0, 0.0);
+        emitAt(binOf(sMax, 1.0e-8), 0.0, 0.0, uvArea, sMax, 0.0, 0.0);
+        emitAt(float(anisoBin), 0.0, 0.0, 0.0, 0.0, uvArea, aniso);
     }
 }
 )";
 
 const char* const kDensityFragmentShader = R"(#version 330
-in float vWeight;
-in float vDensity;
-layout(location = 0) out float oWeight;
-layout(location = 1) out float oDensity;
+in float vDensWeight;
+in float vDensMax;
+in float vSmaxWeight;
+in float vSmaxMax;
+in float vAnisoWeight;
+in float vAnisoMax;
+layout(location = 0) out float oDensWeight;
+layout(location = 1) out float oDensMax;
+layout(location = 2) out float oSmaxWeight;
+layout(location = 3) out float oSmaxMax;
+layout(location = 4) out float oAnisoWeight;
+layout(location = 5) out float oAnisoMax;
 void main() {
-    oWeight = vWeight;
-    oDensity = vDensity;
+    oDensWeight = vDensWeight;
+    oDensMax = vDensMax;
+    oSmaxWeight = vSmaxWeight;
+    oSmaxMax = vSmaxMax;
+    oAnisoWeight = vAnisoWeight;
+    oAnisoMax = vAnisoMax;
 }
 )";
 
@@ -388,8 +478,9 @@ private:
     int mUniformBinStep = -1;
     int mUniformBinCount = -1;
     int mUniformMinUvArea = -1;
-    GLuint mTexture = 0;
-    GLuint mMaxTexture = 0;
+    // one R32F texture per attachment: {density sum, density max, s_max sum, s_max max,
+    // anisotropy sum, anisotropy max}, all kBinCount pixels wide
+    GLuint mTexture[Attach_Count] = {};
     GLuint mFramebuffer = 0;
     GLuint mPbo[2] = {0, 0};
     GLuint mTexCoordBuffer = 0;
@@ -446,28 +537,29 @@ void DensityMeter::build() {
         return;
     }
 
-    // the target: R32F, one pixel per bin, plus one attachment holding the max per bin
+    // the target: R32F, one pixel per bin, one attachment per measured sum and maximum
     GLint previousTexture = 0;
     ggl.glGetIntegerv(GL_TEXTURE_BINDING_2D, &previousTexture);
-    ggl.glGenTextures(1, &mTexture);
-    ggl.glGenTextures(1, &mMaxTexture);
-    const GLuint created[2] = {mTexture, mMaxTexture};
-    for (int i = 0; i < kAttachmentCount; ++i) {
-        ggl.glBindTexture(GL_TEXTURE_2D, created[i]);
+    ggl.glGenTextures(Attach_Count, mTexture);
+    ggl.glGenFramebuffers(1, &mFramebuffer);
+    ggl.glBindFramebuffer(GL_FRAMEBUFFER, mFramebuffer);
+    for (int i = 0; i < Attach_Count; ++i) {
+        ggl.glBindTexture(GL_TEXTURE_2D, mTexture[i]);
         ggl.glTexImage2D(GL_TEXTURE_2D, 0, GL_R32F, kBinCount, 1, 0, GL_RED, GL_FLOAT, nullptr);
         ggl.glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
         ggl.glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
         ggl.glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
         ggl.glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+        ggl.glFramebufferTexture2D(
+            GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0 + (GLenum)i, GL_TEXTURE_2D, mTexture[i], 0
+        );
     }
     ggl.glBindTexture(GL_TEXTURE_2D, (GLuint)previousTexture);
 
-    ggl.glGenFramebuffers(1, &mFramebuffer);
-    ggl.glBindFramebuffer(GL_FRAMEBUFFER, mFramebuffer);
-    ggl.glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, mTexture, 0);
-    ggl.glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT1, GL_TEXTURE_2D, mMaxTexture, 0);
-    static const GLenum kDrawBuffers[kAttachmentCount] = {GL_COLOR_ATTACHMENT0, GL_COLOR_ATTACHMENT1};
-    ggl.glDrawBuffers(kAttachmentCount, kDrawBuffers);
+    GLenum drawBuffers[Attach_Count] = {};
+    for (int i = 0; i < Attach_Count; ++i)
+        drawBuffers[i] = GL_COLOR_ATTACHMENT0 + (GLenum)i;
+    ggl.glDrawBuffers(Attach_Count, drawBuffers);
     const bool complete = ggl.glCheckFramebufferStatus(GL_FRAMEBUFFER) == GL_FRAMEBUFFER_COMPLETE;
     ggl.glBindFramebuffer(GL_FRAMEBUFFER, 0);
     if (!complete) {
@@ -530,16 +622,19 @@ void DensityMeter::copyOut(bool aDrew) {
     gl::Global::Functions& ggl = gl::Global::functions();
     ggl.glBindBuffer(GL_PIXEL_PACK_BUFFER, mPbo[mWriteSlot]);
     if (aDrew) {
-        // a DMA out of the target: the GPU performs it in order, the CPU does not wait
+        // a DMA out of the target: the GPU performs it in order, the CPU does not wait.
+        // Each attachment lands in its own kBinBytes block of the packed buffer.
         ggl.glBindFramebuffer(GL_READ_FRAMEBUFFER, mFramebuffer);
-        ggl.glReadBuffer(GL_COLOR_ATTACHMENT0);
-        ggl.glReadPixels(0, 0, kBinCount, 1, GL_RED, GL_FLOAT, nullptr);
-        ggl.glReadBuffer(GL_COLOR_ATTACHMENT1);
-        ggl.glReadPixels(0, 0, kBinCount, 1, GL_RED, GL_FLOAT, (GLvoid*)kBinBytes);
+        for (int i = 0; i < Attach_Count; ++i) {
+            ggl.glReadBuffer(GL_COLOR_ATTACHMENT0 + (GLenum)i);
+            ggl.glReadPixels(
+                0, 0, kBinCount, 1, GL_RED, GL_FLOAT, (GLvoid*)(kBinBytes * i)
+            );
+        }
     } else {
         // the frame that just ended drew no triangles: report zeros rather than repeat the
         // previous frame's numbers as if they were this one's
-        static const float kZeros[kBinCount * kAttachmentCount] = {};
+        static const float kZeros[kBinCount * Attach_Count] = {};
         ggl.glBufferSubData(GL_PIXEL_PACK_BUFFER, 0, kReadbackBytes, kZeros);
     }
     ggl.glBindBuffer(GL_PIXEL_PACK_BUFFER, 0);
@@ -560,10 +655,21 @@ void DensityMeter::readBack(gl::FrameStats& aStats) {
     void* data = ggl.glMapBufferRange(GL_PIXEL_PACK_BUFFER, 0, kReadbackBytes, GL_MAP_READ_BIT);
     if (data) {
         const float* values = static_cast<const float*>(data);
+        auto bins = [&](Attachment aAttachment) -> const float* {
+            return values + kBinCount * (int)aAttachment;
+        };
         float maxDensity = 0.0f;
-        for (int i = 0; i < kBinCount; ++i)
-            maxDensity = qMax(maxDensity, values[kBinCount + i]);
-        aStats.densityHistogram(values, maxDensity);
+        float maxSmax = 0.0f;
+        float maxAniso = 0.0f;
+        for (int i = 0; i < kBinCount; ++i) {
+            maxDensity = qMax(maxDensity, bins(Attach_DensityMax)[i]);
+            maxSmax = qMax(maxSmax, bins(Attach_SmaxMax)[i]);
+            maxAniso = qMax(maxAniso, bins(Attach_AnisoMax)[i]);
+        }
+        aStats.densityHistogram(bins(Attach_DensityWeight), maxDensity);
+        aStats.anisotropyHistogram(
+            bins(Attach_SmaxWeight), maxSmax, bins(Attach_AnisoWeight), maxAniso
+        );
         ggl.glUnmapBuffer(GL_PIXEL_PACK_BUFFER);
     }
     ggl.glBindBuffer(GL_PIXEL_PACK_BUFFER, 0);
@@ -629,11 +735,14 @@ void DensityMeter::addMesh(
         ggl.glDisable(GL_RASTERIZER_DISCARD);
         ggl.glEnable(GL_PROGRAM_POINT_SIZE);
         ggl.glEnable(GL_BLEND);
-        // attachment 0 sums uv areas into each bin, attachment 1 keeps the largest density
-        ggl.glBlendEquationi(0, GL_FUNC_ADD);
-        ggl.glBlendFunci(0, GL_ONE, GL_ONE);
-        ggl.glBlendEquationi(1, GL_MAX);
-        ggl.glBlendFunci(1, GL_ONE, GL_ONE);
+        // two attachments per distribution: the uv-area sum (additive) and the maximum
+        // (GL_MAX, which ignores the factors)
+        for (int i = 0; i < Attach_Count; ++i) {
+            const bool isMax =
+                i == Attach_DensityMax || i == Attach_SmaxMax || i == Attach_AnisoMax;
+            ggl.glBlendEquationi(i, isMax ? GL_MAX : GL_FUNC_ADD);
+            ggl.glBlendFunci(i, GL_ONE, GL_ONE);
+        }
 
         mProgram->bind();
         // by location: the names were resolved once at build, where a missing one disables

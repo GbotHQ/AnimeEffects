@@ -1,100 +1,189 @@
+#include <algorithm>
+#include <cmath>
+#include <utility>
+#include <vector>
+#include "gl/DeviceInfo.h"
 #include "gl/FrameStats.h"
 #include "gl/Global.h"
 #include "gl/Texture.h"
 
-#define F_MAKE_MIPMAP 0
-
-#if F_MAKE_MIPMAP
-class PreMipmapImage {
-    void* mData;
-    int mWidth;
-    int mHeight;
-
-public:
-    struct Pixel {
-        uint8 r, g, b, a;
-    };
-
-    PreMipmapImage(void* aImageData, int aWidth, int aHeight): mData(), mWidth(aWidth), mHeight(aHeight) {
-        const size_t size = aWidth * aHeight * sizeof(Pixel);
-        mData = std::malloc(size);
-        std::memcpy(mData, aImageData, size);
-        convert();
-    }
-
-    ~PreMipmapImage() { std::free(mData); }
-
-    void* data() { return mData; }
-    const void* data() const { return mData; }
-
-private:
-    void convert() {
-        Pixel* pixels = (Pixel*)mData;
-        const int w = mWidth - 1;
-        const int h = mHeight - 1;
-        const int v = mWidth;
-        const int v1 = v + 1;
-
-        for (int y = 0; y < h; ++y) {
-            const int yv = y * v;
-
-            for (int x = 0; x < w; ++x) {
-                Pixel* p = &pixels[yv + x];
-                const uint32 a = p->a;
-                const uint32 asum = a + (p + 1)->a + (p + v)->a + (p + v1)->a;
-
-                if (asum == 0)
-                    continue;
-
-                const uint32 ax4 = std::min(a * 4, asum);
-                p->r = (uint8)std::min(ax4 * p->r / asum, (uint32)0xff);
-                p->g = (uint8)std::min(ax4 * p->g / asum, (uint32)0xff);
-                p->b = (uint8)std::min(ax4 * p->b / asum, (uint32)0xff);
-            }
-        }
-    }
-};
+// see DeviceInfo.cpp: Qt's GL header set provides this through qopenglext.h today, and the guard
+// covers a build whose set omits it
+#ifndef GL_TEXTURE_MAX_ANISOTROPY_EXT
+#define GL_TEXTURE_MAX_ANISOTROPY_EXT 0x84FE
 #endif
 
 namespace gl {
 
+namespace {
 
-Texture::Texture(): mId(0), mSize(), mBytes(0) {}
+/// The number of trailing zero bits of a side, i.e. the largest l for which 2^l divides it. Level l
+/// of a texture only has an exact grid - floor(side / 2^l) texels of exactly 2^l base texels each,
+/// anchored at the texture's origin - while l is at most this.
+int trailingZeroBits(int aValue) {
+    int n = 0;
+    while (aValue > 1 && (aValue & 1) == 0) {
+        aValue >>= 1;
+        ++n;
+    }
+    return n;
+}
+
+/// How much of each source texel each destination texel covers, when aSrc texels are resampled onto
+/// aDst texels over the same span. Destination texel j covers [j/dst, (j+1)/dst] of that span, so
+/// source texel i contributes the length of the overlap with [i/src, (i+1)/src]. The weights of one
+/// destination texel sum to 1 by construction.
+std::vector<std::vector<std::pair<int, double>>> axisWeights(int aSrc, int aDst) {
+    std::vector<std::vector<std::pair<int, double>>> w(aDst);
+    for (int j = 0; j < aDst; ++j) {
+        const double lo = (double)j * aSrc / aDst;
+        const double hi = (double)(j + 1) * aSrc / aDst;
+        const int i0 = (int)std::floor(lo);
+        const int i1 = std::min(aSrc - 1, (int)std::ceil(hi) - 1);
+        for (int i = i0; i <= i1; ++i) {
+            const double overlap = std::min(hi, (double)i + 1.0) - std::max(lo, (double)i);
+            if (overlap > 0.0)
+                w[j].emplace_back(i, overlap / (hi - lo));
+        }
+    }
+    return w;
+}
+
+/// The area-weighted resample of one RGBA8 level onto a coarser grid covering the same span. Exact
+/// for a box: every destination texel is the average of its own footprint, with the fractional
+/// weights at the ends. Separable, so it is a horizontal pass into doubles and then a vertical one.
+std::vector<uint8> resampleLevel(
+    const std::vector<uint8>& aSrc, int aSrcW, int aSrcH, int aDstW, int aDstH
+) {
+    const auto wx = axisWeights(aSrcW, aDstW);
+    const auto wy = axisWeights(aSrcH, aDstH);
+
+    std::vector<double> rows((size_t)aDstW * aSrcH * 4, 0.0);
+    for (int y = 0; y < aSrcH; ++y) {
+        for (int j = 0; j < aDstW; ++j) {
+            double acc[4] = {0.0, 0.0, 0.0, 0.0};
+            for (const auto& t : wx[j]) {
+                const uint8* p = aSrc.data() + ((size_t)y * aSrcW + t.first) * 4;
+                for (int c = 0; c < 4; ++c)
+                    acc[c] += p[c] * t.second;
+            }
+            for (int c = 0; c < 4; ++c)
+                rows[((size_t)y * aDstW + j) * 4 + c] = acc[c];
+        }
+    }
+
+    std::vector<uint8> dst((size_t)aDstW * aDstH * 4, 0);
+    for (int i = 0; i < aDstH; ++i) {
+        for (int x = 0; x < aDstW; ++x) {
+            double acc[4] = {0.0, 0.0, 0.0, 0.0};
+            for (const auto& t : wy[i]) {
+                const double* p = rows.data() + ((size_t)t.first * aDstW + x) * 4;
+                for (int c = 0; c < 4; ++c)
+                    acc[c] += p[c] * t.second;
+            }
+            uint8* q = dst.data() + ((size_t)i * aDstW + x) * 4;
+            for (int c = 0; c < 4; ++c)
+                q[c] = (uint8)std::min(255.0, std::max(0.0, std::floor(acc[c] + 0.5)));
+        }
+    }
+    return dst;
+}
+
+} // namespace
+
+Texture::Texture(): mId(0), mSize(), mMipmapLevels(1), mBytes(0) {}
 
 Texture::~Texture() { destroy(); }
 
 void Texture::create(
-    const QSize& aSize, const uint8* aData, GLenum aFormat, GLint aInternalFormat, GLenum aChannelType
+    const QSize& aSize,
+    const uint8* aData,
+    GLenum aFormat,
+    GLint aInternalFormat,
+    GLenum aChannelType,
+    MipmapPolicy aMipmap
 ) {
     destroy();
 
     XC_ASSERT(!aSize.isNull());
+    // a mip chain can only be built from uploaded content
+    XC_ASSERT(aMipmap != GenerateMipmap || aData != nullptr);
 
     mSize = aSize;
+    mMipmapLevels = 1;
 
     Global::Functions& ggl = Global::functions();
     ggl.glGenTextures(1, &mId);
     ggl.glBindTexture(GL_TEXTURE_2D, mId);
 
-#if F_MAKE_MIPMAP
-    PreMipmapImage preMipmap(aData, mSize.width(), mSize.height());
-    ggl.glTexImage2D(
-        GL_TEXTURE_2D,
-        0,
-        aInternalFormat,
-        mSize.width(),
-        mSize.height(),
-        0,
-        aFormat,
-        aChannelType,
-        (uint8*)preMipmap.data()
-    );
-    ggl.glGenerateMipmap(GL_TEXTURE_2D);
-    // ggl.glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_NEAREST);
-    // ggl.glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR_MIPMAP_NEAREST);
-#else
     ggl.glTexImage2D(GL_TEXTURE_2D, 0, aInternalFormat, mSize.width(), mSize.height(), 0, aFormat, aChannelType, aData);
-#endif
+
+    if (aMipmap == GenerateMipmap) {
+        ggl.glGenerateMipmap(GL_TEXTURE_2D);
+        const float maxDim = (float)std::max(mSize.width(), mSize.height());
+        mMipmapLevels = 1 + (int)std::floor(std::log2(maxDim));
+        // State the extent of the chain explicitly instead of leaving GL_TEXTURE_MAX_LEVEL
+        // at its default 1000: the sampled level range is then exactly the levels that
+        // exist, rather than "whatever the driver happens to find".
+        ggl.glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAX_LEVEL, mMipmapLevels - 1);
+
+        // ...and then every level whose grid does not divide the size is rebuilt, because the ones
+        // glGenerateMipmap just produced for those levels are not the averages they are supposed to
+        // be. Which levels those are is arithmetic: level l has max(1, side >> l) texels spanning
+        // the whole [0,1] of normalized coordinates, so it is an exact grid of 2^l-texel blocks only
+        // while 2^l divides the side. For a side of 384 that holds up to level 7 and stops: level 8
+        // is a single texel over the whole side, and the only way to fill it from level 7 is a 3-to-1
+        // reduction, which glGenerateMipmap's behaviour for a source that does not halve is NOT
+        // specified to get right - the GL spec defines the level sizes, not the filter. Measured on
+        // the reference driver (M18 of the reference branch's verify_mipmap): level 8 of a
+        // 384-texel side is the average of rows [128, 256) - the middle third - and the outer two
+        // thirds carry no weight at all, so a layer minified past the cap collapses to the colour of
+        // a band of itself. The worst measured deviation from the grid's own box is 118 of 255 (on a
+        // 1920-texel side's deepest level, where the layer is under 2 screen pixels), and 17 of 255
+        // at the first non-dividing level, where the layer can still be 7 pixels across.
+        //
+        // So: read the deepest level that DOES divide, and build the levels past it here, with the
+        // area weights the level grid implies. That makes every level of every chain the exact
+        // average it claims to be, for any size. A power-of-two size has no such levels and pays
+        // nothing; otherwise the cost is that readback (side / 2^exactLevels texels across) plus a
+        // pass over it per rebuilt level. Layer uploads align their size to a multiple of 128
+        // (img::Util::mipAlignedTextureSize), so exactLevels >= 7 for any texture of 128 texels or
+        // more and the readback is at most 128^2: kilobytes and microseconds. A caller that hands
+        // this an UNALIGNED size - an odd one, say, where exactLevels is 0 - pays a full-texture
+        // readback and a couple of passes over it instead, so align the size if you can.
+        const int exactLevels =
+            std::min(trailingZeroBits(mSize.width()), trailingZeroBits(mSize.height()));
+        if (exactLevels + 1 < mMipmapLevels) {
+            XC_ASSERT(aFormat == GL_RGBA && aChannelType == GL_UNSIGNED_BYTE);
+            int w = std::max(1, mSize.width() >> exactLevels);
+            int h = std::max(1, mSize.height() >> exactLevels);
+            std::vector<uint8> level((size_t)w * h * 4);
+            // the internal format is kept (it is what the sampler reads); only the client-side
+            // layout of the rebuilt levels is fixed at RGBA8, which is what the readback gives
+            ggl.glGetTexImage(GL_TEXTURE_2D, exactLevels, GL_RGBA, GL_UNSIGNED_BYTE, level.data());
+            for (int l = exactLevels + 1; l < mMipmapLevels; ++l) {
+                const int dw = std::max(1, mSize.width() >> l);
+                const int dh = std::max(1, mSize.height() >> l);
+                // from the exact level EVERY time, not from the level above: a level-l texel's
+                // footprint is side / (texels of level l) base texels, which need not be a whole
+                // number of level-(l-1) texels. Chaining the resamples would spread the fractional
+                // remainder of a footprint over a whole texel of the level below, which is the same
+                // too-wide-support error this rebuild exists to remove (measured: -13 of 255 at
+                // level 8 of a 1920-texel side when chained, 0 when taken from the exact level).
+                std::vector<uint8> next = resampleLevel(level, w, h, dw, dh);
+                ggl.glTexImage2D(
+                    GL_TEXTURE_2D, l, aInternalFormat, dw, dh, 0, GL_RGBA, GL_UNSIGNED_BYTE,
+                    next.data()
+                );
+            }
+        }
+    } else {
+        // Pin the chain to level 0. Without this, GL_TEXTURE_MAX_LEVEL defaults to 1000, so
+        // a texture holding only level 0 is *incomplete* and any mipmap minification filter
+        // samples it as opaque black instead of falling back to level 0.
+        ggl.glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAX_LEVEL, 0);
+    }
+
     ggl.glBindTexture(GL_TEXTURE_2D, 0);
 
     XC_ASSERT(ggl.glGetError() == GL_NO_ERROR);
@@ -110,18 +199,40 @@ void Texture::create(
         default: break;
         }
 
-        mBytes = (qint64)mSize.width() * mSize.height() * bytesPerPixel;
+        // every level the chain holds, so the residency the counter reports is the residency the
+        // texture occupies: level l is max(1, side >> l) texels on each axis
+        mBytes = 0;
+        for (int l = 0; l < mMipmapLevels; ++l) {
+            mBytes += (qint64)std::max(1, mSize.width() >> l) * std::max(1, mSize.height() >> l)
+                * bytesPerPixel;
+        }
         FrameStats::instance().textureCreated(mBytes);
     }
 }
 
-void Texture::setFilter(GLint aParam) {
+void Texture::setMinFilter(GLint aParam) {
     Global::Functions& ggl = Global::functions();
     ggl.glBindTexture(GL_TEXTURE_2D, mId);
     ggl.glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, aParam);
+    ggl.glBindTexture(GL_TEXTURE_2D, 0);
+}
+
+void Texture::setMagFilter(GLint aParam) {
+    XC_ASSERT(aParam != GL_NEAREST_MIPMAP_NEAREST && aParam != GL_NEAREST_MIPMAP_LINEAR &&
+              aParam != GL_LINEAR_MIPMAP_NEAREST && aParam != GL_LINEAR_MIPMAP_LINEAR);
+
+    Global::Functions& ggl = Global::functions();
+    ggl.glBindTexture(GL_TEXTURE_2D, mId);
     ggl.glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, aParam);
     ggl.glBindTexture(GL_TEXTURE_2D, 0);
 }
+
+void Texture::setFilter(GLint aMinParam, GLint aMagParam) {
+    setMinFilter(aMinParam);
+    setMagFilter(aMagParam);
+}
+
+void Texture::setFilter(GLint aParam) { setFilter(aParam, aParam); }
 
 void Texture::setWrap(GLint aParam, QColor aBorderColor) {
     Global::Functions& ggl = Global::functions();
@@ -141,11 +252,33 @@ void Texture::setWrap(GLint aParam, QColor aBorderColor) {
     ggl.glBindTexture(GL_TEXTURE_2D, 0);
 }
 
+void Texture::setMaxAnisotropy(GLfloat aValue) {
+    const GLfloat limit =
+        DeviceInfo::validInstanceExists() ? DeviceInfo::instance().maxAnisotropy : 1.0f;
+    if (limit <= 1.0f)   // the device cannot do it: leave the sampler exactly as it was
+        return;
+
+    const GLfloat value = std::max(1.0f, std::min(aValue, limit));
+
+    Global::Functions& ggl = Global::functions();
+    ggl.glBindTexture(GL_TEXTURE_2D, mId);
+    ggl.glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_MAX_ANISOTROPY_EXT, value);
+    ggl.glBindTexture(GL_TEXTURE_2D, 0);
+}
+
+void Texture::setLodBias(GLfloat aBias) {
+    Global::Functions& ggl = Global::functions();
+    ggl.glBindTexture(GL_TEXTURE_2D, mId);
+    ggl.glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_LOD_BIAS, aBias);
+    ggl.glBindTexture(GL_TEXTURE_2D, 0);
+}
+
 void Texture::destroy() {
     if (mId != 0) {
         Global::functions().glDeleteTextures(1, &mId);
         mId = 0;
         mSize = QSize();
+        mMipmapLevels = 1;
         FrameStats::instance().textureDestroyed(mBytes);
         mBytes = 0;
         GL_CHECK_ERROR();

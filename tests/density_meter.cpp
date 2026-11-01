@@ -1,5 +1,5 @@
-// GATE FOR THE DENSITY METER (gl::FrameStats::dens / dens_max, filled by the density pass
-// inside core::MeshTransformer::callGL).
+// GATE FOR THE DENSITY METER (gl::FrameStats::dens / dens_smax / aniso and their maxima,
+// filled by the density pass inside core::MeshTransformer::callGL).
 //
 // The pass answers one question - how far did the DEFORMATION stretch the texels - and the
 // only way to know it answers it correctly is to hand it a deformation whose answer is known
@@ -10,28 +10,37 @@
 //   [1] UNDEFORMED: every triangle's density is exactly 1.0 - log2 0, bin 8 - and dens_max
 //       is 1. The uv area and the rest area are the same numbers, so anything but 1.0 means
 //       the two areas are not in the same space (a transposed matrix, a uv source that is
-//       not content pixels, a vertex order that does not match).
+//       not content pixels, a vertex order that does not match). s_max is 1 (the Jacobian is
+//       the identity) and the anisotropy ratio is 1 (bin 0).
 //   [2] SCALED 2x IN X: density 2.0 (log2 1, bin 10). Area scales with the linear factor in
-//       ONE axis, which is what separates an area ratio from a length ratio.
+//       ONE axis, which is what separates an area ratio from a length ratio. The Jacobian is
+//       diag(2, 1), so s_max is 2 (also bin 10) and the ratio is 2 (aniso bin 2).
 //   [3] SCALED 4x IN BOTH: density 16.0 (log2 4, bin 15 - the top bin, clamped there). This
 //       is the only case that exercises the top of the range, where a real project's
-//       outliers live.
-//   [4] ANIMATED: the deformation AND the layer's placement change on EVERY frame, and every
-//       frame must still read exactly the density its own deformation implies. This is the
-//       case a still image cannot see: a vertex buffer that is read one frame late, a
-//       uniform that is only right on the first call, an inverse computed once, or a
-//       readback that repeats the previous frame all pass cases [1]-[3] (which hold their
-//       deformation for four frames) and fail here. The placement churn is the sharp end:
-//       the pass divides the layer's world/inner matrices out, so a scale, rotation or
-//       translation that changes every frame must not reach the number at all.
+//       outliers live. The Jacobian is 4 * I, so s_max is 4 (bin 12) but the ratio is 1:
+//       uniform scale is not anisotropic, which is the control the ratio must not lose.
+//   [4] ANISOTROPIC (2x in x, 1x in y) under a placement that churns every frame: density 2,
+//       s_max 2, ratio 2 - the same footprint as [2] but asserted on all three readings, and
+//       with a changing scale, rotation and translation to prove none of it leaks into any
+//       of them. A square 2x2 and a 4x1 footprint have the SAME AREA (dens 4) but differ
+//       here: s_max 2 vs 4, ratio 1 vs 4. That is the information the area ratio loses.
+//   [5] ANIMATED: the deformation AND the layer's placement change on EVERY frame, and every
+//       frame must still read exactly the density, s_max and ratio its own deformation
+//       implies. This is the case a still image cannot see: a vertex buffer that is read one
+//       frame late, a uniform that is only right on the first call, an inverse computed once,
+//       or a readback that repeats the previous frame all pass cases [1]-[4] (which hold
+//       their deformation for four frames) and fail here. The placement churn is the sharp
+//       end: the pass divides the layer's world/inner matrices out, so a scale, rotation or
+//       translation that changes every frame must not reach the numbers at all.
 //
-// It also asserts that the measured weight equals the mesh's own total uv area, which proves
-// the histogram covered every triangle: the pass drops triangles below kMinUvArea (a quarter
-// of a pixel) and a grid mesh has none, so a drop here would be a threshold that is too high.
+// It also asserts that each histogram's measured weight equals the mesh's own total uv area,
+// which proves all three covered every triangle: the pass drops triangles below kMinUvArea (a
+// quarter of a pixel) and a grid mesh has none, so a drop here would be a threshold that is
+// too high.
 //
 // The line is read two frames after the one it describes (the copy is issued when the next
 // frame starts and mapped one frame later, so that the map never waits on the GPU), hence
-// FRAMES_PER_CASE frames per still deformation and the two-frame offset in [4].
+// FRAMES_PER_CASE frames per still deformation and the two-frame offset in [5].
 //
 // Run under xvfb-run (it creates a real core-profile context):
 //   xvfb-run -a build/tests/Debug/density_meter
@@ -115,15 +124,33 @@ int binForDensity(double aDensity) {
     return bin < 0 ? 0 : (bin > gl::FrameStats::kDensityBins - 1 ? gl::FrameStats::kDensityBins - 1 : bin);
 }
 
-// one frame line: the 16 area-weighted bins and the largest density of that frame
+// one frame line: the area-weighted histograms and the largest value of that frame. `dens`
+// and `dens_smax` share the bin arithmetic (log2 value, same base and step); `aniso` is per
+// EDGE (gl::FrameStats::kAnisoBinEdges), so its bin index is an edge index, not a log.
 struct FrameLine {
     bool valid = false;
     double bins[gl::FrameStats::kDensityBins] = {};
     double maxDensity = 0.0;
+    double smaxBins[gl::FrameStats::kSmaxBins] = {};
+    double maxSmax = 0.0;
+    double anisoBins[gl::FrameStats::kAnisoBins] = {};
+    double maxAniso = 0.0;
     double total() const {
         double sum = 0.0;
         for (int b = 0; b < gl::FrameStats::kDensityBins; ++b)
             sum += bins[b];
+        return sum;
+    }
+    double smaxTotal() const {
+        double sum = 0.0;
+        for (int b = 0; b < gl::FrameStats::kSmaxBins; ++b)
+            sum += smaxBins[b];
+        return sum;
+    }
+    double anisoTotal() const {
+        double sum = 0.0;
+        for (int b = 0; b < gl::FrameStats::kAnisoBins; ++b)
+            sum += anisoBins[b];
         return sum;
     }
     int dominant() const {
@@ -134,7 +161,52 @@ struct FrameLine {
         }
         return best;
     }
+    int smaxDominant() const {
+        int best = 0;
+        for (int b = 1; b < gl::FrameStats::kSmaxBins; ++b) {
+            if (smaxBins[b] > smaxBins[best])
+                best = b;
+        }
+        return best;
+    }
+    int anisoDominant() const {
+        int best = 0;
+        for (int b = 1; b < gl::FrameStats::kAnisoBins; ++b) {
+            if (anisoBins[b] > anisoBins[best])
+                best = b;
+        }
+        return best;
+    }
 };
+
+// the value of a `key=value` field, ending at the next space (or the line's end)
+double valueOf(const QString& aText, const QString& aKey) {
+    const int at = aText.indexOf(aKey);
+    if (at < 0)
+        return 0.0;
+    const int start = at + aKey.length();
+    int end = aText.indexOf(QLatin1Char(' '), start);
+    if (end < 0)
+        end = aText.length();
+    return aText.mid(start, end - start).toDouble();
+}
+
+// the numbers inside `key=[a,b,...]`, where aKey includes the opening bracket
+bool binsOf(const QString& aText, const QString& aKey, double* aOut, int aCount) {
+    const int at = aText.indexOf(aKey);
+    if (at < 0)
+        return false;
+    const int start = at + aKey.length();
+    const int close = aText.indexOf(QLatin1Char(']'), start);
+    if (close < start)
+        return false;
+    const QStringList values = aText.mid(start, close - start).split(QLatin1Char(','));
+    if (values.count() != aCount)
+        return false;
+    for (int i = 0; i < aCount; ++i)
+        aOut[i] = values.at(i).toDouble();
+    return true;
+}
 
 // every frame line in the stats file, oldest first
 QVector<FrameLine> frameLines(const QString& aPath) {
@@ -145,20 +217,18 @@ QVector<FrameLine> frameLines(const QString& aPath) {
     const QList<QByteArray> lines = file.readAll().split('\n');
     for (const QByteArray& raw : lines) {
         const QString text = QString::fromUtf8(raw);
-        const int densAt = text.indexOf(QStringLiteral("dens=["));
-        const int maxAt = text.indexOf(QStringLiteral("dens_max="));
-        if (densAt < 0 || maxAt < 0)
-            continue;
-        const int close = text.indexOf(QLatin1Char(']'), densAt);
-        if (close < densAt)
-            continue;
-        const QStringList bins = text.mid(densAt + 6, close - densAt - 6).split(QLatin1Char(','));
-        if (bins.count() != gl::FrameStats::kDensityBins)
+        if (!text.contains(QStringLiteral("dens=[")))
             continue;
         FrameLine line;
-        for (int b = 0; b < bins.count(); ++b)
-            line.bins[b] = bins.at(b).toDouble();
-        line.maxDensity = text.mid(maxAt + 9).trimmed().toDouble();
+        if (!binsOf(text, QStringLiteral("dens=["), line.bins, gl::FrameStats::kDensityBins))
+            continue;
+        if (!binsOf(text, QStringLiteral("dens_smax=["), line.smaxBins, gl::FrameStats::kSmaxBins))
+            continue;
+        if (!binsOf(text, QStringLiteral("aniso=["), line.anisoBins, gl::FrameStats::kAnisoBins))
+            continue;
+        line.maxDensity = valueOf(text, QStringLiteral("dens_max="));
+        line.maxSmax = valueOf(text, QStringLiteral("smax_max="));
+        line.maxAniso = valueOf(text, QStringLiteral("aniso_max="));
         line.valid = true;
         result.push_back(line);
     }
@@ -167,19 +237,42 @@ QVector<FrameLine> frameLines(const QString& aPath) {
 
 void reportLine(const char* aWhat, const FrameLine& aLine) {
     std::printf(
-        "INFO %-20s bin=%2d weight=%9.2f/%9.2f dens_max=%.6f log2=%.6f\n",
+        "INFO %-20s bin=%2d weight=%9.2f/%9.2f dens_max=%.6f log2=%.6f "
+        "smax_bin=%2d smax_max=%.6f aniso_bin=%d aniso_max=%.6f\n",
         aWhat,
         aLine.dominant(),
         aLine.bins[aLine.dominant()],
         aLine.total(),
         aLine.maxDensity,
-        aLine.maxDensity > 0.0 ? std::log2(aLine.maxDensity) : -99.0
+        aLine.maxDensity > 0.0 ? std::log2(aLine.maxDensity) : -99.0,
+        aLine.smaxDominant(),
+        aLine.maxSmax,
+        aLine.anisoDominant(),
+        aLine.maxAniso
     );
 }
 
-// one frame's reading: the deformation is known, so the whole mesh must be in one bin and
-// dens_max must be the density that deformation implies
-void checkLine(const FrameLine& aLine, double aDensity, double aTolerance, const char* aWhat) {
+// the anisotropy bin of a ratio: the highest edge it has reached, i.e. bin b covers
+// [kAnisoBinEdges[b - 1], kAnisoBinEdges[b]) and the last bin is open-ended
+int binForAniso(double aRatio) {
+    int bin = 0;
+    for (int i = 0; i < gl::FrameStats::kAnisoBins - 1; ++i) {
+        if (aRatio >= (double)gl::FrameStats::kAnisoBinEdges[i])
+            bin = i + 1;
+    }
+    return bin;
+}
+
+// one frame's reading: the deformation is known, so the whole mesh must be in one bin of
+// each histogram and each maximum must be the value that deformation implies
+void checkLine(
+    const FrameLine& aLine,
+    double aDensity,
+    double aSMax,
+    double aAniso,
+    double aTolerance,
+    const char* aWhat
+) {
     check(aLine.valid, aWhat);
     if (!aLine.valid)
         return;
@@ -189,6 +282,36 @@ void checkLine(const FrameLine& aLine, double aDensity, double aTolerance, const
     check(std::fabs(aLine.maxDensity - aDensity) <= aDensity * aTolerance, "dens_max is the known density");
     check(aLine.dominant() == expected, "the weight lands in the bin the deformation implies");
     check(aLine.bins[expected] >= total * 0.999, "and essentially all of it does");
+
+    // s_max is the larger singular value of the same Jacobian: 2 for 2x in x, 4 for 4x in both
+    const double smaxTotal = aLine.smaxTotal();
+    const int expectedSmax = binForDensity(aSMax);
+    check(
+        std::fabs(aLine.maxSmax - aSMax) <= aSMax * aTolerance,
+        "smax_max is the known singular value"
+    );
+    check(aLine.smaxDominant() == expectedSmax, "s_max lands in the bin its value implies");
+    check(aLine.smaxBins[expectedSmax] >= smaxTotal * 0.999, "and essentially all of it does");
+
+    // the ratio a trilinear level would over-blur the minor axis by: 1 for a square footprint,
+    // 2 for 2x in x, and 1 again for 4x in both (uniform scale is not anisotropic)
+    const double anisoTotal = aLine.anisoTotal();
+    const int expectedAniso = binForAniso(aAniso);
+    check(
+        std::fabs(aLine.maxAniso - aAniso) <= aAniso * aTolerance,
+        "aniso_max is the known ratio"
+    );
+    check(aLine.anisoDominant() == expectedAniso, "the anisotropy lands in the bin its ratio implies");
+    check(aLine.anisoBins[expectedAniso] >= anisoTotal * 0.999, "and essentially all of it does");
+}
+
+// every triangle of this mesh is far above the pass's sliver threshold, so all three
+// histograms must account for the mesh's whole uv area
+void checkWeights(const FrameLine& aLine, double aUvArea) {
+    const double tolerance = aUvArea * 0.001;
+    check(std::fabs(aLine.total() - aUvArea) < tolerance, "every triangle was measured (dens)");
+    check(std::fabs(aLine.smaxTotal() - aUvArea) < tolerance, "every triangle was measured (s_max)");
+    check(std::fabs(aLine.anisoTotal() - aUvArea) < tolerance, "every triangle was measured (aniso)");
 }
 
 } // namespace
@@ -323,11 +446,15 @@ int main(int argc, char** argv) {
         const char* what;
         const QVector<gl::Vector3>* positions;
         double density;
+        // the larger singular value of the uv->mesh Jacobian, and its ratio to the smaller:
+        // a uniform 4x scale is s_max 4 but ratio 1, while 2x in x alone is s_max 2 and ratio 2
+        double sMax;
+        double aniso;
     };
     const Case cases[] = {
-        {"undeformed", &rest, 1.0},
-        {"scaled 2x in x", &x2, 2.0},
-        {"scaled 4x in both", &xy4, 16.0},
+        {"undeformed", &rest, 1.0, 1.0, 1.0},
+        {"scaled 2x in x", &x2, 2.0, 2.0, 2.0},
+        {"scaled 4x in both", &xy4, 16.0, 4.0, 1.0},
     };
 
     for (const Case& c : cases) {
@@ -335,18 +462,51 @@ int main(int argc, char** argv) {
         runFrames(*c.positions, kFramesPerCase);
         const QVector<FrameLine> lines = frameLines(statsPath);
         if (lines.count() <= before) {
-            check(false, "the frame line carries dens=[..] dens_max=..");
+            check(false, "the frame line carries dens/dens_smax/aniso");
             continue;
         }
         const FrameLine line = lines.last();
         reportLine(c.what, line);
-        checkLine(line, c.density, 0.002, "the still frame reads the known density");
-        // every triangle of this mesh is far above the pass's sliver threshold, so the
-        // histogram must account for the mesh's whole uv area
-        check(std::fabs(line.total() - totalUvArea) < totalUvArea * 0.001, "every triangle was measured");
+        checkLine(line, c.density, c.sMax, c.aniso, 0.002, "the still frame reads the known deformation");
+        checkWeights(line, totalUvArea);
     }
 
-    // ---- [4] ANIMATED: a new deformation and a new placement on every frame --------------
+    // ---- [4] ANISOTROPIC: 2x in x, 1x in y, under a placement that churns every frame ----
+    // The case the area ratio cannot see: density is 2 (s_max * s_min), but the footprint is
+    // a 2:1 ellipse, so the level a trilinear read picks is one too coarse along the major
+    // axis. s_max says 2 (log2 1, the same bin as density 2) and the ratio says 2, which is
+    // aniso bin 2. The placement changes on every frame to prove none of it reaches a number.
+    {
+        const int before = frameLines(statsPath).count();
+        const util::ArrayBlock<const gl::Vector3> positions(x2.constData(), vertexCount);
+        for (int frame = 0; frame < kFramesPerCase; ++frame) {
+            expans.srt().setScale(QVector2D(1.0f + 0.4f * (float)frame, 0.7f + 0.3f * (float)frame));
+            expans.srt().setRotate(0.15f * (float)frame);
+            expans.srt().setPos(QVector2D(7.0f * (float)frame, -5.0f * (float)frame));
+            stats.beginFrame();
+            transformer.callGL(expans, buffer, grid.originOffset(), positions, false, false);
+            stats.endFrame(kImageSize, kImageSize);
+        }
+        const QVector<FrameLine> lines = frameLines(statsPath);
+        if (lines.count() <= before) {
+            check(false, "the anisotropic frame line was written");
+        } else {
+            const FrameLine line = lines.last();
+            reportLine("anisotropic 2x in x", line);
+            checkLine(line, 2.0, 2.0, 2.0, 0.002, "the anisotropic frame reads its own footprint");
+            // the exact bins the policy reads, independent of the helper
+            check(line.dominant() == 10, "the anisotropic density is bin 10");
+            check(line.smaxDominant() == 10, "the anisotropic s_max is bin 10");
+            check(line.anisoDominant() == 2, "the anisotropy ratio 2 is aniso bin 2");
+            checkWeights(line, totalUvArea);
+        }
+        // leave the expansion at rest; the animated case sets its own placement
+        expans.srt().setScale(QVector2D(1.0f, 1.0f));
+        expans.srt().setRotate(0.0f);
+        expans.srt().setPos(QVector2D(0.0f, 0.0f));
+    }
+
+    // ---- [5] ANIMATED: a new deformation and a new placement on every frame --------------
     {
         constexpr int kAnimatedFrames = 6;
         QVector<QVector<gl::Vector3>> deformed(kAnimatedFrames);
@@ -389,9 +549,12 @@ int main(int argc, char** argv) {
             std::snprintf(what, sizeof(what), "animated frame %d", i);
             reportLine(what, line);
             // the placement churn makes the composed inverse inexact by a few ulps, so the
-            // tolerance is relative and small rather than exact
-            checkLine(line, expected, 0.002, "the animated frame reads its own deformation");
-            check(std::fabs(line.total() - totalUvArea) < totalUvArea * 0.001, "every triangle was measured");
+            // tolerance is relative and small rather than exact. The x-only scale means the
+            // singular values are (factor, 1): s_max = factor and ratio = factor as well.
+            checkLine(
+                line, expected, expected, expected, 0.002, "the animated frame reads its own deformation"
+            );
+            checkWeights(line, totalUvArea);
         }
     }
 
@@ -413,7 +576,13 @@ int main(int argc, char** argv) {
         for (const FrameLine& line : lines) {
             for (int b = 0; b < gl::FrameStats::kDensityBins; ++b)
                 finite = finite && std::isfinite(line.bins[b]);
+            for (int b = 0; b < gl::FrameStats::kSmaxBins; ++b)
+                finite = finite && std::isfinite(line.smaxBins[b]);
+            for (int b = 0; b < gl::FrameStats::kAnisoBins; ++b)
+                finite = finite && std::isfinite(line.anisoBins[b]);
             finite = finite && std::isfinite(line.maxDensity);
+            finite = finite && std::isfinite(line.maxSmax);
+            finite = finite && std::isfinite(line.maxAniso);
         }
         check(finite, "every line is finite");
     }

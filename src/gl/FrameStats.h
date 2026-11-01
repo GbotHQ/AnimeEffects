@@ -38,6 +38,24 @@ namespace gl {
 //     deformation every frame) by the density pass in MeshTransformer::callGL; see
 //     DensityMeter there.
 //
+//   * dens_smax / smax_max - the same distribution over log2(s_max), where s_max is the LARGER
+//     singular value of the triangle's 2x2 Jacobian (uv edges -> deformed mesh edges). Density
+//     is only the product s_max * s_min, so a 4:1 footprint and a 2:2 one read the same area
+//     ratio while needing different mip levels: the 4:1 needs the level its major axis asks for.
+//     s_max is that level's answer, and it uses the density bins' base and step unchanged (so
+//     log2(s_max) = 0, an undeformed triangle, is bin 8, and a 2x stretch on one axis - density
+//     2 - is bin 10). smax_max is the largest s_max of the frame.
+//
+//   * aniso / aniso_max - the ratio s_max / s_min of the same triangle, histogrammed over the
+//     edges 1.5, 2, 3, 4, 6, 8, 16 (kAnisoBinEdges) into 8 uv-area-weighted bins: bin 0 is a
+//     square footprint (ratio under 1.5), bin 2 a 2:1 one, bin 7 everything from 16:1 up. This
+//     is the factor by which a trilinear level chosen from the major axis over-blurs the minor
+//     one, i.e. exactly what anisotropic filtering recovers. aniso_max is the largest ratio.
+//
+//     All three histograms share the triangle set and the sliver rule: a triangle whose uv area
+//     is under kMinUvArea contributes to none of them. A singular Jacobian (degenerate triangle)
+//     is clamped before log2 and before the ratio, so the line never carries a NaN or an inf.
+//
 // Output: one line per frame appended to the path in AE_FRAME_STATS, plus a final summary line.
 class FrameStats {
 public:
@@ -47,9 +65,20 @@ public:
     // middle of a bin instead of on the boundary between two.
     enum {
         kDensityBins = 16,
+        // log2(s_max) uses the density bins' base and step, so its shape is the same
+        kSmaxBins = 16,
+        // s_max / s_min bins, separated by the kAnisoBins - 1 interior edges below
+        kAnisoBins = 8,
     };
     static constexpr float kDensityBinBase = -4.0f; // log2(density) of bin 0's centre
     static constexpr float kDensityBinStep = 0.5f;  // one bin per half octave
+    // Interior edges of the anisotropy histogram, ascending: bin b holds the ratios in
+    // [kAnisoBinEdges[b - 1], kAnisoBinEdges[b]) with bin 0 below the first edge and the last
+    // bin open-ended above the last one. The geometry shader hardcodes the same edges (GLSL
+    // cannot read this array), so the two must be changed together.
+    static constexpr float kAnisoBinEdges[kAnisoBins - 1] = {
+        1.5f, 2.0f, 3.0f, 4.0f, 6.0f, 8.0f, 16.0f,
+    };
 
     static FrameStats& instance();
 
@@ -80,6 +109,13 @@ public:
     // in log2 density), `aMaxDensity` the largest density measured (0 when nothing was).
     void densityHistogram(const float* aBins, float aMaxDensity);
 
+    // The same, for the deformation's singular values: `aSmaxBins` holds kSmaxBins uv-area
+    // sums over log2(s_max) in the density bins' base and step, `aAnisoBins` kAnisoBins sums
+    // over s_max / s_min along kAnisoBinEdges. Both maxima are 0 when nothing was measured.
+    void anisotropyHistogram(
+        const float* aSmaxBins, float aMaxSmax, const float* aAnisoBins, float aMaxAniso
+    );
+
     // one line, for a probe or a log
     QString summary() const;
 
@@ -105,6 +141,11 @@ private:
     // this frame's density distribution (see the header comment), reset in beginFrame
     double mDensityBins[kDensityBins] = {};
     double mDensityMax = 0.0;
+    // the same frame's s_max distribution and anisotropy distribution, also reset there
+    double mSmaxBins[kSmaxBins] = {};
+    double mSmaxMax = 0.0;
+    double mAnisoBins[kAnisoBins] = {};
+    double mAnisoMax = 0.0;
     // the largest density any frame of this run produced
     double mSessionDensityMax = 0.0;
 };

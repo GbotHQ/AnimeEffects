@@ -240,6 +240,53 @@ void Util::setEdgeColor(uint8* aImage, const QSize& aSize, const QColor& aColor)
     }
 }
 
+QSize Util::mipAlignedTextureSize(const QSize& aImageSize) {
+    const auto aligned = [](int aSide) {
+        XC_ASSERT(aSide > 0);
+        int alignment = 1;
+        while (alignment * 2 <= aSide && alignment < kMipTextureAlignmentMax)
+            alignment *= 2;
+        return ((aSide + alignment - 1) / alignment) * alignment;
+    };
+    return QSize(aligned(aImageSize.width()), aligned(aImageSize.height()));
+}
+
+std::vector<uint8> Util::makeTextureUpload(const uint8* aData, const QSize& aSize, const QSize& aTextureSize) {
+    XC_ASSERT(aData);
+    XC_ASSERT(aSize.width() > 0 && aSize.height() > 0);
+    XC_ASSERT(aTextureSize.width() >= aSize.width());
+    XC_ASSERT(aTextureSize.height() >= aSize.height());
+
+    // transparent black everywhere, so the chain's edge texels average the artwork against nothing -
+    // the same value the sampler's border colour gives on the other two sides
+    std::vector<uint8> upload((size_t)aTextureSize.width() * aTextureSize.height() * 4, 0);
+    const size_t rowBytes = (size_t)aSize.width() * 4;
+    for (int y = 0; y < aSize.height(); ++y) {
+        uint8* dstRow = upload.data() + (size_t)y * aTextureSize.width() * 4;
+        std::memcpy(dstRow, aData + (size_t)y * rowBytes, rowBytes);
+
+        // glGenerateMipmap box-filters every channel independently, so averaging STRAIGHT color
+        // mixes the RGB of transparent texels into the edge texels of each level: artwork routinely
+        // carries black (or meaningless) RGB under alpha 0, so that average darkens the silhouette -
+        // the classic mipmap dark halo, worst exactly where the layer is minified. Premultiplying
+        // makes color and coverage average together; the layer shader divides the coverage back out
+        // (PREMULTIPLIED_INPUT in LayerDrawingFrag), so the blend math still sees straight color.
+        // Alpha is left untouched, so consumers that use only alpha - the clipper writing pass
+        // (ClipperWritingFrag) - are unaffected.
+        for (int x = 0; x < aSize.width(); ++x) {
+            uint8* p = dstRow + (size_t)x * 4;
+            const uint32 a = p[3];
+            if (a == 255)
+                continue;
+            // round-to-nearest, so an opaque-adjacent texel does not drift darker
+            p[0] = (uint8)((p[0] * a + 127) / 255);
+            p[1] = (uint8)((p[1] * a + 127) / 255);
+            p[2] = (uint8)((p[2] * a + 127) / 255);
+        }
+    }
+    return upload;
+}
+
 std::pair<XCMemBlock, QRect>
 Util::createTextureImage(const PSDFormat::Header& aHeader, const PSDFormat::Layer& aLayer) {
     // empty image

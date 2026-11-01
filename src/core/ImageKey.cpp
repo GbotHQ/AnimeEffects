@@ -1,7 +1,10 @@
 #include "Project.h"
 #include <functional>
+#include <vector>
+#include "img/Buffer.h"
 #include "img/ResourceNode.h"
 #include "img/BlendMode.h"
+#include "img/Util.h"
 #include "core/ImageKey.h"
 #include "core/Constant.h"
 #include "qjsonobject.h"
@@ -85,12 +88,34 @@ void ImageKey::resetGridMesh(int aCellSize) {
 
 void ImageKey::resetTextureCache() {
     if (mData.resource()->hasImage()) {
-        auto imageData = mData.resource()->image().data();
-        auto pixelSize = mData.resource()->image().pixelSize();
+        const img::Buffer& image = mData.resource()->image();
+        const uint8* imageData = image.data();
+        const QSize pixelSize = image.pixelSize();
+
+        // The image is uploaded premultiplied, unpadded on its left and top but padded to the
+        // right and bottom up to a size whose mip level grids divide evenly. Both are conditions on
+        // the chain, and both are documented where they are decided:
+        // img::Util::makeTextureUpload for the premultiply and the padding, and
+        // img::Util::mipAlignedTextureSize for the size. The transparent neighbour a minified or
+        // edge read needs on the other two sides comes from the border colour set below; the texture
+        // is created with GL_CLAMP_TO_BORDER, which the hardware applies to every mip level.
+        const QSize textureSize = img::Util::mipAlignedTextureSize(pixelSize);
+        const std::vector<uint8> upload =
+            img::Util::makeTextureUpload(imageData, pixelSize, textureSize);
 
         // make a gl texture
-        mCache.texture().create(pixelSize, imageData);
-        mCache.texture().setFilter(GL_LINEAR);
+        mCache.texture().create(
+            textureSize, upload.data(), GL_RGBA, GL_RGBA8, GL_UNSIGNED_BYTE, gl::Texture::GenerateMipmap
+        );
+        // trilinear minification; magnification must stay non-mipmap (see gl::Texture)
+        mCache.texture().setFilter(GL_LINEAR_MIPMAP_LINEAR, GL_LINEAR);
+        // Half a level finer than the derivatives ask for, so that the bilinear read integrates the
+        // footprint instead of twice it. The reasoning and the measurement are on
+        // gl::Texture::setLodBias.
+        mCache.texture().setLodBias(layerLodBias());
+        // ...and enough samples along an elongated footprint that its SHORT axis is not filtered at
+        // the level its long axis asked for. See ImageKey::layerMaxAnisotropy.
+        mCache.texture().setMaxAnisotropy(layerMaxAnisotropy());
         mCache.texture().setWrap(GL_CLAMP_TO_BORDER, QColor(0, 0, 0, 0));
     }
 }

@@ -32,6 +32,12 @@ void FrameStats::beginFrame() {
     for (int i = 0; i < kDensityBins; ++i)
         mDensityBins[i] = 0.0;
     mDensityMax = 0.0;
+    for (int i = 0; i < kSmaxBins; ++i)
+        mSmaxBins[i] = 0.0;
+    mSmaxMax = 0.0;
+    for (int i = 0; i < kAnisoBins; ++i)
+        mAnisoBins[i] = 0.0;
+    mAnisoMax = 0.0;
     mFrameTimer.start();
 }
 
@@ -71,6 +77,29 @@ void FrameStats::densityHistogram(const float* aBins, float aMaxDensity) {
         mSessionDensityMax = mDensityMax;
 }
 
+void FrameStats::anisotropyHistogram(
+    const float* aSmaxBins, float aMaxSmax, const float* aAnisoBins, float aMaxAniso
+) {
+    if (!mEnabled)
+        return;
+    if (aSmaxBins) {
+        for (int i = 0; i < kSmaxBins; ++i) {
+            const double area = aSmaxBins[i];
+            mSmaxBins[i] = (area > 0.0 && area < 1.0e30) ? area : 0.0;
+        }
+    }
+    if (aAnisoBins) {
+        for (int i = 0; i < kAnisoBins; ++i) {
+            const double area = aAnisoBins[i];
+            mAnisoBins[i] = (area > 0.0 && area < 1.0e30) ? area : 0.0;
+        }
+    }
+    // a NaN or an infinity here would make the line unparseable, exactly as for dens_max; a
+    // singular Jacobian is clamped in the shader, so the boundary is checked again on arrival
+    mSmaxMax = (aMaxSmax > 0.0f && aMaxSmax < 1.0e30f) ? aMaxSmax : 0.0;
+    mAnisoMax = (aMaxAniso >= 0.0f && aMaxAniso < 1.0e30f) ? aMaxAniso : 0.0;
+}
+
 void FrameStats::endFrame(int aViewWidth, int aViewHeight) {
     if (!mEnabled)
         return;
@@ -87,11 +116,23 @@ void FrameStats::endFrame(int aViewWidth, int aViewHeight) {
             density += QLatin1Char(',');
         density += QString::number(mDensityBins[i], 'f', 2);
     }
+    QString smax;
+    for (int i = 0; i < kSmaxBins; ++i) {
+        if (i > 0)
+            smax += QLatin1Char(',');
+        smax += QString::number(mSmaxBins[i], 'f', 2);
+    }
+    QString aniso;
+    for (int i = 0; i < kAnisoBins; ++i) {
+        if (i > 0)
+            aniso += QLatin1Char(',');
+        aniso += QString::number(mAnisoBins[i], 'f', 2);
+    }
 
     // one line per frame: a probe can diff two frames or average a run without a parser
     const QString line = QStringLiteral(
         "frame=%1 ms=%2 view=%3x%4 layers=%5/%6/%7 mesh=%8 fill_px=%9 tex_live=%10 tex_peak=%11 mask_bytes=%12 "
-        "dens=[%13] dens_max=%14\n"
+        "dens=[%13] dens_max=%14 dens_smax=[%15] smax_max=%16 aniso=[%17] aniso_max=%18\n"
     ).arg(mFrame)
          .arg(mFrameTimer.isValid() ? mFrameTimer.nsecsElapsed() / 1000000.0 : 0.0, 0, 'f', 2)
          .arg(aViewWidth)
@@ -105,7 +146,11 @@ void FrameStats::endFrame(int aViewWidth, int aViewHeight) {
          .arg(mPeakTextureBytes)
          .arg(mMaskBytes)
          .arg(density)
-         .arg(mDensityMax, 0, 'g', 6);
+         .arg(mDensityMax, 0, 'g', 6)
+         .arg(smax)
+         .arg(mSmaxMax, 0, 'g', 6)
+         .arg(aniso)
+         .arg(mAnisoMax, 0, 'g', 6);
     file.write(line.toUtf8());
     ++mFramesWritten;
 }
