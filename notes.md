@@ -131,3 +131,5 @@ Currently there is no good way to do camera and especially no good way to do per
 Our depth model could be a lot better for animation, currently each layer has explicit depth which means that reordering layers in the tree doesnt change the depth, and if the user creates more layers, it can mess up depth, its not straightforward to insert a layer into the tree. Presumably the user expects the depth to be automatic from the tree but overridable, possibly a integer or float offset. What if a layer has -4 and the layer above it has -5. Which one ends up on top? How do you achieve an exact order with this model, especially if you want to put multiple layers into a specific slot in a specific order? Are numeric offsets the way to do it? I cant think of a visual UI that wouldnt be rough to use. Though numeric offsets are probably rough to use as well.
 
 Animation layers?
+
+At some point figure out interactivity, mouse move around the canvas for perspective, SMA or EMA for smoothness. Click on a character hat to change it to a different hat with particle effects at mouse on click and a scale effect for a smoother looking swap.

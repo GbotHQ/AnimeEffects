@@ -169,11 +169,34 @@ resident page vanishing while still sampled - is prevented by 5.4.
   only come back from RAM (an upload), a coarse page regenerates from a resident sharper one at
   almost no cost - so under pressure sharp pages are the ones worth protecting *only while demanded*.
 
-### 5.5 Upload scheduling
+### 5.5 Where a new page goes, and how the frame stays consistent
 
-Queue from the RAM pyramid (§4), never from a decode. Per-frame byte budget, priority by
-(deficit levels x visible area), no readbacks, no sync. The counter grows a `pages=` field: resident,
-demanded, uploaded bytes this frame, evicted.
+Allocation is a slot in the pool's fixed grid; there is no size fragmentation because every page is
+the same size.
+
+1. **Free list first**: slots never used since the pool was created, then slots freed by eviction.
+2. **Otherwise a victim**: the eviction order of §5.4 picks one; its table entry is cleared and the
+   slot is reused.
+3. **Write the texels**: `glTexSubImage2D` of the page's 256x256 from the RAM pyramid into the slot's
+   rect **including its 4-texel gutter** (the gutter is filled from the same level's neighbours, so a
+   bilinear tap at a page edge cannot bleed). Unpadded rows are handled the way the mask uploads do it
+   (`GL_UNPACK_ROW_LENGTH`, `GL_UNPACK_ALIGNMENT 1`).
+4. **Publish**: the resource's table texel `(level, px, py)` = slot, written after the texels, both
+   before the frame's draws - GL executes in order, so the same frame samples the page it just
+   uploaded. A page that is already resident is a no-op (the table already names a slot).
+5. **Budget**: the queue is sorted by (deficit levels x visible area) and drained until the frame's
+   byte budget is spent; the rest waits, and the coarse tier covers the wait.
+
+The bookkeeping is one map per pool, slot -> (resource, level, x, y); it is what eviction and the
+table both update, and it is what a fixture asserts (allocate, evict, reuse: the texel at the slot's
+origin equals the page's origin, and the table names the slot).
+
+**Two tiers, so the fallback is never evicted**: the always-resident coarse chain of §5.3 lives in a
+*pinned* region of the same atlas (its slots are never in the free list and never victimised), while
+the pool proper holds sharp pages. That makes "no hole" structural rather than a policy: the fallback
+is resident by construction. Its cost is the coarse levels themselves - at a 512 px threshold, 1.33 x
+512² x 4 B = 1.4 MB per resource **[D]**; a 256 px threshold costs 0.35 MB and is the knob for
+projects with many resources.
 
 ### 5.6 What can regress, and the gates that catch it
 
@@ -263,8 +286,11 @@ equality against the current path, and the counter showing the pixels saved.
 - **Filters that need sharper-than-screen input**: a blur or wave samples the layer texture at the
   frame's resolution; a page/level chosen from the screen can starve the filter. Each filter needs a
   stated demand (measure with the counter), and a policy for layers that carry one.
-- **Export**: renders at output size, may need base levels; a separate demand, and it must not
-  thrash the pool the viewport is using.
+- **Export is not paged.** An export render is not interactive: it may take as long as its output
+  needs, and it must never compete with the viewport for slots. So the exporter samples the full
+  resolution directly (a dedicated texture per resource it needs, built from the RAM pyramid, with
+  its own mip chain for minification at small output sizes) and ignores the pool entirely. That is
+  also why the export gate empties the pool first: export must be correct with no pages resident.
 - **Premultiplied vs straight** storage (§4).
 - **Format**: the pyramid chunk, its version, and the legacy build-on-load path.
 - **Budgets**: what a project may spend, per platform; the counter is the referee.
