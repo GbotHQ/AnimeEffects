@@ -61,27 +61,21 @@ class Deserializer;
 //     level itself, so a whole-field build still reads level 0 for them.)
 //   * EVERY level is an AREA-WEIGHTED reduction of a finer level, with the weights
 //     gl/Texture.cpp's GPU tail applies: destination texel j covers
-//     [j * srcSide / dstSide, (j + 1) * srcSide / dstSide) of the source and every source texel
-//     contributes the length of its overlap. Where the step halves, those overlaps are whole
-//     texels; where it does not they are fractional, and WHICH finer level is read is the next
-//     bullet. Reading a finer level than the one directly below - level 0 for levels 1..3 and
-//     level - 3 beyond, in a whole-field build - is what keeps a level the average it claims to be:
-//     exact from level 0, close when the source is itself an average. Chaining every step instead
-//     spreads the fractional remainder of a footprint over a whole texel of the level below.
-//     Measured over a 45-sample corpus (tools/mip_compare), a step-by-step chain deviates from the
-//     box by up to 65 of 255 (mean 5.16 on its worst sample), where the reach-back rule below stays
-//     at 8 (mean 0.34).
+//     [j * srcSide / dstSide, (j + 1) * srcSide / dstSide) of the source, every source texel
+//     contributes the length of its overlap, and the window is NARROWED by kMipStepShrink from level
+//     2 up (see gl/Texture.h - it compensates the extra width of an overlap-weighted average, and it
+//     is an exact no-op on a step whose sizes divide). Where the step halves, those overlaps are whole
+//     texels; where it does not they are fractional. MEASURED over a 45-sample corpus
+//     (tools/mip_compare): a step-by-step chain deviates from the exact box by up to 65 of 255, a
+//     tightened one by a few units, and neither difference survives the render (LOD 1..4 within
+//     3.4 % of the anchored chain's sharpness, 0.1-0.3 points with the shrink).
 //   * WHICH FINER LEVEL, chosen by how much is being rebuilt:
 //       - a WHOLE-FIELD build (create, markDirtyAll: creation, clear, undo, deserialize) asks
-//         gl::Texture::mipSourceLevel, the ONE rule the image path also uses: level <= 3 is built
-//         from level 0 (exact, and only three base passes), level >= 4 from level - 3. That is an
-//         8:1 step whose source texels are themselves averages, so it is exact only where the step
-//         tiles and its source level is exact - and MEASURED indistinguishable from exact either
-//         way: worst 8 of 255, mean 0.34 over every level and sample. It bounds a field where
-//         nothing halves to 3.33 base reads (levels 1..3 from the base, then base/4 + base/16 +
-//         ...), i.e. what an import costs, where the rule it replaced - the base through level 7,
-//         then a chain - was 8.33. The rule lives in ONE place, so the mask and the image path
-//         cannot drift.
+//         gl::Texture::mipSourceLevel, the ONE rule the image path also uses: THE LEVEL DIRECTLY ABOVE
+//         for every level (span 1), which bounds a field where nothing halves to ~1.3 base reads - the
+//         cheapest chain there is. Exactness is not lost where it is visible: level 1 is the plain area
+//         average of the base, and the tighten below keeps the render at the anchored chain's
+//         sharpness. The rule lives in ONE place, so the mask and the image path cannot drift.
 //       - a STROKE'S BOX takes the deepest exact level at any depth - UNCHANGED, and the reason a
 //         box is affordable: a box rebuild costs about the box per level, so exactness at every
 //         level is nearly free there (see COST for the depth at which it stops being free).
@@ -115,17 +109,17 @@ class Deserializer;
 // the intermediate is at most (destination width x source height).
 //
 // COST, stated where it is largest.
-//   * A WHOLE-FIELD build follows the shared reach-back rule and so costs what an import costs: a
-//     15001-texel side where nothing halves reads its base for levels 1..3 and then chains from
-//     level - 3 - 3.33 base reads, about 750 M fetches on a 225 M-texel base, where anchoring every
-//     level would have needed 14 base passes (~3 G).
+//   * A WHOLE-FIELD build follows the shared span-1 rule: a 15001-texel side where nothing halves
+//     reads its base once for level 1 and then base/4 + base/16 + ... for the rest - ~1.3 base reads,
+//     about 290 M fetches on a 225 M-texel base, where anchoring every level would have needed 14
+//     base passes (~3 G) and the span-3 rule it replaced 3.33 (~750 M).
 //   * A STROKE'S BOX costs about the box per level (thousands of fetches, sub-millisecond) until
 //     the span outgrows the box. At extreme depth on a side where nothing halves the box is one or
 //     two texels and the exact anchor's span is the whole side, so that level alone costs
 //     ~span^2 fetches: ~0.5 M for a 1000-px side's deepest level (the whole tail a few times that,
-//     still sub-millisecond), ~225 M for a 15001-px one. That is the price of exactness on a box;
-//     gl::Texture::mipSourceLevel is one line away if the deepest levels of a huge odd field
-//     ever matter more than their exactness.
+//     still sub-millisecond), ~225 M for a 15001-px one. That is the price of exactness on a box, and
+//     it is paid only on stroke boxes, where exactness is what makes a stroke's own level consistent
+//     with the whole-field ones.
 //
 // WHAT gl::Texture IS TOLD. create() is called with MipmapPolicy::Manual: the class allocates and
 // books the WHOLE chain - level 0 from the field's pixels, levels 1..n-1 at their GL-mandated
