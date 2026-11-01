@@ -688,7 +688,29 @@ the truth at 2.540 - it rewards blur, because a blurred image changes less betwe
 this has to measure sharpness CONSISTENCY across phases, not variance, and it should be read against the
 truth per phase. Anything that only reports variation will keep recommending blur.
 
-WHAT THIS MEANS FOR THE RENDERER: the honest fix is a better reconstruction in the layer shader - a
-4-tap-per-axis read instead of the sampler's 2 - which is a fill-rate cost, not a memory or import cost.
-It removes most of the phase-dependent softening without giving up sharpness, so it is the one option on
-this list that is not a trade.
+
+
+WHICH FILTER, AND WHAT IT COSTS. Measured on the same phase sweep; "swing" is the peak-to-peak change of
+rendered sharpness across a pixel of travel (the visible artefact), "err" the mean absolute difference
+from the truth, "fetches" the texture reads per pixel (the built-in trilinear is 8 at a fractional LOD,
+4 at an integer one):
+
+| filter | fetches | swing | mean \|err\| |
+|---|---|---|---|
+| bilinear, one level | 4 | 23.9 % | 1.869 |
+| two bilinear samples straddling the footprint ("box2") | 8 | 5.1 % | 1.869 - but uniformly at 6.0 sharpness against the truth's 7.48 |
+| Catmull-Rom 4-tap, one level | 16 | 12.8 % | 1.692 |
+| bilinear on both levels (ships) | 8 | 14.4 % | 0.913 |
+| cubic on the dominant level, bilinear on the other | 20 | 14.9 % | 0.845 |
+| cubic on both levels | 32 | 9.7 % | 0.914 |
+
+Three conclusions. (1) 4 taps per axis is the cheapest INTERPOLATING kernel - a 3-tap kernel is a
+B-spline, i.e. an approximating one, and measured it is soft everywhere (sharpness 4.8 -> 1.7 across the
+sweep), so "cheaper than 4 taps" means "blurrier", not "as good for less". (2) The 20-fetch hybrid buys
+nothing: the bilinear half still blends, and the swing stays at 14.9 % against 14.4 %. (3) The "box2"
+trick removes the swing by being uniformly soft - the same trap the temporal-std metric fell into.
+
+So cubic on both levels (32 fetches when the LOD is fractional) is the one that works, and its cost can
+be gated: the layer's scale is known on the CPU, so the 4-tap path only needs to run when the layer is
+MINIFIED (or rotated); magnification is exact with bilinear. A non-uniform scale can drop to 4 taps on
+one axis only. Verify with the existing `AE_FRAME_STATS` `ms` column rather than by estimate.
