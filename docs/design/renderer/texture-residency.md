@@ -498,6 +498,24 @@ when every gate is green on every project and the counter shows no regression, t
   it is buying a few percent of sharpness at depth - so if the chain's cost ever matters, drop it; keep
   it if the extra base pass is free, because it makes the levels exact for their own sake.
 
+  **And the kernel is not open either: with span 1, TIGHTEN.** Rendered sharpness against the ideal (the
+  base area-averaged at the same scale), 000022, trilinear, span-1 chains built from level 0:
+
+  | LOD | ideal | exact (= span 3 here) | span 1 area | span 1 tightened 0.8 |
+  |---|---|---|---|---|
+  | 2 | 14.249 | 14.257 (+0.06 %) | 14.249 (0.00 %) | 14.249 (0.00 %) |
+  | 3 | 16.829 | 14.996 (**-10.90 %**) | 14.585 (-13.33 %) | 14.977 (**-11.00 %**) |
+  | 4 | 20.268 | 17.805 (**-12.15 %**) | 17.198 (-15.15 %) | 17.750 (**-12.43 %**) |
+
+  So plain span 1 is 2.4-3.0 points softer than span 3 in the render, and tightening puts it back within
+  0.1-0.3 points - at the same 3x3 taps, no extra work, no extra memory. Sub-pixel shimmer is unchanged
+  across every policy (2.41-3.07, spread under 2 %). The factor is not fragile: 0.75 / 0.80 / 0.85 / 0.90
+  give -10.46 / -11.00 / -11.56 / -12.11 % at LOD 3, i.e. the whole sensible range lands within ~1.5 % of
+  span 3, with 0.8 the sweet spot and 0.75 beginning to overshoot.
+
+  That is the recommendation: **span 1 with a tightened window** - cheapest chain, renders like the
+  anchored one. Derive the factor from the step ratio (2:1 -> 0.8, 8:1 -> 1.0), never hardcode it.
+
   The object-tree block WAS the target, and the profile found it: `ObjectTree::deserialize` was 10.2 s
   over the harness's four deserializes, of which 8.4 s was `new LayerNode` - each layer built its own
   `MeshTransformerResource`, i.e. compiled the same three mesh-transform programs 344 times. Sharing one
