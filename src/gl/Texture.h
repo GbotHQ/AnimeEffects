@@ -43,25 +43,34 @@ public:
     /// normalized coordinates, and a destination texel's footprint must be integrated over the FINE
     /// grid: a step whose boundaries cut a source texel uses that texel's average for the cut part,
     /// which is exact only when the source texel IS the finest grid (level 0). So the source is
-    /// level 0 while a footprint is at most kMipTailMaxTaps texels per axis - which makes every
-    /// level up to 128x minification exact for ANY size, odd sides included - and the level above
-    /// beyond that, where a step is always between 2:1 and 3:1 (floor(floor(s / 2^l) / 2) ==
-    /// floor(s / 2^(l+1))) and a chained step that halves is exact, while a non-halving one is a
-    /// sub-texel approximation: it weights against the level above, whose texels are already block
-    /// averages, so a step boundary that cuts through one takes the whole where the true integral
-    /// wants part. MEASURED at a 25->12 step, against the exact base-weighted average: worst
-    /// deviation 17/255 on white noise (independent texels - the worst case for any averaging) and
-    /// 6/255 on curved artwork, and <= 5/255 past the bound. These are levels BELOW 128x
-    /// minification, where one screen pixel covers 128+ texels, which is why the bound is the right
-    /// price for turning ~14 base passes into <= 7.
+    /// THE RULE, plainly:
     ///
-    /// The cost bound that buys: an exact level reads the base once (ratio^2 taps over
-    /// base/ratio^2 destination texels), so the seven possible exact levels are seven base passes.
-    /// A chain that always anchors at the deepest exact level is exact at every depth but costs one
-    /// base pass per level (~14x a 15001^2 field whose nothing halves) - the right trade for a mask
-    /// patched a BOX at a time (a box is exact and free at any anchor), the wrong one for a
-    /// whole-field build. That is why the box-update path may anchor freely and the whole-field
-    /// path uses this rule.
+    ///   step halves exactly        -> chain from the level above. A 2x2 box IS the true average.
+    ///                                 This is the normal case and costs 4 taps per output texel.
+    ///   step does not halve,       -> ANCHOR: rebuild that level from level 0 with the exact area
+    ///   ratio (base/dst) <= 128       weights. A chained step there has a fractional ratio
+    ///                                 (25 -> 12 means each output texel covers 25/12 = 2.08 input
+    ///                                 texels, and those inputs are already block averages), so it
+    ///                                 is not the box average. Anchoring is exact; it costs ONE
+    ///                                 BASE READ per level: ratio^2 taps per output texel over
+    ///                                 base/ratio^2 output texels.
+    ///   step does not halve,       -> chain anyway. Approximate, and bounded: MEASURED at a
+    ///   ratio > 128                   25 -> 12 step against the exact base-weighted average, worst
+    ///                                 deviation 17/255 on white noise (independent texels, the
+    ///                                 worst case for any averaging) and 6/255 on curved artwork,
+    ///                                 <= 5/255 past the bound.
+    ///
+    /// WHY 128 AND NOT MORE: the ratio of level L is base/(base >> L) ~ 2^L, so "ratio <= 128" is
+    /// "level <= 7". Anchoring costs a base pass per level, so the constant is simply HOW MANY BASE
+    /// PASSES WE PAY AT IMPORT: <= 7 here, against ~14 for a 15001^2 field whose sides never halve.
+    /// It is a cost knob, not a physical limit - raise it if import time ever stops mattering.
+    ///
+    /// WHY THE ERROR IS ACCEPTABLE THERE: a level with ratio > 128 is only sampled when the layer
+    /// is drawn at less than 1/128 of its size, where one screen pixel already covers 128+ texels.
+    /// Every ordinary zoom reads levels <= 7, and those are exact.
+    ///
+    /// The same rule serves a mask's whole-field build; a mask stroke's BOX may anchor freely at any
+    /// depth because a box is box-sized, so exactness costs nothing there.
     static const int kMipTailMaxTaps = 128;
 
     /// The level to build level aLevel from: 0, or aLevel - 1 (see kMipTailMaxTaps).
