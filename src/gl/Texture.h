@@ -48,22 +48,30 @@ public:
     ///   step halves exactly        -> chain from the level above. A 2x2 box IS the true average.
     ///                                 This is the normal case and costs 4 taps per output texel.
     ///   step does not halve,       -> ANCHOR: rebuild that level from level 0 with the exact area
-    ///   ratio (base/dst) <= 128       weights. A chained step there has a fractional ratio
-    ///                                 (25 -> 12 means each output texel covers 25/12 = 2.08 input
-    ///                                 texels, and those inputs are already block averages), so it
-    ///                                 is not the box average. Anchoring is exact; it costs ONE
-    ///                                 BASE READ per level: ratio^2 taps per output texel over
-    ///                                 base/ratio^2 output texels.
+    ///   ratio (base/dst) <= 128       weights. Not "correcting an error": chaining there is a
+    ///                                 legitimate downsample, it is just INEXACT, because it weights
+    ///                                 block averages rather than texels (25 -> 12 means each output
+    ///                                 texel covers 25/12 = 2.08 input texels, and those inputs are
+    ///                                 already averages of 2x2 base blocks).
     ///   step does not halve,       -> chain anyway. Approximate, and bounded: MEASURED at a
     ///   ratio > 128                   25 -> 12 step against the exact base-weighted average, worst
     ///                                 deviation 17/255 on white noise (independent texels, the
     ///                                 worst case for any averaging) and 6/255 on curved artwork,
-    ///                                 <= 5/255 past the bound.
+    ///                                 <= 5/255 past the bound. Error inherits down the chain.
+    ///
+    /// COST, exactly - and the two rows are NOT the same size:
+    ///   a CHAINED level reads the level above, i.e. base/4^L texels, so a whole chained chain is
+    ///     base * (1 + 1/4 + 1/16 + ...) = 1.33 base reads;
+    ///   an ANCHORED level reads ALL of level 0: R^2 taps per output texel over base/R^2 output
+    ///     texels, i.e. one base read - a lot of taps (129x129 at level 7), but 1/R^2 as many
+    ///     outputs, which is what makes it affordable;
+    ///   so this rule (anchor through level 7, chain the tail) costs ~7 + 1.33 = 8.3 base reads,
+    ///     against ~13 for anchoring every level (a ~10x difference) and 1.33 for chaining all of
+    ///     it. 128 is where on that line we choose to sit.
     ///
     /// WHY 128 AND NOT MORE: the ratio of level L is base/(base >> L) ~ 2^L, so "ratio <= 128" is
-    /// "level <= 7". Anchoring costs a base pass per level, so the constant is simply HOW MANY BASE
-    /// PASSES WE PAY AT IMPORT: <= 7 here, against ~14 for a 15001^2 field whose sides never halve.
-    /// It is a cost knob, not a physical limit - raise it if import time ever stops mattering.
+    /// "level <= 7". It is a cost knob (how many base passes we pay at import), not a physical
+    /// limit - raise it if import time ever stops mattering.
     ///
     /// WHY THE ERROR IS ACCEPTABLE THERE: a level with ratio > 128 is only sampled when the layer
     /// is drawn at less than 1/128 of its size, where one screen pixel already covers 128+ texels.
