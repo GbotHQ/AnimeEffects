@@ -286,11 +286,23 @@ equality against the current path, and the counter showing the pixels saved.
 - **Filters that need sharper-than-screen input**: a blur or wave samples the layer texture at the
   frame's resolution; a page/level chosen from the screen can starve the filter. Each filter needs a
   stated demand (measure with the counter), and a policy for layers that carry one.
-- **Export is not paged.** An export render is not interactive: it may take as long as its output
-  needs, and it must never compete with the viewport for slots. So the exporter samples the full
-  resolution directly (a dedicated texture per resource it needs, built from the RAM pyramid, with
-  its own mip chain for minification at small output sizes) and ignores the pool entirely. That is
-  also why the export gate empties the pool first: export must be correct with no pages resident.
+- **Export is time-unbounded but MEMORY-bounded.** "It may take as long as its output needs" is
+  only half true: GPU memory is finite, and a 15000² layer's base level is 900 MB, so an export that
+  uploads every layer at full resolution does not fit either. The export uses the same pyramid and
+  the same pool, with a **different scheduling policy**:
+  - *synchronous demand*: the analytic demand of the frame being exported is uploaded immediately and
+    the draw waits for it - time is free here, latency is not a concern;
+  - *a hard memory cap*: the pool evicts by LRU between layers (a layer is drawn once and never
+    needed again in that frame), so the peak is the render target plus the pages of the layers in
+    flight, not the whole document;
+  - *graceful degradation, never failure*: if one layer alone exceeds the cap, its level is reduced
+    for that export and the reduction is reported - the same blur-vs-fail choice the viewport makes,
+    made loudly instead of silently;
+  - the render target itself remains bounded by the output size, which is the exporter's existing
+    cost and is not affected by residency.
+  The export gate still empties the pool first and asserts correctness from an empty pool, and it
+  additionally asserts the peak stays under the cap while exporting a project whose layers together
+  exceed it.
 - **Premultiplied vs straight** storage (§4).
 - **Format**: the pyramid chunk, its version, and the legacy build-on-load path.
 - **Budgets**: what a project may spend, per platform; the counter is the referee.
