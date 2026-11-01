@@ -514,7 +514,25 @@ when every gate is green on every project and the counter shows no regression, t
   span 3, with 0.8 the sweet spot and 0.75 beginning to overshoot.
 
   That is the recommendation: **span 1 with a tightened window** - cheapest chain, renders like the
-  anchored one. Derive the factor from the step ratio (2:1 -> 0.8, 8:1 -> 1.0), never hardcode it.
+  anchored one.
+
+  WHICH RATIO, THOUGH. A span-1 step is nominally 2:1, but the actual per-axis ratio is
+  `S / floor(S/2)`: exactly 2 only while the level's side is EVEN, and `2 + 1/C` from the first odd
+  side onward, growing as levels shrink - 000022 runs 1500, 750, 375, 187, 93, 46, 23, 11, 5 and its
+  ratios are 2, 2, 2.0054, 2.0108, 2.0217, 2, 2.0909, 2.2. So the factor is not a function of a
+  constant 2:1, it is a function of how far above 2 that step's ratio sits.
+
+  It does not need a formula, because the two regimes are already separable and tightening is FREE
+  where it must not act: on a step that TILES, the centred window of 1.6 texels covers the same two
+  texels with equal weights as the 2.0 window does, so narrowing is an exact no-op - measured on
+  750x720 -> 375x360: 1.00 / 0.90 / 0.80 / 0.70 windows all give max 1.4, mean 0.223, HF -0.09 %,
+  identical. On a step that CUTS it acts as measured (375x360 -> 187x180: HF -4.36 / -2.43 / -0.51 /
+  +1.40 % for the same four windows).
+
+  So the rule is a single constant: **tighten by 0.8 at every chained level**. It is inert wherever the
+  step is exact and compensates wherever it is not. The 8:1 step measured earlier is the same story -
+  its ratio is 8.008 and tightening there HURT, which is why the shipped span-3 tail uses the plain
+  area box.
 
   The object-tree block WAS the target, and the profile found it: `ObjectTree::deserialize` was 10.2 s
   over the harness's four deserializes, of which 8.4 s was `new LayerNode` - each layer built its own
