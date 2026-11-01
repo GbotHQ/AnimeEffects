@@ -448,6 +448,32 @@ when every gate is green on every project and the counter shows no regression, t
   dropped, the chained 2:1 step should use the tightened window (derive the factor from the ratio,
   never a magic 0.8).
 
+  **How far back should a chained level reach?** Measured on four images that actually exercise it
+  (thin outline art, dense hairlines/text, an engraving's hatching, and cel art), level 3 against the
+  exact level:
+
+  | image | from level 2 (a 2:1 step, twice) | from level 1 (one 4:1 step) |
+  |---|---|---|
+  | 11-ae.psd (outlines) | 33.3 / 0.269 / HF -2.54 % | **11.4 / 0.077 / -0.41 %** |
+  | 35-img-000 (text) | 36.4 / 0.930 / -6.80 % | **13.2 / 0.387 / -2.78 %** |
+  | 43-example-44 (hatching) | 24.5 / 1.053 / -4.57 % | **19.9 / 0.664 / -2.08 %** |
+  | 04-AUTUMN (cel art) | **0.8 / 0.026 / 0.00 %** | 19.2 / 0.173 / -1.27 % |
+
+  (max delta / mean / high-frequency energy; AUTUMN is the exception because that particular 2:1 step
+  tiles.) So stepping twice through an intermediate level is worse than one wider step from a level
+  that is exact - by 2-3x on the content that shows it. Which is the argument for a SPAN rather than
+  always stepping one level: fewer chained steps, each from a better source.
+
+  The cost/quality curve this gives, in base reads and worst level-3 error: anchor 1..3 (span 3, ~3.3
+  base reads) leaves level 3 exact and level 4 at <= 6; anchor 1..2 (span 2, ~2.4) makes level 3 the
+  first chained one at 11-20; anchor 1 only (span 1, ~1.3) makes level 2 the first, at 20-40 with
+  -1.4 to -7.3 % high-frequency energy. Span 3 is where the visible levels are still exact.
+
+  **What makes an image useful for this test**: fine high-contrast structure at several scales -
+  hairlines, text, hatching, outline art. The predictor is the share of texels adjacent to a strong
+  gradient (12.5 % on a chart, 3.5 % on a line drawing, ~0 on a soft painting), not its subject:
+  smooth painted work and flat-colour sprites show almost nothing at any level.
+
   The object-tree block WAS the target, and the profile found it: `ObjectTree::deserialize` was 10.2 s
   over the harness's four deserializes, of which 8.4 s was `new LayerNode` - each layer built its own
   `MeshTransformerResource`, i.e. compiled the same three mesh-transform programs 344 times. Sharing one
