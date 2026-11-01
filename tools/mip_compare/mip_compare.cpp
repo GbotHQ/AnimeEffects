@@ -797,6 +797,12 @@ int main(int argc, char** argv) {
         worstHalf = std::max(worstHalf, mh.maxAbs);
         worstCubic = std::max(worstCubic, mc.maxAbs);
 
+        // level 0 as well, so a render test has the unscaled content to supersample
+        if (level == 1 && !writeLevelPng(QDir(outDir).filePath(QString("level-0-base.png")), base)) {
+            std::fprintf(stderr, "error: cannot write level 0\n");
+            return 2;
+        }
+
         const char* const kPolicies[] = {"exact", "chain1", "chain2", "chain3", "bilinear", "half", "cubic"};
         const Img* const kImages[] = {&exact, &c1, &c2, &c3, &bl, &hf, &cb};
         for (int p = 0; p < 7; ++p) {

@@ -474,6 +474,30 @@ when every gate is green on every project and the counter shows no regression, t
   gradient (12.5 % on a chart, 3.5 % on a line drawing, ~0 on a soft painting), not its subject:
   smooth painted work and flat-colour sprites show almost nothing at any level.
 
+  **And the criterion that actually matters is the RENDER, not the level.** Comparing a level against the
+  exact area average measures a reference nobody sees: the screen shows the layer sampled at a scale,
+  through trilinear blending of two levels. Measured that way (000022, base 1500x1440, chain built up
+  from level 0 so all three share one source, LOD 1.0 to 4.0 in quarter steps, sharpness = mean gradient
+  of the rendered layer):
+
+  | LOD | exact | chain1 (span 1) | chain3 (span 3) |
+  |---|---|---|---|
+  | 1.00 | 11.25 | 11.25 (0.00 %) | 11.25 (0.00 %) |
+  | 2.00 | 14.26 | 14.25 (0.08 %) | 14.26 (0.00 %) |
+  | 3.00 | 15.00 | 14.58 (2.77 %) | 15.00 (0.00 %) |
+  | 4.00 | 17.81 | 17.19 (3.44 %) | 17.77 (0.22 %) |
+
+  So the whole anchoring question is worth at most **~3.4 % of rendered sharpness** even for the cheapest
+  chain, and ~0.2 % for the shipped one - while the sampling model itself moves sharpness by 30-40 %
+  between LOD integers (11.25 at 1.0 against 14.26 at 2.0, the same jump in every policy). Sub-pixel
+  phase sensitivity (a shimmer proxy: standard deviation of the render across four sub-pixel offsets) is
+  identical to three decimals across policies (1.578 / 1.578 / 1.578 at LOD 2).
+
+  Which means the span should be chosen on COST, not on perceived quality: span 1 is the cheapest and
+  renders within 3.4 % of exact at the deepest scale measured. The anchor is not a correctness measure,
+  it is buying a few percent of sharpness at depth - so if the chain's cost ever matters, drop it; keep
+  it if the extra base pass is free, because it makes the levels exact for their own sake.
+
   The object-tree block WAS the target, and the profile found it: `ObjectTree::deserialize` was 10.2 s
   over the harness's four deserializes, of which 8.4 s was `new LayerNode` - each layer built its own
   `MeshTransformerResource`, i.e. compiled the same three mesh-transform programs 344 times. Sharing one
