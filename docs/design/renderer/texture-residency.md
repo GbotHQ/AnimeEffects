@@ -656,11 +656,23 @@ Two things it is NOT. Not a mip property: level 0 sampled at its own size shimme
 involved and no shrink at levels 0-1. Not anisotropy: a uniform zoom gives a square footprint (ratio 1),
 where anisotropic filtering is a no-op by definition (it is on, 16x, `ImageKey::layerMaxAnisotropy`).
 
-The only levers attenuate the Nyquist band - a coarser LOD (measured 1.6x), supersampling the frame, or
-motion blur - and every one of them trades sharpness. That makes it a rendering choice, not a chain
-rule.
+The only levers attenuate the Nyquist band - a coarser LOD, supersampling the frame, or motion
+blur. MEASURED against the ground truth, and the ground truth is the surprise: rendering the MOVING image
+correctly - area-integrating the BASE over each destination footprint at each sub-pixel offset - has its
+own temporal standard deviation of **2.540** at 4x minification. The samplers, same content, same sweep:
 
-Running a big project requires a guard, not good intentions:
-`systemd-run --user --scope -p MemoryMax=… -p MemorySwapMax=0` plus an RSS watchdog, on a headless
-display. The 15000² project does not load under software GL inside 9 GB - measure it on the GPU, in a
-bounded window.
+| sampler | temporal std |
+|---|---|
+| truth (base area-integrated per offset) | **2.540** |
+| bilinear, bias 0 (footprint 1.0 level texel) | 2.231 |
+| bilinear, bias -0.5 (the shipped blend of two levels) | 2.465 |
+| bilinear, bias -1 (footprint 2.0) | 2.836 |
+| bilinear, bias -2 (footprint 4.0) | 3.932 |
+
+So a perfect sampler CONVERGES TO the truth's 2.540, it does not go below it: the swing is the image
+itself moving under a pixel grid, not a defect of taking two taps. The shipped -0.5 reads 2.465, i.e. at
+the floor - what an eye sees there is the content, and only rendering BELOW the truth (bias 0 at 2.231,
+or a positive bias) makes it steadier, which is the blur trade again. Above the floor (bias -1 and
+beyond) is genuine aliasing that more taps or a finer blend would fix. Caveat on the metric: it is the
+mean per-pixel temporal std over a one-pixel horizontal sweep, blind to temporal frequency, the
+contrast-sensitivity function and masking - a proxy for ranking policies, not a perceptual score.
