@@ -1,6 +1,7 @@
 #include "gl/ExtendShader.h"
 #include "gl/Global.h"
 #include "core/ShaderHolder.h"
+#include "core/MeshTransformerResource.h"
 
 namespace core {
 
@@ -23,6 +24,14 @@ ShaderHolder::~ShaderHolder() {
         if (p)
             delete p;
     }
+}
+
+MeshTransformerResource& ShaderHolder::meshTransformerResource() {
+    if (!mMeshTransformer) {
+        mMeshTransformer = std::make_unique<MeshTransformerResource>();
+        mMeshTransformer->setup(QStringLiteral(":/shaders/MeshTransformVert.glsl"));
+    }
+    return *mMeshTransformer;
 }
 
 gl::EasyShaderProgram& ShaderHolder::reserveShader(

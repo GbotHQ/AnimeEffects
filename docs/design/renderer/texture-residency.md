@@ -345,8 +345,14 @@ when every gate is green on every project and the counter shows no regression, t
   A 3.6 MB project: 4.9 s, the same shape (object tree 0.63 s). With `buildMipTailOnGpu` compiled out the
   load moved by 0.03 s and 0.14 s: the chain is **< 1 % of load**. Storing the levels would add 33 %
   more pixels to compress, write, decode and upload, to avoid a build that costs less than decoding that
-  copy would. So no stored pyramid, and no format bump for one. If load time is the goal, the target is
-  the object-tree block (5 s of 6 on the big project), not the chain.
+  copy would. So no stored pyramid, and no format bump for one.
+
+  The object-tree block WAS the target, and the profile found it: `ObjectTree::deserialize` was 10.2 s
+  over the harness's four deserializes, of which 8.4 s was `new LayerNode` - each layer built its own
+  `MeshTransformerResource`, i.e. compiled the same three mesh-transform programs 344 times. Sharing one
+  resource per `ShaderHolder` (`ShaderHolder::meshTransformerResource`) took the load cycle from 16.7 s
+  to 8.3 s on the 54 MB project and 4.99 s to 3.92 s on the 3.6 MB one; the ctor is now 0.06 s and what
+  remains of the block is ~0.4 s per load, mostly blend-shader variants compiled once each.
 - **Stage 3 - pages**: the pool, the table, analytic demand, the coarse chain and the eviction of
   §5, behind a switch. The switch is **a control, not a crutch**: it exists so the gates can compare
   the page path against the base-level path on the same frame, and so the two can be A/B'd for `ms`.
