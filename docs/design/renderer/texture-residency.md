@@ -688,6 +688,36 @@ the truth at 2.540 - it rewards blur, because a blurred image changes less betwe
 this has to measure sharpness CONSISTENCY across phases, not variance, and it should be read against the
 truth per phase. Anything that only reports variation will keep recommending blur.
 
+**IMPLEMENTED, MEASURED ON THE REAL PROJECT, AND REVERTED (2026-11-02).** The 4-tap path was built: the
+layer fragment shader samples `sampleLayer()` (Catmull-Rom, 4 taps per axis on each of the two levels the
+LOD falls between, hardware read below one texel of footprint), with `ImageKey::sharpLayerEnabled()` and
+`AE_LAYER_SHARP` as the switch and the LOD taken from the layer's transform. Measured by dumping the
+scene FBO during playback of a real project (12 frames, 603x679, layers at ~0.3 scale - hand-drawn
+strokes, i.e. sub-pixel features):
+
+| | mean rendered sharpness | per-frame std | per-pixel temporal std |
+|---|---|---|---|
+| 4-tap reconstruction | **4.430** | 0.018 (0.4 %) | 6.871 |
+| hardware trilinear | 4.024 | 0.020 (0.5 %) | 6.601 |
+
+So it is 10 % sharper and no steadier on actual content - the per-frame sharpness varies by half a
+percent either way, because the artwork moves far more between frames (7.6 of 255) than the phase effect
+it was built for. The owner's verdict, watching both builds side by side: "not really better in motion".
+
+And it had a correctness defect: the LOD came from `-log2(cameraScale x layerScale)`, which is the
+IMPOSTOR pattern - valid only for a planar, uniformly scaled draw. A layer with FFD, bone or pose
+deformation has a different texel-to-pixel ratio across its own surface, and screen DERIVATIVES are the
+mechanism every GPU and engine uses for exactly that reason (they are per-pixel correct under
+deformation; they wobble with the sub-pixel phase, which trilinear blending is smooth enough to hide).
+The app already computes the correct local scale per triangle (`s_max` of the uv->mesh Jacobian) in the
+density pass, but only into a histogram, not into anything the draw can read.
+
+Reverted for both reasons: no perceptible gain, and an LOD rule that would be wrong on every deformed
+layer. What survives is the measurement: bilinear really does blend instead of translating (24 % of the
+rendered gradient within a pixel of travel at 4x), the truth does have its own temporal variation, and a
+4-tap read costs +0.43 ms per screen-covering layer at 1080p. If this is ever revisited, the LOD must
+come from the per-triangle Jacobian, not from the transform.
+
 
 
 WHICH FILTER, AND WHAT IT COSTS. Measured on the same phase sweep; "swing" is the peak-to-peak change of
