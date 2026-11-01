@@ -144,17 +144,33 @@ public:
     /// Offsets the level the minification filter picks, in log2 units. Only the minimum filter uses
     /// it; magnification ignores it.
     ///
-    /// A layer texture needs a negative one because of how a mip chain is read, not because of how it
-    /// is built. Bilinear filtering at level m takes two taps that are each a whole level-m texel, and
-    /// a level-m texel is the average over 2^m base texels, so the kernel it integrates is 2*2^m base
-    /// texels wide. A footprint of F = 2^lambda base texels is therefore matched by m = lambda - 1,
-    /// one level finer than the lambda = log2(F) that the derivatives pick - that value is right for
-    /// a nearest read and twice too wide for a bilinear one. Measured against supersampled ground
-    /// truth over the reference corpus: a bias of -0.5 lowers the mean error from 1.631 to 0.968 of
-    /// 255 at 4x and from 4.198 to 2.533 at 16x, with the per-file optimum between -0.5 and -1.0 and
-    /// -1.5 past the point. The gain is in the fractional-phase cases; a footprint that already lands
-    /// on a level-texel centre is exact at bias 0 and is made marginally softer by this, which is why
-    /// the value is half a level and not a whole one.
+    /// A layer texture needs a negative one because of how a mip chain is READ, not because of how it
+    /// is built - and the correct value follows from matching the read's kernel to the level the level
+    /// system MEANT to produce.
+    ///
+    /// A bilinear read of level m is a TENT: bilinear interpolation between two samples d = 2^m base
+    /// texels apart, each already the box average of its own d base texels, i.e. the convolution of two
+    /// boxes of width d. A tent is the convolution of two boxes, so the READ has
+    ///     variance = 2 * (d^2 / 12) = 2^(2m) / 6,
+    /// while the ideal mip level for a footprint F = 2^lambda is a BOX of width F with variance
+    /// F^2 / 12. Setting them equal, 2^(2m) / 6 = F^2 / 12, gives 2^m = F / sqrt(2), i.e.
+    ///     m = lambda - 0.5
+    /// for EVERY footprint: -0.5 is the second-moment match between a bilinear tent and the box the
+    /// level stands for, not a taste. A NEGATIVE bias is the sharper direction - it picks a finer level
+    /// - and the three candidate values order that way: -1 (match the tent's SUPPORT to the footprint,
+    /// 2^(m+1) = F) is sharper than the ideal; -0.5 is the match; and 0 (the derivatives' own rule,
+    /// m = lambda) is SOFTER than the ideal by exactly the tent's extra width, which is the reading a
+    /// driver gives when nobody corrects it.
+    ///
+    /// Measured against supersampled ground truth over the reference corpus, -0.5 lowers the mean error
+    /// from 1.631 to 0.968 of 255 at 4x and from 4.198 to 2.533 at 16x, per-file optimum between -0.5
+    /// and -1.0, -1.5 past it. The gain is in the fractional-phase cases; a footprint that lands on a
+    /// level-texel centre is exact at 0 and made marginally softer by this.
+    ///
+    /// THE OTHER SIDE OF IT: keeping more energy near the sampling Nyquist also means more sub-pixel
+    /// shimmer (a 1-texel pair at offset d modulates as |1 - 2d|). Measured on three samples, 0 against
+    /// -0.5 buys 4-9 % less shimmer for 1-14 % less sharpness, the split depending on content. The
+    /// layer value is a choice between those, not a bug in either.
     void setLodBias(GLfloat aBias);
 
     void destroy();

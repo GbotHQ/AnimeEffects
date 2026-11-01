@@ -88,9 +88,11 @@ public:
     virtual void sleep();
     virtual void awake();
 
-    /// The level offset every layer texture is sampled with, in log2 units. -0.5 because the sampler
-    /// picks lambda = log2(footprint), which is one level too coarse for a bilinear read; the full
-    /// reasoning and the measurement are on gl::Texture::setLodBias.
+    /// The level offset every layer texture is sampled with, in log2 units. -0.5 is the value that
+    /// matches the bilinear read's SECOND MOMENT to the box the mip level stands for, for every
+    /// footprint (derivation on gl::Texture::setLodBias). A negative bias is the SHARPER direction: 0
+    /// is the derivatives' own rule and reads softer than the ideal by the tent's extra width; it was
+    /// measured to shimmer 4-9 % less for 1-14 % less sharpness, so it is a trade, not a correction.
     static float layerLodBias() { return -0.5f; }
 
     /// The anisotropy every layer texture asks the sampler for, clamped to what the device reports
