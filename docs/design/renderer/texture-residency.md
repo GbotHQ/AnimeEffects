@@ -421,6 +421,33 @@ when every gate is green on every project and the counter shows no regression, t
   tap set is what the area step already is - more taps cannot help, because the ideal footprint is
   only 2.002 texels wide.
 
+  **Tightening around the true centre** - narrowing the window instead of snapping it - is the version
+  that works, and it is free (the same 3 taps; raising the centre tap IS narrowing). 04-AUTUMN, level 2
+  (a 2:1 step), window width as a multiple of the exact footprint, same centre throughout:
+
+  | window | HF energy vs exact | max delta | mean delta | texels over 2/255 |
+  |---|---|---|---|---|
+  | 1.00x (as shipped) | -2.20 % | 38.9 | 0.334 | 5.30 % |
+  | 0.90x | -1.50 % | 33.3 | 0.260 | 4.77 % |
+  | **0.80x** | **-0.62 %** | **27.9** | **0.233** | **4.48 %** |
+  | 0.75x | -0.11 % | 33.2 | 0.245 | 4.38 % |
+  | 0.70x | +0.42 % | 34.3 | 0.276 | 4.38 % |
+
+  Unlike snapping, this improves sharpness AND accuracy together (it compensates the discrete
+  approximation's extra width rather than displacing the box), and the error map dims visibly: in a
+  4-up of exact / area / 0.80x / snapped on a line-art detail, the 0.80x difference map is the
+  cleanest of the three approximations and the snapped one is by far the brightest - a shifted edge is
+  plainly perceptible.
+
+  **But it is a function of the step ratio, and it must not be a constant.** The same test at an 8:1
+  step (level 4 from level 1, 9 taps over an 8-texel window, where the discrete overlap already
+  matches the box) goes the other way: 1.00x is best (-0.54 %, max 5.7) and 0.90x is already worse
+  (+3.08 %, max 17.9). The correction is needed only where the tap set is coarse for the footprint -
+  i.e. near 2:1. That is also why the shipped rule needs none: it chains only from 8:1 upward, and
+  anchoring levels 1..3 means the coarse 2:1 step is never chained at all. If anchoring is ever
+  dropped, the chained 2:1 step should use the tightened window (derive the factor from the ratio,
+  never a magic 0.8).
+
   The object-tree block WAS the target, and the profile found it: `ObjectTree::deserialize` was 10.2 s
   over the harness's four deserializes, of which 8.4 s was `new LayerNode` - each layer built its own
   `MeshTransformerResource`, i.e. compiled the same three mesh-transform programs 344 times. Sharing one
