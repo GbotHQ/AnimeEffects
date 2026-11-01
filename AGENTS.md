@@ -250,6 +250,10 @@ hand it over. Its one question is `Sampling`:
   (32768) is only a sanity bound against a corrupt file. The neutral value is **per channel**
   (amount starts white, time offset starts black) and a neutral mask must cost **nothing**
   (`isPainted`, `filterValueIsActive`).
+- **A mask is NOT "low frequency"**: hard edges and painted texture are legitimate, so a mask needs
+  the same sampling treatment as an image (mips) and its pyramid must be updated INCREMENTALLY from
+  the stroke's dirty box, level by level, not regenerated whole. Any note that called masks soft
+  was wrong.
 - A layer mask's overlay is a flat rubylith **over** the composite (`Kind_MaskOverlay`), not a tint; the
   thumbnail and tree chip show the matte itself in grayscale.
 - The brush is one model (`ctrl/Brush.h`): `BrushStroke` walks spacing between samples and carries the

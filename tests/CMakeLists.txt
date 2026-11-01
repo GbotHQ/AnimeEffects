@@ -1146,6 +1146,30 @@ target_link_libraries(wave_pass_pixels PRIVATE
     cmnd core ctrl gl img thr util pugixml
 )
 
+# See density_meter.cpp. The density pass (core::MeshTransformer::callGL filling
+# gl::FrameStats::dens / dens_max) is a MEASUREMENT, so its gate hands it deformations
+# whose answer is known - undeformed, 2x in x, 4x in both - through the same mesh path an
+# image layer uses (GridMesh::createFromImage), and reads the frame line back. A wrong uv
+# space, a transposed matrix or a readback that never arrives fails there. It needs a real
+# context (transform feedback, a geometry shader, an FBO, a PBO), so it runs under Xvfb.
+# assets.qrc supplies :/shaders/MeshTransformVert.glsl, the pass's own shader.
+add_executable(density_meter density_meter.cpp
+    ${CMAKE_SOURCE_DIR}/assets/assets.qrc
+)
+target_include_directories(density_meter PRIVATE .. ../src)
+target_compile_definitions(density_meter PRIVATE
+    AE_MAJOR_VERSION=1
+    AE_MINOR_VERSION=7
+    AE_MICRO_VERSION=1
+    USE_GL_CORE_PROFILE
+)
+target_link_libraries(density_meter PRIVATE
+    Qt6::Core Qt6::Core5Compat Qt6::Widgets
+    Qt6::Gui Qt6::OpenGL Qt6::OpenGLWidgets
+    Qt6::Svg Qt6::Xml Qt6::Concurrent Qt6::Multimedia
+    cmnd core ctrl gl img thr util pugixml
+)
+
 add_executable(anim_settings_undo
     anim_settings_undo.cpp
     ../src/gui/qml/AnimationSettingViewModel.cpp

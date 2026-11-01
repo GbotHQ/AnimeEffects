@@ -93,7 +93,7 @@ for n in $targets; do
      [ "$n" = time_body_canvas ] || [ "$n" = wave_pass_pixels ] ||
      [ "$n" = layer_mask_pixels ] ||
      [ "$n" = filter_card_geometry ] || [ "$n" = object_tree_model ] ||
-     [ "$n" = brush_tip_pixels ] ||
+     [ "$n" = brush_tip_pixels ] || [ "$n" = density_meter ] ||
      [ "$n" = object_tree_panel ]; then
     # The end-to-end export harness needs a real GL context and a loaded project, so it
     # runs under Xvfb against the COMMITTED fixture (tests/fixtures/e2e_stage.png) rather
