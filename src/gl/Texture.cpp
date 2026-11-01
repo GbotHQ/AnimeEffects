@@ -1,8 +1,6 @@
 #include <QVector2D>
 #include <algorithm>
 #include <cmath>
-#include <utility>
-#include <vector>
 #include "gl/DeviceInfo.h"
 #include "gl/EasyShaderProgram.h"
 #include "gl/FrameStats.h"
@@ -67,17 +65,17 @@ void main() {
     vec4 acc = vec4(0.0);
     float wsum = 0.0;
     for (int ty = 0; ty < 3; ++ty) {
-        const int i = int(floor(lo.y)) + ty;
+        int i = int(floor(lo.y)) + ty;
         if (i >= int(uSrcSize.y))
             continue;
-        const float oy = min(hi.y, float(i) + 1.0) - max(lo.y, float(i));
+        float oy = min(hi.y, float(i) + 1.0) - max(lo.y, float(i));
         if (oy <= 0.0)
             continue;
         for (int tx = 0; tx < 3; ++tx) {
-            const int k = int(floor(lo.x)) + tx;
+            int k = int(floor(lo.x)) + tx;
             if (k >= int(uSrcSize.x))
                 continue;
-            const float ox = min(hi.x, float(k) + 1.0) - max(lo.x, float(k));
+            float ox = min(hi.x, float(k) + 1.0) - max(lo.x, float(k));
             if (ox <= 0.0)
                 continue;
             acc += texelFetch(uSrc, ivec2(k, i), 0) * (ox * oy);
@@ -155,6 +153,10 @@ void buildMipTailOnGpu(
         ggl.glIsEnabled(GL_CULL_FACE), ggl.glIsEnabled(GL_DITHER), ggl.glIsEnabled(GL_STENCIL_TEST),
     };
 
+    // unit 0 is where create() left this texture bound, so that is the unit this pass may clobber
+    // (and it restores the caller's unit number at the end)
+    ggl.glActiveTexture(GL_TEXTURE0);
+
     // the scratch holds the level being read; it is never attached, so nothing is both read and
     // written
     const int srcW0 = std::max(1, aSize.width() >> aExactLevels);
@@ -230,8 +232,8 @@ void buildMipTailOnGpu(
     ggl.glViewport(prevViewport[0], prevViewport[1], prevViewport[2], prevViewport[3]);
     ggl.glUseProgram(prevProgram);
     ggl.glBindVertexArray(prevVao);
-    ggl.glPolygonMode(GL_FRONT, prevPolygonMode[0]);
-    ggl.glPolygonMode(GL_BACK, prevPolygonMode[1]);
+    // core profile accepts only GL_FRONT_AND_BACK here, and both faces share one mode
+    ggl.glPolygonMode(GL_FRONT_AND_BACK, prevPolygonMode[0]);
     ggl.glColorMask(prevColorMask[0], prevColorMask[1], prevColorMask[2], prevColorMask[3]);
     ggl.glActiveTexture(prevActiveTexture);
     const auto restore = [&ggl](GLenum aState, GLboolean aWasEnabled) {

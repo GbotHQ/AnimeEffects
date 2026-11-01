@@ -105,14 +105,18 @@ frame does not need. The cost is the sync, not the bytes. (Worth measuring both 
 
 - **Scope**: one pyramid per **image resource**, not per key - `ImageKey::serialize` stores only a
   resource id, so every layer using the same image shares one.
-- **Storage**: in the project, as an optional chunk (new format minor). **Built once, at import, and
-  read back at load** - the chain is authoring data, so a load decodes and uploads it and runs no
-  GPU downsample at all. That is what "once per image" means: the cost lands on the import, never on
-  every open, and the pixels are the ones the authoring session produced rather than whatever the
-  driver's shader arithmetic yields that day.
-  The GPU downsample path therefore serves only (a) legacy projects and pre-chunk imports, built once
-  at load, and (b) a mask that is being PAINTED - and only the stroke's dirty boxes, never a rebuild.
-  An imported mask that has not been painted is stored and loaded exactly like an image.
+- **Storage: every chain is stored, without exception.** Images and masks, imported or painted in
+  the app - what is in memory at save time is what the file holds, and a load decodes and uploads it
+  with no GPU downsample at all. "Once per image" therefore means "once, ever": the cost lands on
+  the import (or on the stroke that last changed it), never on an open, and the pixels are the ones
+  the authoring session produced rather than whatever the driver's shader arithmetic yields today.
+  Mutability is a separate axis: a mask being painted updates the boxes its stroke touched, in
+  memory and in the file at the next save.
+  The GPU downsample path therefore exists for exactly two cases, and neither is a load of a current
+  file: (a) a legacy project with no stored chain (built once at load, after which it is authoring
+  data), and (b) the stroke's dirty boxes while painting.
+  Format note: masks were never released, so their chain needs no compatibility path; image chain
+  chunks must be optional and version-gated, since images ARE released.
 - **RAM**: decoded at load into RAM - all levels, coarse ones cost 1/3 of the base - so that no
   frame ever decodes. `nene` goes from ~1.94 GiB to ~2.6 GiB of decoded images **[D]**.
 - **Content rules**: the `feat/mipmapping` branch's - premultiplied, halo-free, levels past the
