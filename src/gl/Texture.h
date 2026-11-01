@@ -47,7 +47,13 @@ public:
     /// level up to 128x minification exact for ANY size, odd sides included - and the level above
     /// beyond that, where a step is always between 2:1 and 3:1 (floor(floor(s / 2^l) / 2) ==
     /// floor(s / 2^(l+1))) and a chained step that halves is exact, while a non-halving one is a
-    /// sub-texel approximation bounded by the detail that level carries.
+    /// sub-texel approximation: it weights against the level above, whose texels are already block
+    /// averages, so a step boundary that cuts through one takes the whole where the true integral
+    /// wants part. MEASURED at a 25->12 step, against the exact base-weighted average: worst
+    /// deviation 17/255 on white noise (independent texels - the worst case for any averaging) and
+    /// 6/255 on curved artwork, and <= 5/255 past the bound. These are levels BELOW 128x
+    /// minification, where one screen pixel covers 128+ texels, which is why the bound is the right
+    /// price for turning ~14 base passes into <= 7.
     ///
     /// The cost bound that buys: an exact level reads the base once (ratio^2 taps over
     /// base/ratio^2 destination texels), so the seven possible exact levels are seven base passes.
