@@ -34,6 +34,33 @@ public:
         Manual,
     };
 
+    /// The anchor rule for building a mip level with the area weights the grids imply, shared by
+    /// every manual chain in the tree (this class's automatic tail, and the mask chain's whole-field
+    /// build). ONE constant and ONE rule, so an image and a mask cannot be built to different
+    /// standards.
+    ///
+    /// Level aLevel of a texture of aSize has max(1, side >> aLevel) texels over the whole [0, 1] of
+    /// normalized coordinates, and a destination texel's footprint must be integrated over the FINE
+    /// grid: a step whose boundaries cut a source texel uses that texel's average for the cut part,
+    /// which is exact only when the source texel IS the finest grid (level 0). So the source is
+    /// level 0 while a footprint is at most kMipTailMaxTaps texels per axis - which makes every
+    /// level up to 128x minification exact for ANY size, odd sides included - and the level above
+    /// beyond that, where a step is always between 2:1 and 3:1 (floor(floor(s / 2^l) / 2) ==
+    /// floor(s / 2^(l+1))) and a chained step that halves is exact, while a non-halving one is a
+    /// sub-texel approximation bounded by the detail that level carries.
+    ///
+    /// The cost bound that buys: an exact level reads the base once (ratio^2 taps over
+    /// base/ratio^2 destination texels), so the seven possible exact levels are seven base passes.
+    /// A chain that always anchors at the deepest exact level is exact at every depth but costs one
+    /// base pass per level (~14x a 15001^2 field whose nothing halves) - the right trade for a mask
+    /// patched a BOX at a time (a box is exact and free at any anchor), the wrong one for a
+    /// whole-field build. That is why the box-update path may anchor freely and the whole-field
+    /// path uses this rule.
+    static const int kMipTailMaxTaps = 128;
+
+    /// The level to build level aLevel from: 0, or aLevel - 1 (see kMipTailMaxTaps).
+    static int mipTailSourceLevel(const QSize& aSize, int aLevel);
+
     Texture();
     ~Texture();
 

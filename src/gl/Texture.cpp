@@ -105,38 +105,20 @@ gl::EasyShaderProgram& mipTailProgram() {
     return *gMipTailProgram;
 }
 
-/// Builds levels aExactLevels+1 .. aLevelCount-1 with the area weights the level grids imply.
+/// Builds levels aExactLevels+1 .. aLevelCount-1 with the area weights the level grids imply, from
+/// the source levels Texture::mipTailSourceLevel chooses (the rule, its exactness boundary and its
+/// cost are documented there, once, for every manual chain in the tree).
 ///
-/// WHICH SOURCE. A destination texel's footprint must be integrated over the FINE grid: a step whose
-/// boundaries cut a source texel uses that texel's average for the cut part, which is exact only
-/// when the source texel IS the finest grid (level 0). So each level is built from level 0 while its
-/// footprint is at most kMipTailMaxTaps source texels per axis (2x..128x minification, for any size),
-/// and from the level above it beyond that - where a step is always between 2:1 and 3:1, because
-/// floor(floor(s / 2^l) / 2) == floor(s / 2^(l+1)), so at most 3 taps per axis. Chaining from the
-/// level above is exact whenever the step halves (each source texel already holds the exact average
-/// of its own footprint, and no boundary is cut); when it does not, the cut texels are a sub-texel
-/// approximation bounded by the detail that level carries - which is what a level past 128x of a
-/// side whose tail does not halve gets, and what the CPU resample this replaced avoided only by
-/// reading the whole base back for every level (900 MB for a 15001^2 image, and again for each of a
-/// 1023^2 one's ten).
-///
-/// WHY LEVEL 0 AND NOT A SCRATCH COPY. Rendering level l while fetching a different mip level of the
-/// same texture is the standard way to build a chain by hand: GL's feedback rule is per IMAGE (level
-/// and layer), and the levels here are distinct images. That avoids a scratch texture as large as the
-/// base - which for a 15001^2 artwork would cost another 900 MB, more than the padding this path
-/// exists to remove.
-///
-/// COST. An exact level reads the base once - ratio^2 taps over base/ratio^2 destination texels - so
-/// a side whose first seven levels are exact costs seven passes over the base; the chained tail after
-/// them holds a third of the base texels in total. A 15001^2 artwork therefore costs a handful of
-/// passes over its 900 MB base once, at import, in exchange for the up-to-+98% of residency the
-/// padding cost for the life of the layer. A mask stroke rebuilds one rectangular dirty box, where the
-/// same rule is sub-millisecond.
+/// WHY A LEVEL OF THE SAME TEXTURE AND NOT A SCRATCH COPY. Rendering level l while fetching a
+/// different mip level of the same texture is the standard way to build a chain by hand: GL's
+/// feedback rule is per IMAGE (level and layer), and the levels here are distinct images. That
+/// avoids a scratch texture as large as the base - which for a 15001^2 artwork would cost another
+/// 900 MB, more than the padding this path exists to remove.
 ///
 /// Every piece of GL state this touches is saved and restored: a texture is created inside paint and
-/// import code that has its own framebuffer, viewport, vertex array and render state set up.
-const int kMipTailMaxTaps = 128;
-
+/// import code that has its own framebuffer, viewport, vertex array and render state set up. The
+/// vertex array is restored BY ID (including 0 if 0 was bound) - never unbound wholesale - because
+/// a caller inside a draw must find exactly the object it had.
 void buildMipTailOnGpu(GLuint aTextureId, const QSize& aSize, int aExactLevels, int aLevelCount) {
     Global::Functions& ggl = Global::functions();
 
@@ -196,16 +178,11 @@ void buildMipTailOnGpu(GLuint aTextureId, const QSize& aSize, int aExactLevels, 
     for (int l = aExactLevels + 1; l < aLevelCount; ++l) {
         const int dstW = std::max(1, baseW >> l);
         const int dstH = std::max(1, baseH >> l);
-        const int prevW = std::max(1, baseW >> (l - 1));
-        const int prevH = std::max(1, baseH >> (l - 1));
 
-        // level 0 while the footprint is short enough, the level above otherwise (see above)
-        const int baseTapsX = (baseW + dstW - 1) / dstW;
-        const int baseTapsY = (baseH + dstH - 1) / dstH;
-        const bool fromBase = std::max(baseTapsX, baseTapsY) <= kMipTailMaxTaps;
-        const int srcLevel = fromBase ? 0 : l - 1;
-        const int srcW = fromBase ? baseW : prevW;
-        const int srcH = fromBase ? baseH : prevH;
+        // the shared anchor rule - one constant, one comment, in the header
+        const int srcLevel = Texture::mipTailSourceLevel(aSize, l);
+        const int srcW = std::max(1, baseW >> srcLevel);
+        const int srcH = std::max(1, baseH >> srcLevel);
         const int tapsX = (srcW + dstW - 1) / dstW;
         const int tapsY = (srcH + dstH - 1) / dstH;
 
@@ -220,7 +197,6 @@ void buildMipTailOnGpu(GLuint aTextureId, const QSize& aSize, int aExactLevels, 
         ggl.glDrawArrays(GL_TRIANGLES, 0, 3);
     }
 
-    vao.release();
     program.release();
     ggl.glBindTexture(GL_TEXTURE_2D, 0);
 
@@ -251,6 +227,20 @@ void buildMipTailOnGpu(GLuint aTextureId, const QSize& aSize, int aExactLevels, 
 }
 
 } // namespace
+
+// defined here because it is odr-used (bound to a reference by std::max, passed around)
+const int Texture::kMipTailMaxTaps;
+
+int Texture::mipTailSourceLevel(const QSize& aSize, int aLevel) {
+    XC_ASSERT(aLevel >= 1);
+    XC_ASSERT(aSize.isValid() && !aSize.isEmpty());
+
+    const int dstW = std::max(1, aSize.width() >> aLevel);
+    const int dstH = std::max(1, aSize.height() >> aLevel);
+    const int tapsX = (aSize.width() + dstW - 1) / dstW;
+    const int tapsY = (aSize.height() + dstH - 1) / dstH;
+    return (std::max(tapsX, tapsY) <= kMipTailMaxTaps) ? 0 : (aLevel - 1);
+}
 
 Texture::Texture(): mId(0), mSize(), mMipmapLevels(1), mBytes(0) {}
 

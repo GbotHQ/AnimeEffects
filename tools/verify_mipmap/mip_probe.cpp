@@ -90,6 +90,7 @@
 #include "gl/Global.h"
 #include "gl/Texture.h"
 #include "gl/Util.h"
+#include "gl/VertexArrayObject.h"
 #include "gui/AudioPlaybackWidget.h"
 #include "img/BlendMode.h"
 #include "img/ResourceData.h"
@@ -632,9 +633,10 @@ void suiteImageKey() {
     }
 
     // Every level against the analytic area average of the premultiplied upload. gl::Texture::create
-    // builds each level from level 0 while its footprint is at most kMipTailMaxTaps texels (128), so
-    // at this size every level but the 1x1 is base-sourced and this is an exactness assertion; the
-    // 1x1 is a 2:1 step from the 2x1 level and exact as well.
+    // builds each level from level 0 while its footprint is at most
+    // gl::Texture::kMipTailMaxTaps texels (128), so at this size every level but the 1x1 is
+    // base-sourced and this is an exactness assertion; the 1x1 is a 2:1 step from the 2x1 level and
+    // exact as well.
     const Img upload = premultipliedUpload(src);
     int worstAll = 0;
     for (int l = 1; l < tex.mipmapLevels(); ++l) {
@@ -698,7 +700,8 @@ void suiteImageKey() {
 // Level l has max(1, side >> l) texels spanning the whole [0, 1] of normalized coordinates, so it is
 // an exact grid of 2^l-texel boxes only while 2^l divides the side. Past that the level must still be
 // the area average of its own footprint, and that is what gl::Texture::create builds: from level 0
-// while the footprint is at most kMipTailMaxTaps texels per axis (128), from the level above after
+// while the footprint is at most gl::Texture::kMipTailMaxTaps texels per axis (128), from the
+// level above after
 // that, where a step is between 2:1 and 3:1.
 //
 // This driver's own glGenerateMipmap does NOT do that with a source that does not halve, and the
@@ -711,7 +714,8 @@ void suiteImageKey() {
 // Sizes: a power of two (nothing to build), sizes with 1 and 2 trailing zero bits, and odd 129/300/
 // 501/513 sides (nothing exact to inherit - every level is base-sourced up to 128x).
 
-const int kMipTailMaxTaps = 128; // gl/Texture.cpp's rule: level 0 while the footprint is this short
+// The anchor rule is gl::Texture's, not the probe's (gl/Texture.h: kMipTailMaxTaps and
+// mipTailSourceLevel) - one constant, one comment, so the assertion and the builder cannot drift.
 
 // The level aLev of a step image (rows [0, aRow) white, the rest black), read at level texel (0, 0):
 // 255 * the weight the level gives the rows above the step. aRaw builds the chain with plain GL
@@ -762,7 +766,11 @@ struct StepProfile {
 
 StepProfile scanStep(int aSide, int aLev, int aWidth, bool aRaw) {
     StepProfile p;
-    const int nominalRows = std::max(1, aSide >> aLev);
+    // The level has max(1, side >> lev) texels spanning the whole [0, 1] of normalized coordinates,
+    // so ONE level texel stands for side / texels BASE ROWS - not for `side >> lev` rows. (The
+    // latter is the texel COUNT: using it makes the ideal saturate at r = 1, which reports a
+    // correct chained level as -253 off and makes the raw-driver control unable to fail.)
+    const int nominalRows = aSide / std::max(1, aSide >> aLev);
     const int step = std::max(1, aSide / 128);
     double prev = -1.0;
     for (int r = 0; r <= aSide; r += step) {
@@ -807,9 +815,10 @@ void suiteChainExactness() {
             const int dw = std::max(1, size >> l);
             const int dh = dw;
             const int taps = std::max((size + dw - 1) / dw, (size + dh - 1) / dh);
+            const int srcLevel = gl::Texture::mipTailSourceLevel(QSize(size, size), l);
             const std::vector<uint8_t> want = areaLevel(src.d, size, size, dw, dh);
             const int delta = maxAnyChannelDelta(chain[(size_t)l].d, want);
-            if (taps <= kMipTailMaxTaps) {
+            if (srcLevel == 0) {
                 // base-sourced: this is an exactness assertion
                 worstExact = std::max(worstExact, delta);
                 expect(delta <= 3,
@@ -822,9 +831,9 @@ void suiteChainExactness() {
                 if (firstChained < 0)
                     firstChained = l;
                 expect(delta <= 8,
-                    QString("%1: level %2 (%3x%4, chained from the level above) must stay close to "
-                            "the area average of the base (delta %5)")
-                        .arg(label).arg(l).arg(dw).arg(dh).arg(delta));
+                    QString("%1: level %2 (%3x%4, chained from level %6) must stay close to the "
+                            "area average of the base (delta %5)")
+                        .arg(label).arg(l).arg(dw).arg(dh).arg(delta).arg(srcLevel));
             }
         }
 
@@ -840,19 +849,41 @@ void suiteChainExactness() {
     }
 
     // ---- THE SHIPPED CHAIN at the level that used to be filled with a band: a 384-texel side's
-    // level 8 is one texel over the whole side, and the product's chain must be the exact box there.
+    // level 8 is one texel over the whole side.
+    //
+    // WHICH ASSERTION IS THE CONTRACT, and why it can be the strict one here: 384 = 3 * 2^7, so
+    // gl::Texture::mipTailSourceLevel anchors level 8 at level 7 (384 taps from level 0 is past the
+    // 128 cap), and level 7 has 3 texels - 3 onto 1 TILES EXACTLY, so the chained build is the exact
+    // area average, not an approximation of it. The box assertion (<= 1) is therefore the rule for
+    // this case, and the looser chained bound (<= 8) is the rule for the steps that do not tile,
+    // asserted per size in the loop above. The precondition is derived here rather than assumed.
     {
         const int side = 384;
         const int lev = 8;
-        const int nominalRows = std::max(1, side >> lev);
-        const StepProfile shipped = scanStep(side, lev, 8, false);
+        const int srcLevel = gl::Texture::mipTailSourceLevel(QSize(side, side), lev);
+        const int srcTexels = std::max(1, side >> srcLevel);
+        const int dstTexels = std::max(1, side >> lev);
+        const bool chained = srcLevel != 0;
+        const bool tilesExactly = (srcTexels % dstTexels) == 0;
+        const int nominalRows = side / dstTexels;
         const QString label = QString("M18 shipped chain, %1 square level %2").arg(side).arg(lev);
+
+        const int failsBefore = gFails;
+        expect(tilesExactly,
+            QString("%1: the strict box assertion needs the chained step to tile exactly (%2 texels "
+                    "of level %3 onto %4 of level %5)").arg(label)
+                .arg(srcTexels).arg(srcLevel).arg(dstTexels).arg(lev));
+
+        const StepProfile shipped = scanStep(side, lev, 8, false);
         expect(shipped.monotone,
             QString("%1: the weight profile must rise monotonically").arg(label));
         expect(std::fabs(shipped.worstDev) <= 1.0,
-            QString("%1: the level must be the box of its own footprint (%2 base rows) - worst "
-                    "deviation %3 at r=%4, midpoint %5")
-                .arg(label).arg(nominalRows).arg(shipped.worstDev, 0, 'f', 1).arg(shipped.worstAt)
+            QString("%1: the level must be the box of its own footprint (%2 base rows, %3) - worst "
+                    "deviation %4 at r=%5, midpoint %6")
+                .arg(label).arg(nominalRows)
+                .arg(chained ? QString("chained from level %1, tiling exactly").arg(srcLevel)
+                             : QString("from level 0"))
+                .arg(shipped.worstDev, 0, 'f', 1).arg(shipped.worstAt)
                 .arg(shipped.midpoint, 0, 'f', 1));
 
         // flat content must reduce to itself: no halo, dark or bright, from the level's shape
@@ -865,13 +896,18 @@ void suiteChainExactness() {
                 q[0] = q[1] = q[2] = 200;
                 q[3] = 255;
             }
-        const uint8_t* deep = readChain(flat, true)[(size_t)lev].at(0, 0);
+        // the chain must outlive the pointer into its pixels: readChain returns a vector BY VALUE,
+        // and binding the pointer straight out of the temporary (as this line used to) read freed
+        // memory - a uniform field cannot produce a non-uniform value under any area weighting, so
+        // the garbage showed up as "rgb 196, alpha 17".
+        const std::vector<Img> flatChain = readChain(flat, true);
+        const uint8_t* deep = flatChain[(size_t)lev].at(0, 0);
         expect(std::abs((int)deep[0] - 200) <= 1 && deep[3] >= 254,
             QString("%1: uniform content must reduce to itself (rgb %2, alpha %3)")
                 .arg(label).arg((int)deep[0]).arg((int)deep[3]));
 
         caseReport(
-            label, true,
+            label, gFails == failsBefore,
             QString("footprint %1 rows, midpoint at r=%2, worst deviation from the box %3 at r=%4")
                 .arg(nominalRows).arg(shipped.midpoint, 0, 'f', 1)
                 .arg(shipped.worstDev, 0, 'f', 1).arg(shipped.worstAt)
@@ -885,9 +921,10 @@ void suiteChainExactness() {
     {
         const int side = 384;
         const int lev = 8;
-        const int nominalRows = std::max(1, side >> lev);
-        const StepProfile raw = scanStep(side, lev, 8, true);
+        const int nominalRows = side / std::max(1, side >> lev);
         const QString label = QString("M18 raw driver chain, %1 square level %2").arg(side).arg(lev);
+        const int failsBefore = gFails;
+        const StepProfile raw = scanStep(side, lev, 8, true);
         expect(std::fabs(raw.worstDev) > 5.0,
             QString("%1: the unrebuilt chain must NOT be the box of its own footprint (worst "
                     "deviation %2 of 255 at r=%3, midpoint %4 of %5 rows) - this is the defect the "
@@ -895,7 +932,7 @@ void suiteChainExactness() {
                 .arg(label).arg(raw.worstDev, 0, 'f', 1).arg(raw.worstAt)
                 .arg(raw.midpoint, 0, 'f', 1).arg(nominalRows));
         caseReport(
-            label, true,
+            label, gFails == failsBefore,
             QString("weight profile midpoint at r=%1 of %2 rows, worst deviation from the box %3 at "
                     "r=%4 (the box is what the tail builder produces)")
                 .arg(raw.midpoint, 0, 'f', 1).arg(nominalRows)
@@ -1234,6 +1271,11 @@ class ProbeGLWidget: public QOpenGLWidget {
 public:
     gl::DeviceInfo mDeviceInfo;
     bool mGLReady = false;
+    // A GL 4.0 core profile has NO default vertex array object, and every draw that sets up
+    // attributes needs one bound. The app creates its own in MainDisplayWidget::initializeGL and
+    // keeps it bound (`mDefaultVAO->bind(); // keep binding`); the probe does the same, so the draw
+    // paths it drives behave exactly as they do in the app.
+    QScopedPointer<gl::VertexArrayObject> mDefaultVao;
 
 protected:
     void initializeGL() override {
@@ -1260,6 +1302,19 @@ protected:
         } else {
             gl::Global::clearFunctions();
             gl::Global::setFunctions(*functions);
+        }
+
+        // ...and keep a vertex array object bound for the probe's lifetime. Created on every pass
+        // because it belongs to the context: a rebuilt widget gets a fresh one, exactly like the
+        // app's initializeGL. The check below is what turns a missing VAO into a bootstrap failure
+        // instead of a mysterious GL_INVALID_OPERATION (1282) inside the first draw.
+        mDefaultVao.reset(new gl::VertexArrayObject());
+        mDefaultVao->bind();
+        GLint boundVao = 0;
+        gl::Global::functions().glGetIntegerv(GL_VERTEX_ARRAY_BINDING, &boundVao);
+        if (boundVao == 0) {
+            std::fprintf(stderr, "FATAL: no vertex array object is bound (core profile needs one)\n");
+            std::exit(2);
         }
     }
 };
@@ -1327,8 +1382,10 @@ int main(int argc, char** argv) {
     std::printf("\n%d checks, %d failures\n", gChecks, gFails);
     std::fflush(stdout);
 
-    // tear GL objects down while the context is still current
+    // tear GL objects down while the context is still current: the fixtures, and the widget's own
+    // vertex array object (its destructor runs with the window, after the context is gone)
     clearRenderFixtures();
+    glWidget->mDefaultVao.reset();
     glWidget->doneCurrent();
     return gFails ? 1 : 0;
 }

@@ -82,7 +82,9 @@ for n in $targets; do
   # and a layer's mesh holder binds GL in its constructor, so it needs a context too -
   # offscreen it aborts before its first check. graph_image_step needs the context only to construct
   # core::ImageKey - the one channel whose step-hold is unobservable without one,
-  # which is why graph_curve (headless, offscreen) reports it as a skip. Both
+  # which is why graph_curve (headless, offscreen) reports it as a skip. verify_mipmap
+  # creates a QOpenGLWidget and draws through the production Texture/ImageKey path, so
+  # without a display it has no context at all and reports the first draw as a GL error. Both
   # ignore the project argument they are handed. The two Canvas gates are here for the
   # plainest reason: a QCanvasPainterWidget is a QRhiWidget, so it needs a GL context to
   # produce a frame at all - an offscreen run reports "no Canvas Painter frame" and fails.
@@ -94,7 +96,7 @@ for n in $targets; do
      [ "$n" = layer_mask_pixels ] ||
      [ "$n" = filter_card_geometry ] || [ "$n" = object_tree_model ] ||
      [ "$n" = brush_tip_pixels ] || [ "$n" = density_meter ] ||
-     [ "$n" = object_tree_panel ]; then
+     [ "$n" = verify_mipmap ] || [ "$n" = object_tree_panel ]; then
     # The end-to-end export harness needs a real GL context and a loaded project, so it
     # runs under Xvfb against the COMMITTED fixture (tests/fixtures/e2e_stage.png) rather
     # than being skipped for want of artwork on the machine. It used to be in the SKIP

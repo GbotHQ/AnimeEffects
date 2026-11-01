@@ -409,7 +409,7 @@ void MaskMipChain::create(gl::Texture& aTexture, const QImage& aLevelZero) {
         aTexture.setWrap(GL_CLAMP_TO_EDGE);
     }
 
-    rebuild(aTexture, QRect(QPoint(0, 0), mBaseSize));
+    rebuild(aTexture, QRect(QPoint(0, 0), mBaseSize), true);
 }
 
 void MaskMipChain::update(gl::Texture& aTexture, const QImage& aLevelZero) {
@@ -417,7 +417,8 @@ void MaskMipChain::update(gl::Texture& aTexture, const QImage& aLevelZero) {
         return;
 
     const QRect field(QPoint(0, 0), mBaseSize);
-    const QRect box = mDirtyAll ? field : mDirtyBox.intersected(field);
+    const bool wholeField = mDirtyAll;
+    const QRect box = wholeField ? field : mDirtyBox.intersected(field);
     mDirtyAll = false;
     mDirtyBox = QRect();
     if (box.isEmpty())
@@ -441,10 +442,10 @@ void MaskMipChain::update(gl::Texture& aTexture, const QImage& aLevelZero) {
         ggl.glBindTexture(GL_TEXTURE_2D, 0);
     }
 
-    rebuild(aTexture, box);
+    rebuild(aTexture, box, wholeField);
 }
 
-void MaskMipChain::rebuild(gl::Texture& aTexture, const QRect& aBaseBox) {
+void MaskMipChain::rebuild(gl::Texture& aTexture, const QRect& aBaseBox, bool aWholeField) {
     const int levels = levelCount(mBaseSize);
     if (levels <= 1 || aBaseBox.isEmpty())
         return;
@@ -462,9 +463,11 @@ void MaskMipChain::rebuild(gl::Texture& aTexture, const QRect& aBaseBox) {
         const QRect destBox = coveredBox(box, aboveSize, size);
         if (destBox.isEmpty())
             break;
-        // an exact halving is built from the level above (and the boxes are aligned blocks of
-        // it); everything below the exact chain is built from the deepest exact level
-        const int sourceLevel = (level <= exact) ? level - 1 : exact;
+        // WHICH FINER LEVEL, from the one rule for a whole field (gl::Texture::mipTailSourceLevel:
+        // level 0 while the footprint is short enough, else the level above) and from the exact
+        // anchor for a stroke's box - see the class note
+        const int sourceLevel = aWholeField ? gl::Texture::mipTailSourceLevel(mBaseSize, level)
+                                            : ((level <= exact) ? level - 1 : exact);
         buildLevel(pass, aTexture.id(), level, destBox, sourceLevel, levelSize(mBaseSize, sourceLevel), size);
         aboveSize = size;
         box = destBox;

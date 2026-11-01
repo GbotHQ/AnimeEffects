@@ -644,7 +644,8 @@ int main(int argc, char** argv) {
                 // Apply the fit the way the widget does: the ladder moves by whole
                 // notches (the wheel's unit), and the view's left edge lands on the
                 // fit's content pixel.
-                editor.updateWheel((editor.timeScale().index() - fit.scaleIndex) * 120, false);
+                // positive delta zooms IN (the wheel-away convention): the ladder grows with it
+                editor.updateWheel((fit.scaleIndex - editor.timeScale().index()) * 120, false);
                 CHECK(editor.timeScale().index() == fit.scaleIndex);
 
                 const double ppf = editor.pixelsPerFrame();
