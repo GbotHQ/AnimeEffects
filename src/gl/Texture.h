@@ -52,12 +52,18 @@ public:
     /// scale, while the sampling model itself swings sharpness 30-40 % between LOD integers in every
     /// policy. Sub-pixel phase sensitivity is identical to three decimals.
     ///
-    /// COST, worked out as taps per output texel times output texels rather than as a geometric series
-    /// (a step whose sizes divide needs 2 taps per axis, one that cuts needs 3, and 2^L TAPS PER OUTPUT
-    /// is what an anchored level really costs): span 1 against span 3 is 1.33 / 3.33 base reads for a
-    /// power-of-two base, 1.42 / 3.66 for 1500x1440, 2.82 / 6.32 for 2894x4093 and 4.39 / 8.33 for
-    /// 15001x15001 - the odd bases pay more in BOTH because most steps then cut (3 taps instead of 2).
-    /// The saving is therefore 2 to 4 base reads, always in the same direction.
+    /// COST, worked out as taps per output texel times output texels rather than as a geometric series.
+    /// The taps are the shader's own `ceil(src/dst)` per axis: 2x2 = 4 per output when the sizes divide
+    /// exactly, 3x3 = 9 when the ratio is just above 2 (a 2.002 footprint always touches three texels -
+    /// a partial, a full, a partial), and R^2 for an anchored level. Span 1 against span 3, in base
+    /// reads: 1.33 / 3.33 for a power-of-two base, 1.37 / 3.49 for 1500x1440, 2.06 / 4.74 for
+    /// 2894x4093 and 2.61 / 5.50 for 15001x15001 - odd bases pay more in both, because most of their
+    /// steps then cut and cost 9 taps instead of 4. The saving is 2 to 3 base reads, always the same
+    /// direction.
+    ///
+    /// THE SHRINK IS FREE: it narrows the window the weights are taken over, it does not add taps. The
+    /// shader still loops ceil(src/dst) per axis; a narrowed window only ever gives a boundary tap less
+    /// (or zero) overlap, and a zero-overlap tap is skipped.
     ///
     /// WHY THE SHRINK, and why it is exactly what that chain needs. The overlap-weighted average of
     /// whole source texels is WIDER than the footprint it stands for, and a chain applies it twice: that
