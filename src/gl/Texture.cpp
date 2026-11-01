@@ -48,14 +48,23 @@ uniform vec2 uSrcSize;
 uniform vec2 uDstSize;
 uniform int uTapsX;
 uniform int uTapsY;
+uniform float uShrink;
 out vec4 fragColor;
 
 void main() {
     // destination texel j (gl_FragCoord.xy is its centre, j + 0.5), and the source interval it
-    // covers: [j * src / dst, (j + 1) * src / dst] in source texel coordinates
+    // covers: [j * src / dst, (j + 1) * src / dst] in source texel coordinates. The interval is then
+    // NARROWED around its own centre by kMipStepShrink (see Texture.h): the overlap-weighted average
+    // of whole texels is wider than the interval it stands for, and narrowing compensates that -
+    // measured to restore the sharpness the chained level would otherwise lose. On a step whose
+    // ratio is exactly 2 narrowing is a no-op (the same two texels, equal weights).
     vec2 j = floor(gl_FragCoord.xy);
     vec2 lo = j * uSrcSize / uDstSize;
     vec2 hi = (j + vec2(1.0)) * uSrcSize / uDstSize;
+    vec2 mid = (lo + hi) * 0.5;
+    vec2 halfSpan = (hi - lo) * 0.5 * uShrink;
+    lo = mid - halfSpan;
+    hi = mid + halfSpan;
     vec4 acc = vec4(0.0);
     float wsum = 0.0;
     for (int ty = 0; ty < uTapsY; ++ty) {
@@ -194,6 +203,11 @@ void buildMipTailOnGpu(GLuint aTextureId, const QSize& aSize, int aExactLevels, 
         program.setUniformValue("uDstSize", QVector2D((float)dstW, (float)dstH));
         program.setUniformValue("uTapsX", tapsX);
         program.setUniformValue("uTapsY", tapsY);
+        // level 1 is a straight reduction of the ORIGINAL (level 0): its area average is already the
+        // correct 2x reduction, and narrowing it was measured to overshoot (000026 +2.65 % -> +4.21 %
+        // against the ideal at LOD 1, 000169 -0.09 % -> +1.90 %). The shrink compensates the extra
+        // low-pass a CHAINED step applies to an already-averaged source, which begins at level 2.
+        program.setUniformValue("uShrink", l == 1 ? 1.0f : Texture::kMipStepShrink);
         ggl.glDrawArrays(GL_TRIANGLES, 0, 3);
     }
 
@@ -230,10 +244,11 @@ void buildMipTailOnGpu(GLuint aTextureId, const QSize& aSize, int aExactLevels, 
 
 // defined here because it is odr-used (bound to a reference by std::max, passed around)
 const int Texture::kMipChainSpan;
+const float Texture::kMipStepShrink = 0.8f;
 
 int Texture::mipSourceLevel(int aLevel) {
     XC_ASSERT(aLevel >= 1);
-    return std::max(0, aLevel - kMipChainSpan);
+    return std::max(0, aLevel - kMipChainSpan); // kMipChainSpan is 1: the level directly above
 }
 
 Texture::Texture(): mId(0), mSize(), mMipmapLevels(1), mBytes(0) {}

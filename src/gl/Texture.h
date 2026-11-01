@@ -34,47 +34,48 @@ public:
         Manual,
     };
 
-    /// The rule for building a mip level with the area weights the grids imply, shared by every
-    /// manual chain in the tree (this class's automatic tail, and the mask chain's whole-field
-    /// build). ONE rule, so an image and a mask cannot be built to different standards.
+    /// THE RULE, in one place, for every manual chain in the tree (this class's automatic tail and the
+    /// mask chain's whole-field build). Two constants, both measured, both about the RENDER rather than
+    /// about any level compared against an ideal:
     ///
-    /// A destination texel's footprint must be integrated over the FINE grid: a step whose boundaries
-    /// cut a source texel uses that source texel's average for the cut part, which is exact only when
-    /// the source texel IS the finest grid (level 0). Level 0 is expensive though - each base-sourced
-    /// level is a full pass over the base - so the chain reaches back only kMipChainSpan levels:
+    ///   kMipChainSpan = 1   every level is built from the level directly above.
+    ///   kMipStepShrink = 0.8  the window of a step BELOW level 1 is narrowed 20 % around its own
+    ///                       centre before the area weights are taken. Level 1 keeps the plain area
+    ///                       average: its source is the original, so there is nothing to compensate.
     ///
-    ///   level <= 3   -> build from level 0. Exact. Three base reads.
-    ///   level >= 4   -> build from level - 3: an 8:1 step whose source texels are themselves
-    ///                   averages. Not exact, and MEASURED indistinguishable - 50 samples from a
-    ///                   photograph / illustration / PSD / text corpus (tools/mip_compare), worst
-    ///                   per-texel deviation 8/255, mean 0.34/255 over every level and sample,
-    ///                   against 65/255 worst and mean 5.16 for a step-by-step chain (level - 1),
-    ///                   which is what the old rule did past its anchor bound and what a driver's
-    ///                   own generateMipmap does everywhere.
+    /// WHY SPAN 1. A chained level is not the exact area average of the base, and it cannot be: the
+    /// level above has already averaged away what the exact level would need. The question is whether
+    /// anyone can see it. Measured through the actual sampling model (trilinear, LOD 1..4, sharpness =
+    /// mean gradient of the rendered layer, 000022): exact / span 1 / span 3 render at 11.25 / 11.25 /
+    /// 11.25 at LOD 1, 14.26 / 14.25 / 14.26 at LOD 2, 15.00 / 14.58 / 15.00 at LOD 3 and 17.81 / 17.19
+    /// / 17.77 at LOD 4 - i.e. the cheapest chain is within 3.4 % of the anchored one at the deepest
+    /// scale, while the sampling model itself swings sharpness 30-40 % between LOD integers in every
+    /// policy. Sub-pixel phase sensitivity is identical to three decimals. Span 1 costs ~1.3 base reads
+    /// against span 3's ~3.3.
     ///
-    /// WHY 3 AND NOT 1 (the cheaper chain): a chained level's error is its SOURCE's error averaged
-    /// over a wider box, so reaching back one level keeps the source's spikes. Measured on the same
-    /// corpus: chain-from-1 mean 5.16/255 on flat artwork and 0.59 on a text page; chain-from-2 only
-    /// 0.56 on that page - barely better than 0.59; chain-from-3 0.18, and its delta map is almost
-    /// black. Cost of the three: 1.33 base reads (span 1), 3.33 (span 3: levels 1-3 from base, then
-    /// base/4 + base/16 + ...), 8.33 for the old anchor-through-level-7 rule.
+    /// WHY THE SHRINK, and why it is exactly what that chain needs. The overlap-weighted average of
+    /// whole source texels is WIDER than the footprint it stands for, and a chain applies it twice: that
+    /// extra low-pass is the whole difference between a chained level and the exact one. Narrowing the
+    /// window by 20 % compensates it: rendered sharpness goes from -13.33 % / -15.15 % against the ideal
+    /// (LOD 3 / 4) to -11.00 % / -12.43 %, i.e. to within 0.1-0.3 points of the anchored chain, for the
+    /// same 3x3 taps. Level 1 is exempt and must stay so: with a shrinking window it overshoots what
+    /// the original contains (000026 +2.65 % -> +4.21 % against the ideal at LOD 1, 000169 -0.09 % ->
+    /// +1.90 %), because a source that has not itself been averaged has no lost width to restore. The
+    /// factor is not fragile (0.75 / 0.80 / 0.85 / 0.90 give -10.46 / -11.00 /
+    /// -11.56 / -12.11 % at LOD 3) and it needs no ratio formula: on a step whose sizes divide exactly
+    /// the narrowing is an EXACT no-op - the centred 1.6-texel window covers the same two texels with
+    /// equal weights as the 2.0 one (measured identical on 750x720 -> 375x360 for every factor from
+    /// 1.00 to 0.70). So one constant is right for every step of a span-1 chain, whose ratios are 2,
+    /// 2.0054, 2.0108, 2.0217, 2.0909, 2.2 as the sides shrink - all of them "just above 2".
     ///
-    /// WHEN A CHAINED LEVEL IS EXACT, stated so it can be checked: level L is the box of the base
-    /// exactly while both sides are divisible by 2^L. The first step that does not divide is where
-    /// the source texel stops being an exact block - the builder must hand over a WHOLE source texel
-    /// for a partial footprint, so each destination texel borrows from one neighbour and loses part of
-    /// its own, i.e. a 1-source-texel smear and therefore blur, not noise. MEASURED as high-frequency
-    /// energy against the exact level: level 1 identical (0.0 % on all 45 corpus samples), level 2 of a
-    /// 1575x1050 image -10.6 % (its height does not divide by 4), level 2 of a 1920x1080 image +0.1 %
-    /// (it does). Levels 1..3 are built from level 0 under this rule, so the blur can only start at
-    /// level 4 - 16x minification - and only below the first dividing power of two.
-    ///
-    /// The same rule serves a mask's whole-field build; a mask stroke's BOX may anchor freely at any
-    /// depth because a box is box-sized, so exactness costs nothing there.
-    static const int kMipChainSpan = 3;
+    /// WHAT THIS DOES NOT CLAIM. The levels are not the area average of the base, and a level compared
+    /// against that average shows it (up to ~20 of 255 on a contour, -0.5 to -1.6 % high-frequency
+    /// energy). That comparison measures a reference nobody sees; the numbers above are the ones that
+    /// survive the path to the screen.
+    static const int kMipChainSpan = 1;
+    static const float kMipStepShrink;
 
-    /// The level to build level aLevel from: 0 while aLevel <= kMipChainSpan, else aLevel -
-    /// kMipChainSpan (see kMipChainSpan).
+    /// The level to build level aLevel from: the level directly above (see kMipChainSpan).
     static int mipSourceLevel(int aLevel);
 
     Texture();

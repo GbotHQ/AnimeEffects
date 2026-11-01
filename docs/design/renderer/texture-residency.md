@@ -398,6 +398,17 @@ when every gate is green on every project and the counter shows no regression, t
   exactly where the straddle weight is worst - near 2:1 - so its first chained step is the 8:1 case,
   where the plain area box is the better kernel.
 
+  **SHIPPED RULE (decided 2026-11-01): span 1, with the window tightened to 0.8 from level 2 up.**
+  `gl::Texture::kMipChainSpan = 1` and `kMipStepShrink = 0.8f`; level 1 keeps the plain area average of
+  the base, because a source that has not itself been averaged has no lost width to restore (measured:
+  tightening level 1 overshoots - 000026 renders +2.65 % against the ideal at LOD 1 without it and
+  +4.21 % with it, while 000169 goes -0.09 % -> +1.90 %). The mask chain's whole-field build calls the
+  same rule, so an image and a mask cannot drift. Import cost falls from ~3.3 base reads to ~1.3 and the
+  visible cost is 0.1-0.3 points of rendered sharpness at LOD 3-4. The probe holds the behaviour: 128
+  checks, including the analytic ramp (the reference equals the closed form to 1/255), the hard edge
+  (confined to its own column), and the shipped chain at levels 2 and 8 - the first is the box to 0.3
+  when its source is exact and tiles, the second is not by design (10.7 of 255) and is bounded at 15.
+
   **Tightening the box** (a reviewer's suggestion worth its numbers): the extra blur is not sampling
   between texels - the taps are whole texels - it is that the overlap-weighted 3-tap average is
   slightly WIDER than the ideal 2.002-texel box. Mixing the area kernel with a 2-tap box snapped to

@@ -869,8 +869,11 @@ void suiteChainExactness() {
             double bound;
             const char* what;
         };
+        // With span 1 the levels below 8 are chained AND tightened, so level 8 is no longer the box of
+        // the base - by design: kMipStepShrink trades that identity for rendered sharpness. The bound
+        // here is the measurement with headroom, so a change in the shrink or the span shows up.
         const Half halves[] = {{gl::Texture::kMipChainSpan + 1, 1.0, "source exact, step tiles"},
-                               {8, 6.0, "source itself chained"}};
+                               {8, 15.0, "source itself chained and tightened"}};
         for (size_t hi = 0; hi < sizeof(halves) / sizeof(halves[0]); ++hi) {
             const int lev = halves[hi].level;
             const int srcLevel = gl::Texture::mipSourceLevel(lev);
