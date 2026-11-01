@@ -106,7 +106,7 @@ gl::EasyShaderProgram& mipTailProgram() {
 }
 
 /// Builds levels aExactLevels+1 .. aLevelCount-1 with the area weights the level grids imply, from
-/// the source levels Texture::mipTailSourceLevel chooses (the rule, its exactness boundary and its
+/// the source levels Texture::mipSourceLevel chooses (the rule, its exactness boundary and its
 /// cost are documented there, once, for every manual chain in the tree).
 ///
 /// WHY A LEVEL OF THE SAME TEXTURE AND NOT A SCRATCH COPY. Rendering level l while fetching a
@@ -180,7 +180,7 @@ void buildMipTailOnGpu(GLuint aTextureId, const QSize& aSize, int aExactLevels, 
         const int dstH = std::max(1, baseH >> l);
 
         // the shared anchor rule - one constant, one comment, in the header
-        const int srcLevel = Texture::mipTailSourceLevel(aSize, l);
+        const int srcLevel = Texture::mipSourceLevel(l);
         const int srcW = std::max(1, baseW >> srcLevel);
         const int srcH = std::max(1, baseH >> srcLevel);
         const int tapsX = (srcW + dstW - 1) / dstW;
@@ -229,17 +229,11 @@ void buildMipTailOnGpu(GLuint aTextureId, const QSize& aSize, int aExactLevels, 
 } // namespace
 
 // defined here because it is odr-used (bound to a reference by std::max, passed around)
-const int Texture::kMipTailMaxTaps;
+const int Texture::kMipChainSpan;
 
-int Texture::mipTailSourceLevel(const QSize& aSize, int aLevel) {
+int Texture::mipSourceLevel(int aLevel) {
     XC_ASSERT(aLevel >= 1);
-    XC_ASSERT(aSize.isValid() && !aSize.isEmpty());
-
-    const int dstW = std::max(1, aSize.width() >> aLevel);
-    const int dstH = std::max(1, aSize.height() >> aLevel);
-    const int tapsX = (aSize.width() + dstW - 1) / dstW;
-    const int tapsY = (aSize.height() + dstH - 1) / dstH;
-    return (std::max(tapsX, tapsY) <= kMipTailMaxTaps) ? 0 : (aLevel - 1);
+    return std::max(0, aLevel - kMipChainSpan);
 }
 
 Texture::Texture(): mId(0), mSize(), mMipmapLevels(1), mBytes(0) {}
@@ -294,10 +288,10 @@ void Texture::create(
         // 255 (on a 1920-texel side's deepest level, where the layer is under 2 screen pixels), and
         // 17 of 255 at the first non-dividing level, where the layer can still be 7 pixels across.
         //
-        // So the tail is built here, with the area weights the level grid implies, on the GPU: from
-        // level 0 while a footprint is at most 128 texels per axis - so levels up to 128x
-        // minification are exact for ANY size, odd sides included - and from the level above beyond
-        // that, where the step halves or is between 2:1 and 3:1 (see buildMipTailOnGpu). A
+        // So the tail is built here, with the area weights the level grid implies, on the GPU:
+        // levels 1..3 from level 0 - exact for ANY size, odd sides included - and level 4 and up
+        // from level - 3, an 8:1 step whose source texels are themselves averages (see
+        // gl::Texture::kMipChainSpan for the measurement that chose 3, and buildMipTailOnGpu). A
         // power-of-two size has no tail and pays nothing; an odd side (exactLevels 0) has nothing
         // glGenerateMipmap can be trusted for and pays one pass over its base per exact level - no
         // readback, where the CPU resample this replaced would have read the whole base back (900 MB

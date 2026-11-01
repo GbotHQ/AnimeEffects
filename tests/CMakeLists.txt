@@ -1885,3 +1885,26 @@ target_link_libraries(verify_mipmap PRIVATE
     Qt6::Svg Qt6::Xml Qt6::Concurrent Qt6::Multimedia
     cmnd core ctrl gl img thr util pugixml
 )
+
+# MIPMAP POLICY RESEARCH HARNESS (tools/mip_compare): how far each alternative to the reach-back
+# rule in gl::Texture::mipSourceLevel drifts from the exact area average of the premultiplied
+# content. It is registered here for the same reason verify_mipmap is - a tool nothing compiles
+# rots - but it is NOT a gate: it needs a sample image and an output directory, and it writes a
+# PNG per level per policy. scripts/run_suites.sh therefore SKIPs it; run it by hand:
+#   ./build/tests/Debug/mip_compare art.png /tmp/mip-out
+# No GL context is needed (the reference is CPU arithmetic), so it runs headless as-is.
+add_executable(mip_compare
+    ../tools/mip_compare/mip_compare.cpp
+)
+target_include_directories(mip_compare PRIVATE ..)
+target_compile_definitions(mip_compare PRIVATE
+    AE_MAJOR_VERSION=1
+    AE_MINOR_VERSION=7
+    AE_MICRO_VERSION=1
+)
+# img (PSDReader/PSDUtil for the flattened PSD composite) is the only project library needed; it
+# brings util, pugixml and the rest of its Qt interface along.
+target_link_libraries(mip_compare PRIVATE
+    Qt6::Core Qt6::Gui Qt6::Widgets
+    img util pugixml
+)

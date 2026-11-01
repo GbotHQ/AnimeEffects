@@ -463,10 +463,11 @@ void MaskMipChain::rebuild(gl::Texture& aTexture, const QRect& aBaseBox, bool aW
         const QRect destBox = coveredBox(box, aboveSize, size);
         if (destBox.isEmpty())
             break;
-        // WHICH FINER LEVEL, from the one rule for a whole field (gl::Texture::mipTailSourceLevel:
+        // WHICH FINER LEVEL, from the one rule for a whole field (gl::Texture::mipSourceLevel:
+        // level 0 for levels 1..3, level - 3 beyond) and from the deepest exact level for a box
         // level 0 while the footprint is short enough, else the level above) and from the exact
         // anchor for a stroke's box - see the class note
-        const int sourceLevel = aWholeField ? gl::Texture::mipTailSourceLevel(mBaseSize, level)
+        const int sourceLevel = aWholeField ? gl::Texture::mipSourceLevel(level)
                                             : ((level <= exact) ? level - 1 : exact);
         buildLevel(pass, aTexture.id(), level, destBox, sourceLevel, levelSize(mBaseSize, sourceLevel), size);
         aboveSize = size;

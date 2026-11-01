@@ -56,10 +56,11 @@ black backdrop a correct chain shows `source * coverage`, and a chain that keeps
   numerically identical, so a bright shape on transparent black cannot see a missing premultiply at
   all).
 - **M18 — every level, every size, odd sides included.** Sizes 64, 100, 129, 300, 384, 501 and 513,
-  against the area average of the level-0 upload, texel by texel. `gl::Texture::create` builds its
-  levels from level 0 while a footprint is at most 128 texels per axis (2x..128x minification, for any
-  size) and from the level above beyond that, where a step is always between 2:1 and 3:1; the probe
-  asserts exactness where the rule promises it and a documented tighter bound on the chained tail.
+  against the area average of the level-0 upload, texel by texel. `gl::Texture::create` builds
+  levels 1..3 from level 0 (exact for any size, odd sides included) and level 4+ from level - 3, an
+  8:1 step whose source texels are themselves averages; the probe asserts exactness on the
+  base-sourced levels and the documented bound (8/255, from the 50-sample corpus in
+  `tools/mip_compare`) on the chained tail.
   Plus the **mutation control**: the same step swept through a 384-texel side, level 8, read out of a
   RAW `glGenerateMipmap` chain (plain GL, no tail builder) must NOT be the box of its own footprint —
   this driver weights rows [128, 256), the middle third, and none of the rest. Without that control

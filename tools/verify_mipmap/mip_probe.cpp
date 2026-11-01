@@ -633,10 +633,10 @@ void suiteImageKey() {
     }
 
     // Every level against the analytic area average of the premultiplied upload. gl::Texture::create
-    // builds each level from level 0 while its footprint is at most
-    // gl::Texture::kMipTailMaxTaps texels (128), so at this size every level but the 1x1 is
-    // base-sourced and this is an exactness assertion; the 1x1 is a 2:1 step from the 2x1 level and
-    // exact as well.
+    // follows the reach-back rule (gl::Texture::mipSourceLevel): levels 1..3 are built from level 0
+    // and are exactness assertions, while level 4 and above chain from level - 3 - an 8:1 step whose
+    // source texels are themselves averages, exact only where the step tiles and its source level is
+    // exact. Those levels are held to the same 3/255 here, which this 129x77 content meets.
     const Img upload = premultipliedUpload(src);
     int worstAll = 0;
     for (int l = 1; l < tex.mipmapLevels(); ++l) {
@@ -695,14 +695,15 @@ void suiteImageKey() {
 }
 
 //-------------------------------------------------------------------------------------------------
-// M18: is the chain the exact box at EVERY level, for every size - odd sides included?
+// M18: is the chain the exact box at levels 1..3, and close to it below, for every size - odd sides
+// included?
 //
 // Level l has max(1, side >> l) texels spanning the whole [0, 1] of normalized coordinates, so it is
 // an exact grid of 2^l-texel boxes only while 2^l divides the side. Past that the level must still be
 // the area average of its own footprint, and that is what gl::Texture::create builds: from level 0
-// while the footprint is at most gl::Texture::kMipTailMaxTaps texels per axis (128), from the
-// level above after
-// that, where a step is between 2:1 and 3:1.
+// while l <= gl::Texture::kMipChainSpan (levels 1..3, exact for any size), and from level l - 3 after
+// that - an 8:1 step whose source texels are themselves averages, so those levels are held to a wider
+// bound: they are the exact box only where the step tiles and its source level is exact too.
 //
 // This driver's own glGenerateMipmap does NOT do that with a source that does not halve, and the
 // mutation control below measures it: a step swept through a 384-texel side, level 8, read out of a
@@ -712,10 +713,11 @@ void suiteImageKey() {
 // -83.7 of 255 on this driver for the 384 side, -117.5 at level 10 of 1920.
 //
 // Sizes: a power of two (nothing to build), sizes with 1 and 2 trailing zero bits, and odd 129/300/
-// 501/513 sides (nothing exact to inherit - every level is base-sourced up to 128x).
+// 501/513 sides (no exact 2:1 step to inherit: levels 1..3 are area steps from level 0, and level 4
+// on chains from level - 3).
 
-// The anchor rule is gl::Texture's, not the probe's (gl/Texture.h: kMipTailMaxTaps and
-// mipTailSourceLevel) - one constant, one comment, so the assertion and the builder cannot drift.
+// The reach-back rule is gl::Texture's, not the probe's (gl/Texture.h: kMipChainSpan and
+// mipSourceLevel) - one constant, one comment, so the assertion and the builder cannot drift.
 
 // The level aLev of a step image (rows [0, aRow) white, the rest black), read at level texel (0, 0):
 // 255 * the weight the level gives the rows above the step. aRaw builds the chain with plain GL
@@ -815,7 +817,7 @@ void suiteChainExactness() {
             const int dw = std::max(1, size >> l);
             const int dh = dw;
             const int taps = std::max((size + dw - 1) / dw, (size + dh - 1) / dh);
-            const int srcLevel = gl::Texture::mipTailSourceLevel(QSize(size, size), l);
+            const int srcLevel = gl::Texture::mipSourceLevel(l);
             const std::vector<uint8_t> want = areaLevel(src.d, size, size, dw, dh);
             const int delta = maxAnyChannelDelta(chain[(size_t)l].d, want);
             if (srcLevel == 0) {
@@ -826,8 +828,8 @@ void suiteChainExactness() {
                             "its own footprint (delta %6)")
                         .arg(label).arg(l).arg(dw).arg(dh).arg(taps).arg(delta));
             } else {
-                // past 128x the source is the level above; the cut texels are a sub-texel
-                // approximation, so the bound is wider (measured a few units on this content)
+                // chained: the source is level - 3, whose texels are themselves averages, so the
+                // cut ones are a sub-texel approximation and the bound is wider (a few units here)
                 if (firstChained < 0)
                     firstChained = l;
                 expect(delta <= 8,
@@ -848,70 +850,86 @@ void suiteChainExactness() {
         );
     }
 
-    // ---- THE SHIPPED CHAIN at the level that used to be filled with a band: a 384-texel side's
-    // level 8 is one texel over the whole side.
+    // ---- THE SHIPPED CHAIN, at the two levels that test the two halves of the rule.
     //
-    // WHICH ASSERTION IS THE CONTRACT, and why it can be the strict one here: 384 = 3 * 2^7, so
-    // gl::Texture::mipTailSourceLevel anchors level 8 at level 7 (384 taps from level 0 is past the
-    // 128 cap), and level 7 has 3 texels - 3 onto 1 TILES EXACTLY, so the chained build is the exact
-    // area average, not an approximation of it. The box assertion (<= 1) is therefore the rule for
-    // this case, and the looser chained bound (<= 8) is the rule for the steps that do not tile,
-    // asserted per size in the loop above. The precondition is derived here rather than assumed.
+    // THE EXACT HALF: 384 = 3 * 2^7, so level 4 of a 384 side is 24 texels built from level 1 (192
+    // texels) - an 8:1 step that TILES EXACTLY, and level 1 is itself the exact 2:1 box of level 0.
+    // The composition is therefore the exact box of the base, and the strict bound (<= 1) is the
+    // contract here. The precondition (source level exact, step tiling) is derived, not assumed.
+    //
+    // THE APPROXIMATE HALF: level 8 of the same side is one texel built from level 5 (12 texels,
+    // itself chained from level 2), and 12 onto 1 tiles exactly - yet the result is NOT the box of
+    // the base, because level 5 is not: the deviation measured here (2.9 of 255) is the chained
+    // source's own error, which is the price kMipChainSpan documents. The bound is that measurement
+    // with headroom, so a regression in the reach-back shows up.
     {
         const int side = 384;
-        const int lev = 8;
-        const int srcLevel = gl::Texture::mipTailSourceLevel(QSize(side, side), lev);
-        const int srcTexels = std::max(1, side >> srcLevel);
-        const int dstTexels = std::max(1, side >> lev);
-        const bool chained = srcLevel != 0;
-        const bool tilesExactly = (srcTexels % dstTexels) == 0;
-        const int nominalRows = side / dstTexels;
-        const QString label = QString("M18 shipped chain, %1 square level %2").arg(side).arg(lev);
+        struct Half {
+            int level;
+            double bound;
+            const char* what;
+        };
+        const Half halves[] = {{gl::Texture::kMipChainSpan + 1, 1.0, "source exact, step tiles"},
+                               {8, 6.0, "source itself chained"}};
+        for (size_t hi = 0; hi < sizeof(halves) / sizeof(halves[0]); ++hi) {
+            const int lev = halves[hi].level;
+            const int srcLevel = gl::Texture::mipSourceLevel(lev);
+            const int srcTexels = std::max(1, side >> srcLevel);
+            const int dstTexels = std::max(1, side >> lev);
+            const bool tilesExactly = (srcTexels % dstTexels) == 0;
+            const bool sourceExact = srcLevel == 0 || srcLevel <= gl::Texture::kMipChainSpan;
+            const int nominalRows = side / dstTexels;
+            const QString label = QString("M18 shipped chain, %1 square level %2").arg(side).arg(lev);
 
-        const int failsBefore = gFails;
-        expect(tilesExactly,
-            QString("%1: the strict box assertion needs the chained step to tile exactly (%2 texels "
-                    "of level %3 onto %4 of level %5)").arg(label)
-                .arg(srcTexels).arg(srcLevel).arg(dstTexels).arg(lev));
-
-        const StepProfile shipped = scanStep(side, lev, 8, false);
-        expect(shipped.monotone,
-            QString("%1: the weight profile must rise monotonically").arg(label));
-        expect(std::fabs(shipped.worstDev) <= 1.0,
-            QString("%1: the level must be the box of its own footprint (%2 base rows, %3) - worst "
-                    "deviation %4 at r=%5, midpoint %6")
-                .arg(label).arg(nominalRows)
-                .arg(chained ? QString("chained from level %1, tiling exactly").arg(srcLevel)
-                             : QString("from level 0"))
-                .arg(shipped.worstDev, 0, 'f', 1).arg(shipped.worstAt)
-                .arg(shipped.midpoint, 0, 'f', 1));
-
-        // flat content must reduce to itself: no halo, dark or bright, from the level's shape
-        Img flat;
-        flat.w = flat.h = side;
-        flat.d.assign((size_t)side * side * 4, 0);
-        for (int y = 0; y < side; ++y)
-            for (int x = 0; x < side; ++x) {
-                uint8_t* q = flat.at(x, y);
-                q[0] = q[1] = q[2] = 200;
-                q[3] = 255;
+            const int failsBefore = gFails;
+            expect(tilesExactly,
+                QString("%1: both halves need the step to tile exactly (%2 texels of level %3 onto "
+                        "%4 of level %5)").arg(label)
+                    .arg(srcTexels).arg(srcLevel).arg(dstTexels).arg(lev));
+            if (halves[hi].bound <= 1.0) {
+                expect(sourceExact,
+                    QString("%1: the strict box assertion also needs an exact source level (level %2)")
+                        .arg(label).arg(srcLevel));
             }
-        // the chain must outlive the pointer into its pixels: readChain returns a vector BY VALUE,
-        // and binding the pointer straight out of the temporary (as this line used to) read freed
-        // memory - a uniform field cannot produce a non-uniform value under any area weighting, so
-        // the garbage showed up as "rgb 196, alpha 17".
-        const std::vector<Img> flatChain = readChain(flat, true);
-        const uint8_t* deep = flatChain[(size_t)lev].at(0, 0);
-        expect(std::abs((int)deep[0] - 200) <= 1 && deep[3] >= 254,
-            QString("%1: uniform content must reduce to itself (rgb %2, alpha %3)")
-                .arg(label).arg((int)deep[0]).arg((int)deep[3]));
 
-        caseReport(
-            label, gFails == failsBefore,
-            QString("footprint %1 rows, midpoint at r=%2, worst deviation from the box %3 at r=%4")
-                .arg(nominalRows).arg(shipped.midpoint, 0, 'f', 1)
-                .arg(shipped.worstDev, 0, 'f', 1).arg(shipped.worstAt)
-        );
+            const StepProfile shipped = scanStep(side, lev, 8, false);
+            expect(shipped.monotone,
+                QString("%1: the weight profile must rise monotonically").arg(label));
+            expect(std::fabs(shipped.worstDev) <= halves[hi].bound,
+                QString("%1: deviation from the box must stay within %2 (%3) - worst %4 at r=%5, "
+                        "midpoint %6")
+                    .arg(label).arg(halves[hi].bound, 0, 'f', 1).arg(halves[hi].what)
+                    .arg(shipped.worstDev, 0, 'f', 1).arg(shipped.worstAt)
+                    .arg(shipped.midpoint, 0, 'f', 1));
+
+            // flat content must reduce to itself: no halo, dark or bright, from the level's shape
+            Img flat;
+            flat.w = flat.h = side;
+            flat.d.assign((size_t)side * side * 4, 0);
+            for (int y = 0; y < side; ++y)
+                for (int x = 0; x < side; ++x) {
+                    uint8_t* q = flat.at(x, y);
+                    q[0] = q[1] = q[2] = 200;
+                    q[3] = 255;
+                }
+            // the chain must outlive the pointer into its pixels: readChain returns a vector BY
+            // VALUE, and binding the pointer straight out of the temporary (as this line used to)
+            // read freed memory - a uniform field cannot produce a non-uniform value under any area
+            // weighting, so the garbage showed up as "rgb 196, alpha 17".
+            const std::vector<Img> flatChain = readChain(flat, true);
+            const uint8_t* deep = flatChain[(size_t)lev].at(0, 0);
+            expect(std::abs((int)deep[0] - 200) <= 1 && deep[3] >= 254,
+                QString("%1: uniform content must reduce to itself (rgb %2, alpha %3)")
+                    .arg(label).arg((int)deep[0]).arg((int)deep[3]));
+
+            caseReport(
+                label, gFails == failsBefore,
+                QString("footprint %1 rows, midpoint at r=%2, worst deviation from the box %3 at "
+                        "r=%4 (%5)")
+                    .arg(nominalRows).arg(shipped.midpoint, 0, 'f', 1)
+                    .arg(shipped.worstDev, 0, 'f', 1).arg(shipped.worstAt)
+                    .arg(halves[hi].what));
+        }
     }
 
     // ---- THE MUTATION CONTROL: the raw driver chain, with no tail builder, is NOT that box. This is

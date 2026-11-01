@@ -49,38 +49,42 @@ class Deserializer;
 // the driver's own levels divide) must NOT be used here: every mask shader maps content pixels
 // onto the texture with `uv = (q - rect.xy) / rect.zw` (LayerDrawingFrag's LAYER_MASK,
 // FilterFrame's mask passes), i.e. normalized coordinates over the rect's size - a texture
-// larger than the rect would stretch the field across the padding. The chain is exact without
-// it because the levels are computed from the data instead of asked of the driver.
+// larger than the rect would stretch the field across the padding. The chain needs no padding
+// because the levels are computed from the data instead of asked of the driver.
 //
 // WHERE A LEVEL COMES FROM
 //   * level l has max(1, side >> l) texels (gl/Texture.cpp's rule), so level l is an
 //     EXACT halving of level l-1 while 2^l divides both sides, i.e. while
-//     l <= exactLevels(). Those levels are the aligned 2x2 average of the level above:
-//     2 taps per axis (4 per output texel), and the box has the same shape as the one
-//     above it.
-//   * The FIRST level that does not halve, and every level below it, is an AREA-WEIGHTED
-//     reduction of a finer level, with the weights gl/Texture.cpp's GPU tail applies: destination
-//     texel j covers [j * srcSide / dstSide, (j + 1) * srcSide / dstSide) of the source and every
-//     source texel contributes the length of its overlap. WHICH finer level is the anchor is the
-//     next bullet; reading further up than the level directly below is what keeps a level the
-//     average it claims to be - chaining every step spreads the fractional remainder of a
-//     footprint over a whole texel of the level below (the branch measured -13 of 255 at level 8
-//     of a 1920-texel side when every step was chained, 0 when taken from the exact level).
-//   * TWO ANCHORS, chosen by how much is being rebuilt:
+//     l <= exactLevels(). Such a level is the aligned 2x2 average of the level above, i.e. the
+//     2^l x 2^l box of level 0 - the same value either way - and the box has the same shape as the
+//     one above it. (The image path lets the driver produce those levels; this chain builds every
+//     level itself, so a whole-field build still reads level 0 for them.)
+//   * EVERY level is an AREA-WEIGHTED reduction of a finer level, with the weights
+//     gl/Texture.cpp's GPU tail applies: destination texel j covers
+//     [j * srcSide / dstSide, (j + 1) * srcSide / dstSide) of the source and every source texel
+//     contributes the length of its overlap. Where the step halves, those overlaps are whole
+//     texels; where it does not they are fractional, and WHICH finer level is read is the next
+//     bullet. Reading a finer level than the one directly below - level 0 for levels 1..3 and
+//     level - 3 beyond, in a whole-field build - is what keeps a level the average it claims to be:
+//     exact from level 0, close when the source is itself an average. Chaining every step instead
+//     spreads the fractional remainder of a footprint over a whole texel of the level below.
+//     Measured over a 45-sample corpus (tools/mip_compare), a step-by-step chain deviates from the
+//     box by up to 65 of 255 (mean 5.16 on its worst sample), where the reach-back rule below stays
+//     at 8 (mean 0.34).
+//   * WHICH FINER LEVEL, chosen by how much is being rebuilt:
 //       - a WHOLE-FIELD build (create, markDirtyAll: creation, clear, undo, deserialize) asks
-//         gl::Texture::mipTailSourceLevel, the ONE rule the image path also uses - level 0 while a
-//         footprint is at most gl::Texture::kMipTailMaxTaps per axis (so every level up to 128x is
-//         exact for any size, odd sides included), the level above beyond that. That bounds a
-//         nothing-halves field to a handful of base passes plus a third of the base, i.e. what an
-//         import costs. It is also used for the exact levels of such a build (where the level above
-//         would be an exact 2:1 step too): the anchor decision then lives in ONE place instead of
-//         two. And the cap costs no exactness on a side that divides deeply: past 128x the step is
-//         a 2:1 halving there (4096's level 8 is 2:1 from level 7, not 256 taps from level 0), so
-//         the chained value is still the exact average. The approximation the cap accepts exists
-//         only where the chained step itself does not halve.
-//       - a STROKE'S BOX takes the deepest exact level at any depth. That is exact at every level
-//         of an odd side and cheap where it matters, because the box is tiny - see COST for the
-//         depth at which it stops being free.
+//         gl::Texture::mipSourceLevel, the ONE rule the image path also uses: level <= 3 is built
+//         from level 0 (exact, and only three base passes), level >= 4 from level - 3. That is an
+//         8:1 step whose source texels are themselves averages, so it is exact only where the step
+//         tiles and its source level is exact - and MEASURED indistinguishable from exact either
+//         way: worst 8 of 255, mean 0.34 over every level and sample. It bounds a field where
+//         nothing halves to 3.33 base reads (levels 1..3 from the base, then base/4 + base/16 +
+//         ...), i.e. what an import costs, where the rule it replaced - the base through level 7,
+//         then a chain - was 8.33. The rule lives in ONE place, so the mask and the image path
+//         cannot drift.
+//       - a STROKE'S BOX takes the deepest exact level at any depth - UNCHANGED, and the reason a
+//         box is affordable: a box rebuild costs about the box per level, so exactness at every
+//         level is nearly free there (see COST for the depth at which it stops being free).
 //
 // HOW MANY TAPS THE TAIL NEEDS. One per source texel the destination texel's span
 // overlaps, so ceil(srcSide / dstSide) + 1 per axis - NOT the 4 taps per output a
@@ -111,16 +115,16 @@ class Deserializer;
 // the intermediate is at most (destination width x source height).
 //
 // COST, stated where it is largest.
-//   * A WHOLE-FIELD build follows the shared bounded rule and so costs what an import costs: a
-//     15001-texel side where nothing halves reads its base for levels 1..5 (the footprint is
-//     <= 128 taps there) and then a third of the base chained - about 1.2 G fetches, where the
-//     exact anchor would have needed 14 base passes (~3 G).
+//   * A WHOLE-FIELD build follows the shared reach-back rule and so costs what an import costs: a
+//     15001-texel side where nothing halves reads its base for levels 1..3 and then chains from
+//     level - 3 - 3.33 base reads, about 750 M fetches on a 225 M-texel base, where anchoring every
+//     level would have needed 14 base passes (~3 G).
 //   * A STROKE'S BOX costs about the box per level (thousands of fetches, sub-millisecond) until
 //     the span outgrows the box. At extreme depth on a side where nothing halves the box is one or
 //     two texels and the exact anchor's span is the whole side, so that level alone costs
 //     ~span^2 fetches: ~0.5 M for a 1000-px side's deepest level (the whole tail a few times that,
 //     still sub-millisecond), ~225 M for a 15001-px one. That is the price of exactness on a box;
-//     gl::Texture::mipTailSourceLevel is one line away if the deepest levels of a huge odd field
+//     gl::Texture::mipSourceLevel is one line away if the deepest levels of a huge odd field
 //     ever matter more than their exactness.
 //
 // WHAT gl::Texture IS TOLD. create() is called with MipmapPolicy::Manual: the class allocates and
@@ -156,9 +160,10 @@ public:
     void update(gl::Texture& aTexture, const QImage& aLevelZero);
 
 private:
-    // Fills aBaseBox's footprint at every level above 0 (see the class note for the rule and the
-    // two anchors). aWholeField selects the shared bounded anchor - gl::Texture::mipTailSourceLevel
-    // - which is what a create/markDirtyAll rebuild uses; a stroke's box keeps the exact one.
+    // Fills aBaseBox's footprint at every level above 0 (see the class note for the rule and how
+    // the source level is chosen). aWholeField selects the shared reach-back rule -
+    // gl::Texture::mipSourceLevel - which is what a create/markDirtyAll rebuild uses; a stroke's
+    // box keeps the deepest exact level.
     void rebuild(gl::Texture& aTexture, const QRect& aBaseBox, bool aWholeField);
 
     QSize mBaseSize;

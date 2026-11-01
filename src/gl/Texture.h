@@ -19,8 +19,8 @@ public:
     // the RGB of transparent texels into the edge texels of every level (the dark/light fringe once
     // the texture is minified). create() generates the levels that halve exactly and BUILDS every
     // level that does not, on the GPU, with the area weights the level grid implies (see
-    // Texture.cpp) - so it needs no readback, but it does build the whole chain, with a tap cap that
-    // bounds the cost of a very large base.
+    // Texture.cpp) - so it needs no readback, but it does build the whole chain, with a reach-back
+    // span that bounds the cost of a very large base.
     //
     // Manual: the whole chain is allocated and booked (levels 1..n-1 exist at their GL-mandated
     // sizes, GL_TEXTURE_MAX_LEVEL is n-1, mipmapLevels() and the residency counter report every
@@ -34,55 +34,38 @@ public:
         Manual,
     };
 
-    /// The anchor rule for building a mip level with the area weights the grids imply, shared by
-    /// every manual chain in the tree (this class's automatic tail, and the mask chain's whole-field
-    /// build). ONE constant and ONE rule, so an image and a mask cannot be built to different
-    /// standards.
+    /// The rule for building a mip level with the area weights the grids imply, shared by every
+    /// manual chain in the tree (this class's automatic tail, and the mask chain's whole-field
+    /// build). ONE rule, so an image and a mask cannot be built to different standards.
     ///
-    /// Level aLevel of a texture of aSize has max(1, side >> aLevel) texels over the whole [0, 1] of
-    /// normalized coordinates, and a destination texel's footprint must be integrated over the FINE
-    /// grid: a step whose boundaries cut a source texel uses that texel's average for the cut part,
-    /// which is exact only when the source texel IS the finest grid (level 0). So the source is
-    /// THE RULE, plainly:
+    /// A destination texel's footprint must be integrated over the FINE grid: a step whose boundaries
+    /// cut a source texel uses that source texel's average for the cut part, which is exact only when
+    /// the source texel IS the finest grid (level 0). Level 0 is expensive though - each base-sourced
+    /// level is a full pass over the base - so the chain reaches back only kMipChainSpan levels:
     ///
-    ///   step halves exactly        -> chain from the level above. A 2x2 box IS the true average.
-    ///                                 This is the normal case and costs 4 taps per output texel.
-    ///   step does not halve,       -> ANCHOR: rebuild that level from level 0 with the exact area
-    ///   ratio (base/dst) <= 128       weights. Not "correcting an error": chaining there is a
-    ///                                 legitimate downsample, it is just INEXACT, because it weights
-    ///                                 block averages rather than texels (25 -> 12 means each output
-    ///                                 texel covers 25/12 = 2.08 input texels, and those inputs are
-    ///                                 already averages of 2x2 base blocks).
-    ///   step does not halve,       -> chain anyway. Approximate, and bounded: MEASURED at a
-    ///   ratio > 128                   25 -> 12 step against the exact base-weighted average, worst
-    ///                                 deviation 17/255 on white noise (independent texels, the
-    ///                                 worst case for any averaging) and 6/255 on curved artwork,
-    ///                                 <= 5/255 past the bound. Error inherits down the chain.
+    ///   level <= 3   -> build from level 0. Exact. Three base reads.
+    ///   level >= 4   -> build from level - 3: an 8:1 step whose source texels are themselves
+    ///                   averages. Not exact, and MEASURED indistinguishable - 50 samples from a
+    ///                   photograph / illustration / PSD / text corpus (tools/mip_compare), worst
+    ///                   per-texel deviation 8/255, mean 0.34/255 over every level and sample,
+    ///                   against 65/255 worst and mean 5.16 for a step-by-step chain (level - 1),
+    ///                   which is what the old rule did past its anchor bound and what a driver's
+    ///                   own generateMipmap does everywhere.
     ///
-    /// COST, exactly - and the two rows are NOT the same size:
-    ///   a CHAINED level reads the level above, i.e. base/4^L texels, so a whole chained chain is
-    ///     base * (1 + 1/4 + 1/16 + ...) = 1.33 base reads;
-    ///   an ANCHORED level reads ALL of level 0: R^2 taps per output texel over base/R^2 output
-    ///     texels, i.e. one base read - a lot of taps (129x129 at level 7), but 1/R^2 as many
-    ///     outputs, which is what makes it affordable;
-    ///   so this rule (anchor through level 7, chain the tail) costs ~7 + 1.33 = 8.3 base reads,
-    ///     against ~13 for anchoring every level (a ~10x difference) and 1.33 for chaining all of
-    ///     it. 128 is where on that line we choose to sit.
-    ///
-    /// WHY 128 AND NOT MORE: the ratio of level L is base/(base >> L) ~ 2^L, so "ratio <= 128" is
-    /// "level <= 7". It is a cost knob (how many base passes we pay at import), not a physical
-    /// limit - raise it if import time ever stops mattering.
-    ///
-    /// WHY THE ERROR IS ACCEPTABLE THERE: a level with ratio > 128 is only sampled when the layer
-    /// is drawn at less than 1/128 of its size, where one screen pixel already covers 128+ texels.
-    /// Every ordinary zoom reads levels <= 7, and those are exact.
+    /// WHY 3 AND NOT 1 (the cheaper chain): a chained level's error is its SOURCE's error averaged
+    /// over a wider box, so reaching back one level keeps the source's spikes. Measured on the same
+    /// corpus: chain-from-1 mean 5.16/255 on flat artwork and 0.59 on a text page; chain-from-2 only
+    /// 0.56 on that page - barely better than 0.59; chain-from-3 0.18, and its delta map is almost
+    /// black. Cost of the three: 1.33 base reads (span 1), 3.33 (span 3: levels 1-3 from base, then
+    /// base/4 + base/16 + ...), 8.33 for the old anchor-through-level-7 rule.
     ///
     /// The same rule serves a mask's whole-field build; a mask stroke's BOX may anchor freely at any
     /// depth because a box is box-sized, so exactness costs nothing there.
-    static const int kMipTailMaxTaps = 128;
+    static const int kMipChainSpan = 3;
 
-    /// The level to build level aLevel from: 0, or aLevel - 1 (see kMipTailMaxTaps).
-    static int mipTailSourceLevel(const QSize& aSize, int aLevel);
+    /// The level to build level aLevel from: 0 while aLevel <= kMipChainSpan, else aLevel -
+    /// kMipChainSpan (see kMipChainSpan).
+    static int mipSourceLevel(int aLevel);
 
     Texture();
     ~Texture();

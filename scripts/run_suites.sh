@@ -23,6 +23,11 @@ declare -A SKIP=(
   # while exiting 0.
   [picker_pos_probe]=1
   [media_link_probe]=1
+  # mip_compare is a RESEARCH harness, not a gate: it needs a caller-supplied sample image plus an
+  # output directory, and it writes a PNG per level per policy. With no arguments it only prints
+  # usage and exits 2, which a suite would read as a failure. Run it by hand:
+  # ./build/tests/Debug/mip_compare <image> <outdir>
+  [mip_compare]=1
 )
 # The pattern must allow leading whitespace: targets registered inside an `if()`
 # block (the overlay's, behind AE_ENABLE_IMGUI) are indented, and the anchored form

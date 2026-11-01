@@ -141,13 +141,39 @@ frame does not need. The cost is the sync, not the bytes. (Worth measuring both 
   are `max(1, side >> l)`, so a size with no trailing zero bits makes level 1 already non-halving
   (a 15001^2 base, or every level of a 1023^2 one) - the case that decides the design, because a CPU
   rebuild there reads back the whole base. Levels are therefore built by a GPU area pass:
-  - **anchor at level 0 while a footprint needs <= `kMipTailMaxTaps` (128) samples per axis** - exact
-    for any size, odd included, at one base pass per level (<= 7 such levels);
-  - past that, **chain from the level above** (always a 2:1-3:1 step, <= 3 taps/axis): chaining is
-    inexact when a step's boundary cuts a coarse texel (measured 17/255 on noise, 6/255 on curved
-    content at a 25->12 step), and that is the stated price of the bound - <= 5/255 on curved content.
-  Masks follow the same rule for a whole-field build; their per-stroke update anchors at the deepest
-  exact level because the box is box-sized and the anchoring is then free.
+  - **the reach-back rule** (`gl::Texture::mipSourceLevel`, `kMipChainSpan = 3`): levels 1..3 are
+    built from level 0 - exact for any size, odd included, three base passes - and level `l >= 4`
+    from level `l - 3`, an 8:1 step whose source texels are themselves averages. Three levels back
+    and not one, because a chained level's error is its SOURCE's error averaged over a wider box, so
+    a one-level reach keeps the source's spikes.
+  - **the study that chose 3** (`tools/mip_compare`): 50 files - photographs, illustrations, PSD
+    composites, screenshots and text pages, flat-colour art, sprite sheets - each level built five
+    ways (`exact` from level 0, `chain1`/`chain2`/`chain3` from level - 1/- 2/- 3, `bilinear` as a
+    2-tap driver-style chain), the four non-reference ones measured against an exact area average of
+    the premultiplied base in 8-bit code values. 45 produced metrics; 5 were dropped (one CMYK PSD
+    and four files Qt cannot decode). Worst per-texel deviation per level band, `max / mean` in
+    255ths:
+
+    | policy | 1-2 | 3-4 | 5-6 | 7-8 | 9+ | worst sample |
+    |---|---|---|---|---|---|---|
+    | `chain1` (level - 1) | 53 / 0.47 | 65 / 3.09 | 52 / 2.42 | 38 / 1.28 | 38 / 10.67 | 65 (mean 5.16) |
+    | `chain2` (level - 2) | 0 / 0.00 | 27 / 0.06 | 16 / 0.30 | 13 / 1.66 | 13 / 3.36 | 27 (mean 0.06 at that level) |
+    | `chain3` (level - 3) | 0 / 0.00 | 8 / 0.12 | 7 / 0.03 | 7 / 0.32 | 3 / 0.97 | 8 (mean 0.34) |
+    | `bilinear` (2-tap) | 128 / 0.61 | 178 / 1.38 | 143 / 0.75 | 188 / 16.44 | 182 / 123.50 | 188 |
+
+    `exact` is the reference every column is measured against, so it is 0 by construction. Cost, in
+    base reads: 1.33 for `chain1`, 3.33 for the shipped rule (levels 1-3 from the base, then base/4
+    + base/16 + ...), 8.33 for the superseded rule that read the base through level 7.
+  - **what the eye saw** decides it: contact sheets, x8-amplified delta maps and level images
+    upscaled x4 nearest, at levels 2, 4 and 7, make `exact`/`chain1`/`chain2`/`chain3`
+    indistinguishable; `chain1`'s delta map lights up broadly on flat-colour artwork and on text,
+    `chain3`'s is almost black, and `bilinear` is visibly wrong. The criterion for the rule is
+    "looks exact", and reaching back 3 meets it.
+  Masks follow the same rule for a whole-field build; their per-stroke update takes the deepest
+  exact level instead, because the box is box-sized and exactness is then nearly free.
+  Re-running the study: `./build/tests/Debug/mip_compare <image> <outdir>` per sample (no GL
+  context needed; it writes `metrics.json` and one PNG per level per policy), once per path in
+  `tools/mip_compare/samples.txt`, whose header records how the 50 were selected.
   No readback, no sync, no per-upload CPU work; the pass saves and restores the full GL state
   (FBOs, viewport, VAO, program, blend/depth/scissor/cull) because it runs inside the caller's draw.
 - **Open [O]**: premultiplied vs straight for the *stored* levels needs the written analysis against

@@ -60,8 +60,8 @@ public:
     /// memory for nothing: aligning a 144-texel side rounds it up to 256, and padding exists only so
     /// that glGenerateMipmap can generate the first levels - which gl::Texture::create no longer
     /// needs, because it builds every level that does not halve exactly itself, on the GPU, with the
-    /// area weights the grid implies (from level 0 while a footprint is at most 128 texels per axis,
-    /// so up to 128x minification is exact for any size, and from the level above beyond that).
+    /// area weights the grid implies (levels 1..3 from level 0 - exact for any size - and level 4
+    /// and up from level - 3, see gl::Texture::kMipChainSpan).
     /// Uploading the content's own size is also what
     /// makes the two ends of the texture-coordinate path agree: the mesh's coordinates are content
     /// pixels (core::GridMesh), the layer's vertex shader divides them by uImageSize, and LayerNode
