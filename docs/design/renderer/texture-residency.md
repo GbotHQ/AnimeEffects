@@ -379,6 +379,25 @@ when every gate is green on every project and the counter shows no regression, t
   at levels 1-3 and 6 at level 4 on the same image, because level 4's source is level 1 - an 8:1 step,
   where a straddling texel weighs an eighth instead of a half.
 
+  **Is there a better step than the area box?** Yes and no, and both halves are measured on
+  04-AUTUMN (the two candidate kernels are `half` - integer boxes, no split - and `cubic` - the parent
+  reconstructed with Catmull-Rom and integrated, `tools/mip_compare`):
+
+  | step | area box | cubic | integer box |
+  |---|---|---|---|
+  | level 2 from the exact level 1 (2:1, cuts) | 39, HF -2.19 % | **27, HF -0.50 %** | 182, HF +0.7 % |
+  | level 4 from the exact level 1 (8:1, cuts) | **6, HF -0.50 %** | 18, HF +0.90 % | - |
+  | repeated (a chain of that kernel) | damps: 39 - 19 - 6 | **compounds: 27 - 27 - 20** | drifts |
+
+  So a reconstruction kernel does what it says - it restores the high frequencies the parent's rect
+  removed - and at 2:1 from an exact source it also comes CLOSER to the truth (27 against 39). But at
+  8:1, and on a repeated chain, it loses: the area box is a contraction (each level averages its
+  source's error away, 39 -> 19 -> 6) while a sharpening reconstruction is an amplifier (27 -> 27 ->
+  20). There is therefore no step that is both sharp and accurate without either reading the base
+  (anchoring) or making the grids integral (padding). The shipped rule already spends its anchoring
+  exactly where the straddle weight is worst - near 2:1 - so its first chained step is the 8:1 case,
+  where the plain area box is the better kernel.
+
   The object-tree block WAS the target, and the profile found it: `ObjectTree::deserialize` was 10.2 s
   over the harness's four deserializes, of which 8.4 s was `new LayerNode` - each layer built its own
   `MeshTransformerResource`, i.e. compiled the same three mesh-transform programs 344 times. Sharing one

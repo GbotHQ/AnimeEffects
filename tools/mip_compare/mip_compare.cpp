@@ -58,6 +58,7 @@
 #include <string>
 #include <utility>
 #include <vector>
+#include <map>
 
 #include <QByteArray>
 #include <QCoreApplication>
@@ -173,6 +174,106 @@ Img resampleArea(const Img& aSrc, int aDstW, int aDstH) {
     out.w = aDstW;
     out.h = aDstH;
     out.d = areaLevel(aSrc.d, aSrc.w, aSrc.h, aDstW, aDstH);
+    return out;
+}
+
+//-------------------------------------------------------------------------------------------------
+// THE INTEGER BOX: every destination texel owns a whole number of source texels - the ranges
+// [floor(j*S/C), floor((j+1)*S/C)) partition the source, so no texel is ever SPLIT and no fractional
+// weight exists anywhere. That is the difference that matters: the area version above has to hand a
+// partially-covered source texel over whole (its value is only an average), which is a second
+// filtering pass - the blur. An integer box never does: it filters once per level, over whole texels.
+//-------------------------------------------------------------------------------------------------
+// THE CUBIC STEP: the parent is NOT treated as piecewise constant - it is reconstructed with a
+// Catmull-Rom cubic and that reconstruction is integrated over the destination footprint. The box
+// chain multiplies the base spectrum by the parent's rect AND its own, which IS the extra low-pass
+// (the blur); a cubic reconstruction restores what the parent's rect took away, for 16 taps per
+// output texel instead of 9 at a 2:1 step.
+double cubicKernel(double aX) {
+    const double x = std::fabs(aX);
+    if (x < 1.0)
+        return 1.5 * x * x * x - 2.5 * x * x + 1.0;
+    if (x < 2.0)
+        return -0.5 * x * x * x + 2.5 * x * x - 4.0 * x + 2.0;
+    return 0.0;
+}
+
+std::vector<std::map<int, double>> cubicAxisTaps(int aSrc, int aDst, int aSub = 4) {
+    std::vector<std::map<int, double>> acc((size_t)aDst);
+    for (int j = 0; j < aDst; ++j) {
+        const double lo = (double)j * aSrc / aDst;
+        const double hi = (double)(j + 1) * aSrc / aDst;
+        for (int s = 0; s < aSub; ++s) {
+            const double x = lo + (s + 0.5) * (hi - lo) / aSub - 0.5; // source texel centres
+            const int i0 = (int)std::floor(x) - 1;
+            double sum = 0.0;
+            for (int t = 0; t < 4; ++t)
+                sum += cubicKernel(x - (i0 + t));
+            for (int t = 0; t < 4; ++t) {
+                const double w = cubicKernel(x - (i0 + t)) / (sum != 0.0 ? sum : 1.0);
+                acc[(size_t)j][std::min(aSrc - 1, std::max(0, i0 + t))] += w / aSub;
+            }
+        }
+    }
+    return acc;
+}
+
+Img resampleCubic(const Img& aSrc, int aDstW, int aDstH) {
+    const auto wx = cubicAxisTaps(aSrc.w, aDstW);
+    const auto wy = cubicAxisTaps(aSrc.h, aDstH);
+    Img out;
+    out.w = aDstW;
+    out.h = aDstH;
+    out.d.assign((size_t)aDstW * aDstH * 4, 0);
+    std::vector<double> rows((size_t)aDstW * aSrc.h * 4, 0.0);
+    for (int y = 0; y < aSrc.h; ++y)
+        for (int j = 0; j < aDstW; ++j) {
+            double acc[4] = {0.0, 0.0, 0.0, 0.0};
+            for (const auto& t : wx[(size_t)j]) {
+                const uint8_t* p = aSrc.d.data() + ((size_t)y * aSrc.w + t.first) * 4;
+                for (int c = 0; c < 4; ++c) acc[c] += p[c] * t.second;
+            }
+            for (int c = 0; c < 4; ++c)
+                rows[((size_t)y * aDstW + j) * 4 + c] = acc[c];
+        }
+    for (int i = 0; i < aDstH; ++i)
+        for (int x = 0; x < aDstW; ++x) {
+            double acc[4] = {0.0, 0.0, 0.0, 0.0};
+            for (const auto& t : wy[(size_t)i]) {
+                const double* p = rows.data() + ((size_t)t.first * aDstW + x) * 4;
+                for (int c = 0; c < 4; ++c) acc[c] += p[c] * t.second;
+            }
+            uint8_t* q = out.d.data() + ((size_t)i * aDstW + x) * 4;
+            for (int c = 0; c < 4; ++c)
+                q[c] = (uint8_t)std::min(255.0, std::max(0.0, std::floor(acc[c] + 0.5)));
+        }
+    return out;
+}
+
+Img resampleIntegerBox(const Img& aSrc, int aDstW, int aDstH) {
+    Img out;
+    out.w = aDstW;
+    out.h = aDstH;
+    out.d.assign((size_t)aDstW * aDstH * 4, 0);
+    for (int y = 0; y < aDstH; ++y) {
+        const int y0 = (int)((long long)y * aSrc.h / aDstH);
+        const int y1 = (int)((long long)(y + 1) * aSrc.h / aDstH);
+        for (int x = 0; x < aDstW; ++x) {
+            const int x0 = (int)((long long)x * aSrc.w / aDstW);
+            const int x1 = (int)((long long)(x + 1) * aSrc.w / aDstW);
+            double acc[4] = {0.0, 0.0, 0.0, 0.0};
+            int n = 0;
+            for (int sy = y0; sy < y1; ++sy)
+                for (int sx = x0; sx < x1; ++sx) {
+                    const uint8_t* p = aSrc.d.data() + ((size_t)sy * aSrc.w + sx) * 4;
+                    for (int c = 0; c < 4; ++c) acc[c] += p[c];
+                    ++n;
+                }
+            uint8_t* q = out.d.data() + ((size_t)y * aDstW + x) * 4;
+            for (int c = 0; c < 4; ++c)
+                q[c] = n ? (uint8_t)std::min(255.0, std::floor(acc[c] / n + 0.5)) : 0;
+        }
+    }
     return out;
 }
 
@@ -554,7 +655,9 @@ std::string levelJson(
     const Metrics& aChain1,
     const Metrics& aChain2,
     const Metrics& aChain3,
-    const Metrics& aBilinear
+    const Metrics& aBilinear,
+    const Metrics& aHalf,
+    const Metrics& aCubic
 ) {
     char head[160];
     std::snprintf(
@@ -569,7 +672,9 @@ std::string levelJson(
     out += "        \"chain1\": " + policyJson(aChain1) + ",\n";
     out += "        \"chain2\": " + policyJson(aChain2) + ",\n";
     out += "        \"chain3\": " + policyJson(aChain3) + ",\n";
-    out += "        \"bilinear\": " + policyJson(aBilinear) + "\n";
+    out += "        \"bilinear\": " + policyJson(aBilinear) + ",\n";
+    out += "        \"half\": " + policyJson(aHalf) + ",\n";
+    out += "        \"cubic\": " + policyJson(aCubic) + "\n";
     out += "      }\n    }";
     return out;
 }
@@ -628,20 +733,28 @@ int main(int argc, char** argv) {
     Chain chain2;
     Chain chain3;
     Chain bilinear;
+    Chain half;
+    Chain cubic;
     chain1.span = 1;
     chain2.span = 2;
     chain3.span = 3;
     bilinear.span = 1;
+    half.span = 1;
+    cubic.span = 1;
     chain1.reset(base);
     chain2.reset(base);
     chain3.reset(base);
     bilinear.reset(base);
+    half.reset(base);
+    cubic.reset(base);
 
     // worst maxAbs over all levels, per policy, for the SAMPLE line
     int worstChain1 = 0;
     int worstChain2 = 0;
     int worstChain3 = 0;
     int worstBilinear = 0;
+    int worstHalf = 0;
+    int worstCubic = 0;
 
     std::vector<std::string> levelObjects;
     int writtenLevels = 0;
@@ -660,25 +773,33 @@ int main(int argc, char** argv) {
         const Img c2 = resampleArea(chain2.source(level), lw, lh);
         const Img c3 = resampleArea(chain3.source(level), lw, lh);
         const Img bl = resampleBilinear(bilinear.source(level), lw, lh);
+        const Img hf = resampleIntegerBox(half.source(level), lw, lh);
+        const Img cb = resampleCubic(cubic.source(level), lw, lh);
 
         chain1.push(c1, level);
         chain2.push(c2, level);
         chain3.push(c3, level);
         bilinear.push(bl, level);
+        half.push(hf, level);
+        cubic.push(cb, level);
 
         const Metrics m1 = compare(exact, c1);
         const Metrics m2 = compare(exact, c2);
         const Metrics m3 = compare(exact, c3);
         const Metrics mb = compare(exact, bl);
+        const Metrics mh = compare(exact, hf);
+        const Metrics mc = compare(exact, cb);
 
         worstChain1 = std::max(worstChain1, m1.maxAbs);
         worstChain2 = std::max(worstChain2, m2.maxAbs);
         worstChain3 = std::max(worstChain3, m3.maxAbs);
         worstBilinear = std::max(worstBilinear, mb.maxAbs);
+        worstHalf = std::max(worstHalf, mh.maxAbs);
+        worstCubic = std::max(worstCubic, mc.maxAbs);
 
-        const char* const kPolicies[] = {"exact", "chain1", "chain2", "chain3", "bilinear"};
-        const Img* const kImages[] = {&exact, &c1, &c2, &c3, &bl};
-        for (int p = 0; p < 5; ++p) {
+        const char* const kPolicies[] = {"exact", "chain1", "chain2", "chain3", "bilinear", "half", "cubic"};
+        const Img* const kImages[] = {&exact, &c1, &c2, &c3, &bl, &hf, &cb};
+        for (int p = 0; p < 7; ++p) {
             const QString path =
                 QDir(outDir).filePath(QString("level-%1-%2.png").arg(level).arg(QString::fromLatin1(kPolicies[p])));
             if (!writeLevelPng(path, *kImages[p])) {
@@ -687,7 +808,7 @@ int main(int argc, char** argv) {
             }
         }
 
-        levelObjects.push_back(levelJson(level, lw, lh, m1, m2, m3, mb));
+        levelObjects.push_back(levelJson(level, lw, lh, m1, m2, m3, mb, mh, mc));
         ++writtenLevels;
     }
 
@@ -726,7 +847,7 @@ int main(int argc, char** argv) {
 
     const QString name = QFileInfo(inputPath).completeBaseName();
     std::printf(
-        "SAMPLE %s %dx%d levels=%d worst_chain1=%d worst_chain2=%d worst_chain3=%d worst_bilinear=%d\n",
+        "SAMPLE %s %dx%d levels=%d worst_chain1=%d worst_chain2=%d worst_chain3=%d worst_bilinear=%d worst_half=%d worst_cubic=%d\n",
         name.toUtf8().constData(),
         base.w,
         base.h,
@@ -734,7 +855,9 @@ int main(int argc, char** argv) {
         worstChain1,
         worstChain2,
         worstChain3,
-        worstBilinear
+        worstBilinear,
+        worstHalf,
+        worstCubic
     );
     return 0;
 }
