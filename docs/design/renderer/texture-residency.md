@@ -636,6 +636,30 @@ equality against the current path, and the counter showing the pixels saved.
 | `scripts/gui/probe_camera_transform.sh` | a camera move skips the pass; a frame step re-runs it |
 | `tests/verify_mipmap` (branch) | chain correctness: premultiplied averages, halo, the level a footprint reads |
 
+## Sub-pixel shimmer is Nyquist content, not the chain and not anisotropy
+
+Root-caused 2026-11-01 after a viewer reported hair strands flickering while zoomed out and playing.
+
+The law. Sampling one texel pair `(a, b)` with GL_LINEAR at offset `d` gives `g(d) = a + d(b - a)`, so
+over a full pixel of movement the temporal standard deviation is `|b - a| / sqrt(12) = 0.2887 |b - a|`.
+For a sinusoid of frequency `w` the modulation is `|(1 - d) + d e^{iw}|`, which at the sampling Nyquist
+(`w = pi`) is `|1 - 2d|` - the signal goes to ZERO at half a pixel. Content at the pixel frequency
+therefore blinks at 100 % amplitude, whatever produced the image.
+
+Measured on 000022, level 0 sampled 1:1, an 8-offset sub-pixel sweep: the std against adjacent-texel
+contrast has slope **0.2859** (predicted 0.2887, 1 % apart) and correlation **0.999**; the 2.9 % of
+texels whose neighbour differs by more than 40 of 255 carry **40.6 %** of all the shimmer - the hair
+highlights and strand edges, exactly where it was seen. A 2x coarser representation sampled at the same
+size shimmers **1.6x less**, which is the box filter's response at Nyquist.
+
+Two things it is NOT. Not a mip property: level 0 sampled at its own size shimmers, with no chain
+involved and no shrink at levels 0-1. Not anisotropy: a uniform zoom gives a square footprint (ratio 1),
+where anisotropic filtering is a no-op by definition (it is on, 16x, `ImageKey::layerMaxAnisotropy`).
+
+The only levers attenuate the Nyquist band - a coarser LOD (measured 1.6x), supersampling the frame, or
+motion blur - and every one of them trades sharpness. That makes it a rendering choice, not a chain
+rule.
+
 Running a big project requires a guard, not good intentions:
 `systemd-run --user --scope -p MemoryMax=… -p MemorySwapMax=0` plus an RSS watchdog, on a headless
 display. The 15000² project does not load under software GL inside 9 GB - measure it on the GPU, in a
