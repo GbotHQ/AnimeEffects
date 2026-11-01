@@ -223,6 +223,11 @@ hand it over. Its one question is `Sampling`:
 
 ## Rendering and hosts
 
+- **The texture-residency plan lives in `docs/design/renderer/texture-residency.md`** - measured
+  numbers, the density metric and its anisotropy gap, the pyramid-as-authoring-data decision, the
+  page-pool design, the staged path, moving FFD into the pass, and what the clipping pass can do
+  with the same GPU-side measurements. Read it before touching textures, mips or residency.
+
 - The timeline surface, the ruler and the graph page are **Canvas Painter** hosts (`QCanvasPainterWidget`
   through `PanelHostBase`); Qt ≥ 6.12 is required. The scene models live in `ctrl/` (they read
   `ctrl::TimeLineRow`), the ink decisions in `gui/`.
