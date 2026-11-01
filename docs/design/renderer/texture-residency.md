@@ -398,6 +398,29 @@ when every gate is green on every project and the counter shows no regression, t
   exactly where the straddle weight is worst - near 2:1 - so its first chained step is the 8:1 case,
   where the plain area box is the better kernel.
 
+  **Tightening the box** (a reviewer's suggestion worth its numbers): the extra blur is not sampling
+  between texels - the taps are whole texels - it is that the overlap-weighted 3-tap average is
+  slightly WIDER than the ideal 2.002-texel box. Mixing the area kernel with a 2-tap box snapped to
+  the nearest integer start is a single knob `s` (0 = area, 1 = snapped), measured on 04-AUTUMN level
+  2 against the exact level:
+
+  | s | high-frequency energy vs exact | max delta | mean delta | texels over 2/255 |
+  |---|---|---|---|---|
+  | 0.00 (area, shipped shape) | -2.20 % | 38.9 | 0.334 | 5.30 % |
+  | 0.50 | -1.42 % | 53.7 | 0.592 | 5.55 % |
+  | 0.75 | -0.74 % | 75.2 | 0.806 | 5.53 % |
+  | 1.00 (snapped) | +0.14 % | 98.2 | 1.045 | 5.66 % |
+
+  So yes - the blur can be bought back exactly, and `s` is a clean dial between "uniformly soft" and
+  "hard but displaced". What the dial really trades is error *shape*: the snapped kernel puts each
+  destination box on the nearest integer lattice, so texels land up to half a source texel away from
+  where the exact level puts them - a sawtooth across the image. In a still that reads as harder,
+  slightly ragged edges on high contrast; in an animated layer scaling it would shimmer, because the
+  offset pattern is fixed in texture space while the sample point moves. The texels that are wrong do
+  not change with `s` (about 5.5 % at every setting); only their magnitude does. And a 3x3 (or 3x2)
+  tap set is what the area step already is - more taps cannot help, because the ideal footprint is
+  only 2.002 texels wide.
+
   The object-tree block WAS the target, and the profile found it: `ObjectTree::deserialize` was 10.2 s
   over the harness's four deserializes, of which 8.4 s was `new LayerNode` - each layer built its own
   `MeshTransformerResource`, i.e. compiled the same three mesh-transform programs 344 times. Sharing one
