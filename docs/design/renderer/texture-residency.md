@@ -133,6 +133,22 @@ frame does not need. The cost is the sync, not the bytes. (Worth measuring both 
 - A slot is therefore `(atlas, index)`: the table entry carries the atlas index and the slot index, or
   a flat page id that the pool resolves. `R16UI` still holds it (4 bits atlas, 8 bits slot, a valid
   bit).
+- **Why separate 4096² textures rather than one bigger one** - measured reasoning, not taste:
+  - *Resizing* costs an allocation of the new size PLUS a copy of the old contents (no
+    `glCopyImageSubData` at GL 4.0: an FBO blit or a re-upload), with both textures live at the peak,
+    i.e. 5x the old size momentarily, and every table entry rewritten. Adding an atlas costs one
+    allocation and nothing else.
+  - A single huge texture (16384² RGBA = 1 GB) is far more likely to be refused or to fragment VRAM,
+    and `GL_MAX_TEXTURE_SIZE` is 8192/16384 on much of the hardware this must run on.
+  - Sampling does not care how large the texture is; the differences are binds (one unit per atlas,
+    cached per resource) and the shader's atlas selection - a dynamically uniform sampler index (legal
+    from GLSL 4.00, our floor) or a short if-chain for <= 4 atlases.
+  - Only whole atlases can be released when idle (the shrink of §5.5); one big texture cannot be
+    partially freed.
+  - A `GL_TEXTURE_2D_ARRAY` of 4096² layers is the named-and-rejected alternative: one bind and one
+    sampler, but its depth is fixed at allocation, so growth is the same new-array-plus-copy trade.
+  - The one thing to A/B rather than argue: `ms` with 1 atlas vs 3 on the same scene, once the page
+    path exists - expected within noise, cheap to prove.
 - **Page table**: per resource, an `R16UI` texture of `(levels, pagesX, pagesY)` mapping a page to a
   slot, with 0 meaning "not resident". A 15000² resource at 256² pages is 59x59 at level 0 and a
   handful at each level below - the whole table is tens of KB, not MB **[D]**.
