@@ -72,8 +72,9 @@ class Deserializer;
 //   * WHICH FINER LEVEL, chosen by how much is being rebuilt:
 //       - a WHOLE-FIELD build (create, markDirtyAll: creation, clear, undo, deserialize) asks
 //         gl::Texture::mipSourceLevel, the ONE rule the image path also uses: THE LEVEL DIRECTLY ABOVE
-//         for every level (span 1), which bounds a field where nothing halves to ~1.3 base reads - the
-//         cheapest chain there is. Exactness is not lost where it is visible: level 1 is the plain area
+//         for every level (span 1). Cost in taps per output times output texels: 1.33 base reads for a
+//         power-of-two field, 4.39 for a 15001-texel one whose sides never halve (most steps then cut,
+//         so 3 taps per axis instead of 2) - the cheapest chain there is. Exactness is not lost where it is visible: level 1 is the plain area
 //         average of the base, and the tighten below keeps the render at the anchored chain's
 //         sharpness. The rule lives in ONE place, so the mask and the image path cannot drift.
 //       - a STROKE'S BOX takes the deepest exact level at any depth - UNCHANGED, and the reason a
@@ -110,9 +111,9 @@ class Deserializer;
 //
 // COST, stated where it is largest.
 //   * A WHOLE-FIELD build follows the shared span-1 rule: a 15001-texel side where nothing halves
-//     reads its base once for level 1 and then base/4 + base/16 + ... for the rest - ~1.3 base reads,
-//     about 290 M fetches on a 225 M-texel base, where anchoring every level would have needed 14
-//     base passes (~3 G) and the span-3 rule it replaced 3.33 (~750 M).
+//     costs 4.39 base reads - ~990 M fetches on a 225 M-texel base, three taps per axis per level
+//     where the ratios do not divide - against the span-3 rule it replaced (8.33, ~1.9 G) and
+//     anchoring every level (14 base passes, ~3 G).
 //   * A STROKE'S BOX costs about the box per level (thousands of fetches, sub-millisecond) until
 //     the span outgrows the box. At extreme depth on a side where nothing halves the box is one or
 //     two texels and the exact anchor's span is the whole side, so that level alone costs

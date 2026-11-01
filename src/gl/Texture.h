@@ -50,8 +50,14 @@ public:
     /// 11.25 at LOD 1, 14.26 / 14.25 / 14.26 at LOD 2, 15.00 / 14.58 / 15.00 at LOD 3 and 17.81 / 17.19
     /// / 17.77 at LOD 4 - i.e. the cheapest chain is within 3.4 % of the anchored one at the deepest
     /// scale, while the sampling model itself swings sharpness 30-40 % between LOD integers in every
-    /// policy. Sub-pixel phase sensitivity is identical to three decimals. Span 1 costs ~1.3 base reads
-    /// against span 3's ~3.3.
+    /// policy. Sub-pixel phase sensitivity is identical to three decimals.
+    ///
+    /// COST, worked out as taps per output texel times output texels rather than as a geometric series
+    /// (a step whose sizes divide needs 2 taps per axis, one that cuts needs 3, and 2^L TAPS PER OUTPUT
+    /// is what an anchored level really costs): span 1 against span 3 is 1.33 / 3.33 base reads for a
+    /// power-of-two base, 1.42 / 3.66 for 1500x1440, 2.82 / 6.32 for 2894x4093 and 4.39 / 8.33 for
+    /// 15001x15001 - the odd bases pay more in BOTH because most steps then cut (3 taps instead of 2).
+    /// The saving is therefore 2 to 4 base reads, always in the same direction.
     ///
     /// WHY THE SHRINK, and why it is exactly what that chain needs. The overlap-weighted average of
     /// whole source texels is WIDER than the footprint it stands for, and a chain applies it twice: that
