@@ -932,6 +932,108 @@ void suiteChainExactness() {
         }
     }
 
+    // ---- WHAT THE CHAIN IS FAITHFUL TO, and what it necessarily is not. Two analytic images, so the
+    // assertions are statements about the resampler rather than about a photograph:
+    //
+    //   a piecewise-LINEAR ramp - the area average of a straight line is the value at the footprint's
+    //     midpoint, whatever the ratio, so a chain of exact steps must reproduce it. This is what
+    //     separates "the chain's weighting is wrong" from "the chain lost information": on this
+    //     content a correct chain and the exact level agree to rounding at EVERY level.
+    //   a hard EDGE - where the base has a discontinuity a coarse texel straddles it, and the chain
+    //     can only hand over that texel's average (it has nothing finer). The difference is therefore
+    //     confined to the texels that straddle the edge, and its size is the weight of the part of
+    //     the texel that lies on the other side: up to half a coarse texel at a 2:1 step, an eighth at
+    //     8:1 - which is why reach-back 3 measures a few units here where reach-back 1 measures tens.
+    {
+        const int w = 1938, h = 512; // non-dividing by 4 in x, so steps above level 1 do not tile
+        const QString label = QString("M18 content faithfulness, %1x%2").arg(w).arg(h);
+        const int failsBefore = gFails;
+
+        Img ramp;
+        ramp.w = w; ramp.h = h;
+        ramp.d.assign((size_t)w * h * 4, 255);
+        for (int y = 0; y < h; ++y)
+            for (int x = 0; x < w; ++x) {
+                const uint8_t v = (uint8_t)std::lround(x * 255.0 / (w - 1));
+                uint8_t* q = ramp.at(x, y);
+                q[0] = q[1] = q[2] = v;
+            }
+        const std::vector<Img> rampChain = readChain(ramp, true);
+
+        Img edge;
+        edge.w = w; edge.h = h;
+        edge.d.assign((size_t)w * h * 4, 0);
+        for (int y = 0; y < h; ++y)
+            for (int x = 0; x < w; ++x) {
+                uint8_t* q = edge.at(x, y);
+                q[0] = q[1] = q[2] = (x >= w / 2) ? 255 : 0;
+                q[3] = 255;
+            }
+        const std::vector<Img> edgeChain = readChain(edge, true);
+
+        int worstRamp = 0;
+        int worstEdge = 0;
+        int strayedEdgeTexels = 0;
+        for (int l = 1; l < (int)rampChain.size(); ++l) {
+            const int dw = std::max(1, w >> l);
+            const int dh = std::max(1, h >> l);
+            worstRamp = std::max(worstRamp, maxAnyChannelDelta(rampChain[(size_t)l].d,
+                                                               areaLevel(ramp.d, w, h, dw, dh)));
+
+            const std::vector<uint8_t> want = areaLevel(edge.d, w, h, dw, dh);
+            worstEdge = std::max(worstEdge, maxAnyChannelDelta(edgeChain[(size_t)l].d, want));
+            // every texel that differs must be within ONE texel of the edge: a chain has no finer
+            // information than its source, so the error can never spread further than that
+            const int edgeCol = w / 2 / std::max(1, w / dw);
+            for (int y = 0; y < dh; ++y)
+                for (int x = 0; x < dw; ++x) {
+                    const uint8_t* got = edgeChain[(size_t)l].at(x, y);
+                    const uint8_t* ref = &want[((size_t)y * dw + x) * 4];
+                    for (int c = 0; c < 4; ++c)
+                        if (std::abs((int)got[c] - (int)ref[c]) > 2 && std::abs(x - edgeCol) > 2)
+                            ++strayedEdgeTexels;
+                }
+        }
+
+        // IS THE REFERENCE ITSELF EXACT? For a straight ramp the area average over a footprint is
+        // the analytic value at that footprint's MIDPOINT, independent of the weighting code. Checked
+        // against that closed form, not against another implementation of the same idea.
+        int worstAnalytic = 0;
+        for (int l = 1; l <= 5; ++l) {
+            const int dw = std::max(1, w >> l);
+            const std::vector<uint8_t> got = areaLevel(ramp.d, w, h, dw, std::max(1, h >> l));
+            for (int x = 0; x < dw; ++x) {
+                const double lo = (double)x * w / dw;
+                const double hi = (double)(x + 1) * w / dw;
+                const double analytic = 255.0 / (w - 1) * (lo + hi) / 2.0;
+                worstAnalytic = std::max(worstAnalytic, (int)std::lround(std::fabs(got[x * 4] - analytic)));
+            }
+        }
+        expect(worstAnalytic <= 1,
+            QString("%1: the exact level must equal the ANALYTIC area average of a ramp (worst %2)")
+                .arg(label).arg(worstAnalytic));
+
+        // a straight ramp survives the chain: the midpoint rule is exact whatever the ratio, so the
+        // only error left is the slope times the fraction of a SOURCE texel that a straddling texel
+        // hands over (255 / sourceWidth, so a few units at the deepest levels) plus rounding
+        expect(worstRamp <= 8,
+            QString("%1: a linear ramp must survive the chain to a few units at every level (worst %2)")
+                .arg(label).arg(worstRamp));
+        // a hard edge may not: the straddling texel comes over whole, up to half its width at 2:1
+        // (127 of 255) and an eighth at 8:1 (32); the shipped reach-back is the 8:1 case
+        expect(worstEdge <= 40,
+            QString("%1: a hard edge must stay within the weight of one straddling coarse texel "
+                    "(worst %2)").arg(label).arg(worstEdge));
+        expect(strayedEdgeTexels == 0,
+            QString("%1: the difference must stay at the edge, not spread (%2 stray texels)")
+                .arg(label).arg(strayedEdgeTexels));
+
+        caseReport(label, gFails == failsBefore,
+            QString("reference vs analytic ramp %1/255; chained ramp %2/255; hard edge %3/255 at its "
+                    "own column, %4 stray texels")
+                .arg(worstAnalytic).arg(worstRamp).arg(worstEdge).arg(strayedEdgeTexels));
+    }
+
     // ---- THE MUTATION CONTROL: the raw driver chain, with no tail builder, is NOT that box. This is
     // the measurement the builder replaced. If a future driver fills a non-halving level correctly,
     // this control fails and should be re-recorded - it is a statement about the driver, not about
