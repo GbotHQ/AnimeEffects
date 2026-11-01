@@ -338,8 +338,15 @@ when every gate is green on every project and the counter shows no regression, t
   colour, fix `uImageSize` and the content rects, and give masks a chain maintained from the stroke's
   dirty box. Gate: `verify_mipmap` ported as a build target (its M1/M3/M17/M20 already measure
   exactly this), plus a mask-stroke case that asserts the chain tracks the paint.
-- **Stage 2 - the pyramid**: resources carry levels; generated at import/load, stored, decoded into
-  RAM; no GPU change. Gate: format roundtrip, memory accounting, legacy load.
+- **Stage 2 - the pyramid: MEASURED AND DROPPED (2026-11-01).** The premise was that persisting the
+  levels would save the chain build at load. It does not pay. Real projects, `roundtrip` in Release
+  under Xvfb (llvmpipe, so the GPU side is if anything overstated): a 54 MB project loads in 16.7 s -
+  resources decode 0.62 s, object-tree deserialize 5.0 s, solve+upload 0.45 s, twice (load and reload).
+  A 3.6 MB project: 4.9 s, the same shape (object tree 0.63 s). With `buildMipTailOnGpu` compiled out the
+  load moved by 0.03 s and 0.14 s: the chain is **< 1 % of load**. Storing the levels would add 33 %
+  more pixels to compress, write, decode and upload, to avoid a build that costs less than decoding that
+  copy would. So no stored pyramid, and no format bump for one. If load time is the goal, the target is
+  the object-tree block (5 s of 6 on the big project), not the chain.
 - **Stage 3 - pages**: the pool, the table, analytic demand, the coarse chain and the eviction of
   §5, behind a switch. The switch is **a control, not a crutch**: it exists so the gates can compare
   the page path against the base-level path on the same frame, and so the two can be A/B'd for `ms`.
