@@ -358,6 +358,27 @@ when every gate is green on every project and the counter shows no regression, t
   wide either way (measured high-frequency energy of exact level 2 from 1024/1023/1000/1001 crops of
   one image: 1.616 / 1.624 / 1.666 / 1.659 - content, not divisibility).
 
+  **Divisibility is the switch, not the cause** - and it is why 04-AUTUMN.psd (1938x2531) is the
+  corpus's worst offender at level 2. Its step-by-step chain, per level, against whether that step
+  tiles (prev/target exactly 2):
+
+  | level | size | step | tiles? | max delta | texels over 2/255 |
+  |---|---|---|---|---|---|
+  | 1 | 969x1265 | from level 0 | - | 0 | 0.00 % |
+  | 2 | 484x632 | 2.0021 x 2.0016 | no | **39** | **4.82 %** |
+  | 3 | 242x316 | 2.0000 x 2.0000 | yes | 19 | 3.13 % (inherited) |
+  | 4 | 121x158 | 2.0000 x 2.0000 | yes | 6 | 0.38 % (decayed) |
+  | 5 | 60x79 | 2.0167 x 2.0000 | no | **44** | **15.30 %** |
+  | 6 | 30x39 | 2.0000 x 2.0256 | no | 24 | 20.77 % |
+
+  A cutting step takes half of a source texel's *mixture* (part line, part background) where the exact
+  level splits it correctly: the filter does not widen, one texel of a two-texel-wide line is replaced
+  by that line's average with its neighbour. Cores stay (the darkest 1 % is identical), shoulders go 2
+  lighter and single contour texels move up to 39/255 - which is why a drawing reads as globally softer
+  while only 4.8 % of its texels change. The shipped reach-back does not do it at these levels: 0 delta
+  at levels 1-3 and 6 at level 4 on the same image, because level 4's source is level 1 - an 8:1 step,
+  where a straddling texel weighs an eighth instead of a half.
+
   The object-tree block WAS the target, and the profile found it: `ObjectTree::deserialize` was 10.2 s
   over the harness's four deserializes, of which 8.4 s was `new LayerNode` - each layer built its own
   `MeshTransformerResource`, i.e. compiled the same three mesh-transform programs 344 times. Sharing one
