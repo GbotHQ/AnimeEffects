@@ -346,6 +346,17 @@ when every gate is green on every project and the counter shows no regression, t
   load moved by 0.03 s and 0.14 s: the chain is **< 1 % of load**. Storing the levels would add 33 %
   more pixels to compress, write, decode and upload, to avoid a build that costs less than decoding that
   copy would. So no stored pyramid, and no format bump for one.
+  **Where that difference actually sits** (measured, because "the chain looks blurrier" is the report
+  it produces): away from a discontinuity the chained level is bit-identical to the exact one - mean
+  delta 0.017/255 and high-frequency energy -0.08 % on a chart, +0.01 % on a line drawing. Every texel
+  ADJACENT to an edge moves by ~4.9/255, because the coarse texel straddles the edge and its average -
+  part one side, part the other - is handed over whole. The visible loss is therefore the share of edge
+  texels times that delta: 12.5 % of texels and -10.6 % high-frequency energy on a chart, 3.5 % and
+  -0.8 % on a line drawing, 0 % on a smooth ramp. That is why line art and text read as globally
+  softer while a photograph barely changes, and why the artefact looks global even though every texel
+  that moves is at an edge. The EXACT level does not get softer on non-dividing sizes: its box is 2^L
+  wide either way (measured high-frequency energy of exact level 2 from 1024/1023/1000/1001 crops of
+  one image: 1.616 / 1.624 / 1.666 / 1.659 - content, not divisibility).
 
   The object-tree block WAS the target, and the profile found it: `ObjectTree::deserialize` was 10.2 s
   over the harness's four deserializes, of which 8.4 s was `new LayerNode` - each layer built its own
