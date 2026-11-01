@@ -656,23 +656,39 @@ Two things it is NOT. Not a mip property: level 0 sampled at its own size shimme
 involved and no shrink at levels 0-1. Not anisotropy: a uniform zoom gives a square footprint (ratio 1),
 where anisotropic filtering is a no-op by definition (it is on, 16x, `ImageKey::layerMaxAnisotropy`).
 
-The only levers attenuate the Nyquist band - a coarser LOD, supersampling the frame, or motion
-blur. MEASURED against the ground truth, and the ground truth is the surprise: rendering the MOVING image
-correctly - area-integrating the BASE over each destination footprint at each sub-pixel offset - has its
-own temporal standard deviation of **2.540** at 4x minification. The samplers, same content, same sweep:
+The only levers are those that change the RECONSTRUCTION, and the reconstruction turns out to be the
+actual fault - a viewer's eye said so before the numbers did ("sharp at some offsets, blurrier at
+others"), and the first metric I used hid it.
 
-| sampler | temporal std |
-|---|---|
-| truth (base area-integrated per offset) | **2.540** |
-| bilinear, bias 0 (footprint 1.0 level texel) | 2.231 |
-| bilinear, bias -0.5 (the shipped blend of two levels) | 2.465 |
-| bilinear, bias -1 (footprint 2.0) | 2.836 |
-| bilinear, bias -2 (footprint 4.0) | 3.932 |
+WHAT BILINEAR ACTUALLY DOES. At 4x minification, level 2 IS the exact 4-texel box, so sampling it poses
+no chain question at all. Sharpness of the render (mean horizontal gradient) against the truth - the base
+area-integrated over the moving footprint - as the art slides by fractions of a pixel:
 
-So a perfect sampler CONVERGES TO the truth's 2.540, it does not go below it: the swing is the image
-itself moving under a pixel grid, not a defect of taking two taps. The shipped -0.5 reads 2.465, i.e. at
-the floor - what an eye sees there is the content, and only rendering BELOW the truth (bias 0 at 2.231,
-or a positive bias) makes it steadier, which is the blur trade again. Above the floor (bias -1 and
-beyond) is genuine aliasing that more taps or a finer blend would fix. Caveat on the metric: it is the
-mean per-pixel temporal std over a one-pixel horizontal sweep, blind to temporal frequency, the
-contrast-sensitivity function and masking - a proxy for ranking policies, not a perceptual score.
+| offset | truth | bilinear |
+|---|---|---|
+| 0.00 | 7.476 | 7.479 |
+| 0.25 | 7.476 | 6.205 (-17 %) |
+| 0.50 | 7.468 | 5.690 (-24 %) |
+| 0.75 | 7.478 | 6.192 (-17 %) |
+
+Bilinear does not TRANSLATE a sub-pixel shift, it BLENDS two texels: at half a pixel it is a two-texel
+box, 24 % softer. The truth's sharpness is constant to 0.1 %. That oscillation of sharpness with phase
+is what the eye calls roughening or flicker, and it is a defect of the filter, not of the content.
+
+At the shipped LOD (bias -0.5 = a 50/50 blend of two levels) the swing is 14 %, and a 4-tap Catmull-Rom
+read cuts it to ~3 % (with +7 % overshoot at the on-centre phase) for 16 taps per pixel instead of 4:
+
+| offset | truth | bilinear | bicubic |
+|---|---|---|---|
+| 0.00 | 7.476 | 7.475 | 8.008 |
+| 0.50 | 7.468 | 6.398 (-14 %) | 7.227 (-3 %) |
+
+WHY THE FIRST METRIC WAS WRONG: mean per-pixel temporal standard deviation scored bilinear at 2.231 and
+the truth at 2.540 - it rewards blur, because a blurred image changes less between phases. A metric for
+this has to measure sharpness CONSISTENCY across phases, not variance, and it should be read against the
+truth per phase. Anything that only reports variation will keep recommending blur.
+
+WHAT THIS MEANS FOR THE RENDERER: the honest fix is a better reconstruction in the layer shader - a
+4-tap-per-axis read instead of the sampler's 2 - which is a fill-rate cost, not a memory or import cost.
+It removes most of the phase-dependent softening without giving up sharpness, so it is the one option on
+this list that is not a trade.
