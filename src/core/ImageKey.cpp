@@ -120,10 +120,11 @@ void ImageKey::resetTextureCache() {
         );
         // trilinear minification; magnification must stay non-mipmap (see gl::Texture)
         mCache.texture().setFilter(GL_LINEAR_MIPMAP_LINEAR, GL_LINEAR);
-        // Half a level finer than the derivatives ask for, so that the bilinear read integrates the
-        // footprint instead of twice it. The reasoning and the measurement are on
-        // gl::Texture::setLodBias.
-        mCache.texture().setLodBias(layerLodBias());
+        // ZERO: the layer shader computes the level itself (LayerDrawingFrag.glsl's sampleLayer and
+        // LayerNode's uniform block), and applies ImageKey::layerLodBias() to its own LOD. A GL bias
+        // here would ALSO shift the one path that still uses texture() - magnification - and double
+        // the setting if a driver ever applied it to textureLod.
+        mCache.texture().setLodBias(0.0f);
         // ...and enough samples along an elongated footprint that its SHORT axis is not filtered at
         // the level its long axis asked for. See ImageKey::layerMaxAnisotropy.
         mCache.texture().setMaxAnisotropy(layerMaxAnisotropy());

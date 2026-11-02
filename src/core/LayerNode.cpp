@@ -807,6 +807,23 @@ void LayerNode::renderLayer(const RenderInfo& aInfo, const TimeCacheAccessor& aA
         shader.setUniformValue("uTexture", 0);
         shader.setUniformValue("uDestTexture", 1);
 
+        // THE LAYER SAMPLE's footprint and level, for LayerDrawingFrag.glsl's reconstructing read.
+        // From the TRANSFORM, not from derivatives: a derivative is per 2x2 quad and shifts with the
+        // sub-pixel phase, which would modulate the sharpness the reconstruction exists to keep
+        // constant. The bias is applied HERE, so the texture's own GL_TEXTURE_LOD_BIAS must stay 0
+        // (ImageKey sets it to 0 for this reason).
+        {
+            const QVector2D meshScale = expans.srt().scale();
+            const float screenScale = aInfo.camera.scale()
+                * std::max(std::fabs(meshScale.x()), std::fabs(meshScale.y()));
+            const float footprint = 1.0f / std::max(screenScale, 1e-4f);
+            shader.setUniformValue("uLayerFootprint", QVector2D(footprint, footprint));
+            shader.setUniformValue("uLayerLodBias", ImageKey::layerLodBias());
+            shader.setUniformValue(
+                "uLayerMaxLod", float(std::max(0, expans.areaTexture()->mipmapLevels() - 1))
+            );
+        }
+
         if (isClippee) {
             shader.setUniformValue("uClippingId", (int)aInfo.clippingId);
             shader.setUniformValue("uClippingTexture", 2);

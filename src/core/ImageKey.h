@@ -88,12 +88,15 @@ public:
     virtual void sleep();
     virtual void awake();
 
-    /// The level offset every layer texture is sampled with, in log2 units. -0.5 is the value that
-    /// matches the bilinear read's SECOND MOMENT to the box the mip level stands for, for every
-    /// footprint (derivation on gl::Texture::setLodBias). A negative bias is the SHARPER direction: 0
-    /// is the derivatives' own rule and reads softer than the ideal by the tent's extra width; it was
-    /// measured to shimmer 4-9 % less for 1-14 % less sharpness, so it is a trade, not a correction.
-    static float layerLodBias() { return -0.5f; }
+    /// The LOD bias the LAYER SHADER applies, in levels (see LayerDrawingFrag.glsl's sampleLayer and
+    /// LayerNode's uniform block). -0.85 = -0.5 for the bilinear read's second moment (derivation on
+    /// gl::Texture::setLodBias) plus -0.35 measured on the reconstructing read: at the fit zoom the
+    /// extra 0.35 takes the rendered sharpness from 19.53 to 20.23 against a 4x supersampled
+    /// reference's 20.13, and IMPROVES the error against it from 1.10 to 0.88 with the error's
+    /// frame-to-frame variation falling 1.53 to 1.31 - so it does not reintroduce shimmer.
+    ///
+    /// The texture's own GL_TEXTURE_LOD_BIAS is therefore 0: the shader computes the level itself.
+    static float layerLodBias() { return -0.85f; }
 
     /// The anisotropy every layer texture asks the sampler for, clamped to what the device reports
     /// (gl::Texture::setMaxAnisotropy, which is also a no-op where the extension is absent).
