@@ -128,6 +128,29 @@ int fail(int aCode, const QString& aMessage) {
     return aCode;
 }
 
+// box-average a supersampled RGBA buffer down to the output size
+std::vector<uint8_t> boxDownsample(
+    const std::vector<uint8_t>& aSrc, const QSize& aSrcSize, const QSize& aDstSize, int aFactor
+) {
+    std::vector<uint8_t> dst((size_t)aDstSize.width() * aDstSize.height() * 4, 0);
+    for (int y = 0; y < aDstSize.height(); ++y)
+        for (int x = 0; x < aDstSize.width(); ++x) {
+            int acc[4] = {0, 0, 0, 0};
+            for (int dy = 0; dy < aFactor; ++dy)
+                for (int dx = 0; dx < aFactor; ++dx) {
+                    const size_t p =
+                        ((size_t)(y * aFactor + dy) * aSrcSize.width() + (x * aFactor + dx)) * 4;
+                    for (int c = 0; c < 4; ++c)
+                        acc[c] += aSrc[p + c];
+                }
+            const size_t q = ((size_t)y * aDstSize.width() + x) * 4;
+            const int n = aFactor * aFactor;
+            for (int c = 0; c < 4; ++c)
+                dst[q + c] = (uint8_t)((acc[c] + n / 2) / n);
+        }
+    return dst;
+}
+
 //-------------------------------------------------------------------------------------------------
 // stubs the GUI normally provides
 
@@ -195,6 +218,9 @@ struct Options {
     int step = 1;
     float offset = 0.0f;
     bool metrics = false;
+    // render at supersample x supersample and box-average down: the ground truth for "is the 1x
+    // render aliased", and a way to look at SSAA before paying for it in the viewport
+    int supersample = 1;
 };
 
 bool parseSize(const QString& aText, QSize& aOut) {
@@ -485,8 +511,10 @@ int runRender(ProbeGL& aProbe, const Options& aOptions) {
         return fail(2, QStringLiteral("cannot create the output directory '%1'").arg(aOptions.outDir));
     }
 
+    const int ss = std::max(1, aOptions.supersample);
+    const QSize renderSize(aOptions.size.width() * ss, aOptions.size.height() * ss);
     RenderFixture fixture;
-    fixture.init(aOptions.size);
+    fixture.init(renderSize);
 
     ctrl::DriverResources resources;
     NullGraphicStyle style;
@@ -503,8 +531,9 @@ int runRender(ProbeGL& aProbe, const Options& aOptions) {
         driver.frameTick();
         driver.flushPendingBlend();
 
-        std::vector<uint8_t> pixels =
-            fixture.render(project, driver, aOptions, frame);
+        std::vector<uint8_t> pixels = fixture.render(project, driver, aOptions, frame);
+        if (ss > 1)
+            pixels = boxDownsample(pixels, renderSize, aOptions.size, ss);
 
         const QString path = outDir.filePath(QStringLiteral("frame-%1.png").arg(frame));
         const QImage image(
@@ -563,6 +592,15 @@ int main(int argc, char** argv) {
             if (!value(text)) return 2;
             if (!parseSize(text, options.size)) {
                 return fail(2, QStringLiteral("--size must be WxH with positive sides, got '%1'").arg(text));
+            }
+        } else if (arg == QLatin1String("--supersample")) {
+            QString text;
+            if (!value(text)) return 2;
+            bool ok = false;
+            options.supersample = text.toInt(&ok);
+            if (!ok || options.supersample < 1 || options.supersample > 4) {
+                std::fprintf(stderr, "render_probe: --supersample must be 1..4\n");
+                return 2;
             }
         } else if (arg == QLatin1String("--zoom")) {
             QString text;
