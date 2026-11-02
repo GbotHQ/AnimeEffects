@@ -152,6 +152,8 @@ Traps that have each cost a run:
 | `src/gl/`, `src/img/`, `src/util/` | GL wrappers, image/PSD I/O, helpers |
 | `tests/` | headless gates, one file each, registered in `tests/CMakeLists.txt` |
 | `scripts/gui/` | `_lib.sh`, `ae_ui.py`, `ae_pix.py`, `run_probes.sh`, `probe_*.sh`, `gpu_headless.sh` |
+| `tools/render_probe/` | headless deterministic renderer: `render_probe --project x.anie --out dir --size WxH --frames a..b [--zoom s] [--offset px] [--metrics]`. Drives `ctrl::Driver::renderGL`, the viewport's own path, with no window and no event loop; run under `xvfb-run` (or `scripts/gui/gpu_headless.sh` for the real GPU). Use it instead of live playback whenever a rendering question needs frames: a software-GL run drops animation frames, so the motion disappears |
+| `tools/mip_compare/` | the mip-chain study harness: builds every level five ways and measures each against the exact premultiplied area average |
 
 ## Document and edit model
 

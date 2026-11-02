@@ -28,6 +28,10 @@ declare -A SKIP=(
   # usage and exits 2, which a suite would read as a failure. Run it by hand:
   # ./build/tests/Debug/mip_compare <image> <outdir>
   [mip_compare]=1
+  # render_probe is a DEVELOPMENT tool, not a gate: it needs a project file and an output directory,
+  # writes a PNG per frame, and with no arguments only prints usage and exits 2. Run it by hand:
+  # ./build/tests/Debug/render_probe --project <file.anie> --out <dir>
+  [render_probe]=1
 )
 # The pattern must allow leading whitespace: targets registered inside an `if()`
 # block (the overlay's, behind AE_ENABLE_IMGUI) are indented, and the anchored form

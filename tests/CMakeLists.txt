@@ -1908,3 +1908,35 @@ target_link_libraries(mip_compare PRIVATE
     Qt6::Core Qt6::Gui Qt6::Widgets
     img util pugixml
 )
+
+# DEVELOPMENT RENDER HARNESS (tools/render_probe): renders selected frames of a real .anie
+# offscreen through the viewport's own path (ctrl::Driver::renderGL plus the production
+# ClippingFrame/FilterFrame/DestinationTexturizer triple) and writes one PNG per frame. It exists
+# because live playback and AE_FRAMEBUFFER_DUMP cannot give a deterministic frame on this project:
+# a software-GL run drops animation frames, so motion artifacts vanish.
+#
+# It is registered here for the same reason verify_mipmap and mip_compare are - a tool nothing
+# compiles rots - but it is NOT a gate: it needs a caller-supplied project and an output directory,
+# and with no arguments it only prints usage and exits 2. scripts/run_suites.sh therefore SKIPs it;
+# run it by hand:
+#   QT_QPA_PLATFORM=offscreen ./build/tests/Debug/render_probe \
+#       --project /tmp/ae-mid.anie --out /tmp/render-probe --size 603x679 --frames 0..0 --metrics
+# assets.qrc is embedded because core::LayerNode compiles its shaders from :/shaders.
+add_executable(render_probe
+    ../tools/render_probe/render_probe.cpp
+    ../src/gui/theme/TimeLine.cpp   # ctrl's renderer links against theme::TimeLine
+    ${CMAKE_SOURCE_DIR}/assets/assets.qrc
+)
+target_include_directories(render_probe PRIVATE ..)
+target_compile_definitions(render_probe PRIVATE
+    AE_MAJOR_VERSION=1
+    AE_MINOR_VERSION=7
+    AE_MICRO_VERSION=1
+    USE_GL_CORE_PROFILE
+)
+target_link_libraries(render_probe PRIVATE
+    Qt6::Core Qt6::Core5Compat Qt6::Widgets
+    Qt6::Gui Qt6::OpenGL Qt6::OpenGLWidgets
+    Qt6::Svg Qt6::Xml Qt6::Concurrent Qt6::Multimedia
+    cmnd core ctrl gl img thr util pugixml
+)
