@@ -807,6 +807,7 @@ void LayerNode::renderLayer(const RenderInfo& aInfo, const TimeCacheAccessor& aA
         shader.setUniformValue("uTexture", 0);
         shader.setUniformValue("uDestTexture", 1);
 
+
         // THE LAYER SAMPLE's footprint and level, for LayerDrawingFrag.glsl's reconstructing read.
         // From the TRANSFORM, not from derivatives: a derivative is per 2x2 quad and shifts with the
         // sub-pixel phase, which would modulate the sharpness the reconstruction exists to keep

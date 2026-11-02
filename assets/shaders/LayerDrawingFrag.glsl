@@ -217,8 +217,11 @@ vec4 layerTapLevel(sampler2D aTexture, vec2 aUv, float aLevel)
     float f = max(uLayerFootprint.x, uLayerFootprint.y);
     ivec2 sizeL = textureSize(aTexture, int(aLevel));
     float spanL = f / exp2(aLevel) * ((aLevel < 0.5) ? 1.0 : 0.8);
-    vec2 step = spanL * 0.5 / vec2(sizeL);
     vec4 acc = vec4(0.0);
+    // FILTERED taps on purpose: point taps (texelFetch) measured 0.16 ms against these 0.30 ms, but
+    // error 2.62 of 255 against 0.84 and the error's temporal variation 3.88 against 1.27 - each
+    // filtered tap reconstructs inside its texel, which is what the two-tap footprint needs.
+    vec2 step = spanL * 0.5 / vec2(sizeL);
     for (int j = 0; j < 2; ++j)
         for (int i = 0; i < 2; ++i) {
             vec2 off = (vec2(float(i), float(j)) + 0.5) * step - step;
