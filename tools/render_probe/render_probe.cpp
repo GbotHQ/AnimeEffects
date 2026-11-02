@@ -383,16 +383,20 @@ struct RenderFixture {
         core::TimeInfo time = aProject.currentTimeInfo();
         time.frame = core::Frame(aFrame);
 
+        // The supersampled frame is `ss` times larger, so an ABSOLUTE zoom (and a sub-pixel offset
+        // given in output pixels) must scale with it, or the framing changes and any comparison
+        // against the supersampled reference is meaningless.
+        const float ssScale = float(std::max(1, aOptions.supersample));
         core::CameraInfo camera;
         camera.setDevicePixelRatio(1.0);
         camera.setScreenSize(size);
         camera.setImageSize(attr.imageSize());
         camera.setCenter(
-            QVector2D(size.width() * 0.5f + aOptions.offset, size.height() * 0.5f)
+            QVector2D(size.width() * 0.5f + aOptions.offset * ssScale, size.height() * 0.5f)
         );
         float scale = 1.0f;
         if (aOptions.zoomSet) {
-            scale = aOptions.zoom;
+            scale = aOptions.zoom * ssScale;
         } else {
             const float scaleX = (float)size.width() / (float)attr.imageSize().width();
             const float scaleY = (float)size.height() / (float)attr.imageSize().height();
