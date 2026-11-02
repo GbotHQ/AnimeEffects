@@ -688,6 +688,36 @@ the truth at 2.540 - it rewards blur, because a blurred image changes less betwe
 this has to measure sharpness CONSISTENCY across phases, not variance, and it should be read against the
 truth per phase. Anything that only reports variation will keep recommending blur.
 
+## The sampling rule this line of experiments converged on
+
+`tools/render_probe` made every one of these measurable on the real artwork (deterministic, one output
+frame per project frame, no display - `QT_QPA_PLATFORM=offscreen`). What holds up, with the numbers:
+
+- **level dominates.** With the sampling held fixed, level 0 gives error 0.18 of 255 against a 4x
+  supersampled reference, the shipped trilinear blend (LOD 0.6, i.e. 40 % level 0 + 60 % level 1) gives
+  1.96 even with 16 taps per level, and level 1 gives 0.90 at its best. The tap count, once the level is
+  right, is worth 0.18 vs 1.15 (2 taps) vs 0.46 (3 taps).
+- **2 taps at the finest level already halves it**: 4 texel fetches (the same count the hardware spends)
+  take the error from 2.18 to 1.15; 3 taps (9 fetches) reach 0.46; 16 taps 0.18.
+- **level transitions must be a blend, not a `ceil`.** Sweeping zoom, a discrete level choice reverses
+  its sharpness trend exactly at zoom = 1/2^(L+1) (-12 % then -20.5 % at 0.5; -24 % then -37.6 % at
+  0.25); blending two properly-tapped levels is monotone (-12.3 %, -12.1 %; -23.4 %, -26.9 %).
+- **anisotropic footprint** (layer stretched 4:1 in the loaded project): candidate 0.26, hardware with
+  16x anisotropy 0.40.
+- **deformed layer** (a MeshKey built from the layer's own grid, displaced; candidate error 0.25,
+  hardware 0.41).
+
+The mechanism the numbers point at: pick the level from the footprint, take 2 taps per axis on each of
+two adjacent levels, blend by the LOD fraction - 8 texel fetches, ~0.2 ms per screen-covering layer at
+1080p, no LOD bias needed.
+
+TOOL TRAPS FOUND WHILE MEASURING (each cost a wrong answer): `--zoom` is an absolute screen scale and
+must be multiplied by the supersample factor, or a supersampled comparison is framed differently; a
+shader edit does not rebuild `assets.qrc`, so `touch assets/assets.qrc` is required; a MeshKey must be
+installed with `TimeLine::adoptKey` (the MAP) because the mesh blend reads `map(TimeKeyType_Mesh)`,
+never the default-key slot; and a perturbation made after load must emit `Project::onTimeLineModified`
+AFTER the Driver is constructed, because the Driver is what listens.
+
 **IMPLEMENTED, MEASURED ON THE REAL PROJECT, AND REVERTED (2026-11-02).** The 4-tap path was built: the
 layer fragment shader samples `sampleLayer()` (Catmull-Rom, 4 taps per axis on each of the two levels the
 LOD falls between, hardware read below one texel of footprint), with `ImageKey::sharpLayerEnabled()` and
