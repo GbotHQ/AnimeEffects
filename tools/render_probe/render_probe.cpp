@@ -71,7 +71,9 @@
 #include <QImage>
 #include <QJsonObject>
 #include <QOpenGLVersionFunctionsFactory>
-#include <QOpenGLWidget>
+#include <QOffscreenSurface>
+#include <QOpenGLContext>
+#include <QOpenGLVersionFunctionsFactory>
 #include <QScopedPointer>
 #include <QSize>
 #include <QString>
@@ -237,52 +239,56 @@ namespace {
 //-------------------------------------------------------------------------------------------------
 // GL bootstrap
 
-class ProbeGLWidget: public QOpenGLWidget {
+// The GL context, offscreen: a QOffscreenSurface plus a QOpenGLContext. No window, no widget, and
+// therefore no display server - the platform plugin still has to support GL surfaces, which the
+// `offscreen` plugin does through EGL.
+class ProbeGL {
 public:
     gl::DeviceInfo mDeviceInfo;
-    bool mGLReady = false;
     QScopedPointer<gl::VertexArrayObject> mDefaultVao;
 
-protected:
-    void initializeGL() override {
-        if (!context() || !context()->isValid()) {
-            std::fprintf(stderr, "FATAL: invalid OpenGL context\n");
-            std::exit(2);
+    bool init(QApplication& aApp) {
+        QSurfaceFormat format;
+        format.setVersion(gl::Global::kVersion.first, gl::Global::kVersion.second);
+        format.setProfile(QSurfaceFormat::CoreProfile);
+        mSurface.setFormat(format);
+        mSurface.create();
+        if (!mSurface.isValid()) {
+            std::fprintf(stderr, "FATAL: offscreen surface could not be created on this platform\n");
+            return false;
         }
-        auto* functions = QOpenGLVersionFunctionsFactory::get<gl::Global::Functions>(context());
+        mContext.setFormat(format);
+        if (!mContext.create()) {
+            std::fprintf(stderr, "FATAL: OpenGL context could not be created offscreen\n");
+            return false;
+        }
+        if (!mContext.makeCurrent(&mSurface)) {
+            std::fprintf(stderr, "FATAL: offscreen context could not be made current\n");
+            return false;
+        }
+        auto* functions = QOpenGLVersionFunctionsFactory::get<gl::Global::Functions>(&mContext);
         if (!functions || !functions->initializeOpenGLFunctions()) {
             std::fprintf(stderr, "FATAL: failed to get OpenGL 4.0 core functions\n");
-            std::exit(2);
+            return false;
         }
-        // setContext() asserts it is called exactly once, and initializeGL re-runs when the
-        // widget recreates its FBO/context behind our back, so only the first pass installs
-        // the globals.
-        if (!mGLReady) {
-            gl::Global::setContext(*this);
-            gl::Global::setFunctions(*functions);
-            mDeviceInfo.load();
-            gl::DeviceInfo::setInstance(&mDeviceInfo);
-            const char* version = (const char*)context()->functions()->glGetString(GL_VERSION);
-            std::fprintf(stderr, "OpenGL: %s\n", version ? version : "(unknown)");
-            mGLReady = true;
-        } else {
-            gl::Global::clearFunctions();
-            gl::Global::setFunctions(*functions);
-        }
-
-        // A GL 4.0 core profile has NO default vertex array object, and every draw that sets up
-        // attributes needs one bound. MainDisplayWidget::initializeGL keeps one bound for the
-        // widget's lifetime; do the same.
+        gl::Global::setContext(mContext, mSurface);
+        gl::Global::setFunctions(*functions);
+        mDeviceInfo.load();
+        gl::DeviceInfo::setInstance(&mDeviceInfo);
+        const char* version = (const char*)mContext.functions()->glGetString(GL_VERSION);
+        std::fprintf(stderr, "OpenGL: %s\n", version ? version : "(unknown)");
+        // a core profile has no default VAO; the viewport keeps one bound for its lifetime
         mDefaultVao.reset(new gl::VertexArrayObject());
         mDefaultVao->bind();
-        GLint boundVao = 0;
-        gl::Global::functions().glGetIntegerv(GL_VERTEX_ARRAY_BINDING, &boundVao);
-        if (boundVao == 0) {
-            std::fprintf(stderr, "FATAL: no vertex array object is bound (core profile needs one)\n");
-            std::exit(2);
-        }
+        aApp.processEvents();
+        return true;
     }
+
+private:
+    QOffscreenSurface mSurface;
+    QOpenGLContext mContext;
 };
+
 
 //-------------------------------------------------------------------------------------------------
 // render fixture: the framebuffer half of a RenderInfo, mirroring MainDisplayWidget
@@ -444,10 +450,10 @@ double meanAbsChannelDelta(const std::vector<uint8_t>& aPrev, const std::vector<
 //-------------------------------------------------------------------------------------------------
 // run
 
-int runRender(ProbeGLWidget& aWidget, const Options& aOptions) {
+int runRender(ProbeGL& aProbe, const Options& aOptions) {
     FrameAnimator animator;
     NullReporter reporter;
-    gl::DeviceInfo& device = aWidget.mDeviceInfo;
+    gl::DeviceInfo& device = aProbe.mDeviceInfo;
     gl::DeviceInfo::setInstance(&device);
 
     core::Project project(aOptions.projectPath, animator, nullptr);
@@ -619,38 +625,16 @@ int main(int argc, char** argv) {
     }
     QApplication app(argc, argv);
 
-    // No visible window: the widget exists only because gl::Global::makeCurrent() (used by the
-    // mesh buffers during load) requires a registered QOpenGLWidget.
-    ProbeGLWidget glWidget;
-    glWidget.setAttribute(Qt::WA_DontShowOnScreen, true);
-    glWidget.resize(32, 32);
-    glWidget.show();
-    app.processEvents();
-    if (!glWidget.mGLReady) {
-        glWidget.update();
-        app.processEvents();
-    }
-    if (!glWidget.mGLReady) {
-        // Some platforms refuse to create a context for a never-mapped widget; fall back to a
-        // normal show (the offscreen platform still maps nothing).
-        glWidget.setAttribute(Qt::WA_DontShowOnScreen, false);
-        glWidget.hide();
-        glWidget.show();
-        glWidget.update();
-        app.processEvents();
-    }
-    if (!glWidget.mGLReady) {
-        std::fprintf(stderr, "FATAL: GL widget did not initialize on this platform\n");
+    ProbeGL probe;
+    if (!probe.init(app))
         return 2;
-    }
-    glWidget.makeCurrent();
 
-    const int result = runRender(glWidget, options);
+    const int result = runRender(probe, options);
 
     // Tear GL objects down while the context is still current. runRender's project, driver and
     // fixture are already gone; the widget's own vertex array object goes here.
     gl::DeviceInfo::setInstance(nullptr);
-    glWidget.mDefaultVao.reset();
-    glWidget.doneCurrent();
+    probe.mDefaultVao.reset();
+    gl::Global::doneCurrent();
     return result;
 }
