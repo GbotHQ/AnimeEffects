@@ -1,0 +1,197 @@
+#ifndef GL_PAGEPOOL_H
+#define GL_PAGEPOOL_H
+
+#include <QtGlobal>
+#include <QtOpenGL/QtOpenGL>
+#include <list>
+#include <unordered_map>
+#include <vector>
+#include "XC.h"
+#include "util/NonCopyable.h"
+
+class QOpenGLContext;
+
+namespace gl {
+
+/// THE SLOT ALLOCATOR FOR PAGED TEXTURES.
+///
+/// A page is 256x256 texels of one mip level, held in a growable set of 4096^2 atlases. The
+/// pool knows nothing about images, levels or tables: it owns slots, hands one to a caller,
+/// evicts the least recently touched page when it is full, and tells that page's owner by
+/// callback so the owner can clear the page's entry in its table. The owner - core::VirtualTexture
+/// - does the upload, the table and the demand. Keeping the split there is what makes the two
+/// testable apart: the pool's gate fills slots with a known pattern and reads them back, with
+/// no project, no image and no shader in the way.
+///
+/// GEOMETRY. A slot is 260x260: the 256x256 content, plus a 2-texel gutter on every side. The
+/// gutter holds the NEIGHBOURING content texels (and transparent outside the resource), so a
+/// bilinear tap at the content's edge reads the texel the level actually has there instead of
+/// the next page's slot or the atlas' edge. 2 texels is the exact requirement: a filtered read
+/// at a content texel centre reaches at most one texel outside the content, not two. 4096 / 260
+/// leaves 15 slots per axis (3900 of 4096 texels used); the remaining 196 texels are dead and
+/// deliberate - a pitch that packed 16 slots would leave no gutter at all.
+///
+/// WHY SEPARATE ATLASES and not one bigger texture or a TEXTURE_2D_ARRAY: a full atlas is an
+/// allocation with no copy (a bigger texture is a realloc plus a copy of everything already
+/// resident, with both live at the peak), it can be released whole when the view shrinks, and
+/// `GL_MAX_TEXTURE_SIZE` is 8192/16384 on much of the hardware this runs on. The shader pays for
+/// that with a four-way branch instead of one sampler: at most kMaxAtlasCount atlases are
+/// addressable from the layer shader.
+///
+/// The first atlas is 4096^2 (225 slots, 61 MB), so even a small project pays a 61 MB floor for
+/// its pool. A 2048^2 first atlas was built and measured: 57 pages on test.anie then needed a
+/// second 4096 atlas for the remaining 8, i.e. 77 MB against 61 MB for one large atlas, and the
+/// demand that decides between them is not known until the frame that asks. The fixed large atlas
+/// is the simpler, smaller-worst-case choice until a demand-aware policy is measured.
+///
+/// WHY THE ATLASES ARE CREATED EMPTY AND GROW ON DEMAND: the budget is one number in bytes and
+/// the hardware differs by an order of magnitude. Growth is bounded by the budget; an allocation
+/// that fails is not a fatal error - the pool reports the failure, keeps the budget it had, and
+/// the frame degrades to the coarse chain (see core::VirtualTexture).
+class PagePool: private util::NonCopyable {
+public:
+    enum {
+        kPageSize = 256,
+        kGutter = 2,
+        kPitch = kPageSize + kGutter * 2, // 260
+        kAtlasSize = 4096,
+        kSlotsPerAxis = kAtlasSize / kPitch, // 15
+        kSlotsPerAtlas = kSlotsPerAxis * kSlotsPerAxis, // 225
+        kMaxAtlasCount = 4,
+        kBytesPerTexel = 4,
+        kPageBytes = kPitch * kPitch * kBytesPerTexel, // 270400
+        kAtlasBytes = kAtlasSize * kAtlasSize * kBytesPerTexel, // 60.8 MB
+    };
+
+    /// The identity of a page, assigned by its owner. `owner` is opaque to the pool (the
+    /// VirtualTexture's address); `level/x/y` is the page's position in that resource's pyramid.
+    struct PageId {
+        quint64 owner = 0;
+        int level = 0;
+        int x = 0;
+        int y = 0;
+
+        bool operator==(const PageId& aRhs) const {
+            return owner == aRhs.owner && level == aRhs.level && x == aRhs.x && y == aRhs.y;
+        }
+    };
+
+    struct PageIdHash {
+        size_t operator()(const PageId& aPage) const {
+            size_t h = (size_t)aPage.owner;
+            h = h * 1000003u + (size_t)aPage.level;
+            h = h * 1000003u + (size_t)aPage.x;
+            h = h * 1000003u + (size_t)aPage.y;
+            return h;
+        }
+    };
+
+    /// Where a page lives: the atlas, its slot index, and the CONTENT origin in atlas texels
+    /// (the gutter is at x-1, x-2, ...). `slot` is 0..kSlotsPerAtlas-1.
+    struct Slot {
+        int atlas = -1;
+        int slot = -1;
+        int x = 0;
+        int y = 0;
+
+        bool isValid() const { return atlas >= 0; }
+    };
+
+    class Listener {
+    public:
+        virtual ~Listener() {}
+        /// The page was evicted: its slot is about to be reused and every table entry that
+        /// names it must be cleared. Called BEFORE the slot's new content is written.
+        virtual void pageEvicted(const PageId& aPage) = 0;
+    };
+
+    static PagePool& instance();
+
+    /// The switch. On by default; `AE_VIRTUAL_TEXTURE=0` selects the full-resolution control
+    /// path for A/B measurements and for the gates that compare the two.
+    static bool enabled();
+    /// The longest side of a resource that stays a plain mipmapped texture, and the size the
+    /// always-resident coarse chain starts at (`AE_VT_COARSE`, default 512).
+    static int coarseSize();
+    static qint64 defaultBudgetBytes();
+    static qint64 defaultUploadCapBytes();
+
+    void beginFrame();
+    void endFrame();
+
+    bool find(const PageId& aPage, Slot* aSlot) const;
+    /// Reserves a slot for a page, evicting the least recently touched resident page if the
+    /// pool is full. The entry is installed immediately; the caller uploads into `aSlot` and
+    /// calls cancel() if the upload cannot be made. Returns false when the frame's upload budget
+    /// is spent, the byte budget forbids another atlas, or there is nothing to evict.
+    bool acquire(const PageId& aPage, Listener* aListener, Slot* aSlot);
+    void cancel(const Slot& aSlot);
+    /// Marks a resident page as used this frame (moves it to the front of the eviction order).
+    void touch(const PageId& aPage);
+    /// Drops every page of one owner. The listener is NOT called: the owner is going away.
+    void releaseOwner(quint64 aOwner);
+
+    /// Drops every resident page and every atlas. The owners' tables are stale afterwards, so
+    /// the pool's generation changes and each VirtualTexture clears its table on its next
+    /// resolve (see VirtualTexture::resolveDemand). Used by the export gate's "render from an
+    /// empty pool" case and by the budget/shrink tests.
+    void purge();
+
+    /// Changes whenever the resident set was thrown away wholesale.
+    quint64 generation() const { return mGeneration; }
+
+    GLuint atlasTextureId(int aAtlas) const;
+
+    /// Reads a slot back to the caller's buffer (kPitch x kPitch RGBA8), for the gate. Binds the
+    /// atlas, which is otherwise never left bound by the pool.
+    bool readSlot(const Slot& aSlot, uint8* aDst) const;
+
+    void setBudgetBytes(qint64 aBytes);
+    qint64 budgetBytes() const { return mBudgetBytes; }
+
+    int residentPages() const { return (int)mPages.size(); }
+    int atlasCount() const { return mAtlasCount; }
+    qint64 residentBytes() const { return (qint64)mPages.size() * kPageBytes; }
+    qint64 allocatedBytes() const { return (qint64)mAtlasCount * kAtlasBytes; }
+    int frameUploads() const { return mFrameUploads; }
+    qint64 frameUploadBytes() const { return mFrameUploadBytes; }
+    int frameEvictions() const { return mFrameEvictions; }
+    int frameFailures() const { return mFrameFailures; }
+    quint64 frame() const { return mFrame; }
+
+private:
+    PagePool();
+
+    struct Entry {
+        Slot slot;
+        Listener* listener = nullptr;
+        std::list<PageId>::iterator lru;
+    };
+
+    bool makeAtlas();
+    void releaseAtlas(int aAtlas);
+    bool ensureContext();
+    void resetState();
+
+    std::vector<GLuint> mAtlas;
+    std::vector<int> mAtlasUsed;
+    std::vector<quint64> mAtlasLastUsed;
+    int mAtlasCount = 0;
+    // free slots per atlas, a small stack each; the scan is bounded by kSlotsPerAtlas
+    std::vector<std::vector<int>> mFree;
+    std::unordered_map<PageId, Entry, PageIdHash> mPages;
+    std::list<PageId> mLru; // front = most recently touched
+    quint64 mFrame = 0;
+    qint64 mBudgetBytes = 0;
+    qint64 mUploadCapBytes = 0;
+    qint64 mFrameUploadBytes = 0;
+    int mFrameUploads = 0;
+    int mFrameEvictions = 0;
+    int mFrameFailures = 0;
+    quint64 mGeneration = 1;
+    QOpenGLContext* mContext = nullptr;
+};
+
+} // namespace gl
+
+#endif // GL_PAGEPOOL_H

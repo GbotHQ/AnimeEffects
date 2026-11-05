@@ -56,6 +56,11 @@ namespace gl {
 //     is under kMinUvArea contributes to none of them. A singular Jacobian (degenerate triangle)
 //     is clamped before log2 and before the ratio, so the line never carries a NaN or an inf.
 //
+//   * vt_pages / vt_bytes - the PAGED TEXTURE POOL (gl::PagePool): sharp pages resident at the
+//     end of the frame, and the bytes those pages hold. `vt_up` is the bytes uploaded into the
+//     pool this frame and `vt_evict` the pages evicted to make room. Zero when virtual texturing
+//     is off (AE_VIRTUAL_TEXTURE=0), which is the A/B control.
+//
 // Output: one line per frame appended to the path in AE_FRAME_STATS, plus a final summary line.
 class FrameStats {
 public:
@@ -103,6 +108,17 @@ public:
     void textureDestroyed(qint64 aBytes);
     void maskFieldBytes(qint64 aBytes) { if (mEnabled) mMaskBytes = aBytes; }
 
+    /// The paged texture pool's frame (see gl::PagePool): pages resident at the end of the
+    /// frame, their bytes, the bytes uploaded this frame, and the pages evicted.
+    void virtualTexture(int aPages, qint64 aBytes, qint64 aUploadBytes, int aEvictions) {
+        if (!mEnabled)
+            return;
+        mVtPages = aPages;
+        mVtBytes = aBytes;
+        mVtUploadBytes = aUploadBytes;
+        mVtEvictions = aEvictions;
+    }
+
     // One frame's measured distribution, replacing whatever the previous readback left.
     // `aBins` holds kDensityBins uv-area sums in bin order (bin b covers
     // [kDensityBinBase + b * kDensityBinStep, kDensityBinBase + (b + 1) * kDensityBinStep)
@@ -148,6 +164,11 @@ private:
     double mAnisoMax = 0.0;
     // the largest density any frame of this run produced
     double mSessionDensityMax = 0.0;
+    // the paged texture pool at the end of the frame (see virtualTexture)
+    int mVtPages = 0;
+    qint64 mVtBytes = 0;
+    qint64 mVtUploadBytes = 0;
+    int mVtEvictions = 0;
 };
 
 } // namespace gl

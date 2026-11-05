@@ -348,6 +348,9 @@ void Texture::create(
 
         switch (aFormat) {
         case GL_RED: bytesPerPixel = 1; break;
+        // R16UI, the page table's format. The external format is what this switch sees, so an
+        // integer RED texture is two bytes per texel and must not read as the RGBA default.
+        case GL_RED_INTEGER: bytesPerPixel = 2; break;
         case GL_RG: bytesPerPixel = 2; break;
         case GL_RGB: bytesPerPixel = 3; break;
         case GL_RGBA: bytesPerPixel = 4; break;
