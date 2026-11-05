@@ -850,7 +850,7 @@ at load; nothing reads a texture back during a frame.
 | atlas | 4096x4096, 15x15 = 225 slots (3900 of 4096 texels used), 60.8 MB RGBA8 |
 | atlases | up to 4 (the shader's four-way branch), 243 MB |
 | budget | `AE_VT_BUDGET_MB`, default 256 MB, clamped to 4 atlases |
-| upload cap | `AE_VT_UPLOAD_MB`, default 32 MB/frame (118 pages) |
+| upload cap | `AE_VT_UPLOAD_MB`, default 8 MB/frame (29 pages); 32 MB was measured to cost 60-140 ms on the frame that spent it |
 | eviction | least recently touched page; every requested page is touched before any upload |
 
 The gutter is 2, not the design's 4, and the slots are 15x15, not 16x16: 16 slots of 260 pitch do
@@ -938,7 +938,7 @@ programs.
 |---|---|
 | `AE_VIRTUAL_TEXTURE=0` | the full-resolution control path (the gates' A/B) |
 | `AE_VT_BUDGET_MB` | pool budget, default 256, clamped to 4 atlases (243 MB) |
-| `AE_VT_UPLOAD_MB` | per-frame upload cap, default 32 |
+| `AE_VT_UPLOAD_MB` | per-frame upload cap, default 8 |
 | `AE_VT_COARSE` | longest side of the always-resident chain, default 512 |
 | `AE_VT_STATS=1` | one line per frame: resources, wanted, resident, pool pages/bytes |
 | `AE_VT_DEMAND=0` | diagnostic: skip the demand pass and its readback (every paged layer samples the coarse chain through the VT shader) - the control for "is the cost the shader or the demand machinery" |
@@ -971,10 +971,21 @@ programs.
   | max RSS | 8.08 GB | 8.63 GB |
 
   The VRAM is 3.8x lower; the 10 ms steady-state difference is the demand geometry pass (~8 ms)
-  plus the page read. The first paged frames are slower (171 / 158 / 234 / 149 ms) because 474
-  pages are being uploaded four frames' worth at a time; by the fifth frame the pool is at its
-  128 MB working set. The RAM increase (+0.55 GB) is the pyramids. Load time did not regress:
-  fewer and smaller textures are created at load, which offsets the readbacks.
+  plus the page read. Where the 697 MiB is: **183 MiB of allocated atlases holding 128 MiB of
+  pages, 50 MiB of coarse chains, and 452 MiB of unpaged full textures** - of which **443 MiB is
+  three clipper layers** (one 4343x4351, two 2702x12604). The pooled tiers are therefore 178 MiB
+  used / 233 MiB allocated, in line with the design's estimate; the gap is the deliberate clipper
+  exclusion, which is why it is first on the open list.
+  The pool fills at the 8 MB/frame default over ~17 frames: those frames run at 112-135 ms against
+  the control's 93-94, and from frame 19 the converged steady state is 106-108 ms. A 32 MB cap was
+  measured first and is why the default is 8: the four frames that spent it cost 171 / 158 / 234 /
+  149 ms. The page fill copies the level's rows (one memcpy per row) instead of a memcpy per texel,
+  which was wasting most of that upload frame.
+  The RAM increase (+0.55 GB) is the pyramids (609 MB across the 108 paged resources). Load time
+  did not regress (74.9 s against 79.4), but the pyramid capture is SYNCHRONOUS: it cost 1.47 s
+  across the 136 keys, worst 130 ms for one 3841x12658 image (a 15000² import scales to ~0.6 s,
+  inference from the 48 MP sample). A clipper-policy change rebuilds the key (full chain plus
+  capture), so a layer that becomes a clipper pays that again.
 - **V1 parity**: 900x700 image, 320x320 canvas, coarse level 1, 12 level-0 pages wanted and all
   resident. At scale 0.5 and 1.0 the paged and full-resolution frames are **bit-identical** over
   the whole interior; at scale 0.25 the layer asks for level 2, which the coarse chain owns, and
@@ -1000,7 +1011,9 @@ programs.
 2. The demand pass's ~8 ms on 130 layers: it re-walks every visible triangle every frame even
    when the camera and the transform cache have not changed. A static view could skip it; the
    density meter already reads the same positions, so the two could share one pass under
-   `AE_FRAME_STATS`.
+   `AE_FRAME_STATS`. Beside it, the pool's landing rate: 8 MB/frame still costs 10-20 ms while it
+   fills, and a large import's synchronous capture is a visible pause; an asynchronous/deferred
+   capture and a page upload batched per atlas row are the two obvious next reductions.
 3. Clippers in the pool (share the sampler).
 4. Masks (Stage 4).
 5. Per-resource pyramids for duplicated layers.

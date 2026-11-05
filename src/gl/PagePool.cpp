@@ -51,7 +51,7 @@ qint64 PagePool::defaultBudgetBytes() {
 }
 
 qint64 PagePool::defaultUploadCapBytes() {
-    const qint64 mb = envInt("AE_VT_UPLOAD_MB", 32);
+    const qint64 mb = envInt("AE_VT_UPLOAD_MB", 8);
     return std::max<qint64>(kPageBytes, mb * 1024 * 1024);
 }
 

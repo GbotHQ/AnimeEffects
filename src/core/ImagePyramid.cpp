@@ -110,21 +110,27 @@ void ImagePyramid::fillPage(
             std::memset(row, 0, (size_t)pitch * 4);
             continue;
         }
-        for (int x = 0; x < pitch; ++x) {
-            const int gx = originX + x;
-            uint8* dst = row + x * 4;
-            if (gx < 0 || gx >= w) {
-                dst[0] = dst[1] = dst[2] = dst[3] = 0;
-                continue;
-            }
-            if (level) {
-                std::memcpy(dst, level + ((size_t)gy * w + gx) * 4, 4);
-            } else if (!haveBase) {
-                dst[0] = dst[1] = dst[2] = dst[3] = 0;
-            } else {
-                // level 0: the resource's straight RGBA, premultiplied exactly as the upload
-                // does it (img::Util::makeTextureUpload rounds to nearest), so a level-0 page
-                // and the chain's level 0 are the same bytes.
+        // The columns that have level texels: [x0, x1). The rest of the row is the page's
+        // gutter, transparent outside the level. ONE memcpy for the run, not one per texel:
+        // a page is 67k texels and the per-texel copy was the dominant cost of a 32 MB upload
+        // frame (measured on nene's first paged frames).
+        const int x0 = std::max(0, -originX);
+        const int x1 = std::min(pitch, w - originX);
+        if (x0 > 0)
+            std::memset(row, 0, (size_t)x0 * 4);
+        if (x1 < pitch)
+            std::memset(row + (size_t)x1 * 4, 0, (size_t)(pitch - x1) * 4);
+        if (x1 <= x0)
+            continue;
+        if (level) {
+            std::memcpy(
+                row + (size_t)x0 * 4, level + ((size_t)gy * w + (originX + x0)) * 4,
+                (size_t)(x1 - x0) * 4
+            );
+        } else if (haveBase) {
+            for (int x = x0; x < x1; ++x) {
+                const int gx = originX + x;
+                uint8* dst = row + (size_t)x * 4;
                 XC_ASSERT(gx < aBaseSize.width() && gy < aBaseSize.height());
                 const uint8* src = aBase + ((size_t)gy * aBaseSize.width() + gx) * 4;
                 const uint32 a = src[3];

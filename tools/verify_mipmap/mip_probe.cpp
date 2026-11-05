@@ -1428,7 +1428,8 @@ void suitePagePool() {
     // acquire exactly one atlas' worth, a frame's cap at a time
     int acquired = 0;
     for (int i = 0; i < gl::PagePool::kSlotsPerAtlas; ++i) {
-        if (i % 100 == 0)
+        // the default upload cap is 8 MB (29 pages), so a frame cannot fill the whole atlas
+        if (i % 20 == 0)
             pool.beginFrame();
         gl::PagePool::Slot s;
         if (pool.acquire(pageId(2, 0, i, 0), &log, &s))
