@@ -248,7 +248,11 @@ hand it over. Its one question is `Sampling`:
 - **The texture-residency plan lives in `docs/design/renderer/texture-residency.md`** - measured
   numbers, the density metric and its anisotropy gap, the pyramid-as-authoring-data decision, the
   page-pool design, the staged path, moving FFD into the pass, and what the clipping pass can do
-  with the same GPU-side measurements. Read it before touching textures, mips or residency.
+  with the same GPU-side measurements. Read it before touching textures, mips or residency. **Stage 3
+  (paged layer textures) is built** (`gl::PagePool`, `core::VirtualTexture`, `core::ImagePyramid`,
+  the `VIRTUAL_TEXTURE` shader variation): `AE_VIRTUAL_TEXTURE=0` is the full-resolution control,
+  `AE_VT_STATS=1` prints the pool each frame, and the V1/P1/P2 suites in `verify_mipmap` are the
+  gates. Clipper layers and masks deliberately keep the full texture; see the doc's open list.
 
 - The timeline surface, the ruler and the graph page are **Canvas Painter** hosts (`QCanvasPainterWidget`
   through `PanelHostBase`); Qt ≥ 6.12 is required. The scene models live in `ctrl/` (they read

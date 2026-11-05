@@ -801,3 +801,202 @@ asking the hardware to filter each of 32 taps doubles the cost for nothing.
 
 These are synthetic (warm cache, no blending). The figure that decides shipping is the same experiment in
 the app - run the project with `AE_FRAME_STATS` on both shader variants and compare `ms`.
+## Stage 3, built (2026-11-05)
+
+**Status: implemented behind `AE_VIRTUAL_TEXTURE` (default on), with the full-resolution path kept
+as the A/B control.** This section records what was built, where it differs from the design above,
+and what the gates measure. The design text is left as written so the reasons survive; where the
+implementation differs, the difference is stated here.
+
+### What a paged image is now
+
+`core::VirtualTexture` (one per `ImageKey`, owned by `ImageKey::Cache`) is three things:
+
+1. **The coarse chain.** Every level whose longest side is at most `AE_VT_COARSE` (default 512)
+   down to 1x1, as one ordinary mipmapped texture. It is always resident: a page that is not
+   there samples it, so a miss is blur. It is **copied level for level** from the production
+   chain, not rebuilt, so the fallback and the control cannot disagree about a texel.
+2. **The page table.** One `R16UI` texture of `(pagesX(0), sum of pagesY(level))`: 0 means "not
+   resident", otherwise `(atlas << 8) | (slot + 1)`. Levels sharper than the coarse chain are
+   paged; the rest are the coarse texture. It is rebuilt from `mEntries` in **one**
+   `glTexSubImage2D` whenever the resident set changes, after **every** resource's uploads for
+   the frame (a second resource's upload can evict a first one's page; publishing per resource
+   would leave a table naming a slot someone else owns).
+3. **The demand map.** One `R8` texel per page of the same grid, marked by a geometry pass that
+   walks each drawn layer's own triangles with the skinned positions and the camera. It is one
+   LAYER of a shared `GL_TEXTURE_2D_ARRAY` (one layer per resource), not a texture per resource:
+   a clear, a copy and a fence per FRAME, however many resources there are. The per-resource map
+   was built first and measured - on `nene` (105 paged resources) 105 `glGetTexImage` calls and
+   105 fences cost ~40 ms of a 94 ms frame, against ~8 ms for the geometry pass itself. Two PBOs
+   and a fence make the readback asynchronous; a page is wanted for `kKeepFrames = 3` frames
+   after it was last marked.
+
+The **pyramid** (`core::ImagePyramid`) is the page source: levels 1..coarse-1 captured from the
+GPU chain into RAM with `glGetTexImage` at key creation, level 0 generated from the resource's own
+pixels (premultiplied with the upload's exact rounding) when a level-0 page is asked for. Level 0 is
+not stored: it is the larger half of the chain and the resource image already holds it, so storing
+it again would double the cost of every paged image for a memcpy. The capture is once per resource,
+at load; nothing reads a texture back during a frame.
+
+### The pool
+
+`gl::PagePool` is the slot allocator, deliberately knowing nothing about images or levels:
+
+| | |
+|---|---|
+| page | 256x256 content texels |
+| gutter | 2 texels on every side (one filtered read reaches one texel past its centre) |
+| pitch | 260 |
+| atlas | 4096x4096, 15x15 = 225 slots (3900 of 4096 texels used), 60.8 MB RGBA8 |
+| atlases | up to 4 (the shader's four-way branch), 243 MB |
+| budget | `AE_VT_BUDGET_MB`, default 256 MB, clamped to 4 atlases |
+| upload cap | `AE_VT_UPLOAD_MB`, default 32 MB/frame (118 pages) |
+| eviction | least recently touched page; every requested page is touched before any upload |
+
+The gutter is 2, not the design's 4, and the slots are 15x15, not 16x16: 16 slots of 260 pitch do
+not fit 4096. A slot that cannot have a gutter is not a slot.
+
+Growth is another atlas when the budget allows; an allocation that fails drops the budget to what
+is already allocated and the frame falls back to the coarse chain. An atlas with no resident page
+and no use for 600 frames is released, so a smaller window or a closed project returns memory
+without a restart.
+
+`PagePool` owns the pages' GL memory, not their content: the caller uploads the page's 260x260 (the
+`VirtualTexture` fills the gutter from the level's neighbouring texels, or transparent outside the
+resource) and then the table entry is published. A pool **generation** changes when the pool is
+purged or its context is recreated; a `VirtualTexture` that sees a new generation clears its table
+before sampling, so a dead slot number can never reach the shader.
+
+### Demand
+
+The design's "the density pass already walks the triangles" became a dedicated geometry pass,
+because the density meter exists only under `AE_FRAME_STATS` and a paged renderer cannot have its
+demand switched off. The pass is one indexed draw per layer, before the layer's own draw, reading
+the same skinned position buffer; it does not read anything back synchronously.
+
+Per triangle it computes `J = d(screen)/d(texel)` from the three screen positions and the three
+uvs, takes `s_max` (the demand's level is the one the fragment shader's derivatives pick:
+`floor(log2(1/s_max) + bias + 0.5)`), and rasterises the triangle's **page rectangle** at that
+level into the demand map. The rectangle is expanded by one page on each side (the reconstruction
+taps reach at most the footprint's anisotropy ratio in level texels, far inside a page) and the
+pass marks **one level either side** of the one it computed: a 2x2 derivative quad that straddles
+two triangles can round to either triangle's level, and the margin is what keeps that boundary
+from falling back to the coarse chain. The extra demand is screen-bounded like every page.
+
+The pass runs with `uScreenSize` in **device pixels**: the camera's view matrix maps to NDC, so
+the pixel scale is half the device screen. Leaving that out made every footprint read about
+`log2(width/2)` levels too coarse - which is exactly the bug the first version had, and it is why
+the gate asserts demanded pages, not just rendered pixels.
+
+The array's layers are written with `gl_Layer` in a geometry shader and an FBO with the array
+attached as a layered color target (GL 3.2); the per-layer grid is a sub-rect of the cell, and the
+rest stays cleared. Reallocation (a new resource with a larger grid) recreates the array empty -
+the map is cleared every frame anyway, so there is nothing to copy.
+
+### The shader
+
+`assets/shaders/LayerDrawingFrag.glsl` has a `VIRTUAL_TEXTURE` variation. `sampleLayer`'s geometry
+is unchanged (the two-tap, one-level reconstruction); only the fetch changes:
+
+- one level texel -> page -> table -> slot -> atlas coordinate, with the gutter supplying the
+  bilinear neighbours. Every tap resolves its own page: it can cross a page boundary, and the
+  gutter only covers the read *inside* a page.
+- a table entry of 0 samples the coarse chain at `max(0, level - coarseLevel)`: the same content
+  at a coarser grid, blur, never a hole, and never an undefined sampler.
+- magnification (`lod <= 0`) is one level-0 bilinear read. The full-resolution control may take
+  the hardware's anisotropic samples there; that is the one place the two paths are allowed to
+  differ, and the gate's tolerance is set from it (measured below).
+
+The shader variant index gains one bit (`ShaderHolder`), and only pageable keys reserve the VT
+programs.
+
+### What is deliberately not paged yet
+
+- **Layers used as clippers keep the full-resolution texture.** The clipper's singulation pass
+  samples the layer with its own fragment shader; the paged read lives in the layer shader, so a
+  clipper is excluded (`ImageKey::setVirtualTexturingAllowed(false)`) and the layer re-takes the
+  paged path when it stops being a clipper. This is a residency regression only for clipper
+  layers, and it is the next thing to remove (share the sampler, not the texture policy).
+- **Masks are not paged.** `core::MaskKey` still has its own mip chain and texture (Stage 4).
+- **The pyramid is per ImageKey, not per resource.** Duplicated layers that share an image still
+  build two pyramids. Sharing is a RAM optimisation with a lifetime question (the resource may be
+  reloaded under both keys); it is not needed for correctness and is not done.
+- **The exporter has a different policy, not a different renderer.** A frame is written once, so
+  the exporter runs a `RenderInfo::demandOnly` pass for that frame's camera, calls
+  `VirtualTexture::synchronize()` (wait on the fence, map, upload), and then draws. The first
+  exported frame is as sharp as the last; the viewport keeps the asynchronous two-frame lag.
+
+### Controls
+
+| variable | meaning |
+|---|---|
+| `AE_VIRTUAL_TEXTURE=0` | the full-resolution control path (the gates' A/B) |
+| `AE_VT_BUDGET_MB` | pool budget, default 256, clamped to 4 atlases (243 MB) |
+| `AE_VT_UPLOAD_MB` | per-frame upload cap, default 32 |
+| `AE_VT_COARSE` | longest side of the always-resident chain, default 512 |
+| `AE_VT_STATS=1` | one line per frame: resources, wanted, resident, pool pages/bytes |
+| `AE_VT_DEMAND=0` | diagnostic: skip the demand pass and its readback (every paged layer samples the coarse chain through the VT shader) - the control for "is the cost the shader or the demand machinery" |
+
+`AE_FRAME_STATS`'s line gains `vt_pages`, `vt_bytes`, `vt_up`, `vt_evict`.
+
+### Gates (all in `tools/verify_mipmap`; run it under Xvfb like the other GL gates)
+
+- **V1 paged layer vs the full-resolution control**, at scales 0.25, 0.5 and 1.0, plus a
+  no-holes case that purges the pool and forbids a new atlas. The paged and control frames are
+  compared pixel for pixel; the scale sweep also asserts how many pages the paged levels demand,
+  that all of them are resident after eight frames, and that the pool has not silently served the
+  frame from the coarse chain.
+- **P1/P2 page pool**: slot 0 at the gutter origin, slot 1 one pitch over, slot 15 the first of
+  the second row, a slot's texels read back exactly; the per-frame upload cap; eviction order and
+  the owner callback; cancel returning a slot and refunding its bytes; purge changing the
+  generation and releasing every atlas.
+- `media_exporter_e2e` runs the export path with the demand preparse.
+
+### Measured
+
+- **nene.anie** (15000x15000, 130 layers, 105 paged resources, 640x640 fit view), the same five
+  frames with `AE_FRAME_STATS`:
+
+  | | full resolution | paged |
+  |---|---|---|
+  | `tex_live` after the fifth frame | 2,778,072,136 B (2.59 GiB) | 731,274,540 B (697 MiB) |
+  | steady `ms` | 93.5 | 103.5 |
+  | load (project load + one frame, wall) | 79.4 s | 74.9 s |
+  | max RSS | 8.08 GB | 8.63 GB |
+
+  The VRAM is 3.8x lower; the 10 ms steady-state difference is the demand geometry pass (~8 ms)
+  plus the page read. The first paged frames are slower (171 / 158 / 234 / 149 ms) because 474
+  pages are being uploaded four frames' worth at a time; by the fifth frame the pool is at its
+  128 MB working set. The RAM increase (+0.55 GB) is the pyramids. Load time did not regress:
+  fewer and smaller textures are created at load, which offsets the readbacks.
+- **V1 parity**: 900x700 image, 320x320 canvas, coarse level 1, 12 level-0 pages wanted and all
+  resident. At scale 0.5 and 1.0 the paged and full-resolution frames are **bit-identical** over
+  the whole interior; at scale 0.25 the layer asks for level 2, which the coarse chain owns, and
+  the two differ by **max 1, mean 0.020** of 255.
+- **test.anie** (six paged resources, 640x640 fit view): 57 pages, 15,412,800 B of pages in one
+  atlas, all wanted pages resident after the second frame; steady `ms` 4.9-5.7 against the
+  control's 4.5-6.2. Same-frame paged vs control: **mean 0.036, max 40-44 of 255** on ~760
+  pixels, a one-pixel horizontal band at a layer's top/bottom edge - the magnified path's
+  single-bilinear read against the control's anisotropic sample, not a missing page (the wanted
+  page count equals the resident count in the same frames). It is the open number in this section.
+  `tex_live` on this small project goes UP, 33.0 MB -> 87.4 MB, because the pool's first atlas is
+  a fixed 61 MB; that floor is the price of the scheme on projects whose whole texture set is
+  smaller than one atlas. A 2048 first atlas was built and measured and is not the answer: 57
+  pages then needed a second 4096 atlas for 8 pages, 77 MB against 61 MB.
+- **Export**: `media_exporter_e2e` passes with the demand preparse; the first exported frame is
+  the one that exercises it.
+
+### Open, in priority order
+
+1. The 1-pixel edge band above: decide whether the paged magnified read should take the two-tap
+   path at level 0 (matching anisotropy more closely) or whether the band is acceptable. Measure
+   the band against a control with anisotropy 1 first, to separate the two causes.
+2. The demand pass's ~8 ms on 130 layers: it re-walks every visible triangle every frame even
+   when the camera and the transform cache have not changed. A static view could skip it; the
+   density meter already reads the same positions, so the two could share one pass under
+   `AE_FRAME_STATS`.
+3. Clippers in the pool (share the sampler).
+4. Masks (Stage 4).
+5. Per-resource pyramids for duplicated layers.
+6. The first-atlas floor (61 MB) for projects whose whole texture set is smaller than it: a
+   demand-aware first allocation is the measured-shaped answer (see the pool's header comment).
