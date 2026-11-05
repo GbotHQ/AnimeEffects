@@ -877,11 +877,14 @@ the same skinned position buffer; it does not read anything back synchronously.
 Per triangle it computes `J = d(screen)/d(texel)` from the three screen positions and the three
 uvs, takes `s_max` (the demand's level is the one the fragment shader's derivatives pick:
 `floor(log2(1/s_max) + bias + 0.5)`), and rasterises the triangle's **page rectangle** at that
-level into the demand map. The rectangle is expanded by one page on each side (the reconstruction
-taps reach at most the footprint's anisotropy ratio in level texels, far inside a page) and the
-pass marks **one level either side** of the one it computed: a 2x2 derivative quad that straddles
-two triangles can round to either triangle's level, and the margin is what keeps that boundary
-from falling back to the coarse chain. The extra demand is screen-bounded like every page.
+level into the demand map. The rectangle is the triangle's own uv box grown by the tap reach in
+level texels - a tap centre is at most `0.25 * major` along the major axis plus `0.2 * major` of
+its own block, so the page box grows by `0.5 * anisotropy + 1` page units, clipped to a page. The
+pass marks **the triangle's own level and no other**: a 2x2 derivative quad that straddles two
+triangles rounds to one of *their* levels, and both triangles mark their own, so no margin is
+needed. One level of margin plus a full-page border was built and measured: 474 pages (128 MiB)
+against 79 (20 MiB) on nene, and it did **not** bring the frame closer to the control (mean 0.83
+of 255 against 0.61) - the extra coverage bought nothing, so it is not built.
 
 The page coordinates are computed from the same `(inTexCoord + uTexCoordOffset)` the layer
 shader divides by `uImageSize`, not from the mesh's raw uvs: a mesh origin offset (a custom
@@ -907,11 +910,26 @@ is unchanged (the two-tap, one-level reconstruction); only the fetch changes:
 - one level texel -> page -> table -> slot -> atlas coordinate, with the gutter supplying the
   bilinear neighbours. Every tap resolves its own page: it can cross a page boundary, and the
   gutter only covers the read *inside* a page.
-- a table entry of 0 samples the coarse chain at `max(0, level - coarseLevel)`: the same content
-  at a coarser grid, blur, never a hole, and never an undefined sampler.
-- magnification (`lod <= 0`) is one level-0 bilinear read. The full-resolution control may take
-  the hardware's anisotropic samples there; that is the one place the two paths are allowed to
-  differ, and the gate's tolerance is set from it (measured below).
+- the content's border is the gutter's zeros: a read within **one level texel** outside the content
+  is still served by the page, because clamp-to-border blends the edge texel with the transparent
+  outside at exactly that distance. Only a coordinate whose whole 2x2 footprint is outside returns
+  0; zeroing every coordinate outside `[0,1]` dropped that half-texel blend for a reconstruction
+  tap that steps just outside the content.
+- a level the coarse chain owns (`level >= coarseLevel`) is resident in full, and is sampled from
+  the coarse chain with
+  the **same** two-tap reconstruction (the coarse chain's level index is shifted by `coarseLevel`).
+  The coarse chain holds the full chain's own levels, so this is the control's read, not a
+  fallback approximation. Taking one bilinear tap there instead was the whole residual difference
+  from the control (816 px over 8/255, max 115, on nene's Layer 6 - see below); the cost is the
+  control's eight fetches for those pixels, which the full path pays anyway.
+- a table entry of 0 (a page **not** resident) samples the coarse chain at
+  `max(0, level - coarseLevel)` with one filtered read: blur, never a hole, and never an undefined
+  sampler. This is the transient case - the pages are wanted and arriving.
+- magnification (`lod <= 0`) is one level-0 filtered read. Both paths state the level explicitly
+  (`textureLod(..., 0)` on the control, the level-0 page on the paged path): the branch is entered
+  on the *biased* level, so the unbiased footprint can still be minifying, and a `texture()` read
+  would let the hardware blend mip levels (and filter anisotropically) that no page stack can
+  reproduce. Under true magnification the two reads are identical.
 
 The shader variant index gains one bit (`ShaderHolder`), and only pageable keys reserve the VT
 programs.
@@ -947,11 +965,15 @@ programs.
 
 ### Gates (all in `tools/verify_mipmap`; run it under Xvfb like the other GL gates)
 
-- **V1 paged layer vs the full-resolution control**, at scales 0.25, 0.5 and 1.0, plus a
-  no-holes case that purges the pool and forbids a new atlas. The paged and control frames are
-  compared pixel for pixel; the scale sweep also asserts how many pages the paged levels demand,
-  that all of them are resident after eight frames, and that the pool has not silently served the
-  frame from the coarse chain.
+- **V1 paged layer vs the full-resolution control**, at scales 0.25, 0.0625x0.25 (a 4:1 footprint
+  on the coarse tier), 0.3 (level 0 paged, the layer's edges on screen), 0.5, 0.6 (the magnified
+  branch entered while the unbiased footprint is minifying) and 1.0, plus a no-holes case that
+  purges the pool and forbids a new atlas. The paged and control frames are compared pixel for
+  pixel; the scale sweep also asserts how many pages the paged levels demand, that all of them are
+  resident after eight frames, and that the pool has not silently served the frame from the coarse
+  chain. Tolerances are 1 unit (2 for the on-edge 0.3 case): the fixture measures 0 for the
+  paged and magnified cases under `gpu_headless` and 1 on the Xvfb/xcb path's sub-texel rounding,
+  while each bug class measures 23-53 on it (see Measured).
 - **P1/P2 page pool**: slot 0 at the gutter origin, slot 1 one pitch over, slot 15 the first of
   the second row, a slot's texels read back exactly; the per-frame upload cap; eviction order and
   the owner callback; cancel returning a slot and refunding its bytes; purge changing the
@@ -966,46 +988,70 @@ programs.
   | | full resolution | paged |
   |---|---|---|
   | `tex_live` | 2,778,072,136 B (2.59 GiB) | 597,056,812 B (569 MiB) |
-  | steady `ms` | 93.5 | 96-99 |
+  | steady `ms` | 93.5 | 95.0-95.4 |
   | load (project load + frames, wall) | 79.4 s | 74.9 s |
   | max RSS | 8.08 GB | 8.63 GB |
 
-  The VRAM is 4.7x lower; the 3-6 ms steady-state difference is the demand geometry pass plus the
-  page read. Where the 569 MiB is: **one 64 MiB atlas holding 20 MiB of pages, 50 MiB of coarse
-  chains, and 452 MiB of unpaged full textures** - of which **443 MiB is three clipper layers**
-  (one 4343x4351, two 2702x12604). The pooled tiers are therefore 70 MiB used / 114 MiB allocated,
-  in line with the design's estimate; the gap is the deliberate clipper exclusion, which is why it
-  is first on the open list.
+  The VRAM is 4.7x lower. The paged steady state is 95.0-95.4 ms (the last three frames of a
+  `--frames 3..10` run, after all 79 pages landed) against the control's 93.5 ms for the same
+  frames and view. The ~1.5 ms gap is compared across sessions: a later same-session control run
+  was tripled by the machine's browser load, so it carries that caveat. The earlier single-tap
+  coarse tier measured 96-99 ms on the same comparison, i.e. the extra taps this fix added are not
+  a measurable cost. Where the 569 MiB is: **one 64 MiB atlas holding 20 MiB of pages, 50 MiB of
+  coarse chains, and 452 MiB of unpaged full textures** - of which **443 MiB is three clipper
+  layers** (one 4343x4351, two 2702x12604). The pooled tiers are therefore 70 MiB used / 114 MiB
+  allocated, in line with the design's estimate; the gap is the deliberate clipper exclusion,
+  which is why it is first on the open list.
   The demand is the triangle's OWN level and a page box grown by the tap reach in level texels, not
   by a whole page. The first version marked the level either side and a full-page border: 474
-  pages (128 MiB) on nene, and it did **not** bring the frame closer to the control (mean 0.83 of
-  255) than the tighter set does (0.61). The tighter set demands 79 pages (20 MiB) and reaches the
-  same steady image sooner: 79 pages at the 8 MB/frame default land in ~3 frames, a transient of
-  ~10-20 ms over the 93-94 control. A 32 MB cap was measured first and is why the default is 8:
-  the frames that spent it cost 60-140 ms. The page fill copies the level's rows (one memcpy per
-  row) instead of a memcpy per texel, which was most of that upload frame.
+  pages (128 MiB) on nene, and (measured before the coarse-tier fix) it did **not** bring the frame
+  closer to the control (mean 0.83 of 255) than the tighter set did (0.61). The tighter set demands
+  79 pages (20 MiB) and reaches the same steady image sooner: 79 pages at the 8 MB/frame default
+  land in ~3 frames, a transient of ~10-20 ms over the 93-94 control. A 32 MB cap was measured
+  first and is why the default is 8: the frames that spent it cost 60-140 ms. The page fill copies
+  the level's rows (one memcpy per row) instead of a memcpy per texel, which was most of that
+  upload frame.
   The RAM increase (+0.55 GB) is the pyramids (609 MB across the 108 paged resources). Load time
   did not regress (74.9 s against 79.4), but the pyramid capture is SYNCHRONOUS: it cost 1.47 s
   across the 136 keys, worst 130 ms for one 3841x12658 image (a 15000² import scales to ~0.6 s,
   inference from the 48 MP sample). A clipper-policy change rebuilds the key (full chain plus
   capture), so a layer that becomes a clipper pays that again.
-  **The residual difference from the control is NOT explained by residency**: all 79 wanted pages
-  are resident, V1 is bit-identical, and the same-frame difference is still mean 0.61 of 255 with
-  ~10 000 pixels over 8/255 (max 223) on this animated frame. The level margin did not change it.
-  The next suspects are the magnified branch (the page path takes one bilinear tap where the
-  control may take the hardware's anisotropic samples) and a sampling difference under bone
-  deformation; it needs a per-layer diff on one isolated layer. Until that is understood, the
-  plan's pixel-equality gate is not met on this project.
-- **V1 parity**: 900x700 image, 320x320 canvas, coarse level 1, 12 level-0 pages wanted and all
-  resident. At scale 0.5 and 1.0 the paged and full-resolution frames are **bit-identical** over
-  the whole interior; at scale 0.25 the layer asks for level 2, which the coarse chain owns, and
-  the two differ by **max 1, mean 0.020** of 255.
+  **The residual difference was the coarse tier, not the page path.** With `AE_VT_DEMAND=0` (no
+  page uploaded at all, every paged level falling back to the coarse chain) the same-frame
+  difference from the control was byte-for-byte the same 816 px over 8/255, max 115; with every
+  wanted page resident it was the same again; and the paged frame against the no-demand frame
+  differed by max 2, mean 0.0023 of 255 - the atlas read was already exact. The shader was taking
+  ONE bilinear tap for levels the coarse chain owns, where the full path runs the two-tap
+  reconstruction: a different filter, visible only on fine hatching. The coarse tier now takes the
+  same eight taps from the coarse texture, at the level index shifted by `coarseLevel`. Isolated to
+  Layer 6 exactly (`--only-layer '=Layer 6'`, 4408x4370, 640x640) it is **bit-identical**. The
+  magnified-branch read below closed the last 1-unit edge pixels, and the whole 640x640 frame now
+  measures **0 pixels over 8/255, max 1, mean 0.00039 of 255** (161 pixels differ by 1) on the
+  steady frames 3-5; frame 2, while the last pages land, is the documented transient (195 px over
+  8). The plan's pixel-equality gate is met on this project.
+- **V1 parity**: 900x700 source, 320x320 canvas, coarse level 1, 12 level-0 pages wanted and all
+  resident. The source is deterministic per-texel **noise**, not the old smooth curve: a ramp
+  hides a filtering difference in 1/255 rounding, noise turns the same difference into tens. At
+  0.25 (isotropic) and 0.0625x0.25 (4:1, level 1) - both coarse-tier cases - the paged and control
+  frames measure **max 1 and max 0**; at 0.5 and 1.0, **max 1 and max 0** (over the interior; the
+  layer is larger than the canvas). The 1-unit pixels are the atlas read's sub-texel rounding on
+  the Xvfb/xcb path: under `gpu_headless` the 0.5 and 1.0 cases measure max 0, so the tolerance
+  is 1 for driver rounding, not for the read. 0.3 (level 0 paged, the layer's own edges on screen, every border
+  tap exercised) is **max 2** on the edge row; 0.6 - a footprint of 1.67 texels, where
+  `lod = log2(minor) - 1.35 <= 0` enters the magnified branch while the unbiased footprint is
+  still minifying - is **max 1**. The gate has power: with the two old reads temporarily restored
+  the same source measures **max 23 / mean 1.495** (the coarse single tap), **max 53 / mean 0.883**
+  (the 4:1 coarse case) and **max 31 / mean 4.429** (the implicit-LOD magnified branch), so the
+  1-unit tolerances excuse only driver rounding, not a wrong read.
 - **test.anie** (six paged resources, 640x640 fit view): 52 pages, 14,060,800 B of pages in one
   atlas, all wanted pages resident after the second frame; steady `ms` 4.9-5.1 against the
-  control's 4.5-6.2. Same-frame paged vs control: **mean 0.036, max 40-44 of 255** on ~760
-  pixels, a one-pixel horizontal band at a layer's top/bottom edge - the magnified path's
-  single-bilinear read against the control's anisotropic sample, not a missing page (the wanted
-  page count equals the resident count in the same frames). It is the open number in this section.
+  control's 4.5-6.2. Same-frame paged vs control: **bit-identical, 0 pixels differ**. The
+  6873-px difference that used to be here (mean 0.076, max 43; mostly 1 unit across each layer,
+  with full-width rows at the layer edges) was the magnified branch: with the -1.35 bias it is
+  entered while the hardware LOD can still be minifying, and the control's `texture()` then
+  blended mip levels (with anisotropy) where the page path read level 0. The control now takes
+  `textureLod(..., 0)` - the same read as the page path, and the same read as `texture()` under
+  true magnification - so the band is gone rather than excused.
   `tex_live` on this small project goes UP, 33.0 MB -> 87.4 MB, because the pool's first atlas is
   a fixed 61 MB; that floor is the price of the scheme on projects whose whole texture set is
   smaller than one atlas. A 2048 first atlas was built and measured and is not the answer: 57
@@ -1015,30 +1061,19 @@ programs.
 
 ### Open, in priority order
 
-1. The nene residual above: 4 % of an animated frame's pixels differ by more than 8/255 from the
-   full-resolution control while every wanted page is resident. **Isolated**: `--only-layer` shows
-   it on Layer 6 (4408x4370, 816 px over 8, max 115) and nowhere on Layer 17; on Layer 6 it
-   survives (a) forcing level 3 on both samplers, (b) forcing every page of the drawn resource
-   resident (718 pages), and (c) hashing - the chain's level 3, the captured pyramid's level 3 and
-   the control run's chain level 3 are the same hash, and every uploaded page's content hashes
-   equal its level region. So it is not residency, not the level, and not the page data: it is the
-   page table's entry-to-slot mapping or the atlas coordinate in the shader for that region. The
-   diff is confined to one page of fine hatching, which is consistent with that page's samples
-   being addressed a texel-structure off or read from another page's slot. Next: dump the table
-   entry for the diff page and the sampled atlas coordinate against the full level's. This is the
-   one item that blocks the plan's pixel-equality gate.
-2. The 1-pixel edge band on test.anie: decide whether the paged magnified read should take the
-   two-tap path at level 0 (matching anisotropy more closely) or whether the band is acceptable.
-   Measure the band against a control with anisotropy 1 first, to separate the two causes.
-3. The demand pass's ~8 ms on 130 layers: it re-walks every visible triangle every frame even
+1. The demand pass's ~8 ms on 130 layers: it re-walks every visible triangle every frame even
    when the camera and the transform cache have not changed. A static view could skip it; the
    density meter already reads the same positions, so the two could share one pass under
    `AE_FRAME_STATS`. Beside it, the pool's landing rate: 8 MB/frame still costs 10-20 ms while it
    fills, and a large import's synchronous capture is a visible pause; an asynchronous/deferred
    capture and a page upload batched per atlas row are the two obvious next reductions.
-4. Clippers in the pool (share the sampler) - 443 MiB on nene, by far the largest residency win
+2. Clippers in the pool (share the sampler) - 443 MiB on nene, by far the largest residency win
    left.
-5. Masks (Stage 4).
-6. Per-resource pyramids for duplicated layers.
-7. The first-atlas floor (61 MB) for projects whose whole texture set is smaller than it: a
+3. Masks (Stage 4).
+4. Per-resource pyramids for duplicated layers.
+5. The first-atlas floor (61 MB) for projects whose whole texture set is smaller than it: a
    demand-aware first allocation is the measured-shaped answer (see the pool's header comment).
+
+Both parity gaps are closed: the nene residual (the coarse tier's single tap) and the test.anie
+band (the control's implicit-LOD read in the biased magnified branch). The pixel-equality gate is
+met on both projects.

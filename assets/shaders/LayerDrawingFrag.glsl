@@ -276,15 +276,21 @@ vec4 sampleAtlas(int aAtlas, vec2 aAtlasTexel)
 
 vec4 samplePage(vec2 aUv, float aLevel)
 {
-    // outside the content the full texture's clamp-to-border is transparent; a page has no
-    // border of its own, so this is where the rule lives
-    if (aUv.x < 0.0 || 1.0 < aUv.x || aUv.y < 0.0 || 1.0 < aUv.y)
-        return vec4(0.0);
-
     vec2 sizeL = max(vec2(1.0), floor(uLayerSize / exp2(aLevel)));
     vec2 p = aUv * sizeL;
+    // THE CONTENT'S BORDER. The full texture's clamp-to-border returns 0 outside the content, but
+    // its bilinear read still blends the edge texel when the coordinate is within ONE texel of
+    // it - and a reconstruction tap placed just outside a layer's edge is exactly that case. The
+    // page's gutter holds the level's neighbouring texels and its zeros beyond them, so a read
+    // within one level texel is left to the atlas; only a coordinate whose whole 2x2 footprint is
+    // outside returns 0. Zeroing every tap centre outside [0,1] instead measured as a one-pixel
+    // band at each layer's top/bottom edge (max 40-44 of 255 on test.anie): the taps that should
+    // have blended the edge texel contributed nothing.
+    if (p.x < -1.0 || sizeL.x + 1.0 < p.x || p.y < -1.0 || sizeL.y + 1.0 < p.y)
+        return vec4(0.0);
+
     vec2 grid = ceil(sizeL / uPageTexels);
-    // uv == 1 can land one past the last page when the level divides evenly; the page's
+    // p == sizeL can land one past the last page when the level divides evenly; the page's
     // out-of-content texels are zero, so clamping the PAGE and leaving `local` at the content
     // edge reproduces the border read
     vec2 page = clamp(floor(p / uPageTexels), vec2(0.0), grid - vec2(1.0));
@@ -350,7 +356,14 @@ vec4 sampleLayer(sampler2D aTexture, vec2 aUv)
 #if VIRTUAL_TEXTURE
         return samplePage(aUv, 0.0);      // magnified: level 0 bilinear is exact and free
 #else
-        return texture(aTexture, aUv);    // magnified: bilinear is exact and free
+        // LEVEL 0 BY POLICY, not by the hardware's own LOD. With the negative layer bias this
+        // branch is entered while the unbiased footprint can still be minifying, and the
+        // hardware's texture() would then blend the next mip level (and may filter
+        // anisotropically) - a read no page stack can reproduce. textureLod(..., 0) is exactly
+        // the same read as texture() under true magnification, and is what the page path takes:
+        // measured on test.anie as a mean of 0.149 of 255 (max 1 here; max 43 there) until the
+        // two branches agreed.
+        return textureLod(aTexture, aUv, 0.0);
 #endif
 
     // THE LEVEL IS THE NEAREST one, not the one below: the taps reconstruct the MAJOR axis and the
@@ -359,10 +372,6 @@ vec4 sampleLayer(sampler2D aTexture, vec2 aUv)
     // than the footprint), which leaves the minor axis under-filtered - measured as the residual
     // error tail this read otherwise still has on thin features.
     float level = clamp(floor(lod + 0.5), 0.0, uLayerMaxLod);
-#if VIRTUAL_TEXTURE
-    if (level >= float(uCoarseLevel))
-        return sampleCoarse(aUv, level);  // that level is resident in full, not paged
-#endif
     float scale = exp2(level);              // level-0 texels -> this level's texels
     float majorL = major / scale;
     float minorL = minor / scale;
@@ -391,7 +400,16 @@ vec4 sampleLayer(sampler2D aTexture, vec2 aUv)
                 vec2 off = majorDir * ((float(j) + 0.5) * stepMaj - stepMaj)
                     + acrossDir * ((float(k) + 0.5) * stepMin - stepMin);
 #if VIRTUAL_TEXTURE
-                acc += samplePage(centre + off, level);
+                // THE COARSE TIER IS SAMPLED LIKE THE CONTROL'S, reconstruction included. A level
+                // the coarse chain owns (index >= uCoarseLevel) is resident in full, so there is
+                // no page to resolve -
+                // but returning one bilinear read there ran a DIFFERENT filter from the full
+                // texture's two taps, and that difference (not residency, not the table) measured
+                // 816 px over 8/255, max 115, on nene's Layer 6 while every page was resident.
+                // The tap offsets are level texels either way; only the level index shifts.
+                acc += (level >= float(uCoarseLevel))
+                    ? sampleCoarse(centre + off, level)
+                    : samplePage(centre + off, level);
 #else
                 acc += textureLod(aTexture, centre + off, level);
 #endif

@@ -100,7 +100,12 @@ level × two 2×2 taps. The covariance adds a few scalar ops. The two-level blen
 - **The sampler asks for anisotropy 16** (`ImageKey::layerMaxAnisotropy`), which matters to any
   implicit-LOD read on these textures.
 - **This read does not use it, and cannot**: it reads with `textureLod`, which is explicit and
-  therefore never anisotropic, and one scalar level serves both axes.
+  therefore never anisotropic, and one scalar level serves both axes. The `lod <= 0` branch is
+  explicit too (`textureLod(..., 0)`): the branch is entered on the BIASED level, so the unbiased
+  footprint can still be minifying, and an implicit `texture()` there would use the hardware's own
+  LOD - a mip blend plus anisotropy the paged path cannot reproduce. Measured as a whole-layer
+  mean of 0.149 of 255 (max 43) on test.anie until the branch was made explicit; under true
+  magnification the two reads are identical, which is the 14/14 result above.
 - **The tap geometry is still isotropic.** The taps follow the major axis, but there is no
   anisotropic mip chain, so a footprint stretched 4:1 is still over-blurred along its short axis by
   the ratio, as trilinear is. From `ImageKey.h`, error in 255ths against the exact area integral:

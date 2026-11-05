@@ -270,6 +270,33 @@ Img makeCurved(int aW, int aH) {
     return img;
 }
 
+// Per-texel noise, opaque, from a fixed xorshift seed: the filter-discrimination source for V1.
+// A smooth ramp hides a wrong kernel in 1/255 rounding; here any filtering difference (one tap
+// instead of the reconstruction, a mip blend, a sub-texel address error) lands tens of units out.
+Img makeNoise(int aW, int aH) {
+    Img img;
+    img.w = aW;
+    img.h = aH;
+    img.d.assign((size_t)aW * aH * 4, 0);
+    uint32 s = 0x9e3779b9u;
+    const auto next = [&s]() {
+        s ^= s << 13;
+        s ^= s >> 17;
+        s ^= s << 5;
+        return s;
+    };
+    for (int y = 0; y < aH; ++y) {
+        for (int x = 0; x < aW; ++x) {
+            uint8_t* p = img.at(x, y);
+            p[0] = (uint8_t)(next() >> 24);
+            p[1] = (uint8_t)(next() >> 24);
+            p[2] = (uint8_t)(next() >> 24);
+            p[3] = 255;
+        }
+    }
+    return img;
+}
+
 //-------------------------------------------------------------------------------------------------
 // the two independent CPU references
 
@@ -1491,7 +1518,9 @@ void suiteVirtualTexture() {
     }
 
     const QSize canvas(320, 320);
-    const Img src = makeCurved(900, 700);
+    // Noise, not the smooth curve: the residual bugs this suite pins are filtering differences
+    // that a ramp reduces to 1/255, while noise turns the same difference into tens of units.
+    const Img src = makeNoise(900, 700);
     const uint8_t black[3] = {0, 0, 0};
 
     auto& fixtures = renderFixtures();
@@ -1512,19 +1541,39 @@ void suiteVirtualTexture() {
     // it (setDefaultImage/setDefaultPosture, then a ScaleKey) is the state the renderer sees.
     struct Case {
         float scale;
+        float scaleY;
         int maxTolerance;
         int minPages;
     };
-    // 0.25 asks for level 2, which this 900x700 resource keeps on its coarse chain; 0.5 and 1.0
-    // reach the paged levels, and 1.0 is the magnified read where the control may use hardware
-    // anisotropy and the page path takes one bilinear tap (the documented boundary difference).
-    const Case cases[] = {{0.25f, 2, 0}, {0.5f, 10, 1}, {1.0f, 10, 1}};
+    // What each case pins, all on the noise source:
+    //   0.25 - the coarse tier's read: the SAME reconstruction on the full chain's own bytes.
+    //     A single bilinear tap there measured 816 px over 8/255 (max 115) on nene's Layer 6.
+    //   0.0625x0.25 - the same tier with a 4:1 footprint, eight level texels along the major
+    //     axis, where one tap is a visibly different integral from the two taps.
+    //   0.3 - level 0 paged with the layer's own edges on screen: the border read and the
+    //     per-tap page resolve.
+    //   0.5, 1.0 - the paged levels and the magnified read (this layer is larger than the
+    //     canvas, so only its interior is compared).
+    //   0.6 - a 1.67-texel footprint: lod = log2(minor) - 1.35 <= 0 enters the magnified branch
+    //     while the unbiased footprint is still minifying, so the control's read must be level 0
+    //     explicitly (an implicit texture() measured a mean of 0.149 of 255 on the old fixture).
+    // A 1-unit tolerance is headroom for driver sub-texel rounding, not for a wrong read; each
+    // bug class above measures far more than it on this source. 0.3 carries 2: its outermost
+    // content row is a half-texel border blend, and the same rounding lands 2 units there on
+    // noise.
+    const Case cases[] = {
+        {0.25f, 0.25f, 1, 0}, {0.0625f, 0.25f, 1, 0}, {0.5f, 0.5f, 1, 1}, {1.0f, 1.0f, 1, 1},
+        {0.3f, 0.3f, 2, 12}, {0.6f, 0.6f, 1, 1}
+    };
 
     for (const Case& c : cases) {
+        const QString scaleText = c.scaleY == c.scale
+            ? QString::number(c.scale)
+            : QString("%1x%2").arg(c.scale).arg(c.scaleY);
         core::ObjectTree tree;
         auto* root = new core::FolderNode("root");
         tree.grabTopNode(root);
-        auto* res = makeResource(QString("vt_src_%1").arg(c.scale), src);
+        auto* res = makeResource(QString("vt_src_%1").arg(scaleText), src);
         core::LayerNode* layer = addScaledLayer(
             tree,
             root,
@@ -1534,8 +1583,12 @@ void suiteVirtualTexture() {
             c.scale,
             img::BlendMode_Normal
         );
+        if (c.scaleY != c.scale) {
+            core::getOrCreateDefaultKey<core::ScaleKey, core::TimeKeyType_Scale>(*layer->timeLine())
+                ->setScale(QVector2D(c.scale, c.scaleY));
+        }
         auto* imageKey = dynamic_cast<core::ImageKey*>(layer->timeLine()->defaultKey(core::TimeKeyType_Image));
-        expect(imageKey != nullptr, QString("V1 scale %1: the layer must have an image key").arg(c.scale));
+        expect(imageKey != nullptr, QString("V1 scale %1: the layer must have an image key").arg(scaleText));
         if (!imageKey)
             continue;
 
@@ -1545,7 +1598,7 @@ void suiteVirtualTexture() {
             paged = fx.render(tree, camera, 0, black);
 
         const core::VirtualTexture* vt = imageKey->cache().virtualTexture();
-        expect(vt != nullptr, QString("V1 scale %1: the 900x700 image must take the paged path").arg(c.scale));
+        expect(vt != nullptr, QString("V1 scale %1: the 900x700 image must take the paged path").arg(scaleText));
         if (!vt)
             continue;
         const int wanted = vt->wantedPageCount();
@@ -1553,11 +1606,11 @@ void suiteVirtualTexture() {
         const int coarseLevel = vt->coarseLevel();
         if (wanted >= c.minPages && c.minPages > 0) {
             expect(
-                vt->residentWantedCount() == vt->wantedPageCount(),
+                resident == wanted,
                 QString("V1 scale %1: every wanted page must be resident (%2 of %3)")
-                    .arg(c.scale)
-                    .arg(vt->residentWantedCount())
-                    .arg(vt->wantedPageCount())
+                    .arg(scaleText)
+                    .arg(resident)
+                    .arg(wanted)
             );
         }
 
@@ -1565,7 +1618,7 @@ void suiteVirtualTexture() {
         const std::vector<uint8_t> control = fx.render(tree, camera, 0, black);
         expect(
             imageKey->cache().texture().id() != 0,
-            QString("V1 scale %1: the control path must have a full texture").arg(c.scale)
+            QString("V1 scale %1: the control path must have a full texture").arg(scaleText)
         );
 
         int maxDelta = 0;
@@ -1592,7 +1645,7 @@ void suiteVirtualTexture() {
         expect(
             wanted >= c.minPages,
             QString("V1 scale %1: the paged levels must be demanded (%2 pages, at least %3)")
-                .arg(c.scale)
+                .arg(scaleText)
                 .arg(wanted)
                 .arg(c.minPages)
         );
@@ -1600,7 +1653,7 @@ void suiteVirtualTexture() {
         expect(
             maxDelta <= c.maxTolerance,
             QString("V1 scale %1: paged vs full resolution max delta %2 at (%3,%4) ch %5, tolerance %6")
-                .arg(c.scale)
+                .arg(scaleText)
                 .arg(maxDelta)
                 .arg(maxX)
                 .arg(maxY)
@@ -1609,10 +1662,10 @@ void suiteVirtualTexture() {
         );
         expect(
             meanDelta < 0.5,
-            QString("V1 scale %1: mean delta %2 below 0.5 of 255").arg(c.scale).arg(meanDelta, 0, 'f', 3)
+            QString("V1 scale %1: mean delta %2 below 0.5 of 255").arg(scaleText).arg(meanDelta, 0, 'f', 3)
         );
         caseReport(
-            QString("scale %1: levels 0-%2 paged, %3 wanted").arg(c.scale).arg(coarseLevel - 1).arg(wanted),
+            QString("scale %1: levels 0-%2 paged, %3 wanted").arg(scaleText).arg(coarseLevel - 1).arg(wanted),
             gFails == failsBefore,
             QString("max %1 mean %2 of 255").arg(maxDelta).arg(meanDelta, 0, 'f', 3)
         );

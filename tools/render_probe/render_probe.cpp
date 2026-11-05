@@ -133,7 +133,8 @@ const char* kUsage =
     "  --offset      horizontal sub-pixel nudge of the camera centre, in pixels\n"
     "  --supersample render at Nx the size and box-average down to --size, N in 1..16 (default 1)\n"
     "  --metrics     print FRAME <i> sharpness <float> mean <float> per frame\n"
-    "  --only-layer  hide every layer whose name does not contain <text>\n"
+    "  --only-layer  hide every layer whose name does not contain <text>;\n"
+    "                <text> of the form =NAME keeps only the exact name\n"
     "  --list-layers print each layer's name, size and filter/mask/deform markers, then exit\n"
     "  --require-gpu exit 4 unless GL_RENDERER looks like hardware (rejects llvmpipe,\n"
     "                softpipe, swrast, software)\n";
@@ -568,7 +569,15 @@ int runRender(ProbeGL& aProbe, const Options& aOptions) {
                 );
                 continue;
             }
-            if (!layer->name().contains(aOptions.onlyLayer, Qt::CaseInsensitive)) {
+            // A CONTAINS filter is what a person types when they do not know the list ("Layer 6"
+            // also reaches Layer 60..69); "=NAME" is the exact form, for an isolation run where
+            // the extra layers would be the thing under test.
+            const bool exact = aOptions.onlyLayer.startsWith(QLatin1Char('='));
+            const QString needle = exact ? aOptions.onlyLayer.mid(1) : aOptions.onlyLayer;
+            const bool match = exact
+                ? layer->name().compare(needle, Qt::CaseInsensitive) == 0
+                : layer->name().contains(needle, Qt::CaseInsensitive);
+            if (!match) {
                 layer->setVisibility(false);
             } else {
                 ++shown;
@@ -579,7 +588,7 @@ int runRender(ProbeGL& aProbe, const Options& aOptions) {
             return 0;
         }
         if (shown == 0) {
-            return fail(2, QStringLiteral("no layer name contains '%1'").arg(aOptions.onlyLayer));
+            return fail(2, QStringLiteral("no layer name matches '%1'").arg(aOptions.onlyLayer));
         }
         std::printf("render_probe: %d layer(s) match '%s'\n", shown, aOptions.onlyLayer.toUtf8().constData());
     }

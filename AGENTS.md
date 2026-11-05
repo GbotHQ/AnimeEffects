@@ -253,6 +253,13 @@ hand it over. Its one question is `Sampling`:
   the `VIRTUAL_TEXTURE` shader variation): `AE_VIRTUAL_TEXTURE=0` is the full-resolution control,
   `AE_VT_STATS=1` prints the pool each frame, and the V1/P1/P2 suites in `verify_mipmap` are the
   gates. Clipper layers and masks deliberately keep the full texture; see the doc's open list.
+  Two sampling rules, each found as a whole-frame residual first: **the always-resident coarse tier
+  takes the same two-tap reconstruction as the full path** (one bilinear tap there cost 816 px over
+  8/255 on nene), and **the `lod <= 0` branch reads `textureLod(..., 0)` on BOTH paths, never
+  `texture()`** - the branch is entered on the biased level, the unbiased footprint can still be
+  minifying, and the hardware's own LOD would then blend mips (and filter anisotropically) that a
+  page stack cannot reproduce (measured on test.anie as 6873 px, mean 0.076, max 43, until both
+  paths read level 0 explicitly).
 
 - The timeline surface, the ruler and the graph page are **Canvas Painter** hosts (`QCanvasPainterWidget`
   through `PanelHostBase`); Qt ≥ 6.12 is required. The scene models live in `ctrl/` (they read
