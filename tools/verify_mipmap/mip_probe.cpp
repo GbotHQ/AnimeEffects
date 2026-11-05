@@ -1635,6 +1635,95 @@ void suitePagePool() {
     expect(pool.generation() != before, "P2 purge must change the generation");
     expect(pool.residentPages() == 0, "P2 purge must leave no resident page");
     expect(pool.atlasCount() == 0, "P2 purge must release every atlas");
+
+    // P3: THE R8 STACK. A mask page lives in an R8 atlas (its own four-atlas range), its upload
+    // and readback are one channel, and an R8 acquire must never evict an RGBA page: the victim
+    // would not free a usable slot.
+    pool.purge();
+    pool.setBudgetBytes(
+        (qint64)gl::PagePool::kAtlasBytes + gl::PagePool::atlasBytes(gl::PagePool::Format_R8)
+    );
+    pool.beginFrame();
+    {
+        EvictionLog r8log;
+        gl::PagePool::Slot rgbaSlot, r8Slot;
+        expect(pool.acquire(pageId(8, 0, 0, 0), &r8log, &rgbaSlot), "P3 the RGBA page must fit");
+        r8log.evicted.clear();
+        pool.beginFrame();
+        expect(
+            pool.acquire(pageId(9, 0, 0, 0), &r8log, &r8Slot, gl::PagePool::Format_R8),
+            "P3 an R8 page must fit beside it"
+        );
+        expect(
+            rgbaSlot.format == gl::PagePool::Format_RGBA8,
+            "P3 the RGBA page's slot must name its format"
+        );
+        expect(r8Slot.format == gl::PagePool::Format_R8, "P3 the R8 page's slot must name its format");
+        expect(
+            r8Slot.atlas >= gl::PagePool::kMaxAtlasCount && r8Slot.atlas < gl::PagePool::kAtlasSlots,
+            "P3 the R8 atlas must live in its own index range"
+        );
+        expect(
+            pool.atlasFormat(r8Slot.atlas) == gl::PagePool::Format_R8, "P3 the R8 atlas's format"
+        );
+        expect(
+            pool.allocatedBytes()
+                == (qint64)gl::PagePool::kAtlasBytes + gl::PagePool::atlasBytes(gl::PagePool::Format_R8),
+            "P3 both atlases' bytes must be booked"
+        );
+
+        // the R8 page's content: one channel, written and read back the same way
+        std::vector<uint8_t> red((size_t)gl::PagePool::kPitch * gl::PagePool::kPitch, 0);
+        for (int y = 0; y < gl::PagePool::kPitch; ++y)
+            for (int x = 0; x < gl::PagePool::kPitch; ++x)
+                red[(size_t)y * gl::PagePool::kPitch + x] = (uint8_t)((x * 3 + y * 5) & 255);
+        auto& ggl = gl::Global::functions();
+        ggl.glBindTexture(GL_TEXTURE_2D, pool.atlasTextureId(r8Slot.atlas));
+        ggl.glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
+        ggl.glTexSubImage2D(
+            GL_TEXTURE_2D, 0, r8Slot.x - gl::PagePool::kGutter, r8Slot.y - gl::PagePool::kGutter,
+            gl::PagePool::kPitch, gl::PagePool::kPitch, GL_RED, GL_UNSIGNED_BYTE, red.data()
+        );
+        ggl.glBindTexture(GL_TEXTURE_2D, 0);
+        std::vector<uint8_t> back(red.size(), 0);
+        pool.readSlot(r8Slot, back.data());
+        expect(back == red, "P3 readSlot must return exactly the R8 texels written");
+
+        // fill the R8 atlas a frame's cap at a time; the RGBA page must survive every eviction
+        int acquired = 0;
+        for (int i = 1; i < gl::PagePool::kSlotsPerAtlas; ++i) {
+            if (i % 20 == 0)
+                pool.beginFrame();
+            gl::PagePool::Slot slot;
+            if (pool.acquire(pageId(9, 0, i, 0), &r8log, &slot, gl::PagePool::Format_R8))
+                ++acquired;
+        }
+        expect(
+            acquired == gl::PagePool::kSlotsPerAtlas - 1,
+            QString("P3 the R8 atlas must hold %1 pages (got %2)")
+                .arg(gl::PagePool::kSlotsPerAtlas - 1)
+                .arg(acquired)
+        );
+        pool.beginFrame();
+        gl::PagePool::Slot extra;
+        expect(
+            pool.acquire(pageId(9, 0, 9999, 0), &r8log, &extra, gl::PagePool::Format_R8),
+            "P3 a full R8 stack must evict"
+        );
+        expect(
+            !pool.find(pageId(9, 0, 0, 0), nullptr), "P3 the least recently touched R8 page is the victim"
+        );
+        expect(
+            pool.find(pageId(8, 0, 0, 0), nullptr), "P3 an R8 eviction must not touch an RGBA page"
+        );
+        expect(
+            pool.residentBytes()
+                == (qint64)gl::PagePool::kPageBytes
+                    + (qint64)gl::PagePool::kSlotsPerAtlas * gl::PagePool::pageBytes(gl::PagePool::Format_R8),
+            "P3 residentBytes must sum each page's own format"
+        );
+    }
+    pool.purge();
     pool.setBudgetBytes(gl::PagePool::defaultBudgetBytes());
 }
 

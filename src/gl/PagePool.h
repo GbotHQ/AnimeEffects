@@ -50,6 +50,16 @@ namespace gl {
 /// the frame degrades to the coarse chain (see core::VirtualTexture).
 class PagePool: private util::NonCopyable {
 public:
+    /// A page carries one of two formats: RGBA8 for an image, R8 for a mask. The shader's
+    /// four-way atlas branch is per STACK, so each format owns its own range of
+    /// kMaxAtlasCount atlases (RGBA8 at 0..3, R8 at 4..7) and the two stacks cannot be
+    /// confused by an index.
+    enum Format {
+        Format_RGBA8 = 0,
+        Format_R8 = 1,
+        kFormatCount = 2,
+    };
+
     enum {
         kPageSize = 256,
         kGutter = 2,
@@ -57,11 +67,18 @@ public:
         kAtlasSize = 4096,
         kSlotsPerAxis = kAtlasSize / kPitch, // 15
         kSlotsPerAtlas = kSlotsPerAxis * kSlotsPerAxis, // 225
-        kMaxAtlasCount = 4,
-        kBytesPerTexel = 4,
+        kMaxAtlasCount = 4,              // PER FORMAT: what one shader stack can address
+        kAtlasSlots = kMaxAtlasCount * kFormatCount,
+        kBytesPerTexel = 4,              // the RGBA8 page, which most totals are quoted in
         kPageBytes = kPitch * kPitch * kBytesPerTexel, // 270400
         kAtlasBytes = kAtlasSize * kAtlasSize * kBytesPerTexel, // 60.8 MB
     };
+
+    static int bytesPerTexel(Format aFormat) { return aFormat == Format_R8 ? 1 : 4; }
+    static qint64 pageBytes(Format aFormat) { return (qint64)kPitch * kPitch * bytesPerTexel(aFormat); }
+    static qint64 atlasBytes(Format aFormat) {
+        return (qint64)kAtlasSize * kAtlasSize * bytesPerTexel(aFormat);
+    }
 
     /// The identity of a page, assigned by its owner. `owner` is opaque to the pool (the
     /// VirtualTexture's address); `level/x/y` is the page's position in that resource's pyramid.
@@ -93,6 +110,7 @@ public:
         int slot = -1;
         int x = 0;
         int y = 0;
+        Format format = Format_RGBA8;
 
         bool isValid() const { return atlas >= 0; }
     };
@@ -124,7 +142,10 @@ public:
     /// pool is full. The entry is installed immediately; the caller uploads into `aSlot` and
     /// calls cancel() if the upload cannot be made. Returns false when the frame's upload budget
     /// is spent, the byte budget forbids another atlas, or there is nothing to evict.
-    bool acquire(const PageId& aPage, Listener* aListener, Slot* aSlot);
+    /// `aFormat` selects the atlas stack: an RGBA8 page evicts only RGBA8 pages, an R8 page only
+    /// R8 pages, and a format that has exhausted its four atlases under the shared byte budget
+    /// fails rather than borrowing the other stack's slots.
+    bool acquire(const PageId& aPage, Listener* aListener, Slot* aSlot, Format aFormat = Format_RGBA8);
     void cancel(const Slot& aSlot);
     /// Marks a resident page as used this frame (moves it to the front of the eviction order).
     void touch(const PageId& aPage);
@@ -140,10 +161,12 @@ public:
     /// Changes whenever the resident set was thrown away wholesale.
     quint64 generation() const { return mGeneration; }
 
+    /// `aAtlas` is 0..kAtlasSlots-1: 0..3 the RGBA8 stack, 4..7 the R8 one.
     GLuint atlasTextureId(int aAtlas) const;
+    Format atlasFormat(int aAtlas) const;
 
-    /// Reads a slot back to the caller's buffer (kPitch x kPitch RGBA8), for the gate. Binds the
-    /// atlas, which is otherwise never left bound by the pool.
+    /// Reads a slot back to the caller's buffer (kPitch x kPitch in the slot's format), for the
+    /// gate. Binds the atlas, which is otherwise never left bound by the pool.
     bool readSlot(const Slot& aSlot, uint8* aDst) const;
 
     void setBudgetBytes(qint64 aBytes);
@@ -151,8 +174,8 @@ public:
 
     int residentPages() const { return (int)mPages.size(); }
     int atlasCount() const { return mAtlasCount; }
-    qint64 residentBytes() const { return (qint64)mPages.size() * kPageBytes; }
-    qint64 allocatedBytes() const { return (qint64)mAtlasCount * kAtlasBytes; }
+    qint64 residentBytes() const;
+    qint64 allocatedBytes() const;
     int frameUploads() const { return mFrameUploads; }
     qint64 frameUploadBytes() const { return mFrameUploadBytes; }
     int frameEvictions() const { return mFrameEvictions; }
@@ -168,12 +191,13 @@ private:
         std::list<PageId>::iterator lru;
     };
 
-    bool makeAtlas();
+    bool makeAtlas(Format aFormat);
     void releaseAtlas(int aAtlas);
     bool ensureContext();
     void resetState();
 
     std::vector<GLuint> mAtlas;
+    std::vector<Format> mAtlasFormat;
     std::vector<int> mAtlasUsed;
     std::vector<quint64> mAtlasLastUsed;
     int mAtlasCount = 0;
