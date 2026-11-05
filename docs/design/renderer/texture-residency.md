@@ -564,8 +564,9 @@ when every gate is green on every project and the counter shows no regression, t
   when scoping it: a mask's levels ARE a GPU texture built incrementally by `MaskMipChain`, so
   paging needs the level boxes from a source that is not the full texture - a CPU pyramid (the
   chain's area rule is deliberately the "single rule on the CPU", but its x pass stores to an R16F
-  scratch, so bit-exactness is a gate question) or a transient box pipeline. Neither is built; a
-  4096² mask measures 21.3 MiB of R8 chain. `~/Downloads/kemono_psd_1` supplies real masked PSDs
+  scratch: `MX1` measures the CPU mirror at max 2 LSB (2-4 % of texels), so a CPU-sourced pager
+  needs a 2-LSB tolerance at the tier seam or an exact mirror of the shader's arithmetic) or a
+  transient box pipeline. Neither is built; a  4096² mask measures 21.3 MiB of R8 chain. `~/Downloads/kemono_psd_1` supplies real masked PSDs
   (000145.psd: 24 masks, rendered paged vs control at max 1/255), but its masks are decorative and
   small; the memory target is a large-canvas painted mask.
 - **What to skip**: a per-layer level manager as a shipping state. It is throwaway once pages land,
@@ -1085,7 +1086,11 @@ gains the same `VIRTUAL_TEXTURE` variation (four programs: `IS_CLIPPEE` x `VIRTU
   within 1/255 (mean 0.047), and the mask is proven active (its hidden half is empty, its revealed
   half covered). The mask's cost is its R8 chain: 900x700 = 839,797 B, **4096x4096 = 22,369,621 B
   (21.3 MiB)**. A 15000² mask is ~300 MB by the same arithmetic (the design's 225 MB was level 0
-  alone).
+  alone). `MX1` compares a CPU area-average pyramid (mirroring the chain's two axis passes and its
+  R16F half store) with the GPU chain: **max 2 LSB, 2-4 % of texels**. The GPU's x pass stores
+  1/255-normalized values in half, which the CPU cannot reproduce bit-for-bit without mirroring the
+  shader's exact arithmetic, so a CPU-sourced pager carries a 2-LSB mask tolerance (or needs that
+  mirror).
 - **A real masked PSD** (`~/Downloads/kemono_psd_1/000145.psd`, imported through the app's
   `ctrl::ImageFileLoader`): 24 masked layers; paged vs the full-resolution control is **0 px over
   8/255, max 1, mean 0.00017**. That dataset's masks are small (the masked layers sum to ~2.2 M

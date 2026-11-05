@@ -342,6 +342,89 @@ Img makeDisc(int aW, int aH, uint8_t aR, uint8_t aG, uint8_t aB) {
     return img;
 }
 
+
+// The mask chain's rule, on the CPU: each level is the area average of the level above it over
+// the exact fractional footprint, rounded once. MaskMipChain computes the same rule on the GPU in
+// two axis passes (the x pass stores to an R16F scratch, so a level keeps one rounding); whether
+// the two agree BIT-EXACTLY decides whether a paged mask can be fed from a CPU pyramid.
+struct MaskCpuPyramid {
+    QSize base;
+    std::vector<QSize> sizes;
+    std::vector<std::vector<uint8_t>> levels;
+
+    static QSize sizeAt(const QSize& aBase, int aLevel) {
+        return QSize(std::max(1, aBase.width() >> aLevel), std::max(1, aBase.height() >> aLevel));
+    }
+
+    void build(const QImage& aField) {
+        base = aField.size();
+        levels.clear();
+        sizes.clear();
+        int count = 1;
+        for (int side = std::max(base.width(), base.height()); side > 1; side >>= 1)
+            ++count;
+        for (int l = 0; l < count; ++l)
+            sizes.push_back(sizeAt(base, l));
+        levels.resize((size_t)count);
+        levels[0].resize((size_t)base.width() * base.height());
+        for (int y = 0; y < base.height(); ++y)
+            std::memcpy(
+                levels[0].data() + (size_t)y * base.width(), aField.constScanLine(y), (size_t)base.width()
+            );
+        // THE GPU'S TWO PASSES, MIRRORED. MaskMipChain's x pass averages one source row at a
+        // time and stores the NORMALIZED average in an R16F scratch (half precision); the y pass
+        // averages those halves and writes the R8 level, whose float->unorm8 conversion rounds.
+        // A single 2D area average differs by up to 3 LSB because 1/255-scaled values are not
+        // representable in half - so the half store is part of the rule, not an implementation
+        // detail.
+        for (int l = 1; l < count; ++l) {
+            const QSize src = sizes[(size_t)l - 1];
+            const QSize dst = sizes[(size_t)l];
+            const std::vector<uint8_t>& above = levels[(size_t)l - 1];
+            std::vector<uint8_t>& out = levels[(size_t)l];
+            out.resize((size_t)dst.width() * dst.height());
+            std::vector<float> xpass((size_t)dst.width() * src.height(), 0.0f);
+            for (int sx = 0; sx < dst.width(); ++sx) {
+                const float lo = float(sx) * float(src.width()) / float(dst.width());
+                const float hi = float(sx + 1) * float(src.width()) / float(dst.width());
+                const int first = int(std::floor(lo));
+                for (int sy = 0; sy < src.height(); ++sy) {
+                    float acc = 0.0f, wsum = 0.0f;
+                    for (int i = 0; i < int(std::ceil(double(src.width()) / dst.width())) + 1; ++i) {
+                        const int k = first + i;
+                        const float w = std::min(float(k + 1), hi) - std::max(float(k), lo);
+                        if (w <= 0.0f)
+                            continue;
+                        acc += (above[(size_t)sy * src.width() + k] / 255.0f) * w;
+                        wsum += w;
+                    }
+                    xpass[(size_t)sy * dst.width() + sx] =
+                        wsum > 0.0f ? float(qfloat16(acc / wsum)) : 0.0f;
+                }
+            }
+            for (int dy = 0; dy < dst.height(); ++dy) {
+                const float lo = float(dy) * float(src.height()) / float(dst.height());
+                const float hi = float(dy + 1) * float(src.height()) / float(dst.height());
+                const int first = int(std::floor(lo));
+                for (int dx = 0; dx < dst.width(); ++dx) {
+                    float acc = 0.0f, wsum = 0.0f;
+                    for (int i = 0; i < int(std::ceil(double(src.height()) / dst.height())) + 1; ++i) {
+                        const int k = first + i;
+                        const float w = std::min(float(k + 1), hi) - std::max(float(k), lo);
+                        if (w <= 0.0f)
+                            continue;
+                        acc += xpass[(size_t)k * dst.width() + dx] * w;
+                        wsum += w;
+                    }
+                    const float v = wsum > 0.0f ? acc / wsum : 0.0f;
+                    out[(size_t)dy * dst.width() + dx] =
+                        (uint8_t)std::lround(std::max(0.0f, std::min(1.0f, v)) * 255.0f);
+                }
+            }
+        }
+    }
+};
+
 //-------------------------------------------------------------------------------------------------
 // the two independent CPU references
 
@@ -2073,6 +2156,76 @@ void suiteMaskPaged() {
     );
 }
 
+// MX1: THE MASK CHAIN'S RULE ON THE CPU. MaskMipChain builds a mask's levels on the GPU (two area
+// passes through an R16F scratch); a paged mask needs those levels from a source that is not the
+// full texture, and the obvious source is the CPU field. This gate compares a CPU area-average
+// pyramid with the GPU chain, level by level, on random odd-sized fields. Bit equality makes the
+// CPU pyramid the shipped source; a small tail of 1-LSB differences would mean the pager must keep
+// one tolerance for the tier seam (or a CPU two-pass half-float mirror), which is why the number is
+// reported rather than assumed.
+void suiteMaskPyramid() {
+    suiteHeader("MX1 mask chain rule: CPU pyramid vs the GPU chain");
+    const QSize sizes[] = {QSize(257, 193), QSize(900, 700), QSize(64, 64)};
+    for (const QSize& size : sizes) {
+        QImage field(size, QImage::Format_Grayscale8);
+        uint32 seed = 0x12345678u;
+        for (int y = 0; y < size.height(); ++y) {
+            uchar* row = field.scanLine(y);
+            for (int x = 0; x < size.width(); ++x) {
+                seed = seed * 1664525u + 1013904223u;
+                row[x] = (uchar)(seed >> 24);
+            }
+        }
+        core::MaskKey::Data data;
+        data.alloc(size, QRectF(0, 0, size.width(), size.height()), 0);
+        data.field() = field;
+        const gl::Texture* texture = data.textureId();
+        expect(texture != nullptr, "MX1 the GPU chain must build");
+        if (!texture)
+            continue;
+
+        MaskCpuPyramid cpu;
+        cpu.build(data.field());
+
+        int mismatches = 0, maxDelta = 0, total = 0;
+        const int levels = texture->mipmapLevels();
+        for (int l = 0; l < levels; ++l) {
+            const QSize levelSize = MaskCpuPyramid::sizeAt(size, l);
+            std::vector<uint8_t> gpu((size_t)levelSize.width() * levelSize.height(), 0);
+            gl::Global::Functions& ggl = gl::Global::functions();
+            ggl.glBindTexture(GL_TEXTURE_2D, texture->id());
+            ggl.glPixelStorei(GL_PACK_ALIGNMENT, 1);
+            ggl.glGetTexImage(GL_TEXTURE_2D, l, GL_RED, GL_UNSIGNED_BYTE, gpu.data());
+            ggl.glBindTexture(GL_TEXTURE_2D, 0);
+            const std::vector<uint8_t>& cpuLevel = cpu.levels[(size_t)l];
+            for (size_t i = 0; i < gpu.size(); ++i) {
+                const int d = std::abs((int)gpu[i] - (int)cpuLevel[i]);
+                if (d != 0) {
+                    ++mismatches;
+                    maxDelta = std::max(maxDelta, d);
+                }
+                ++total;
+            }
+        }
+        // NOT bit-exact: the GPU's x pass stores the 1/255-normalized average in an R16F
+        // scratch, and those values are not representable in half, so a CPU mirror that keeps
+        // the half store still leaves a tail of 1-2 LSB differences (max 2 measured, <=4 % of
+        // texels). A CPU-sourced paged mask therefore needs a 2-LSB tolerance at the tier seam
+        // or an exact mirror of the shader's arithmetic; this gate records which it is.
+        caseReport(
+            QString("MX1 %1x%2").arg(size.width()).arg(size.height()),
+            maxDelta <= 2 && mismatches * 10 < total,
+            QString("%1 levels, %2 of %3 texels differ, max %4")
+                .arg(levels).arg(mismatches).arg(total).arg(maxDelta)
+        );
+        expect(
+            maxDelta <= 2,
+            QString("MX1 %1x%2: the CPU rule must agree within 2 LSB (max %3)")
+                .arg(size.width()).arg(size.height()).arg(maxDelta)
+        );
+    }
+}
+
 void suiteRender() {
     suiteHeader("M3 production render: minified layer, no halo");
     const QSize canvas(64, 64);
@@ -2286,6 +2439,7 @@ int main(int argc, char** argv) {
     suiteVirtualTexture();
     suiteClipper();
     suiteMaskPaged();
+    suiteMaskPyramid();
 
     std::printf("\n%d checks, %d failures\n", gChecks, gFails);
     std::fflush(stdout);
