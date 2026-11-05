@@ -78,6 +78,28 @@ void emitPageRect(ivec2 aMin, ivec2 aMax, int aRow) {
     EndPrimitive();
 }
 
+void markLevel(int pageLevel, float aTapReach, vec2 t0, vec2 t1, vec2 t2) {
+    if (pageLevel < 0 || pageLevel >= uCoarseLevel)
+        return;
+    int w = max(1, int(uLayerSize.x) >> pageLevel);
+    int h = max(1, int(uLayerSize.y) >> pageLevel);
+    ivec2 grid = ivec2((w + int(uPageTexels) - 1) / int(uPageTexels),
+                       (h + int(uPageTexels) - 1) / int(uPageTexels));
+    float levelTexels = exp2(float(pageLevel));
+    float scale = levelTexels * uPageTexels;
+    vec2 p0 = t0 / scale, p1 = t1 / scale, p2 = t2 / scale;
+    vec2 reach = vec2(min(aTapReach, uPageTexels) / uPageTexels);
+    vec2 lo = min(min(p0, p1), p2) - reach;
+    vec2 hi = max(max(p0, p1), p2) + reach;
+    ivec2 minP = ivec2(floor(lo));
+    ivec2 maxP = ivec2(floor(hi));
+    minP = max(minP, ivec2(0));
+    maxP = min(maxP, grid - 1);
+    if (minP.x > maxP.x || minP.y > maxP.y)
+        return;
+    emitPageRect(minP, maxP, uPageLevelRow[pageLevel]);
+}
+
 void main() {
     // the layer shader samples (inTexCoord + uTexCoordOffset) / uImageSize; the demand must
     // name the pages THOSE coordinates fall in, not the untranslated mesh uvs (a mesh origin
@@ -100,6 +122,7 @@ void main() {
     float det = j1.x * j2.y - j2.x * j1.y;
     float disc = max(a * a - 4.0 * det * det, 0.0);
     float smax = sqrt(max(0.5 * (a + sqrt(disc)), 0.0));
+    float smin = sqrt(max(0.5 * (a - sqrt(disc)), 0.0));
     if (!(smax > 0.0))
         return;
 
@@ -108,36 +131,16 @@ void main() {
     // level 0, so that is the page this triangle wants
     int lodLevel = (lod <= 0.0) ? 0 : int(clamp(floor(lod + 0.5), 0.0, float(uMaxLevel)));
 
-    // MARK A LEVEL EITHER SIDE OF THE ONE THIS TRIANGLE COMPUTES. The fragment shader's level
-    // comes from derivatives, which on a 2x2 quad that straddles two triangles are a mix of the
-    // two planes; where the two round to different levels the mix rounds to one of them, and a
-    // pixel can therefore ask for a level this triangle's own Jacobian did not name. One level
-    // of margin is what covers it (the neighbouring level's reach is a factor of two in
-    // footprint, far more than the boundary's discrepancy). The extra pages are screen-bounded,
-    // like every other page: a coarser level asks for fewer, not more.
-    for (int delta = -1; delta <= 1; ++delta) {
-        int pageLevel = lodLevel + delta;
-        if (pageLevel < 0 || pageLevel >= uCoarseLevel)
-            continue;   // the coarse chain owns that level, or it does not exist
-
-        int w = max(1, int(uLayerSize.x) >> pageLevel);
-        int h = max(1, int(uLayerSize.y) >> pageLevel);
-        ivec2 grid = ivec2((w + int(uPageTexels) - 1) / int(uPageTexels),
-                           (h + int(uPageTexels) - 1) / int(uPageTexels));
-
-        float scale = exp2(float(pageLevel)) * uPageTexels;
-        vec2 p0 = t0 / scale, p1 = t1 / scale, p2 = t2 / scale;
-        ivec2 minP = ivec2(floor(min(min(p0.x, p1.x), p2.x)), floor(min(min(p0.y, p1.y), p2.y))) - 1;
-        ivec2 maxP = ivec2(ceil(max(max(p0.x, p1.x), p2.x)), ceil(max(max(p0.y, p1.y), p2.y))) + 1;
-        // the +-1 covers the reconstruction taps, which reach at most the footprint's anisotropy
-        // ratio in level texels - far inside one 256-texel page
-        minP = max(minP, ivec2(0));
-        maxP = min(maxP, grid - 1);
-        if (minP.x > maxP.x || minP.y > maxP.y)
-            continue;
-
-        emitPageRect(minP, maxP, uPageLevelRow[pageLevel]);
-    }
+    // MARK THE LEVEL THIS TRIANGLE COMPUTES, and only that level. The fragment shader's level
+    // comes from derivatives; on a 2x2 quad that straddles two triangles it is a mix of the two
+    // planes, so it rounds to one of THESE TRIANGLES' levels, and both triangles mark their own.
+    // A one-level margin each side was built and measured: on nene it demanded 474 pages instead
+    // of 79, and it did NOT improve the frame's difference from the full-resolution control
+    // (mean 0.83 against 0.61 for this tighter set); the finer neighbour also costs four pages
+    // for every one of this level. The measured residual is not a missing level - see the
+    // design doc's open item.
+    float aniso = smax / max(smin, 1.0e-6);
+    markLevel(lodLevel, 0.5 * aniso + 1.0, t0, t1, t2);
 }
 )";
 

@@ -960,38 +960,48 @@ programs.
 
 ### Measured
 
-- **nene.anie** (15000x15000, 130 layers, 105 paged resources, 640x640 fit view), the same five
-  frames with `AE_FRAME_STATS`:
+- **nene.anie** (15000x15000, 130 layers, 105 paged resources, 640x640 fit view), the same
+  frames with `AE_FRAME_STATS`, after the demand set settled:
 
   | | full resolution | paged |
   |---|---|---|
-  | `tex_live` after the fifth frame | 2,778,072,136 B (2.59 GiB) | 731,274,540 B (697 MiB) |
-  | steady `ms` | 93.5 | 103.5 |
-  | load (project load + one frame, wall) | 79.4 s | 74.9 s |
+  | `tex_live` | 2,778,072,136 B (2.59 GiB) | 597,056,812 B (569 MiB) |
+  | steady `ms` | 93.5 | 96-99 |
+  | load (project load + frames, wall) | 79.4 s | 74.9 s |
   | max RSS | 8.08 GB | 8.63 GB |
 
-  The VRAM is 3.8x lower; the 10 ms steady-state difference is the demand geometry pass (~8 ms)
-  plus the page read. Where the 697 MiB is: **183 MiB of allocated atlases holding 128 MiB of
-  pages, 50 MiB of coarse chains, and 452 MiB of unpaged full textures** - of which **443 MiB is
-  three clipper layers** (one 4343x4351, two 2702x12604). The pooled tiers are therefore 178 MiB
-  used / 233 MiB allocated, in line with the design's estimate; the gap is the deliberate clipper
-  exclusion, which is why it is first on the open list.
-  The pool fills at the 8 MB/frame default over ~17 frames: those frames run at 112-135 ms against
-  the control's 93-94, and from frame 19 the converged steady state is 106-108 ms. A 32 MB cap was
-  measured first and is why the default is 8: the four frames that spent it cost 171 / 158 / 234 /
-  149 ms. The page fill copies the level's rows (one memcpy per row) instead of a memcpy per texel,
-  which was wasting most of that upload frame.
+  The VRAM is 4.7x lower; the 3-6 ms steady-state difference is the demand geometry pass plus the
+  page read. Where the 569 MiB is: **one 64 MiB atlas holding 20 MiB of pages, 50 MiB of coarse
+  chains, and 452 MiB of unpaged full textures** - of which **443 MiB is three clipper layers**
+  (one 4343x4351, two 2702x12604). The pooled tiers are therefore 70 MiB used / 114 MiB allocated,
+  in line with the design's estimate; the gap is the deliberate clipper exclusion, which is why it
+  is first on the open list.
+  The demand is the triangle's OWN level and a page box grown by the tap reach in level texels, not
+  by a whole page. The first version marked the level either side and a full-page border: 474
+  pages (128 MiB) on nene, and it did **not** bring the frame closer to the control (mean 0.83 of
+  255) than the tighter set does (0.61). The tighter set demands 79 pages (20 MiB) and reaches the
+  same steady image sooner: 79 pages at the 8 MB/frame default land in ~3 frames, a transient of
+  ~10-20 ms over the 93-94 control. A 32 MB cap was measured first and is why the default is 8:
+  the frames that spent it cost 60-140 ms. The page fill copies the level's rows (one memcpy per
+  row) instead of a memcpy per texel, which was most of that upload frame.
   The RAM increase (+0.55 GB) is the pyramids (609 MB across the 108 paged resources). Load time
   did not regress (74.9 s against 79.4), but the pyramid capture is SYNCHRONOUS: it cost 1.47 s
   across the 136 keys, worst 130 ms for one 3841x12658 image (a 15000² import scales to ~0.6 s,
   inference from the 48 MP sample). A clipper-policy change rebuilds the key (full chain plus
   capture), so a layer that becomes a clipper pays that again.
+  **The residual difference from the control is NOT explained by residency**: all 79 wanted pages
+  are resident, V1 is bit-identical, and the same-frame difference is still mean 0.61 of 255 with
+  ~10 000 pixels over 8/255 (max 223) on this animated frame. The level margin did not change it.
+  The next suspects are the magnified branch (the page path takes one bilinear tap where the
+  control may take the hardware's anisotropic samples) and a sampling difference under bone
+  deformation; it needs a per-layer diff on one isolated layer. Until that is understood, the
+  plan's pixel-equality gate is not met on this project.
 - **V1 parity**: 900x700 image, 320x320 canvas, coarse level 1, 12 level-0 pages wanted and all
   resident. At scale 0.5 and 1.0 the paged and full-resolution frames are **bit-identical** over
   the whole interior; at scale 0.25 the layer asks for level 2, which the coarse chain owns, and
   the two differ by **max 1, mean 0.020** of 255.
-- **test.anie** (six paged resources, 640x640 fit view): 57 pages, 15,412,800 B of pages in one
-  atlas, all wanted pages resident after the second frame; steady `ms` 4.9-5.7 against the
+- **test.anie** (six paged resources, 640x640 fit view): 52 pages, 14,060,800 B of pages in one
+  atlas, all wanted pages resident after the second frame; steady `ms` 4.9-5.1 against the
   control's 4.5-6.2. Same-frame paged vs control: **mean 0.036, max 40-44 of 255** on ~760
   pixels, a one-pixel horizontal band at a layer's top/bottom edge - the magnified path's
   single-bilinear read against the control's anisotropic sample, not a missing page (the wanted
@@ -1005,17 +1015,23 @@ programs.
 
 ### Open, in priority order
 
-1. The 1-pixel edge band above: decide whether the paged magnified read should take the two-tap
-   path at level 0 (matching anisotropy more closely) or whether the band is acceptable. Measure
-   the band against a control with anisotropy 1 first, to separate the two causes.
-2. The demand pass's ~8 ms on 130 layers: it re-walks every visible triangle every frame even
+1. The nene residual above: 4 % of an animated frame's pixels differ by more than 8/255 from the
+   full-resolution control while every wanted page is resident. The level margin did not change
+   it, so it is the sampling path (magnification's single tap against the control's anisotropy, or
+   something that only shows under bone deformation). Isolate one layer, force its pages, and diff
+   the two paths level by level. This is the one item that blocks the plan's pixel-equality gate.
+2. The 1-pixel edge band on test.anie: decide whether the paged magnified read should take the
+   two-tap path at level 0 (matching anisotropy more closely) or whether the band is acceptable.
+   Measure the band against a control with anisotropy 1 first, to separate the two causes.
+3. The demand pass's ~8 ms on 130 layers: it re-walks every visible triangle every frame even
    when the camera and the transform cache have not changed. A static view could skip it; the
    density meter already reads the same positions, so the two could share one pass under
    `AE_FRAME_STATS`. Beside it, the pool's landing rate: 8 MB/frame still costs 10-20 ms while it
    fills, and a large import's synchronous capture is a visible pause; an asynchronous/deferred
    capture and a page upload batched per atlas row are the two obvious next reductions.
-3. Clippers in the pool (share the sampler).
-4. Masks (Stage 4).
-5. Per-resource pyramids for duplicated layers.
-6. The first-atlas floor (61 MB) for projects whose whole texture set is smaller than it: a
+4. Clippers in the pool (share the sampler) - 443 MiB on nene, by far the largest residency win
+   left.
+5. Masks (Stage 4).
+6. Per-resource pyramids for duplicated layers.
+7. The first-atlas floor (61 MB) for projects whose whole texture set is smaller than it: a
    demand-aware first allocation is the measured-shaped answer (see the pool's header comment).
