@@ -289,8 +289,9 @@ void LayerNode::render(const RenderInfo& aInfo, const TimeCacheAccessor& aAccess
             return;
         virtualTexture->markDemand(
             aInfo.camera.viewMatrix(), aInfo.camera.deviceScreenSize(),
-            mMeshTransformer.positions(), mCurrentMesh->texCoords(), mCurrentMesh->vertexCount(),
-            mCurrentMesh->getIndexBuffer(), mCurrentMesh->indexCount()
+            mCurrentMesh->originOffset() - expans.imageOffset(), mMeshTransformer.positions(),
+            mCurrentMesh->texCoords(), mCurrentMesh->vertexCount(), mCurrentMesh->getIndexBuffer(),
+            mCurrentMesh->indexCount()
         );
     };
 

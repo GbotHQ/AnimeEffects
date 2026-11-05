@@ -60,6 +60,7 @@ uniform vec2 uPageMapSize;
 uniform int uPageLevelRow[16];
 uniform float uMinUvArea;
 uniform float uPageTexels;
+uniform vec2 uTexCoordOffset;
 uniform int uDemandLayer;
 
 void emitPageRect(ivec2 aMin, ivec2 aMax, int aRow) {
@@ -78,7 +79,11 @@ void emitPageRect(ivec2 aMin, ivec2 aMax, int aRow) {
 }
 
 void main() {
-    vec2 t0 = vTexCoord[0], t1 = vTexCoord[1], t2 = vTexCoord[2];
+    // the layer shader samples (inTexCoord + uTexCoordOffset) / uImageSize; the demand must
+    // name the pages THOSE coordinates fall in, not the untranslated mesh uvs (a mesh origin
+    // offset or an edited image offset moves the sample by a whole part of the image)
+    vec2 t0 = vTexCoord[0] + uTexCoordOffset, t1 = vTexCoord[1] + uTexCoordOffset,
+         t2 = vTexCoord[2] + uTexCoordOffset;
     vec2 d1 = t1 - t0, d2 = t2 - t0;
     float detU = d1.x * d2.y - d2.x * d1.y;
     float uvArea = abs(detU) * 0.5;
@@ -256,6 +261,7 @@ void main() { oDemand = 1.0; }
             const Params& aParams,
             const QMatrix4x4& aViewMatrix,
             const QSize& aDeviceSize,
+            const QVector2D& aTexCoordOffset,
             gl::BufferObject& aPositions,
             const gl::Vector2* aTexCoords,
             int aVtxCount,
@@ -310,6 +316,7 @@ void main() { oDemand = 1.0; }
             );
             mProgram->setUniformValue("uMinUvArea", 0.25f);
             mProgram->setUniformValue("uPageTexels", (float)gl::PagePool::kPageSize);
+            mProgram->setUniformValue("uTexCoordOffset", aTexCoordOffset);
             mProgram->setUniformValue("uDemandLayer", aLayer);
 
             mVAO->bind();
@@ -1055,6 +1062,7 @@ void VirtualTexture::rebuildTable() {
 void VirtualTexture::markDemand(
     const QMatrix4x4& aViewMatrix,
     const QSize& aDeviceScreenSize,
+    const QVector2D& aTexCoordOffset,
     const gl::BufferObject& aPositions,
     const gl::Vector2* aTexCoords,
     int aVtxCount,
@@ -1076,7 +1084,7 @@ void VirtualTexture::markDemand(
 
     DemandMap::instance().mark(
         mDemandLayer, QSize(mTableWidth, mTableRows), params, aViewMatrix, aDeviceScreenSize,
-        const_cast<gl::BufferObject&>(aPositions), aTexCoords, aVtxCount,
+        aTexCoordOffset, const_cast<gl::BufferObject&>(aPositions), aTexCoords, aVtxCount,
         const_cast<gl::BufferObject&>(aIndexBuffer), aIndexCount
     );
 }

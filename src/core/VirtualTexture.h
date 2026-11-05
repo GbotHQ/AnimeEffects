@@ -108,6 +108,7 @@ public:
     void markDemand(
         const QMatrix4x4& aViewMatrix,
         const QSize& aDeviceScreenSize,
+        const QVector2D& aTexCoordOffset,
         const gl::BufferObject& aPositions,
         const gl::Vector2* aTexCoords,
         int aVtxCount,

@@ -883,6 +883,12 @@ pass marks **one level either side** of the one it computed: a 2x2 derivative qu
 two triangles can round to either triangle's level, and the margin is what keeps that boundary
 from falling back to the coarse chain. The extra demand is screen-bounded like every page.
 
+The page coordinates are computed from the same `(inTexCoord + uTexCoordOffset)` the layer
+shader divides by `uImageSize`, not from the mesh's raw uvs: a mesh origin offset (a custom
+`MeshKey`) moves the sample by a part of the image, and demand on the untranslated uvs names the
+wrong pages. The default grid mesh cancels the offset (`originOffset == imageOffset`), which is
+why the first gate did not see it.
+
 The pass runs with `uScreenSize` in **device pixels**: the camera's view matrix maps to NDC, so
 the pixel scale is half the device screen. Leaving that out made every footprint read about
 `log2(width/2)` levels too coarse - which is exactly the bug the first version had, and it is why
