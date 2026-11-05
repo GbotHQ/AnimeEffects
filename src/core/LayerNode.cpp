@@ -14,6 +14,7 @@
 #include "core/ResourceUpdatingWorkspace.h"
 #include "core/FFDKeyUpdater.h"
 #include "core/ImageKeyUpdater.h"
+#include "core/VirtualTexture.h"
 #include "core/ClippingFrame.h"
 #include "core/WorldBlurMath.h"
 #include "core/DestinationTexturizer.h"
@@ -54,7 +55,11 @@ void LayerNode::setDefaultImage(const img::ResourceHandle& aHandle, img::BlendMo
     key->resetGridMesh();
     key->setImageOffsetByCenter();
 
-    mShaderHolder.reserveShaders(aBlendMode);
+    // the VT variation costs one more program per (clippee, hsv, mask) combination, so it is
+    // reserved only for a resource that can actually be paged
+    const bool pageable =
+        aHandle->hasImage() && VirtualTexture::pageable(aHandle->image().pixelSize());
+    mShaderHolder.reserveShaders(aBlendMode, pageable);
     mShaderHolder.reserveGridShader();
     mShaderHolder.reserveClipperShaders();
 }
@@ -91,7 +96,9 @@ void LayerNode::setBlendMode(img::BlendMode aMode) {
     auto key = (ImageKey*)mTimeLine.defaultKey(TimeKeyType_Image);
     if (key) {
         key->data().setBlendMode(aMode);
-        mShaderHolder.reserveShaders(aMode);
+        const bool pageable = key->data().resource() && key->data().resource()->hasImage()
+            && VirtualTexture::pageable(key->data().resource()->image().pixelSize());
+        mShaderHolder.reserveShaders(aMode, pageable);
     }
 }
 
@@ -104,6 +111,13 @@ void LayerNode::prerender(const RenderInfo& aInfo, const TimeCacheAccessor& aAcc
         mTransformKeyValid = false;
         return;
     }
+
+    // A LAYER USED AS A CLIPPER keeps the plain full-resolution texture: the clipper's
+    // singulation pass has its own fragment shader and samples the layer directly, while the
+    // paged read lives in the layer shader (see ImageKey::setVirtualTexturingAllowed). The
+    // relationship is a sibling one, so it is answered here rather than where the key was built.
+    if (auto& expans = aAccessor.get(mTimeLine); expans.areaImageKey())
+        expans.areaImageKey()->setVirtualTexturingAllowed(!isClipper());
 
     // transform shape by current keys (transformShape skips the GL pass when the
     // key says its output buffers already hold this exact result)
@@ -257,17 +271,44 @@ void LayerNode::render(const RenderInfo& aInfo, const TimeCacheAccessor& aAccess
         if (!frameStatsOn || aInfo.isGrid || !mCurrentMesh)
             return;
         const TimeKeyExpans& expans = aAccessor.get(mTimeLine);
-        const gl::Texture* texture = expans.areaTexture();
-        if (!texture)
+        const QSize contentSize = expans.areaTextureSize();
+        if (contentSize.isEmpty())
             return;
-        frameStats.layerDrawn(screenAreaPx(aInfo, expans, texture->size()));
+        frameStats.layerDrawn(screenAreaPx(aInfo, expans, contentSize));
     };
+
+    // The paged path's demand for THIS frame: the pages this layer's own triangles sample,
+    // marked from the same skinned positions the draw will read. A layer with no paged texture
+    // (or a grid pass, which does not sample the image) costs one null check.
+    const auto markPagedDemand = [&]() {
+        if (aInfo.isGrid || !mCurrentMesh)
+            return;
+        const TimeKeyExpans& expans = aAccessor.get(mTimeLine);
+        VirtualTexture* virtualTexture = expans.areaVirtualTexture();
+        if (!virtualTexture)
+            return;
+        virtualTexture->markDemand(
+            aInfo.camera.viewMatrix(), aInfo.camera.deviceScreenSize(),
+            mMeshTransformer.positions(), mCurrentMesh->texCoords(), mCurrentMesh->vertexCount(),
+            mCurrentMesh->getIndexBuffer(), mCurrentMesh->indexCount()
+        );
+    };
+
+    // THE EXPORT'S DEMAND-ONLY PASS: mark this layer's pages, walk the clippees too (they are
+    // paged layers of their own), draw nothing.
+    if (aInfo.demandOnly) {
+        markPagedDemand();
+        renderClippees(aInfo, aAccessor);
+        return;
+    }
 
     if (!aInfo.isGrid && (isCompositeLayer(aAccessor) || isPreviewTarget(aInfo))) {
         countDrawnLayer();
+        markPagedDemand();
         renderComposite(aInfo, aAccessor);
     } else {
         countDrawnLayer();
+        markPagedDemand();
         renderLayer(aInfo, aAccessor, useHSV, hsvData);
     }
 
@@ -326,7 +367,7 @@ void LayerNode::renderComposite(const RenderInfo& aInfo, const TimeCacheAccessor
         return;
 
     auto& expans = aAccessor.get(mTimeLine);
-    if (!expans.areaImageKey() || !expans.areaTexture())
+    if (!expans.areaImageKey() || (!expans.areaTexture() && !expans.areaVirtualTexture()))
         return;
 
     const float worldOpacity = expans.worldOpacity();
@@ -377,7 +418,7 @@ void LayerNode::renderComposite(const RenderInfo& aInfo, const TimeCacheAccessor
         QMatrix4x4 world = expans.srt().worldCSRTMatrix();
         if (!aInfo.nonPosed && expans.bone().isAffectedByBinding())
             world = expans.bone().outerMatrix();
-        const QSize textureSize = expans.areaTexture()->size();
+        const QSize textureSize = expans.areaTextureSize();
         // The clamp is the image's texel-centre range: one half texel inside its
         // outline, so a saturated sample lands on the edge texel instead of on the
         // boundary between it and the transparent composite around it.
@@ -581,6 +622,10 @@ void LayerNode::renderClippees(const RenderInfo& i, const TimeCacheAccessor& a)
 }
 
 void LayerNode::renderClipper(const RenderInfo& aInfo, const TimeCacheAccessor& aAccessor, uint8 aClipperId) {
+    // a clipper keeps the full-resolution texture (see ImageKey::setVirtualTexturingAllowed),
+    // so the demand-only pass has nothing to do for it
+    if (aInfo.demandOnly)
+        return;
     if (!mIsVisible || !aInfo.clippingFrame)
         return;
     if (!mCurrentMesh)
@@ -741,11 +786,15 @@ void LayerNode::renderLayer(const RenderInfo& aInfo, const TimeCacheAccessor& aA
     const bool isClippee = (aInfo.clippingFrame && aInfo.clippingId != 0);
 
     auto& expans = aAccessor.get(mTimeLine);
-    if (!expans.areaImageKey() || !expans.areaTexture())
+    const VirtualTexture* virtualTexture = expans.areaVirtualTexture();
+    if (!expans.areaImageKey() || (!expans.areaTexture() && !virtualTexture))
         return;
 
-    auto textureId = expans.areaTexture()->id();
-    auto textureSize = expans.areaTexture()->size();
+    // the paged path has no full texture; unit 0 is bound to the coarse chain so the sampler
+    // is never an incomplete texture (the variation does not read it, but GL still requires a
+    // complete texture for any sampler the program can reach)
+    auto textureId = virtualTexture ? virtualTexture->coarseTexture().id() : expans.areaTexture()->id();
+    auto textureSize = expans.areaTextureSize();
     auto texCoordOffset = mCurrentMesh->originOffset() - expans.imageOffset();
     auto blendMode = expans.blendMode();
     const QMatrix4x4 viewMatrix = aInfo.camera.viewMatrix();
@@ -765,7 +814,7 @@ void LayerNode::renderLayer(const RenderInfo& aInfo, const TimeCacheAccessor& aA
     // moving the SRT, so there is no second, transform-fed variant left to choose between.
     auto& shader = aInfo.isGrid
         ? mShaderHolder.gridShader()
-        : mShaderHolder.shader(blendMode, isClippee, useHSV, useLayerMask);
+        : mShaderHolder.shader(blendMode, isClippee, useHSV, useLayerMask, virtualTexture != nullptr);
 
     // update destination color
     XC_PTR_ASSERT(aInfo.destTexturizer);
@@ -819,8 +868,14 @@ void LayerNode::renderLayer(const RenderInfo& aInfo, const TimeCacheAccessor& aA
         // must stay 0 (ImageKey sets it to 0 for this reason).
         shader.setUniformValue("uLayerLodBias", ImageKey::layerLodBias());
         shader.setUniformValue(
-            "uLayerMaxLod", float(std::max(0, expans.areaTexture()->mipmapLevels() - 1))
+            "uLayerMaxLod", float(virtualTexture ? virtualTexture->maxLevel()
+                                                 : std::max(0, expans.areaTexture()->mipmapLevels() - 1))
         );
+        // THE PAGED READ's own state: the coarse chain, the page table, the atlases and the
+        // per-resource grid. It also re-sets uLayerMaxLod (the chain's last level), so the two
+        // values cannot disagree.
+        if (virtualTexture)
+            virtualTexture->bind(shader);
 
         if (isClippee) {
             shader.setUniformValue("uClippingId", (int)aInfo.clippingId);
@@ -905,7 +960,9 @@ void LayerNode::reserveShadersFromTimeline() {
     mShaderHolder.reserveClipperShaders();
 
     auto reserveOne = [this](ImageKey* k) {
-        mShaderHolder.reserveShaders(k->data().blendMode());
+        const bool pageable = k->data().resource() && k->data().resource()->hasImage()
+            && VirtualTexture::pageable(k->data().resource()->image().pixelSize());
+        mShaderHolder.reserveShaders(k->data().blendMode(), pageable);
     };
 
     if (auto def = static_cast<ImageKey*>(mTimeLine.defaultKey(TimeKeyType_Image)))

@@ -18,24 +18,31 @@ public:
 
     // aUseLayerMask compiles the node's own matte into the draw (LAYER_MASK): a
     // node whose mask has a field needs one more variant than a node without one.
+    // aVirtualTexture selects the VIRTUAL_TEXTURE variation: the layer's texels are paged and
+    // the sampler resolves them through a page table and the atlases (see
+    // core::VirtualTexture). Every other input is independent of it, so a pageable layer costs
+    // one more program per (blend, clippee, hsv, mask) combination.
     gl::EasyShaderProgram& reserveShader(
         img::BlendMode aBlendMode,
         bool aIsClippee,
         bool aUseHSV,
-        bool aUseLayerMask
+        bool aUseLayerMask,
+        bool aVirtualTexture
     );
-    void reserveShaders(img::BlendMode aBlendMode);
+    void reserveShaders(img::BlendMode aBlendMode, bool aVirtualTexture);
     gl::EasyShaderProgram& shader(
         img::BlendMode aBlendMode,
         bool aIsClippee,
         bool aUseHSV,
-        bool aUseLayerMask
+        bool aUseLayerMask,
+        bool aVirtualTexture
     );
     const gl::EasyShaderProgram& shader(
         img::BlendMode aBlendMode,
         bool aIsClippee,
         bool aUseHSV,
-        bool aUseLayerMask
+        bool aUseLayerMask,
+        bool aVirtualTexture
     ) const;
 
     /// The three mesh-transform programs (plain, skinning, dual quaternion), built ONCE per holder

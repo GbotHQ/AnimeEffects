@@ -6,7 +6,7 @@
 namespace core {
 
 ShaderHolder::ShaderHolder(): mShaders(), mGridShaders(), mClipperShaders() {
-    mShaders.resize(img::BlendMode_TERM * 2 * 2 * 2);
+    mShaders.resize(img::BlendMode_TERM * 2 * 2 * 2 * 2);
     mGridShaders.resize(1);
     mClipperShaders.resize(2);
 }
@@ -38,10 +38,11 @@ gl::EasyShaderProgram& ShaderHolder::reserveShader(
     img::BlendMode aBlendMode,
     bool aIsClippee,
     bool aUseHSV,
-    bool aUseLayerMask
+    bool aUseLayerMask,
+    bool aVirtualTexture
 ) {
     const int index = aBlendMode + img::BlendMode_TERM * (int)aIsClippee + img::BlendMode_TERM * 2 * (int)aUseHSV
-        + img::BlendMode_TERM * 4 * (int)aUseLayerMask;
+        + img::BlendMode_TERM * 4 * (int)aUseLayerMask + img::BlendMode_TERM * 8 * (int)aVirtualTexture;
     if (!mShaders[index]) {
         mShaders[index] = new gl::EasyShaderProgram();
         auto shader = mShaders[index];
@@ -67,6 +68,7 @@ gl::EasyShaderProgram& ShaderHolder::reserveShader(
 
         source.setVariationValue("USE_HSV", aUseHSV ? "1" : "0");
         source.setVariationValue("LAYER_MASK", aUseLayerMask ? "1" : "0");
+        source.setVariationValue("VIRTUAL_TEXTURE", aVirtualTexture ? "1" : "0");
 
         // The layer texture (LayerNode's uTexture) is stored alpha-premultiplied: it is the
         // mipmapped artwork texture built in ImageKey (see img::Util::makeTextureUpload), and
@@ -97,12 +99,12 @@ gl::EasyShaderProgram& ShaderHolder::reserveShader(
     return *mShaders[index];
 }
 
-void ShaderHolder::reserveShaders(img::BlendMode aBlendMode) {
+void ShaderHolder::reserveShaders(img::BlendMode aBlendMode, bool aVirtualTexture) {
     for (int mask = 0; mask < 2; ++mask) {
-        reserveShader(aBlendMode, true, true, mask != 0);
-        reserveShader(aBlendMode, true, false, mask != 0);
-        reserveShader(aBlendMode, false, true, mask != 0);
-        reserveShader(aBlendMode, false, false, mask != 0);
+        reserveShader(aBlendMode, true, true, mask != 0, aVirtualTexture);
+        reserveShader(aBlendMode, true, false, mask != 0, aVirtualTexture);
+        reserveShader(aBlendMode, false, true, mask != 0, aVirtualTexture);
+        reserveShader(aBlendMode, false, false, mask != 0, aVirtualTexture);
     }
 }
 
@@ -110,13 +112,14 @@ gl::EasyShaderProgram& ShaderHolder::shader(
     img::BlendMode aBlendMode,
     bool aIsClippee,
     bool aUseHSV,
-    bool aUseLayerMask
+    bool aUseLayerMask,
+    bool aVirtualTexture
 ) {
     const int index = aBlendMode + img::BlendMode_TERM * (int)aIsClippee + img::BlendMode_TERM * 2 * (int)aUseHSV
-        + img::BlendMode_TERM * 4 * (int)aUseLayerMask;
+        + img::BlendMode_TERM * 4 * (int)aUseLayerMask + img::BlendMode_TERM * 8 * (int)aVirtualTexture;
     // the variant is built on demand rather than all at once
     if (mShaders.at(index) == nullptr)
-        reserveShader(aBlendMode, aIsClippee, aUseHSV, aUseLayerMask);
+        reserveShader(aBlendMode, aIsClippee, aUseHSV, aUseLayerMask, aVirtualTexture);
     XC_PTR_ASSERT(mShaders.at(index));
     return *(mShaders.at(index));
 }
@@ -125,10 +128,11 @@ const gl::EasyShaderProgram& ShaderHolder::shader(
     img::BlendMode aBlendMode,
     bool aIsClippee,
     bool aUseHSV,
-    bool aUseLayerMask
+    bool aUseLayerMask,
+    bool aVirtualTexture
 ) const {
     const int index = aBlendMode + img::BlendMode_TERM * (int)aIsClippee + img::BlendMode_TERM * 2 * (int)aUseHSV
-        + img::BlendMode_TERM * 4 * (int)aUseLayerMask;
+        + img::BlendMode_TERM * 4 * (int)aUseLayerMask + img::BlendMode_TERM * 8 * (int)aVirtualTexture;
     XC_PTR_ASSERT(mShaders.at(index));
     return *(mShaders.at(index));
 }

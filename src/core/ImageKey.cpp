@@ -7,6 +7,7 @@
 #include "img/Util.h"
 #include "core/ImageKey.h"
 #include "core/Constant.h"
+#include "core/VirtualTexture.h"
 #include "qjsonobject.h"
 #include "util/LinkPointer.h"
 
@@ -40,10 +41,26 @@ void ImageKey::Data::setImageOffset(const QVector2D& aOffset) {
 }
 
 //-------------------------------------------------------------------------------------------------
-ImageKey::Cache::Cache(): mTexture() {}
+ImageKey::Cache::Cache(): mTexture(), mVirtualTexture(), mSourceSize() {}
+ImageKey::Cache::~Cache() = default;
+
+bool ImageKey::Cache::buildVirtualTexture(const img::ResourceHandle& aResource, const QSize& aSize) {
+    resetVirtualTexture();
+    auto texture = std::make_unique<VirtualTexture>();
+    if (!texture->build(aResource, aSize, mTexture))
+        return false;
+    mVirtualTexture = std::move(texture);
+    mSourceSize = aSize;
+    return true;
+}
+
+void ImageKey::Cache::resetVirtualTexture() { mVirtualTexture.reset(); }
 
 //-------------------------------------------------------------------------------------------------
-ImageKey::ImageKey(): mData(), mCache(), mSleepCount(0) { mData.resource().setOriginKeeping(true); }
+ImageKey::ImageKey():
+    mData(), mCache(), mSleepCount(0), mVirtualTexturingAllowed(true), mForceFullTexture(false) {
+    mData.resource().setOriginKeeping(true);
+}
 
 TimeKey* ImageKey::createClone() {
     auto newKey = new ImageKey();
@@ -59,6 +76,20 @@ void ImageKey::setImage(const img::ResourceHandle& aResource, img::BlendMode aMo
 
 void ImageKey::setImage(const img::ResourceHandle& aResource) {
     mData.resource() = aResource;
+    resetTextureCache();
+}
+
+void ImageKey::setVirtualTexturingAllowed(bool aAllowed) {
+    if (mVirtualTexturingAllowed == aAllowed)
+        return;
+    mVirtualTexturingAllowed = aAllowed;
+    resetTextureCache();
+}
+
+void ImageKey::setForceFullTexture(bool aForce) {
+    if (mForceFullTexture == aForce)
+        return;
+    mForceFullTexture = aForce;
     resetTextureCache();
 }
 
@@ -87,6 +118,8 @@ void ImageKey::resetGridMesh(int aCellSize) {
 }
 
 void ImageKey::resetTextureCache() {
+    mCache.resetVirtualTexture();
+    mCache.setSourceSize(QSize());
     if (mData.resource()->hasImage()) {
         const img::Buffer& image = mData.resource()->image();
         const uint8* imageData = image.data();
@@ -114,21 +147,36 @@ void ImageKey::resetTextureCache() {
         // mip level.
         const std::vector<uint8> upload = img::Util::makeTextureUpload(imageData, pixelSize);
 
-        // make a gl texture
-        mCache.texture().create(
+        // The production chain always gets built first: it is the full-resolution path, AND
+        // the paged path's source - VirtualTexture captures its levels rather than rebuilding
+        // them, which is what makes a page and the control path the same texels.
+        gl::Texture& texture = mCache.texture();
+        texture.create(
             pixelSize, upload.data(), GL_RGBA, GL_RGBA8, GL_UNSIGNED_BYTE, gl::Texture::GenerateMipmap
         );
+
+        bool paged = false;
+        if (!mForceFullTexture && mVirtualTexturingAllowed && VirtualTexture::pageable(pixelSize))
+            paged = mCache.buildVirtualTexture(mData.resource(), pixelSize);
+        if (paged) {
+            // the chain was only the source: every sharp level is now in RAM and the pool,
+            // and the always-resident coarse tail is its own texture
+            texture.destroy();
+            return;
+        }
+        mCache.setSourceSize(pixelSize);
+
         // trilinear minification; magnification must stay non-mipmap (see gl::Texture)
-        mCache.texture().setFilter(GL_LINEAR_MIPMAP_LINEAR, GL_LINEAR);
+        texture.setFilter(GL_LINEAR_MIPMAP_LINEAR, GL_LINEAR);
         // ZERO: the layer shader computes the level itself (LayerDrawingFrag.glsl's sampleLayer and
         // LayerNode's uniform block), and applies ImageKey::layerLodBias() to its own LOD. A GL bias
         // here would ALSO shift the one path that still uses texture() - magnification - and double
         // the setting if a driver ever applied it to textureLod.
-        mCache.texture().setLodBias(0.0f);
+        texture.setLodBias(0.0f);
         // ...and enough samples along an elongated footprint that its SHORT axis is not filtered at
         // the level its long axis asked for. See ImageKey::layerMaxAnisotropy.
-        mCache.texture().setMaxAnisotropy(layerMaxAnisotropy());
-        mCache.texture().setWrap(GL_CLAMP_TO_BORDER, QColor(0, 0, 0, 0));
+        texture.setMaxAnisotropy(layerMaxAnisotropy());
+        texture.setWrap(GL_CLAMP_TO_BORDER, QColor(0, 0, 0, 0));
     }
 }
 

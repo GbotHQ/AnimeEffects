@@ -83,10 +83,34 @@ float BlendSat(vec3 c) { return max(c.r, max(c.g, c.b)) - min(c.r, min(c.g, c.b)
 #variation USE_HSV_MASK 0
 #variation LAYER_MASK 0
 #variation PREMULTIPLIED_INPUT 0
+// 1: the layer's texture is PAGED (core::VirtualTexture). The one sampler this shader took for
+// granted becomes a page table lookup plus a read from one of up to four atlases, and a page
+// that is not resident samples the always-resident coarse chain instead. The layer's own
+// texture still exists as a uniform (unit 0) but is not read: uLayerSize carries what
+// textureSize used to.
+#variation VIRTUAL_TEXTURE 0
 
 uniform vec4 uColor;
 uniform sampler2D uTexture;
 uniform sampler2D uDestTexture;
+
+#if VIRTUAL_TEXTURE
+uniform sampler2D uCoarseTexture;      // unit 4: the always-resident levels
+uniform usampler2D uPageTable;         // unit 5: (pageX, levelRow + pageY) -> slot
+uniform int uPageLevelRow[16];         // the first row of each page level in that table
+uniform vec2 uLayerSize;               // the CONTENT's size in level-0 texels
+uniform float uPageTexels;             // the page size, 256
+uniform int uCoarseLevel;              // the first level the coarse chain holds
+uniform float uPageAtlasSize;          // 4096
+uniform float uPagePitch;              // page + gutter, 260
+uniform float uPageGutter;             // 2
+uniform int uPageSlotsPerAxis;         // 4096 / 260 = 15
+uniform int uAtlasCount;               // how many of the four below are real
+uniform sampler2D uAtlas0;
+uniform sampler2D uAtlas1;
+uniform sampler2D uAtlas2;
+uniform sampler2D uAtlas3;
+#endif
 
 #if USE_HSV
 uniform bool setColor;
@@ -221,9 +245,75 @@ vec4 blendColor(const vec4 src, const vec4 dst)
 uniform float uLayerLodBias;    // the layer's LOD bias, in levels
 uniform float uLayerMaxLod;     // the texture's deepest level
 
+#if VIRTUAL_TEXTURE
+// THE PAGED READ. A level is no longer one texture: page (px, py) of it lives at the slot the
+// table names, inside one of up to four atlases, with a 2-texel gutter of the level's
+// neighbouring texels around it. So a filtered read at a level texel is: which page owns it, is
+// that page resident, where is its slot, and what are the atlas coordinates of the texel.
+//
+// EVERY TAP RESOLVES ITS OWN PAGE, not the pixel's: a tap is offset by up to the footprint's
+// anisotropy ratio in level texels, which can cross a page boundary. The gutter is what makes
+// the read INSIDE a page seamless; the per-tap lookup is what makes the read across one correct.
+//
+// A MISS SAMPLES THE COARSE CHAIN: the always-resident levels from uCoarseLevel down. Its level
+// k is the full chain's level uCoarseLevel + k, so the relative level is the same content at
+// the same texel grid - a blur, never a hole. The transition at a page boundary is hard by
+// design (the two tiers are separate reads, not a level blend), and a page arriving is a
+// quality increase rather than a pop.
+vec4 sampleCoarse(vec2 aUv, float aLevel)
+{
+    return textureLod(uCoarseTexture, aUv, max(0.0, aLevel - float(uCoarseLevel)));
+}
+
+vec4 sampleAtlas(int aAtlas, vec2 aAtlasTexel)
+{
+    vec2 uv = aAtlasTexel / uPageAtlasSize;
+    if (aAtlas == 0) return textureLod(uAtlas0, uv, 0.0);
+    if (aAtlas == 1) return textureLod(uAtlas1, uv, 0.0);
+    if (aAtlas == 2) return textureLod(uAtlas2, uv, 0.0);
+    return textureLod(uAtlas3, uv, 0.0);
+}
+
+vec4 samplePage(vec2 aUv, float aLevel)
+{
+    // outside the content the full texture's clamp-to-border is transparent; a page has no
+    // border of its own, so this is where the rule lives
+    if (aUv.x < 0.0 || 1.0 < aUv.x || aUv.y < 0.0 || 1.0 < aUv.y)
+        return vec4(0.0);
+
+    vec2 sizeL = max(vec2(1.0), floor(uLayerSize / exp2(aLevel)));
+    vec2 p = aUv * sizeL;
+    vec2 grid = ceil(sizeL / uPageTexels);
+    // uv == 1 can land one past the last page when the level divides evenly; the page's
+    // out-of-content texels are zero, so clamping the PAGE and leaving `local` at the content
+    // edge reproduces the border read
+    vec2 page = clamp(floor(p / uPageTexels), vec2(0.0), grid - vec2(1.0));
+    vec2 local = p - page * uPageTexels;
+    int level = int(aLevel);
+
+    uint entry = texelFetch(uPageTable, ivec2(page) + ivec2(0, uPageLevelRow[level]), 0).r;
+    if (entry == 0u)
+        return sampleCoarse(aUv, aLevel);
+
+    int atlas = int(entry >> 8);
+    int slot = int(entry & 255u) - 1;
+    if (slot < 0 || atlas >= uAtlasCount)
+        return sampleCoarse(aUv, aLevel);   // a stale entry: never a hole
+
+    // the slot's CONTENT origin, in atlas texels, plus the gutter the tap reads from
+    vec2 origin = vec2(float(slot % uPageSlotsPerAxis), float(slot / uPageSlotsPerAxis))
+        * uPagePitch + vec2(uPageGutter);
+    return sampleAtlas(atlas, origin + local);
+}
+#endif
+
 vec4 sampleLayer(sampler2D aTexture, vec2 aUv)
 {
+#if VIRTUAL_TEXTURE
+    vec2 size0 = uLayerSize;
+#else
     vec2 size0 = vec2(textureSize(aTexture, 0));
+#endif
     vec2 tuv = aUv * size0;
     vec2 dx = dFdx(tuv);
     vec2 dy = dFdy(tuv);
@@ -257,7 +347,11 @@ vec4 sampleLayer(sampler2D aTexture, vec2 aUv)
     // negative, so that case is common.
     float lod = log2(max(minor, 1e-6)) + uLayerLodBias;
     if (lod <= 0.0)
+#if VIRTUAL_TEXTURE
+        return samplePage(aUv, 0.0);      // magnified: level 0 bilinear is exact and free
+#else
         return texture(aTexture, aUv);    // magnified: bilinear is exact and free
+#endif
 
     // THE LEVEL IS THE NEAREST one, not the one below: the taps reconstruct the MAJOR axis and the
     // level's own texel has to supply the MINOR one, so the level whose texel matches `minor` is the
@@ -265,10 +359,18 @@ vec4 sampleLayer(sampler2D aTexture, vec2 aUv)
     // than the footprint), which leaves the minor axis under-filtered - measured as the residual
     // error tail this read otherwise still has on thin features.
     float level = clamp(floor(lod + 0.5), 0.0, uLayerMaxLod);
+#if VIRTUAL_TEXTURE
+    if (level >= float(uCoarseLevel))
+        return sampleCoarse(aUv, level);  // that level is resident in full, not paged
+#endif
     float scale = exp2(level);              // level-0 texels -> this level's texels
     float majorL = major / scale;
     float minorL = minor / scale;
+#if VIRTUAL_TEXTURE
+    vec2 sizeLf = max(vec2(1.0), floor(size0 / scale));
+#else
     vec2 sizeLf = vec2(textureSize(aTexture, clamp(int(level), 0, int(uLayerMaxLod))));
+#endif
     vec2 acrossDir = vec2(-majorDir.y, majorDir.x);
     // A level texel is already a box average of the level below, so a tap's span is deconvolved by
     // 0.8 above level 0. One tap covers major/2 along the major axis and minor across it.
@@ -288,7 +390,11 @@ vec4 sampleLayer(sampler2D aTexture, vec2 aUv)
             for (int j = 0; j < 2; ++j) {
                 vec2 off = majorDir * ((float(j) + 0.5) * stepMaj - stepMaj)
                     + acrossDir * ((float(k) + 0.5) * stepMin - stepMin);
+#if VIRTUAL_TEXTURE
+                acc += samplePage(centre + off, level);
+#else
                 acc += textureLod(aTexture, centre + off, level);
+#endif
             }
     }
     return acc / 8.0;

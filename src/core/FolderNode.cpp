@@ -82,6 +82,23 @@ void FolderNode::prerender(const RenderInfo&, const TimeCacheAccessor&) {}
 void FolderNode::render(const RenderInfo& aInfo, const TimeCacheAccessor& aAccessor) {
     if (!mIsVisible || aAccessor.get(mTimeLine).opa().isZero() || aInfo.isGrid) return;
 
+    // the export's demand-only pass: the sorted top-level list holds a COMPOSITE folder as one
+    // unit, so its children are not visited by the caller - walk them here, mark, draw nothing
+    if (aInfo.demandOnly) {
+        std::vector<Renderer::SortUnit> units;
+        for (auto child : children()) {
+            ObjectNodeUtil::collectRenderUnits(*child, true, units, aAccessor, aInfo.time);
+        }
+        std::stable_sort(
+            units.begin(), units.end(), [](const Renderer::SortUnit& a, const Renderer::SortUnit& b) {
+                return a.depth < b.depth;
+            }
+        );
+        for (auto& unit : units)
+            unit.renderer->render(aInfo, aAccessor);
+        return;
+    }
+
     // render clippees
     renderClippees(aInfo, aAccessor);
 

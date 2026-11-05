@@ -2,6 +2,7 @@
 #define CORE_IMAGEKEY_H
 
 #include <array>
+#include <memory>
 #include "XC.h"
 #include "util/Easing.h"
 #include "core/KeyEasing.h"
@@ -15,6 +16,7 @@
 namespace core {
 
 class Project;
+class VirtualTexture;
 
 class ImageKey: public TimeKey {
 public:
@@ -52,13 +54,35 @@ public:
         const GridMesh& gridMesh() const { return mGridMesh; }
     };
 
+    /// THE LAYER'S TEXTURE. Two shapes, one accessor:
+    ///   - a plain mipmapped texture, level 0 to 1x1 (the full-resolution path, and every
+    ///     resource small enough that paging would only add machinery); or
+    ///   - a PAGED resource (core::VirtualTexture): the sharp levels live in the pool and the
+    ///     always-resident coarse chain is the fallback, so `texture()` has no id at all. Code
+    ///     that only needs the CONTENT SIZE must ask sourceSize(), not texture().size().
     class Cache {
         gl::Texture mTexture;
+        std::unique_ptr<VirtualTexture> mVirtualTexture;
+        QSize mSourceSize;
 
     public:
         Cache();
+        ~Cache();
         gl::Texture& texture() { return mTexture; }
         const gl::Texture& texture() const { return mTexture; }
+
+        bool isPaged() const { return mVirtualTexture != nullptr; }
+        VirtualTexture* virtualTexture() { return mVirtualTexture.get(); }
+        const VirtualTexture* virtualTexture() const { return mVirtualTexture.get(); }
+
+        /// The content's pixel size, whichever shape this cache has.
+        QSize sourceSize() const { return mSourceSize; }
+
+        /// Paged-or-not is a function of the image and the switch; the texture must already
+        /// have been created with the production chain (VirtualTexture captures its levels).
+        bool buildVirtualTexture(const img::ResourceHandle& aResource, const QSize& aSize);
+        void resetVirtualTexture();
+        void setSourceSize(const QSize& aSize) { mSourceSize = aSize; }
     };
 
     enum { kDefaultMeshCellSize = 16 };
@@ -73,6 +97,21 @@ public:
 
     void setImage(const img::ResourceHandle& aResource, img::BlendMode aMode);
     void setImage(const img::ResourceHandle& aResource);
+
+    /// Whether this key may use the paged texture path. A layer that is USED AS A CLIPPER is
+    /// excluded: the clipper's singulation pass samples the layer with its own shader, and the
+    /// paged read lives in the layer shader. The flag is a policy input, so changing it rebuilds
+    /// the cache; LayerNode sets it from isClipper(), which is a sibling relationship that only
+    /// the tree knows.
+    void setVirtualTexturingAllowed(bool aAllowed);
+    bool virtualTexturingAllowed() const { return mVirtualTexturingAllowed; }
+
+    /// Forces this key onto the plain full-resolution texture, whatever the page policy says.
+    /// It is the A/B control the page gates compare against (and the escape hatch for a resource
+    /// the paged path cannot serve yet); unlike setVirtualTexturingAllowed it is not touched by
+    /// the layer's per-frame clipper policy, so a caller can hold it for the duration of a test.
+    void setForceFullTexture(bool aForce);
+    bool forceFullTexture() const { return mForceFullTexture; }
     void setImageOffset(const QVector2D& aOffset);
     void setImageOffsetByCenter();
     bool hasImage() const { return mData.resource() && mData.resource()->hasImage(); }
@@ -132,6 +171,8 @@ private:
     Data mData;
     Cache mCache;
     int mSleepCount;
+    bool mVirtualTexturingAllowed;
+    bool mForceFullTexture;
 };
 
 } // namespace core
