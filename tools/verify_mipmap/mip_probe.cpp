@@ -80,6 +80,7 @@
 #include "core/ImageKey.h"
 #include "core/LayerNode.h"
 #include "core/MaskKey.h"
+#include "core/MaskPyramid.h"
 #include "core/ObjectNode.h"
 #include "core/ObjectTree.h"
 #include "core/RenderInfo.h"
@@ -2348,6 +2349,156 @@ void suiteMaskPyramid() {
     }
 }
 
+// MX2: THE CPU PYRAMID'S UPDATE. The paged mask's content comes from a CPU pyramid captured from
+// the GPU chain; a stroke then rebuilds boxes on the CPU. This gate checks the two properties the
+// pager relies on: the capture is exactly the chain, and a stroke's box update equals a FRESH
+// whole build of the same field (the chain's own incremental path uses a cheaper source level,
+// so the CPU rebuild is the more consistent reference) - within the 2 LSB MX1 measured for the
+// CPU's half-float mirror.
+void suiteMaskPyramidUpdate() {
+    suiteHeader("MX2 mask pyramid: capture, a stroke box, a rebuild");
+    const QSize sizes[] = {QSize(257, 193), QSize(900, 700)};
+    for (const QSize& size : sizes) {
+        QImage field(size, QImage::Format_Grayscale8);
+        uint32 seed = 0xdeadbeefu;
+        for (int y = 0; y < size.height(); ++y) {
+            uchar* row = field.scanLine(y);
+            for (int x = 0; x < size.width(); ++x) {
+                seed = seed * 1664525u + 1013904223u;
+                row[x] = (uchar)(seed >> 24);
+            }
+        }
+        core::MaskKey::Data first;
+        first.alloc(size, QRectF(0, 0, size.width(), size.height()), 0);
+        first.field() = field;
+        const gl::Texture* chain = first.textureId();
+        expect(chain != nullptr, "MX2 the GPU chain must build");
+        core::MaskPyramid pyr;
+        expect(pyr.capture(*chain), "MX2 the pyramid must capture the chain");
+        if (!chain || !pyr.isValid()) {
+            continue;
+        }
+        expect(
+            pyr.levelCount() == chain->mipmapLevels(),
+            QString("MX2 the pyramid must have every chain level (%1 of %2)")
+                .arg(pyr.levelCount())
+                .arg(chain->mipmapLevels())
+        );
+
+        // the capture is the chain, byte for byte
+        int captureMismatch = 0;
+        for (int l = 0; l < pyr.levelCount(); ++l) {
+            const QSize levelSize = pyr.levelSize(l);
+            std::vector<uint8_t> gpu((size_t)levelSize.width() * levelSize.height(), 0);
+            gl::Global::Functions& ggl = gl::Global::functions();
+            ggl.glBindTexture(GL_TEXTURE_2D, chain->id());
+            ggl.glPixelStorei(GL_PACK_ALIGNMENT, 1);
+            ggl.glGetTexImage(GL_TEXTURE_2D, l, GL_RED, GL_UNSIGNED_BYTE, gpu.data());
+            ggl.glBindTexture(GL_TEXTURE_2D, 0);
+            if (gpu != pyr.levelBytes(l))
+                ++captureMismatch;
+        }
+        expect(captureMismatch == 0, QString("MX2 the capture must be exact (%1 levels differ)").arg(captureMismatch));
+
+        // a stroke box, painted into the field
+        const QRect box(
+            size.width() / 5, size.height() / 4, size.width() / 4, size.height() / 5
+        );
+        for (int y = box.top(); y <= box.bottom(); ++y) {
+            uchar* row = field.scanLine(y);
+            for (int x = box.left(); x <= box.right(); ++x) {
+                seed = seed * 1664525u + 1013904223u;
+                row[x] = (uchar)(seed >> 24);
+            }
+        }
+        const std::vector<uint8_t> level2Before = pyr.levelBytes(std::min(2, pyr.levelCount() - 1));
+        pyr.updateBox(field, box);
+
+        // level 0's box is the field; a level-2 texel far from the box is untouched
+        bool baseMatches = true;
+        const std::vector<uint8_t>& base = pyr.levelBytes(0);
+        for (int y = box.top(); y <= box.bottom() && baseMatches; ++y)
+            for (int x = box.left(); x <= box.right(); ++x)
+                if (base[(size_t)y * size.width() + x] != field.constScanLine(y)[x]) {
+                    baseMatches = false;
+                    break;
+                }
+        expect(baseMatches, "MX2 level 0's box must be the field");
+        const int far = std::min(2, pyr.levelCount() - 1);
+        const std::vector<uint8_t>& after = pyr.levelBytes(far);
+        expect(
+            after == level2Before || box.right() >= pyr.levelSize(far).width(),
+            "MX2 a box update must not touch the level outside its covered box"
+        );
+
+        // the reference: a fresh whole build of the same field
+        core::MaskKey::Data fresh;
+        fresh.alloc(size, QRectF(0, 0, size.width(), size.height()), 0);
+        fresh.field() = field;
+        const gl::Texture* rebuilt = fresh.textureId();
+        expect(rebuilt != nullptr, "MX2 the fresh chain must build");
+        if (!rebuilt)
+            continue;
+        int mismatches = 0, maxDelta = 0, total = 0;
+        for (int l = 0; l < pyr.levelCount(); ++l) {
+            const QSize levelSize = pyr.levelSize(l);
+            std::vector<uint8_t> gpu((size_t)levelSize.width() * levelSize.height(), 0);
+            gl::Global::Functions& ggl = gl::Global::functions();
+            ggl.glBindTexture(GL_TEXTURE_2D, rebuilt->id());
+            ggl.glPixelStorei(GL_PACK_ALIGNMENT, 1);
+            ggl.glGetTexImage(GL_TEXTURE_2D, l, GL_RED, GL_UNSIGNED_BYTE, gpu.data());
+            ggl.glBindTexture(GL_TEXTURE_2D, 0);
+            const std::vector<uint8_t>& cpu = pyr.levelBytes(l);
+            for (size_t i = 0; i < gpu.size() && i < cpu.size(); ++i) {
+                const int d = std::abs((int)gpu[i] - (int)cpu[i]);
+                if (d != 0) {
+                    ++mismatches;
+                    maxDelta = std::max(maxDelta, d);
+                }
+                ++total;
+            }
+        }
+        expect(
+            maxDelta <= 2,
+            QString("MX2 a stroke's boxes must equal a rebuild within 2 LSB (max %1)").arg(maxDelta)
+        );
+
+        // the page fill: content is the level's texels, the gutter is the neighbour (or zero)
+        std::vector<uint8_t> page((size_t)gl::PagePool::kPitch * gl::PagePool::kPitch, 0);
+        pyr.fillPage(0, 0, 0, page.data());
+        const std::vector<uint8_t>& level0 = pyr.levelBytes(0);
+        bool pageOk = true;
+        for (int y = 0; y < 64 && pageOk; ++y)
+            for (int x = 0; x < 64; ++x)
+                if (page[((size_t)(y + 2)) * gl::PagePool::kPitch + x + 2]
+                    != level0[(size_t)y * size.width() + x]) {
+                    pageOk = false;
+                    break;
+                }
+        expect(pageOk, "MX2 the page fill must place the level at the gutter's origin");
+        expect(
+            page[0] == 0 && page[1] == 0,
+            "MX2 the first page's outside gutter must be transparent"
+        );
+        expect(
+            page[(size_t)2 * gl::PagePool::kPitch + 258] == level0[256],
+            "MX2 the first page's right gutter must be the level's next texel"
+        );
+        expect(
+            page[(size_t)2 * gl::PagePool::kPitch + 259]
+                == (size.width() > 257 ? level0[257] : 0),
+            "MX2 the gutter's second texel must be the level's next one or transparent"
+        );
+
+        caseReport(
+            QString("MX2 %1x%2").arg(size.width()).arg(size.height()),
+            maxDelta <= 2,
+            QString("capture exact; rebuild max %1, %2 of %3 texels differ")
+                .arg(maxDelta).arg(mismatches).arg(total)
+        );
+    }
+}
+
 void suiteRender() {
     suiteHeader("M3 production render: minified layer, no halo");
     const QSize canvas(64, 64);
@@ -2562,6 +2713,7 @@ int main(int argc, char** argv) {
     suiteClipper();
     suiteMaskPaged();
     suiteMaskPyramid();
+    suiteMaskPyramidUpdate();
 
     std::printf("\n%d checks, %d failures\n", gChecks, gFails);
     std::fflush(stdout);

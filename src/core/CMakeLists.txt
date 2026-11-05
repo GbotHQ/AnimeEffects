@@ -36,6 +36,7 @@ add_library(${PROJECT_NAME}
     HsvKey.h
     ImageKey.cpp ImageKey.h
     ImagePyramid.cpp ImagePyramid.h
+    MaskPyramid.cpp MaskPyramid.h
     ImageKeyUpdater.cpp ImageKeyUpdater.h
     LayerMesh.cpp LayerMesh.h
     LayerNode.cpp LayerNode.h
