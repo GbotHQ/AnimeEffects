@@ -85,6 +85,7 @@
 #include "core/ScaleKey.h"
 #include "core/TimeInfo.h"
 #include "core/TimeKeyType.h"
+#include "core/VirtualTexture.h"
 #include "gl/DeviceInfo.h"
 #include "gl/Framebuffer.h"
 #include "gl/Global.h"
@@ -1156,7 +1157,10 @@ struct RenderFixture {
         info.opacityScale = 1.0f;
         info.camera = aCamera;
 
+        // the production frame boundary (Driver::renderGL does this for the app)
+        core::VirtualTexture::beginFrame();
         aTree.render(info, aWorkingCache);
+        core::VirtualTexture::endFrame();
 
         std::vector<uint8_t> out((size_t)size.width() * size.height() * 4, 0);
         ggl.glReadPixels(0, 0, size.width(), size.height(), GL_RGBA, GL_UNSIGNED_BYTE, out.data());
@@ -1291,6 +1295,379 @@ ChannelStats channelStats(const std::vector<uint8_t>& aImg, const QSize& aSize, 
     st.mean = n ? sum / n : 0.0;
     return st;
 }
+
+//-------------------------------------------------------------------------------------------------
+// P1/P2: the page pool itself. V1 proves the whole path renders the same pixels; these prove the
+// allocator beneath it: slot geometry (a page is where the table says it is), the gutter is not
+// shared between slots, eviction order, and the budget/cancel/generation bookkeeping.
+namespace {
+    class EvictionLog: public gl::PagePool::Listener {
+    public:
+        std::vector<gl::PagePool::PageId> evicted;
+        void pageEvicted(const gl::PagePool::PageId& aPage) override { evicted.push_back(aPage); }
+    };
+
+    gl::PagePool::PageId pageId(quint64 owner, int level, int x, int y) {
+        gl::PagePool::PageId id;
+        id.owner = owner;
+        id.level = level;
+        id.x = x;
+        id.y = y;
+        return id;
+    }
+} // namespace
+
+void suitePagePool() {
+    suiteHeader("P1/P2 page pool: slot geometry, eviction, budget");
+    if (!gl::PagePool::enabled()) {
+        std::printf("  [SKIP] AE_VIRTUAL_TEXTURE=0 is the control path\n");
+        return;
+    }
+
+    auto& pool = gl::PagePool::instance();
+    pool.setBudgetBytes((qint64)gl::PagePool::kAtlasBytes); // exactly one small atlas
+    pool.purge();
+    pool.beginFrame();
+
+    // P1: the first slot sits at the atlas origin plus the gutter, and slots step by the pitch
+    // on the 15-wide grid. If the pool and the shader disagree, every page is offset.
+    EvictionLog log;
+    gl::PagePool::Slot slot0, slot1, slotRow2;
+    const bool got0 = pool.acquire(pageId(1, 0, 0, 0), &log, &slot0);
+    const bool got1 = pool.acquire(pageId(1, 0, 1, 0), &log, &slot1);
+    bool gotRow2 = got0 && got1;
+    // the first page of the SECOND row is slot kSlotsPerAxis
+    for (int i = 2; i <= gl::PagePool::kSlotsPerAxis && gotRow2; ++i) {
+        gl::PagePool::Slot s;
+        gotRow2 = pool.acquire(pageId(1, 0, i, 0), &log, &s);
+        if (i == gl::PagePool::kSlotsPerAxis)
+            slotRow2 = s;
+    }
+    expect(got0 && got1 && gotRow2, "P1 a row of pages must fit in a fresh atlas");
+    if (got0 && got1 && gotRow2) {
+        expect(
+            slot0.x == gl::PagePool::kGutter && slot0.y == gl::PagePool::kGutter,
+            QString("P1 slot 0 content origin must be (%1,%2), got (%3,%4)")
+                .arg(gl::PagePool::kGutter)
+                .arg(gl::PagePool::kGutter)
+                .arg(slot0.x)
+                .arg(slot0.y)
+        );
+        expect(
+            slot1.x == gl::PagePool::kPitch + gl::PagePool::kGutter && slot1.y == gl::PagePool::kGutter,
+            QString("P1 slot 1 must step one pitch in x, got (%1,%2)").arg(slot1.x).arg(slot1.y)
+        );
+        expect(
+            slotRow2.x == gl::PagePool::kGutter
+                && slotRow2.y == gl::PagePool::kPitch + gl::PagePool::kGutter,
+            QString("P1 the first page of the second row must be at (%1,%2), got (%3,%4)")
+                .arg(gl::PagePool::kGutter)
+                .arg(gl::PagePool::kPitch + gl::PagePool::kGutter)
+                .arg(slotRow2.x)
+                .arg(slotRow2.y)
+        );
+        expect(pool.find(pageId(1, 0, 0, 0), nullptr), "P1 a committed page must be found");
+        expect(!pool.find(pageId(1, 0, 9, 9), nullptr), "P1 a page never acquired must not be found");
+
+        // the atlas really holds what was written at the slot's origin: one texel per slot with a
+        // position-dependent value, read back through the pool's own readSlot
+        auto& ggl = gl::Global::functions();
+        std::vector<uint8_t> pixels((size_t)gl::PagePool::kPitch * gl::PagePool::kPitch * 4, 0);
+        for (int y = 0; y < gl::PagePool::kPitch; ++y)
+            for (int x = 0; x < gl::PagePool::kPitch; ++x) {
+                uint8_t* p = pixels.data() + ((size_t)y * gl::PagePool::kPitch + x) * 4;
+                p[0] = (uint8_t)((x + y * 3) & 255);
+                p[1] = (uint8_t)((x * 5 + y) & 255);
+                p[2] = 17;
+                p[3] = 255;
+            }
+        ggl.glBindTexture(GL_TEXTURE_2D, pool.atlasTextureId(slot0.atlas));
+        ggl.glTexSubImage2D(
+            GL_TEXTURE_2D,
+            0,
+            slot0.x - gl::PagePool::kGutter,
+            slot0.y - gl::PagePool::kGutter,
+            gl::PagePool::kPitch,
+            gl::PagePool::kPitch,
+            GL_RGBA,
+            GL_UNSIGNED_BYTE,
+            pixels.data()
+        );
+        ggl.glBindTexture(GL_TEXTURE_2D, 0);
+        std::vector<uint8_t> back(pixels.size(), 0);
+        pool.readSlot(slot0, back.data());
+        expect(back == pixels, "P1 readSlot must return exactly the texels written to the slot");
+    }
+
+    // P2: the frame's upload cap refuses new pages until the next frame
+    pool.beginFrame();
+    int refused = 0;
+    int got = 0;
+    for (int i = 0; i < 400; ++i) {
+        gl::PagePool::Slot s;
+        if (pool.acquire(pageId(1, 0, 100 + i, 0), &log, &s))
+            ++got;
+        else {
+            ++refused;
+            break;
+        }
+    }
+    expect(refused == 1, "P2 the per-frame upload cap must refuse once it is spent");
+    expect(got > 0, QString("P2 pages before the cap (%1)").arg(got));
+    pool.beginFrame();
+    {
+        gl::PagePool::Slot s;
+        expect(pool.acquire(pageId(1, 0, 1000, 0), &log, &s), "P2 a new frame must reopen the upload budget");
+    }
+
+    // P2: eviction. One atlas holds kSlotsPerAtlas pages; the next acquire must evict the least
+    // recently touched one and tell its owner.
+    pool.purge();
+    pool.setBudgetBytes((qint64)gl::PagePool::kAtlasBytes);
+    log.evicted.clear();
+    // acquire exactly one atlas' worth, a frame's cap at a time
+    int acquired = 0;
+    for (int i = 0; i < gl::PagePool::kSlotsPerAtlas; ++i) {
+        if (i % 100 == 0)
+            pool.beginFrame();
+        gl::PagePool::Slot s;
+        if (pool.acquire(pageId(2, 0, i, 0), &log, &s))
+            ++acquired;
+    }
+    expect(
+        acquired == gl::PagePool::kSlotsPerAtlas,
+        QString("P2 one atlas must hold %1 pages (got %2)")
+            .arg(gl::PagePool::kSlotsPerAtlas)
+            .arg(acquired)
+    );
+    // touch all but page 0 so page 0 becomes the victim
+    for (int i = 1; i < gl::PagePool::kSlotsPerAtlas; ++i)
+        pool.touch(pageId(2, 0, i, 0));
+    pool.beginFrame();
+    {
+        gl::PagePool::Slot s;
+        const bool gotVictim = pool.acquire(pageId(2, 0, 9999, 0), &log, &s);
+        expect(gotVictim, "P2 a full pool must evict rather than fail");
+        expect(!pool.find(pageId(2, 0, 0, 0), nullptr), "P2 the least recently touched page must be the victim");
+        expect(pool.find(pageId(2, 0, 1, 0), nullptr), "P2 a recently touched page must survive");
+        expect(
+            log.evicted.size() == 1 && log.evicted[0].x == 0,
+            QString("P2 the owner must be told exactly the evicted page (%1 events)").arg((int)log.evicted.size())
+        );
+    }
+
+    // P2: cancel returns a slot and refunds the frame's upload byte count
+    pool.purge();
+    pool.beginFrame();
+    {
+        gl::PagePool::Slot s;
+        expect(pool.acquire(pageId(3, 0, 0, 0), &log, &s), "P2 acquire before cancel");
+        const qint64 before = pool.frameUploadBytes();
+        pool.cancel(s);
+        expect(!pool.find(pageId(3, 0, 0, 0), nullptr), "P2 a cancelled page must not be resident");
+        expect(pool.frameUploadBytes() < before, "P2 cancel must refund the frame's upload bytes");
+        gl::PagePool::Slot again;
+        expect(
+            pool.acquire(pageId(3, 0, 0, 0), &log, &again) && again.slot == s.slot,
+            "P2 cancel must return the slot to the free list"
+        );
+    }
+
+    // P2: purge forgets every page and changes the generation the tables use to detect it
+    const quint64 before = pool.generation();
+    pool.purge();
+    expect(pool.generation() != before, "P2 purge must change the generation");
+    expect(pool.residentPages() == 0, "P2 purge must leave no resident page");
+    expect(pool.atlasCount() == 0, "P2 purge must release every atlas");
+    pool.setBudgetBytes(gl::PagePool::defaultBudgetBytes());
+}
+
+void suiteVirtualTexture() {
+    suiteHeader("V1 paged layer vs the full-resolution control");
+    if (!gl::PagePool::enabled()) {
+        std::printf("  [SKIP] AE_VIRTUAL_TEXTURE=0 is the control path\n");
+        return;
+    }
+
+    const QSize canvas(320, 320);
+    const Img src = makeCurved(900, 700);
+    const uint8_t black[3] = {0, 0, 0};
+
+    auto& fixtures = renderFixtures();
+    const QString fixtureKey = QString("%1x%2").arg(canvas.width()).arg(canvas.height());
+    auto it = fixtures.find(fixtureKey);
+    if (it == fixtures.end()) {
+        std::unique_ptr<RenderFixture> fx(new RenderFixture());
+        fx->init(canvas);
+        it = fixtures.emplace(fixtureKey, std::move(fx)).first;
+    }
+    RenderFixture& fx = *it->second;
+
+    core::CameraInfo camera;
+    camera.reset(canvas, 1.0, canvas, QPoint(0, 0));
+
+    // A tree per case: the scale key is laid out at the first blend, and changing it after a
+    // render needs the timeline's cache invalidated - building the fixture the way the app builds
+    // it (setDefaultImage/setDefaultPosture, then a ScaleKey) is the state the renderer sees.
+    struct Case {
+        float scale;
+        int maxTolerance;
+        int minPages;
+    };
+    // 0.25 asks for level 2, which this 900x700 resource keeps on its coarse chain; 0.5 and 1.0
+    // reach the paged levels, and 1.0 is the magnified read where the control may use hardware
+    // anisotropy and the page path takes one bilinear tap (the documented boundary difference).
+    const Case cases[] = {{0.25f, 2, 0}, {0.5f, 10, 1}, {1.0f, 10, 1}};
+
+    for (const Case& c : cases) {
+        core::ObjectTree tree;
+        auto* root = new core::FolderNode("root");
+        tree.grabTopNode(root);
+        auto* res = makeResource(QString("vt_src_%1").arg(c.scale), src);
+        core::LayerNode* layer = addScaledLayer(
+            tree,
+            root,
+            res,
+            "layer",
+            QVector2D(canvas.width() * 0.5f, canvas.height() * 0.5f),
+            c.scale,
+            img::BlendMode_Normal
+        );
+        auto* imageKey = dynamic_cast<core::ImageKey*>(layer->timeLine()->defaultKey(core::TimeKeyType_Image));
+        expect(imageKey != nullptr, QString("V1 scale %1: the layer must have an image key").arg(c.scale));
+        if (!imageKey)
+            continue;
+
+        imageKey->setForceFullTexture(false);
+        std::vector<uint8_t> paged;
+        for (int i = 0; i < 8; ++i)
+            paged = fx.render(tree, camera, 0, black);
+
+        const core::VirtualTexture* vt = imageKey->cache().virtualTexture();
+        expect(vt != nullptr, QString("V1 scale %1: the 900x700 image must take the paged path").arg(c.scale));
+        if (!vt)
+            continue;
+        const int wanted = vt->wantedPageCount();
+        const int resident = vt->residentWantedCount();
+        const int coarseLevel = vt->coarseLevel();
+        if (wanted >= c.minPages && c.minPages > 0) {
+            expect(
+                vt->residentWantedCount() == vt->wantedPageCount(),
+                QString("V1 scale %1: every wanted page must be resident (%2 of %3)")
+                    .arg(c.scale)
+                    .arg(vt->residentWantedCount())
+                    .arg(vt->wantedPageCount())
+            );
+        }
+
+        imageKey->setForceFullTexture(true);
+        const std::vector<uint8_t> control = fx.render(tree, camera, 0, black);
+        expect(
+            imageKey->cache().texture().id() != 0,
+            QString("V1 scale %1: the control path must have a full texture").arg(c.scale)
+        );
+
+        int maxDelta = 0;
+        double meanDelta = 0.0;
+        int n = 0;
+        int maxX = 0, maxY = 0, maxC = 0;
+        for (int y = 16; y < canvas.height() - 16; ++y) {
+            for (int x = 16; x < canvas.width() - 16; ++x) {
+                const size_t i = ((size_t)y * canvas.width() + x) * 4;
+                for (int ch = 0; ch < 4; ++ch) {
+                    const int d = std::abs((int)paged[i + ch] - (int)control[i + ch]);
+                    if (d > maxDelta) {
+                        maxDelta = d;
+                        maxX = x;
+                        maxY = y;
+                        maxC = ch;
+                    }
+                    meanDelta += d;
+                    ++n;
+                }
+            }
+        }
+        meanDelta = n ? meanDelta / n : 0.0;
+        expect(
+            wanted >= c.minPages,
+            QString("V1 scale %1: the paged levels must be demanded (%2 pages, at least %3)")
+                .arg(c.scale)
+                .arg(wanted)
+                .arg(c.minPages)
+        );
+        const int failsBefore = gFails;
+        expect(
+            maxDelta <= c.maxTolerance,
+            QString("V1 scale %1: paged vs full resolution max delta %2 at (%3,%4) ch %5, tolerance %6")
+                .arg(c.scale)
+                .arg(maxDelta)
+                .arg(maxX)
+                .arg(maxY)
+                .arg(maxC)
+                .arg(c.maxTolerance)
+        );
+        expect(
+            meanDelta < 0.5,
+            QString("V1 scale %1: mean delta %2 below 0.5 of 255").arg(c.scale).arg(meanDelta, 0, 'f', 3)
+        );
+        caseReport(
+            QString("scale %1: levels 0-%2 paged, %3 wanted").arg(c.scale).arg(coarseLevel - 1).arg(wanted),
+            gFails == failsBefore,
+            QString("max %1 mean %2 of 255").arg(maxDelta).arg(meanDelta, 0, 'f', 3)
+        );
+    }
+
+    // NO HOLES with the pool emptied: the pages are gone (purge) and cannot be re-acquired (the
+    // budget is below one atlas), and the layer must still draw through the coarse chain.
+    {
+        core::ObjectTree tree;
+        auto* root = new core::FolderNode("root");
+        tree.grabTopNode(root);
+        auto* res = makeResource("vt_src_holes", src);
+        core::LayerNode* layer = addScaledLayer(
+            tree,
+            root,
+            res,
+            "layer",
+            QVector2D(canvas.width() * 0.5f, canvas.height() * 0.5f),
+            1.0f,
+            img::BlendMode_Normal
+        );
+        auto* imageKey = dynamic_cast<core::ImageKey*>(layer->timeLine()->defaultKey(core::TimeKeyType_Image));
+        if (!imageKey)
+            return;
+
+        imageKey->setForceFullTexture(true);
+        const std::vector<uint8_t> full = fx.render(tree, camera, 0, black);
+        imageKey->setForceFullTexture(false);
+
+        const qint64 savedBudget = gl::PagePool::instance().budgetBytes();
+        gl::PagePool::instance().setBudgetBytes(1);
+        gl::PagePool::instance().purge();
+        std::vector<uint8_t> noPages;
+        for (int i = 0; i < 4; ++i)
+            noPages = fx.render(tree, camera, 0, black);
+        gl::PagePool::instance().setBudgetBytes(savedBudget);
+
+        int coveredNoPages = 0;
+        int coveredFull = 0;
+        for (int y = 16; y < canvas.height() - 16; ++y) {
+            for (int x = 16; x < canvas.width() - 16; ++x) {
+                const size_t i = ((size_t)y * canvas.width() + x) * 4;
+                coveredNoPages += noPages[i + 3] > 0;
+                coveredFull += full[i + 3] > 0;
+            }
+        }
+        expect(coveredFull > 70000, QString("V1 the control must cover the interior (%1 px)").arg(coveredFull));
+        expect(
+            coveredNoPages > coveredFull * 9 / 10,
+            QString("V1 with no page resident the coarse chain must still cover the layer (%1 of %2 px)")
+                .arg(coveredNoPages)
+                .arg(coveredFull)
+        );
+    }
+}
+
 
 void suiteRender() {
     suiteHeader("M3 production render: minified layer, no halo");
@@ -1501,6 +1878,8 @@ int main(int argc, char** argv) {
     suiteImageKey();
     suiteChainExactness();
     suiteRender();
+    suitePagePool();
+    suiteVirtualTexture();
 
     std::printf("\n%d checks, %d failures\n", gChecks, gFails);
     std::fflush(stdout);

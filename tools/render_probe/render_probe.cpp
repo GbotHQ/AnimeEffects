@@ -105,6 +105,7 @@
 #include "ctrl/UILogger.h"
 #include "gl/DeviceInfo.h"
 #include "gl/Framebuffer.h"
+#include "gl/FrameStats.h"
 #include "gl/Global.h"
 #include "gl/Texture.h"
 #include "gl/Util.h"
@@ -446,8 +447,13 @@ struct RenderFixture {
         XC_ASSERT(info.framebuffer != 0);
         XC_ASSERT(info.dest != 0);
 
+        // AE_FRAME_STATS: the same frame line the viewport writes, so a paged vs full-resolution
+        // A/B can be read from `ms`, `tex_live` and `vt_pages` on one scene instead of two.
+        gl::FrameStats& frameStats = gl::FrameStats::instance();
+        frameStats.beginFrame();
         aDriver.renderGL(info, nullptr);
         ggl.glFinish();
+        frameStats.endFrame(size.width(), size.height());
 
         const int w = size.width();
         const int h = size.height();
