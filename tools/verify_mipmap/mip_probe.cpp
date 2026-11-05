@@ -2224,6 +2224,39 @@ void suiteMaskPyramid() {
                 .arg(size.width()).arg(size.height()).arg(maxDelta)
         );
     }
+
+    // THE BUILD COST, on the one size that matters for the decision: a 4096^2 mask. The GPU
+    // chain is MaskMipChain::create (level 0 upload + the two resample passes per level); the CPU
+    // side is the two-pass mirror above. Debug build: use the RATIO, not the absolute numbers.
+    {
+        const QSize bigSize(4096, 4096);
+        QImage field(bigSize, QImage::Format_Grayscale8);
+        uint32 seed = 0x9e3779b9u;
+        for (int y = 0; y < bigSize.height(); ++y) {
+            uchar* row = field.scanLine(y);
+            for (int x = 0; x < bigSize.width(); ++x) {
+                seed = seed * 1664525u + 1013904223u;
+                row[x] = (uchar)(seed >> 24);
+            }
+        }
+        core::MaskKey::Data data;
+        data.alloc(bigSize, QRectF(0, 0, bigSize.width(), bigSize.height()), 0);
+        data.field() = field;
+        QElapsedTimer timer;
+        timer.start();
+        const gl::Texture* gpuTex = data.textureId();
+        const qint64 gpuMs = timer.elapsed();
+        timer.restart();
+        MaskCpuPyramid cpu;
+        cpu.build(data.field());
+        const qint64 cpuMs = timer.elapsed();
+        caseReport(
+            "MX1 4096^2 build cost",
+            gpuTex != nullptr,
+            QString("gpu chain %1 ms, cpu pyramid %2 ms (Debug build; ratio is the signal)")
+                .arg(gpuMs).arg(cpuMs)
+        );
+    }
 }
 
 void suiteRender() {

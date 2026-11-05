@@ -1090,7 +1090,9 @@ gains the same `VIRTUAL_TEXTURE` variation (four programs: `IS_CLIPPEE` x `VIRTU
   R16F half store) with the GPU chain: **max 2 LSB, 2-4 % of texels**. The GPU's x pass stores
   1/255-normalized values in half, which the CPU cannot reproduce bit-for-bit without mirroring the
   shader's exact arithmetic, so a CPU-sourced pager carries a 2-LSB mask tolerance (or needs that
-  mirror).
+  mirror). Building the full 4096² chain costs **96 ms on the GPU and 3.6 s on the CPU** (Debug;
+  the ratio is the signal), which decides the split: the GPU builds the chain once, the pyramid is
+  captured to the CPU (the image pyramid's pattern), and strokes update the CPU's boxes.
 - **A real masked PSD** (`~/Downloads/kemono_psd_1/000145.psd`, imported through the app's
   `ctrl::ImageFileLoader`): 24 masked layers; paged vs the full-resolution control is **0 px over
   8/255, max 1, mean 0.00017**. That dataset's masks are small (the masked layers sum to ~2.2 M
