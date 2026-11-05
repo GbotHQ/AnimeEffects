@@ -904,8 +904,10 @@ the map is cleared every frame anyway, so there is nothing to copy.
 
 ### The shader
 
-`assets/shaders/LayerDrawingFrag.glsl` has a `VIRTUAL_TEXTURE` variation. `sampleLayer`'s geometry
-is unchanged (the two-tap, one-level reconstruction); only the fetch changes:
+`assets/shaders/LayerSampling.glsl` holds `sampleLayer` (the two-tap, one-level reconstruction) and
+its `VIRTUAL_TEXTURE` fetch; both `LayerDrawingFrag.glsl` (the layer draw) and
+`ClipperWritingFrag.glsl` (the clipper's singulation pass) `#include` it, which `gl::ExtendShader`
+expands before the variation pass. The geometry is unchanged; only the fetch changes:
 
 - one level texel -> page -> table -> slot -> atlas coordinate, with the gutter supplying the
   bilinear neighbours. Every tap resolves its own page: it can cross a page boundary, and the
@@ -915,9 +917,9 @@ is unchanged (the two-tap, one-level reconstruction); only the fetch changes:
   outside at exactly that distance. Only a coordinate whose whole 2x2 footprint is outside returns
   0; zeroing every coordinate outside `[0,1]` dropped that half-texel blend for a reconstruction
   tap that steps just outside the content.
-- a level the coarse chain owns (`level >= coarseLevel`) is resident in full, and is sampled from
-  the coarse chain with
-  the **same** two-tap reconstruction (the coarse chain's level index is shifted by `coarseLevel`).
+- a level the coarse chain owns (`level >= coarseLevel`) is resident in full, and is sampled
+  from the coarse chain with the **same** two-tap reconstruction (the coarse chain's level index is
+  shifted by `coarseLevel`).
   The coarse chain holds the full chain's own levels, so this is the control's read, not a
   fallback approximation. Taking one bilinear tap there instead was the whole residual difference
   from the control (816 px over 8/255, max 115, on nene's Layer 6 - see below); the cost is the
@@ -931,16 +933,21 @@ is unchanged (the two-tap, one-level reconstruction); only the fetch changes:
   would let the hardware blend mip levels (and filter anisotropically) that no page stack can
   reproduce. Under true magnification the two reads are identical.
 
-The shader variant index gains one bit (`ShaderHolder`), and only pageable keys reserve the VT
-programs.
+The layer shader variant index gains one bit (`ShaderHolder`), and only pageable keys reserve the
+VT programs.
+
+**Clippers take the same sampler.** The clipper's singulation pass used the hardware's implicit-LOD
+`texture()` read - a different filter from the layer's reconstruction at every clipped edge, and
+one no page stack can reproduce (it blends mip levels and may filter anisotropically). It now
+includes `LayerSampling.glsl`, so the mask and the layer it clips are one read. That changes the
+mask's look on both paths (sharper, phase-consistent at the edge), and it is what makes a paged
+clipper exact rather than approximate. The clipper's demand is marked by its own `render`, the
+mask samples the same mesh, so the demand-only pass has nothing extra to do. The clipper's program
+gains the same `VIRTUAL_TEXTURE` variation (four programs: `IS_CLIPPEE` x `VIRTUAL_TEXTURE`), and
+`renderClipper` binds the coarse chain to unit 0 when the layer is paged.
 
 ### What is deliberately not paged yet
 
-- **Layers used as clippers keep the full-resolution texture.** The clipper's singulation pass
-  samples the layer with its own fragment shader; the paged read lives in the layer shader, so a
-  clipper is excluded (`ImageKey::setVirtualTexturingAllowed(false)`) and the layer re-takes the
-  paged path when it stops being a clipper. This is a residency regression only for clipper
-  layers, and it is the next thing to remove (share the sampler, not the texture policy).
 - **Masks are not paged.** `core::MaskKey` still has its own mip chain and texture (Stage 4).
 - **The pyramid is per ImageKey, not per resource.** Duplicated layers that share an image still
   build two pyramids. Sharing is a RAM optimisation with a lifetime question (the resource may be
@@ -974,6 +981,12 @@ programs.
   chain. Tolerances are 1 unit (2 for the on-edge 0.3 case): the fixture measures 0 for the
   paged and magnified cases under `gpu_headless` and 1 on the Xvfb/xcb path's sub-texel rounding,
   while each bug class measures 23-53 on it (see Measured).
+- **CL1 clipper singulation**: a 900x700 disc clipper over a 900x700 opaque clipped layer, both
+  paged, against the full-resolution control. Asserts both keys took the paged path, the clipper's
+  pages were demanded and are all resident, the paged pair is within 2/255 of the control (the
+  disc's mask edge), and the mask is doing something: the clipped frame leaves a corner empty that
+  an unclipped render covers. Without the clipper-demand check the gate would pass with the mask
+  served from the coarse chain.
 - **P1/P2 page pool**: slot 0 at the gutter origin, slot 1 one pitch over, slot 15 the first of
   the second row, a slot's texels read back exactly; the per-frame upload cap; eviction order and
   the owner callback; cancel returning a slot and refunding its bytes; purge changing the
@@ -982,40 +995,44 @@ programs.
 
 ### Measured
 
-- **nene.anie** (15000x15000, 130 layers, 105 paged resources, 640x640 fit view), the same
-  frames with `AE_FRAME_STATS`, after the demand set settled:
+- **nene.anie** (15000x15000, 130 layers, now 108 paged resources - the three clipper layers
+  included, 640x640 fit view), the same frames with `AE_FRAME_STATS`, after the demand set
+  settled:
 
   | | full resolution | paged |
   |---|---|---|
-  | `tex_live` | 2,778,072,136 B (2.59 GiB) | 597,056,812 B (569 MiB) |
-  | steady `ms` | 93.5 | 95.0-95.4 |
+  | `tex_live` | 2,778,072,136 B (2.59 GiB) | 133,814,840 B (128 MiB) |
+  | steady `ms` | 93.5 | 96.4-98.0 |
   | load (project load + frames, wall) | 79.4 s | 74.9 s |
-  | max RSS | 8.08 GB | 8.63 GB |
+  | max RSS | 8.08 GB | 8.55 GB |
 
-  The VRAM is 4.7x lower. The paged steady state is 95.0-95.4 ms (the last three frames of a
-  `--frames 3..10` run, after all 79 pages landed) against the control's 93.5 ms for the same
-  frames and view. The ~1.5 ms gap is compared across sessions: a later same-session control run
-  was tripled by the machine's browser load, so it carries that caveat. The earlier single-tap
-  coarse tier measured 96-99 ms on the same comparison, i.e. the extra taps this fix added are not
-  a measurable cost. Where the 569 MiB is: **one 64 MiB atlas holding 20 MiB of pages, 50 MiB of
-  coarse chains, and 452 MiB of unpaged full textures** - of which **443 MiB is three clipper
-  layers** (one 4343x4351, two 2702x12604). The pooled tiers are therefore 70 MiB used / 114 MiB
-  allocated, in line with the design's estimate; the gap is the deliberate clipper exclusion,
-  which is why it is first on the open list.
+  The VRAM is **20.8x lower**. The paged `tex_live` is one 64 MiB atlas holding 30.8 MB of pages,
+  the always-resident coarse chains, and the images too small to page: the **443 MiB of clipper
+  layers** (one 4343x4351, two 2702x12604) that dominated the old 569 MiB figure are now paged.
+  They add 35 pages (114 in all) and 115 MB of pyramids (summed from their level sizes), and the
+  paged RSS measured 8.55 GB - lower than the 8.63 GB from before they were paged, although the
+  pyramid total rose from 609 to 724 MB; that measurement is one session's, and the row's control
+  figure is an earlier one.
+  The paged steady state is 96.4-98.0 ms (the last three frames of a `--frames 3..10` run, after
+  all 114 pages landed) against the control's 93.5 ms for the same frames and view. The ~3 ms gap
+  is compared across sessions (a later same-session control run was unusable under the machine's
+  browser load) and includes the clipper pass's new reconstruction, which now costs the layer
+  draw's eight taps over the masks' screen area instead of the old single hardware read.
   The demand is the triangle's OWN level and a page box grown by the tap reach in level texels, not
   by a whole page. The first version marked the level either side and a full-page border: 474
   pages (128 MiB) on nene, and (measured before the coarse-tier fix) it did **not** bring the frame
-  closer to the control (mean 0.83 of 255) than the tighter set did (0.61). The tighter set demands
-  79 pages (20 MiB) and reaches the same steady image sooner: 79 pages at the 8 MB/frame default
-  land in ~3 frames, a transient of ~10-20 ms over the 93-94 control. A 32 MB cap was measured
-  first and is why the default is 8: the frames that spent it cost 60-140 ms. The page fill copies
-  the level's rows (one memcpy per row) instead of a memcpy per texel, which was most of that
-  upload frame.
-  The RAM increase (+0.55 GB) is the pyramids (609 MB across the 108 paged resources). Load time
-  did not regress (74.9 s against 79.4), but the pyramid capture is SYNCHRONOUS: it cost 1.47 s
-  across the 136 keys, worst 130 ms for one 3841x12658 image (a 15000² import scales to ~0.6 s,
-  inference from the 48 MP sample). A clipper-policy change rebuilds the key (full chain plus
-  capture), so a layer that becomes a clipper pays that again.
+  closer to the control (mean 0.83 of 255) than the tighter set did (0.61). The page set is 114
+  (the layers' 79 plus 35 the clippers demand); at the 8 MB/frame default they land in four frames
+  (31/62/93/114 measured), with the landing frames at 100-104 ms against the 96-98 steady. A 32 MB
+  cap was measured first and is why the default is 8: the frames that spent it cost 60-140 ms. The
+  page fill copies the level's rows (one memcpy per row) instead of a memcpy per texel, which was
+  most of that upload frame.
+  The pyramids are 609 MB for the layer resources plus 115 MB for the three clippers (summed from
+  their level sizes); a clipper no longer rebuilds a full chain and capture when the policy
+  changes, because there is no policy. Load time did not regress (74.9 s against 79.4), and the
+  pyramid capture is SYNCHRONOUS: it cost 1.47 s across the 136 keys, worst 130 ms for one
+  3841x12658 image (a 15000² import scales to ~0.6 s, inference from the 48 MP sample). The three
+  clippers add ~87 MP of capture, ~0.23 s at that rate (inference).
   **The residual difference was the coarse tier, not the page path.** With `AE_VT_DEMAND=0` (no
   page uploaded at all, every paged level falling back to the coarse chain) the same-frame
   difference from the control was byte-for-byte the same 816 px over 8/255, max 115; with every
@@ -1026,9 +1043,10 @@ programs.
   same eight taps from the coarse texture, at the level index shifted by `coarseLevel`. Isolated to
   Layer 6 exactly (`--only-layer '=Layer 6'`, 4408x4370, 640x640) it is **bit-identical**. The
   magnified-branch read below closed the last 1-unit edge pixels, and the whole 640x640 frame now
-  measures **0 pixels over 8/255, max 1, mean 0.00039 of 255** (161 pixels differ by 1) on the
-  steady frames 3-5; frame 2, while the last pages land, is the documented transient (195 px over
-  8). The plan's pixel-equality gate is met on this project.
+  measures **0 pixels over 8/255, max 1, mean 0.00041 of 255** (168 pixels differ by 1) once the
+  114 pages have landed (frames 7-8). The landing frames (5-6) show up to 3072 px over 8 - the
+  page transient, not a sampling difference. The plan's pixel-equality gate is met on this project,
+  clipper layers included.
 - **V1 parity**: 900x700 source, 320x320 canvas, coarse level 1, 12 level-0 pages wanted and all
   resident. The source is deterministic per-texel **noise**, not the old smooth curve: a ramp
   hides a filtering difference in 1/255 rounding, noise turns the same difference into tens. At
@@ -1056,6 +1074,15 @@ programs.
   a fixed 61 MB; that floor is the price of the scheme on projects whose whole texture set is
   smaller than one atlas. A 2048 first atlas was built and measured and is not the answer: 57
   pages then needed a second 4096 atlas for 8 pages, 77 MB against 61 MB.
+- **Clippers**: nene's three clipper layers are paged (443 MiB of full textures gone; 35 more
+  pages, all resident; 0 px over 8 on the steady clipped frames). The synthetic `CL1` pair - a
+  900x700 disc clipper over a 900x700 opaque layer, both paged - is **max 2, mean 0.003 of 255**
+  against the full-resolution control, the 2 units on the disc's mask edge (the atlas read's
+  sub-texel rounding on a coverage field); the clipped layer is demanded (not left to the coarse
+  fallback), the mask is proven active by an unclipped render that covers the corner the clipped
+  one leaves empty. The mask's read changed from the hardware's implicit-LOD `texture()` to the
+  layer's own two-tap sampler on BOTH paths: that is what makes paging exact, and it removes the
+  old mismatch between the mask's filtering and the clipped layer's.
 - **Export**: `media_exporter_e2e` passes with the demand preparse; the first exported frame is
   the one that exercises it.
 
@@ -1067,13 +1094,12 @@ programs.
    `AE_FRAME_STATS`. Beside it, the pool's landing rate: 8 MB/frame still costs 10-20 ms while it
    fills, and a large import's synchronous capture is a visible pause; an asynchronous/deferred
    capture and a page upload batched per atlas row are the two obvious next reductions.
-2. Clippers in the pool (share the sampler) - 443 MiB on nene, by far the largest residency win
-   left.
-3. Masks (Stage 4).
-4. Per-resource pyramids for duplicated layers.
-5. The first-atlas floor (61 MB) for projects whose whole texture set is smaller than it: a
+2. Masks (Stage 4).
+3. Per-resource pyramids for duplicated layers.
+4. The first-atlas floor (61 MB) for projects whose whole texture set is smaller than it: a
    demand-aware first allocation is the measured-shaped answer (see the pool's header comment).
 
-Both parity gaps are closed: the nene residual (the coarse tier's single tap) and the test.anie
-band (the control's implicit-LOD read in the biased magnified branch). The pixel-equality gate is
+The parity gaps are closed - the nene residual (the coarse tier's single tap) and the test.anie
+band (the control's implicit-LOD read in the biased magnified branch) - and the clipper layers are
+paged through the same sampler, with `CL1` gating a paged clipped pair. The pixel-equality gate is
 met on both projects.

@@ -98,18 +98,9 @@ public:
     void setImage(const img::ResourceHandle& aResource, img::BlendMode aMode);
     void setImage(const img::ResourceHandle& aResource);
 
-    /// Whether this key may use the paged texture path. A layer that is USED AS A CLIPPER is
-    /// excluded: the clipper's singulation pass samples the layer with its own shader, and the
-    /// paged read lives in the layer shader. The flag is a policy input, so changing it rebuilds
-    /// the cache; LayerNode sets it from isClipper(), which is a sibling relationship that only
-    /// the tree knows.
-    void setVirtualTexturingAllowed(bool aAllowed);
-    bool virtualTexturingAllowed() const { return mVirtualTexturingAllowed; }
-
-    /// Forces this key onto the plain full-resolution texture, whatever the page policy says.
-    /// It is the A/B control the page gates compare against (and the escape hatch for a resource
-    /// the paged path cannot serve yet); unlike setVirtualTexturingAllowed it is not touched by
-    /// the layer's per-frame clipper policy, so a caller can hold it for the duration of a test.
+    /// Forces this key onto the plain full-resolution texture. It is the A/B control the page
+    /// gates compare against (and the escape hatch for a resource the paged path cannot serve);
+    /// a caller can hold it for the duration of a test.
     void setForceFullTexture(bool aForce);
     bool forceFullTexture() const { return mForceFullTexture; }
     void setImageOffset(const QVector2D& aOffset);
@@ -171,7 +162,6 @@ private:
     Data mData;
     Cache mCache;
     int mSleepCount;
-    bool mVirtualTexturingAllowed;
     bool mForceFullTexture;
 };
 

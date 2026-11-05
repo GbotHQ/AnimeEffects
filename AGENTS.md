@@ -252,7 +252,10 @@ hand it over. Its one question is `Sampling`:
   (paged layer textures) is built** (`gl::PagePool`, `core::VirtualTexture`, `core::ImagePyramid`,
   the `VIRTUAL_TEXTURE` shader variation): `AE_VIRTUAL_TEXTURE=0` is the full-resolution control,
   `AE_VT_STATS=1` prints the pool each frame, and the V1/P1/P2 suites in `verify_mipmap` are the
-  gates. Clipper layers and masks deliberately keep the full texture; see the doc's open list.
+  gates. Masks deliberately keep the full texture; clipper layers are paged through the same
+  sampler (`assets/shaders/LayerSampling.glsl`, `#include`d by both the layer and the clipper
+  fragment shaders; `gl::ExtendShader` expands includes before the variation pass), and CL1 in
+  `verify_mipmap` compares a paged clipped pair against the control. See the doc's open list.
   Two sampling rules, each found as a whole-frame residual first: **the always-resident coarse tier
   takes the same two-tap reconstruction as the full path** (one bilinear tap there cost 816 px over
   8/255 on nene), and **the `lod <= 0` branch reads `textureLod(..., 0)` on BOTH paths, never

@@ -59,7 +59,7 @@ void ImageKey::Cache::resetVirtualTexture() { mVirtualTexture.reset(); }
 
 //-------------------------------------------------------------------------------------------------
 ImageKey::ImageKey():
-    mData(), mCache(), mSleepCount(0), mVirtualTexturingAllowed(true), mForceFullTexture(false) {
+    mData(), mCache(), mSleepCount(0), mForceFullTexture(false) {
     mData.resource().setOriginKeeping(true);
 }
 
@@ -77,13 +77,6 @@ void ImageKey::setImage(const img::ResourceHandle& aResource, img::BlendMode aMo
 
 void ImageKey::setImage(const img::ResourceHandle& aResource) {
     mData.resource() = aResource;
-    resetTextureCache();
-}
-
-void ImageKey::setVirtualTexturingAllowed(bool aAllowed) {
-    if (mVirtualTexturingAllowed == aAllowed)
-        return;
-    mVirtualTexturingAllowed = aAllowed;
     resetTextureCache();
 }
 
@@ -157,7 +150,7 @@ void ImageKey::resetTextureCache() {
         );
 
         bool paged = false;
-        if (!mForceFullTexture && mVirtualTexturingAllowed && VirtualTexture::pageable(pixelSize))
+        if (!mForceFullTexture && VirtualTexture::pageable(pixelSize))
             paged = mCache.buildVirtualTexture(mData.resource(), pixelSize);
         if (qEnvironmentVariableIsSet("AE_VT_HASH")) {
             const int level = qEnvironmentVariableIntValue("AE_VT_HASH");

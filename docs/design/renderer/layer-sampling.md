@@ -92,6 +92,11 @@ Cost: **eight fetches**, unchanged from the read it replaces - two levels × one
 level × two 2×2 taps. The covariance adds a few scalar ops. The two-level blend and the
 `DERIVED_FOOTPRINT` variation are gone; the footprint is always the draw's own Jacobian.
 
+The sampler lives in `assets/shaders/LayerSampling.glsl` and is included by both the layer draw
+and the clipper's singulation pass. A clipper's mask used to be the hardware's implicit-LOD read
+while the layer it clipped used this one - two filters at every clipped edge, and a read no page
+stack could reproduce; the shared include is what lets clipper layers be paged exactly.
+
 ## Anisotropy
 
 - **The mip chain is isotropic.** It is a box-filtered pyramid, one level per halving, premultiplied

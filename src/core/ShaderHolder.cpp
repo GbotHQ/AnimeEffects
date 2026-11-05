@@ -8,7 +8,7 @@ namespace core {
 ShaderHolder::ShaderHolder(): mShaders(), mGridShaders(), mClipperShaders() {
     mShaders.resize(img::BlendMode_TERM * 2 * 2 * 2 * 2);
     mGridShaders.resize(1);
-    mClipperShaders.resize(2);
+    mClipperShaders.resize(2 * 2);
 }
 
 ShaderHolder::~ShaderHolder() {
@@ -65,7 +65,6 @@ gl::EasyShaderProgram& ShaderHolder::reserveShader(
         );
 
         source.setVariationValue("IS_CLIPPEE", aIsClippee ? "1" : "0");
-
         source.setVariationValue("USE_HSV", aUseHSV ? "1" : "0");
         source.setVariationValue("LAYER_MASK", aUseLayerMask ? "1" : "0");
         source.setVariationValue("VIRTUAL_TEXTURE", aVirtualTexture ? "1" : "0");
@@ -177,10 +176,11 @@ const gl::EasyShaderProgram& ShaderHolder::gridShader() const {
     return *(mGridShaders.at(0));
 }
 
-gl::EasyShaderProgram& ShaderHolder::reserveClipperShader(bool aIsClippee) {
-    if (!mClipperShaders.at(aIsClippee)) {
-        mClipperShaders[aIsClippee] = new gl::EasyShaderProgram();
-        auto shader = mClipperShaders[aIsClippee];
+gl::EasyShaderProgram& ShaderHolder::reserveClipperShader(bool aIsClippee, bool aVirtualTexture) {
+    const int index = (aIsClippee ? 2 : 0) + (aVirtualTexture ? 1 : 0);
+    if (!mClipperShaders.at(index)) {
+        mClipperShaders[index] = new gl::EasyShaderProgram();
+        auto shader = mClipperShaders[index];
 
         gl::ExtendShader source;
         if (!source.openFromFileVert(":/shaders/ClipperWritingVert.glsl")) {
@@ -193,6 +193,7 @@ gl::EasyShaderProgram& ShaderHolder::reserveClipperShader(bool aIsClippee) {
         }
 
         source.setVariationValue("IS_CLIPPEE", aIsClippee ? "1" : "0");
+        source.setVariationValue("VIRTUAL_TEXTURE", aVirtualTexture ? "1" : "0");
 
         if (!source.resolveVariation()) {
             XC_FATAL_ERROR("OpenGL Error", "Failed to resolve shader variation.", source.log());
@@ -208,22 +209,26 @@ gl::EasyShaderProgram& ShaderHolder::reserveClipperShader(bool aIsClippee) {
             XC_FATAL_ERROR("OpenGL Error", "Failed to link shader.", shader->log());
         }
     }
-    return *mClipperShaders[aIsClippee];
+    return *mClipperShaders[index];
 }
 
 void ShaderHolder::reserveClipperShaders() {
-    reserveClipperShader(true);
-    reserveClipperShader(false);
+    reserveClipperShader(false, false);
+    reserveClipperShader(true, false);
+    reserveClipperShader(false, true);
+    reserveClipperShader(true, true);
 }
 
-gl::EasyShaderProgram& ShaderHolder::clipperShader(bool aIsClippee) {
-    XC_PTR_ASSERT(mClipperShaders.at(aIsClippee));
-    return *(mClipperShaders.at(aIsClippee));
+gl::EasyShaderProgram& ShaderHolder::clipperShader(bool aIsClippee, bool aVirtualTexture) {
+    const int index = (aIsClippee ? 2 : 0) + (aVirtualTexture ? 1 : 0);
+    XC_PTR_ASSERT(mClipperShaders.at(index));
+    return *(mClipperShaders.at(index));
 }
 
-const gl::EasyShaderProgram& ShaderHolder::clipperShader(bool aIsClippee) const {
-    XC_PTR_ASSERT(mClipperShaders.at(aIsClippee));
-    return *(mClipperShaders.at(aIsClippee));
+const gl::EasyShaderProgram& ShaderHolder::clipperShader(bool aIsClippee, bool aVirtualTexture) const {
+    const int index = (aIsClippee ? 2 : 0) + (aVirtualTexture ? 1 : 0);
+    XC_PTR_ASSERT(mClipperShaders.at(index));
+    return *(mClipperShaders.at(index));
 }
 
 } // namespace core

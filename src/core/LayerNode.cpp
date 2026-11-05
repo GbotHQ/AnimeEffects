@@ -112,13 +112,6 @@ void LayerNode::prerender(const RenderInfo& aInfo, const TimeCacheAccessor& aAcc
         return;
     }
 
-    // A LAYER USED AS A CLIPPER keeps the plain full-resolution texture: the clipper's
-    // singulation pass has its own fragment shader and samples the layer directly, while the
-    // paged read lives in the layer shader (see ImageKey::setVirtualTexturingAllowed). The
-    // relationship is a sibling one, so it is answered here rather than where the key was built.
-    if (auto& expans = aAccessor.get(mTimeLine); expans.areaImageKey())
-        expans.areaImageKey()->setVirtualTexturingAllowed(!isClipper());
-
     // transform shape by current keys (transformShape skips the GL pass when the
     // key says its output buffers already hold this exact result)
     transformShape(aInfo, aAccessor);
@@ -623,8 +616,8 @@ void LayerNode::renderClippees(const RenderInfo& i, const TimeCacheAccessor& a)
 }
 
 void LayerNode::renderClipper(const RenderInfo& aInfo, const TimeCacheAccessor& aAccessor, uint8 aClipperId) {
-    // a clipper keeps the full-resolution texture (see ImageKey::setVirtualTexturingAllowed),
-    // so the demand-only pass has nothing to do for it
+    // the demand-only pass marks the clipper's pages in its own render(): the mask samples the
+    // same mesh, so the same pages are the ones wanted
     if (aInfo.demandOnly)
         return;
     if (!mIsVisible || !aInfo.clippingFrame)
@@ -633,13 +626,15 @@ void LayerNode::renderClipper(const RenderInfo& aInfo, const TimeCacheAccessor& 
         return;
 
     gl::Global::Functions& ggl = gl::Global::functions();
-    auto& shader = mShaderHolder.clipperShader(aInfo.clippingId != 0);
     auto& expans = aAccessor.get(mTimeLine);
-
-    if (!expans.areaTexture())
+    const VirtualTexture* virtualTexture = expans.areaVirtualTexture();
+    if (!expans.areaImageKey() || (!expans.areaTexture() && !virtualTexture))
         return;
-    auto textureId = expans.areaTexture()->id();
-    auto textureSize = expans.areaTexture()->size();
+    auto& shader = mShaderHolder.clipperShader(aInfo.clippingId != 0, virtualTexture != nullptr);
+    // the paged path has no full texture: unit 0 is the coarse chain, which keeps the sampler
+    // complete and is what a missed page reads anyway
+    auto textureId = virtualTexture ? virtualTexture->coarseTexture().id() : expans.areaTexture()->id();
+    auto textureSize = expans.areaTextureSize();
     auto texCoordOffset = mCurrentMesh->originOffset() - expans.imageOffset();
 
     core::ClippingFrame& frame = *aInfo.clippingFrame;
@@ -674,6 +669,15 @@ void LayerNode::renderClipper(const RenderInfo& aInfo, const TimeCacheAccessor& 
         shader.setUniformValue("uClipperId", (int)aClipperId);
         shader.setUniformValue("uTexture", 0);
         shader.setUniformValue("uDestTexture", 1);
+        // the shared sampler's level controls, exactly as renderLayer sets them for the same
+        // texture: without these the program's defaults would clamp every read to level 0
+        shader.setUniformValue("uLayerLodBias", ImageKey::layerLodBias());
+        shader.setUniformValue(
+            "uLayerMaxLod", float(virtualTexture ? virtualTexture->maxLevel()
+                                                 : std::max(0, expans.areaTexture()->mipmapLevels() - 1))
+        );
+        if (virtualTexture)
+            virtualTexture->bind(shader);
 
         if (aInfo.clippingId != 0) {
             shader.setUniformValue("uClippingId", (int)aInfo.clippingId);

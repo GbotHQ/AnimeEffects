@@ -297,6 +297,50 @@ Img makeNoise(int aW, int aH) {
     return img;
 }
 
+
+// A solid opaque image.
+Img makeSolid(int aW, int aH, uint8_t aR, uint8_t aG, uint8_t aB) {
+    Img img;
+    img.w = aW;
+    img.h = aH;
+    img.d.assign((size_t)aW * aH * 4, 0);
+    for (int y = 0; y < aH; ++y) {
+        for (int x = 0; x < aW; ++x) {
+            uint8_t* p = img.at(x, y);
+            p[0] = aR;
+            p[1] = aG;
+            p[2] = aB;
+            p[3] = 255;
+        }
+    }
+    return img;
+}
+
+// Opaque RGB under a DISC of alpha with a two-texel soft edge: the clipper's mask needs a real
+// alpha field, and a shape with a known screen position lets the gate assert the mask is doing
+// something instead of just "the two paths agree".
+Img makeDisc(int aW, int aH, uint8_t aR, uint8_t aG, uint8_t aB) {
+    Img img;
+    img.w = aW;
+    img.h = aH;
+    img.d.assign((size_t)aW * aH * 4, 0);
+    const double cx = aW * 0.5;
+    const double cy = aH * 0.5;
+    const double radius = std::min(aW, aH) * 0.32;
+    for (int y = 0; y < aH; ++y) {
+        for (int x = 0; x < aW; ++x) {
+            uint8_t* p = img.at(x, y);
+            p[0] = aR;
+            p[1] = aG;
+            p[2] = aB;
+            const double d = std::hypot(x + 0.5 - cx, y + 0.5 - cy);
+            const double t = std::max(0.0, std::min(1.0, (radius - d) / 2.0 + 0.5));
+            p[3] = (uint8_t)std::lround(255.0 * t);
+        }
+    }
+    return img;
+}
+
 //-------------------------------------------------------------------------------------------------
 // the two independent CPU references
 
@@ -1723,6 +1767,176 @@ void suiteVirtualTexture() {
 }
 
 
+// CL1: THE CLIPPER PASS. A clipper layer is singulated into a mask and its clipped sibling draws
+// through it. The clipper's own sampler used to be the hardware's implicit-LOD read while the
+// layer used the two-tap reconstruction; both now take LayerSampling.glsl, so this gate compares
+// the paged path (pages + coarse) against the full-resolution control on a real clipped pair.
+void suiteClipper() {
+    suiteHeader("CL1 clipper singulation: paged vs the full-resolution control");
+    if (!gl::PagePool::enabled()) {
+        std::printf("  [SKIP] AE_VIRTUAL_TEXTURE=0 is the control path\n");
+        return;
+    }
+
+    const QSize canvas(320, 320);
+    const uint8_t black[3] = {0, 0, 0};
+    const Img clippedSrc = makeSolid(900, 700, 40, 80, 220);
+    const Img clipperSrc = makeDisc(900, 700, 30, 200, 90);
+
+    auto& fixtures = renderFixtures();
+    const QString fixtureKey = QString("%1x%2").arg(canvas.width()).arg(canvas.height());
+    auto it = fixtures.find(fixtureKey);
+    if (it == fixtures.end()) {
+        std::unique_ptr<RenderFixture> fx(new RenderFixture());
+        fx->init(canvas);
+        it = fixtures.emplace(fixtureKey, std::move(fx)).first;
+    }
+    RenderFixture& fx = *it->second;
+
+    core::CameraInfo camera;
+    camera.reset(canvas, 1.0, canvas, QPoint(0, 0));
+
+    struct Pair {
+        core::LayerNode* clipped = nullptr;
+        core::LayerNode* clipper = nullptr;
+    };
+    const auto build = [&](core::ObjectTree& aTree, const QString& aPrefix, bool aClipped) {
+        Pair pair;
+        auto* root = new core::FolderNode("root");
+        aTree.grabTopNode(root);
+        auto* clippedRes = makeResource(aPrefix + "_clipped", clippedSrc);
+        auto* clipperRes = makeResource(aPrefix + "_clipper", clipperSrc);
+        pair.clipped = addScaledLayer(
+            aTree, root, clippedRes, "clipped", QVector2D(canvas.width() * 0.5f, canvas.height() * 0.5f),
+            0.6f, img::BlendMode_Normal
+        );
+        pair.clipper = addScaledLayer(
+            aTree, root, clipperRes, "clipper", QVector2D(canvas.width() * 0.5f, canvas.height() * 0.5f),
+            0.6f, img::BlendMode_Normal
+        );
+        pair.clipped->setClipped(aClipped);
+        return pair;
+    };
+    const auto keyOf = [](core::LayerNode* aLayer) {
+        return aLayer ? dynamic_cast<core::ImageKey*>(
+                            aLayer->timeLine()->defaultKey(core::TimeKeyType_Image))
+                      : nullptr;
+    };
+
+    // the clipped pair, paged (the demand has to land: eight frames)
+    core::ObjectTree pagedTree;
+    const Pair pagedPair = build(pagedTree, "cl_paged", true);
+    std::vector<uint8_t> paged;
+    for (int i = 0; i < 8; ++i)
+        paged = fx.render(pagedTree, camera, 0, black);
+
+    const auto* clippedKey = keyOf(pagedPair.clipped);
+    const auto* clipperKey = keyOf(pagedPair.clipper);
+    expect(clippedKey != nullptr && clipperKey != nullptr, "CL1 both layers must have image keys");
+    if (!clippedKey || !clipperKey)
+        return;
+    expect(
+        clippedKey->cache().virtualTexture() != nullptr,
+        "CL1 the clipped layer must take the paged path"
+    );
+    expect(
+        clipperKey->cache().virtualTexture() != nullptr,
+        "CL1 the clipper layer must take the paged path too (the clipper exclusion is gone)"
+    );
+    // the mask's pages must be DEMANDED, not just left to the coarse chain: a clipper whose
+    // demand was never marked would fall back everywhere and this pair would differ by far
+    // more than the edge rounding below
+    if (const core::VirtualTexture* clipperVt = clipperKey->cache().virtualTexture()) {
+        expect(clipperVt->wantedPageCount() > 0, "CL1 the clipper pass must demand pages");
+        expect(
+            clipperVt->residentWantedCount() == clipperVt->wantedPageCount(),
+            QString("CL1 every wanted clipper page must be resident (%1 of %2)")
+                .arg(clipperVt->residentWantedCount())
+                .arg(clipperVt->wantedPageCount())
+        );
+    }
+
+    // the full-resolution control for the same tree
+    auto* clippedMutable = const_cast<core::ImageKey*>(clippedKey);
+    auto* clipperMutable = const_cast<core::ImageKey*>(clipperKey);
+    clippedMutable->setForceFullTexture(true);
+    clipperMutable->setForceFullTexture(true);
+    const std::vector<uint8_t> control = fx.render(pagedTree, camera, 0, black);
+    expect(
+        clippedKey->cache().texture().id() != 0 && clipperKey->cache().texture().id() != 0,
+        "CL1 the control must build both full textures"
+    );
+
+    int maxDelta = 0, maxX = 0, maxY = 0, maxC = 0;
+    double meanDelta = 0.0;
+    int n = 0;
+    for (int y = 16; y < canvas.height() - 16; ++y) {
+        for (int x = 16; x < canvas.width() - 16; ++x) {
+            const size_t i = ((size_t)y * canvas.width() + x) * 4;
+            for (int ch = 0; ch < 4; ++ch) {
+                const int d = std::abs((int)paged[i + ch] - (int)control[i + ch]);
+                if (d > maxDelta) {
+                    maxDelta = d;
+                    maxX = x;
+                    maxY = y;
+                    maxC = ch;
+                }
+                meanDelta += d;
+                ++n;
+            }
+        }
+    }
+    meanDelta = n ? meanDelta / n : 0.0;
+    // The mask is a COVERAGE field with a hard-ish edge: the atlas read's sub-texel rounding
+    // moves one edge pixel by up to 2/255, which no visual differs by. The page-path bug this
+    // gate exists for (a coarse-only mask) is tens of units across the whole disc.
+    expect(
+        maxDelta <= 2,
+        QString("CL1 paged clipper vs control max delta %1 at (%2,%3) ch %4").arg(maxDelta).arg(maxX).arg(maxY).arg(maxC)
+    );
+    expect(meanDelta < 0.5, QString("CL1 mean delta %1 below 0.5 of 255").arg(meanDelta, 0, 'f', 3));
+
+    // the mask is ACTIVE: the clipped frame is covered in the middle and empty in a corner that
+    // the same pair covers when the clipped layer is not clipped at all
+    const auto at = [&](const std::vector<uint8_t>& aFrame, int aX, int aY, int aCh) {
+        return (int)aFrame[((size_t)aY * canvas.width() + aX) * 4 + aCh];
+    };
+    // the backdrop is OPAQUE black, so "covered" is RGB above zero, not alpha
+    int covered = 0;
+    for (int y = 16; y < canvas.height() - 16; ++y)
+        for (int x = 16; x < canvas.width() - 16; ++x)
+            covered += (at(paged, x, y, 0) | at(paged, x, y, 1) | at(paged, x, y, 2)) > 0;
+    const auto rgbCovered = [&](const std::vector<uint8_t>& aFrame, int aX, int aY) {
+        return (at(aFrame, aX, aY, 0) | at(aFrame, aX, aY, 1) | at(aFrame, aX, aY, 2)) > 0;
+    };
+
+    core::ObjectTree plainTree;
+    build(plainTree, "cl_plain", false);
+    std::vector<uint8_t> plain;
+    for (int i = 0; i < 8; ++i)
+        plain = fx.render(plainTree, camera, 0, black);
+
+    expect(covered > 20000, QString("CL1 the clipped pair must cover the middle (%1 px)").arg(covered));
+    expect(
+        !rgbCovered(paged, 8, 8),
+        "CL1 the disc must not reach the corner (the clipper's mask is doing something)"
+    );
+    expect(
+        rgbCovered(plain, 8, 8),
+        "CL1 without clipping the same pair must cover the corner (the excuse has an occupied side)"
+    );
+    expect(
+        rgbCovered(paged, 160, 160),
+        "CL1 the disc must cover the centre"
+    );
+
+    caseReport(
+        "paged clipped pair vs full resolution",
+        gFails == 0,
+        QString("max %1 mean %2 of 255, %3 covered").arg(maxDelta).arg(meanDelta, 0, 'f', 3).arg(covered)
+    );
+}
+
 void suiteRender() {
     suiteHeader("M3 production render: minified layer, no halo");
     const QSize canvas(64, 64);
@@ -1934,6 +2148,7 @@ int main(int argc, char** argv) {
     suiteRender();
     suitePagePool();
     suiteVirtualTexture();
+    suiteClipper();
 
     std::printf("\n%d checks, %d failures\n", gChecks, gFails);
     std::fflush(stdout);

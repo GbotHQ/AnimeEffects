@@ -56,10 +56,12 @@ public:
     gl::EasyShaderProgram& gridShader();
     const gl::EasyShaderProgram& gridShader() const;
 
-    gl::EasyShaderProgram& reserveClipperShader(bool aIsClippee);
+    /// The clipper's singulation program: IS_CLIPPEE (this clipper is itself clipped) and
+    /// VIRTUAL_TEXTURE (its layer is paged) are independent inputs, so four programs at most.
+    gl::EasyShaderProgram& reserveClipperShader(bool aIsClippee, bool aVirtualTexture);
     void reserveClipperShaders();
-    gl::EasyShaderProgram& clipperShader(bool aIsClippee);
-    const gl::EasyShaderProgram& clipperShader(bool aIsClippee) const;
+    gl::EasyShaderProgram& clipperShader(bool aIsClippee, bool aVirtualTexture);
+    const gl::EasyShaderProgram& clipperShader(bool aIsClippee, bool aVirtualTexture) const;
 
 private:
     QVector<gl::EasyShaderProgram*> mShaders;
