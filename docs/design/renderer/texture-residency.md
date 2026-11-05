@@ -565,7 +565,9 @@ when every gate is green on every project and the counter shows no regression, t
   paging needs the level boxes from a source that is not the full texture - a CPU pyramid (the
   chain's area rule is deliberately the "single rule on the CPU", but its x pass stores to an R16F
   scratch, so bit-exactness is a gate question) or a transient box pipeline. Neither is built; a
-  4096² mask measures 21.3 MiB of R8 chain, and no project in this corpus has a painted mask.
+  4096² mask measures 21.3 MiB of R8 chain. `~/Downloads/kemono_psd_1` supplies real masked PSDs
+  (000145.psd: 24 masks, rendered paged vs control at max 1/255), but its masks are decorative and
+  small; the memory target is a large-canvas painted mask.
 - **What to skip**: a per-layer level manager as a shipping state. It is throwaway once pages land,
   and Stage 3's coarse fallback gives the same behaviour at the right granularity. The one useful
   checkpoint is Stage 2 + "upload the whole needed level" as a *debug path* to validate upload and
@@ -1084,6 +1086,11 @@ gains the same `VIRTUAL_TEXTURE` variation (four programs: `IS_CLIPPEE` x `VIRTU
   half covered). The mask's cost is its R8 chain: 900x700 = 839,797 B, **4096x4096 = 22,369,621 B
   (21.3 MiB)**. A 15000² mask is ~300 MB by the same arithmetic (the design's 225 MB was level 0
   alone).
+- **A real masked PSD** (`~/Downloads/kemono_psd_1/000145.psd`, imported through the app's
+  `ctrl::ImageFileLoader`): 24 masked layers; paged vs the full-resolution control is **0 px over
+  8/255, max 1, mean 0.00017**. That dataset's masks are small (the masked layers sum to ~2.2 M
+  texels, ~2.9 MB of chains by their content sizes), so it is functional coverage, not the memory
+  target; the target remains a large-canvas painted mask.
 - **Clippers**: nene's three clipper layers are paged (443 MiB of full textures gone; 35 more
   pages, all resident; 0 px over 8 on the steady clipped frames). The synthetic `CL1` pair - a
   900x700 disc clipper over a 900x700 opaque layer, both paged - is **max 2, mean 0.003 of 255**

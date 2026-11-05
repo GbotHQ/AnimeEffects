@@ -74,6 +74,7 @@
 
 #include <QApplication>
 #include <QDir>
+#include <QFileInfo>
 #include <QFont>
 #include <QImage>
 #include <QJsonObject>
@@ -102,6 +103,7 @@
 #include "ctrl/Driver.h"
 #include "ctrl/DriverResources.h"
 #include "ctrl/GraphicStyle.h"
+#include "ctrl/ImageFileLoader.h"
 #include "ctrl/ProjectLoader.h"
 #include "ctrl/UILogger.h"
 #include "gl/DeviceInfo.h"
@@ -525,14 +527,35 @@ int runRender(ProbeGL& aProbe, const Options& aOptions) {
     gl::DeviceInfo::setInstance(&device);
 
     core::Project project(aOptions.projectPath, animator, nullptr);
-    ctrl::ProjectLoader loader;
-    if (!loader.load(aOptions.projectPath, project, device, reporter)) {
-        std::fprintf(
-            stderr, "render_probe: failed to load '%s'\n", aOptions.projectPath.toUtf8().constData());
-        for (const QString& line : loader.log()) {
-            std::fprintf(stderr, "  %s\n", line.toUtf8().constData());
+    // A PSD/ORA is imported through the app's own loader (masks included); an .anie through the
+    // project serializer. The probe's camera and render path are the same either way.
+    const QString suffix = QFileInfo(aOptions.projectPath).suffix().toLower();
+    const bool imageFile = (suffix == QLatin1String("psd") || suffix == QLatin1String("ora"));
+    if (imageFile) {
+        ctrl::ImageFileLoader loader(device);
+        loader.setOraImportMode(ctrl::ImageFileLoader::OraImportMode::Layered);
+        if (!loader.load(aOptions.projectPath, project, reporter)) {
+            std::fprintf(
+                stderr, "render_probe: failed to import '%s'\n",
+                aOptions.projectPath.toUtf8().constData()
+            );
+            std::fprintf(stderr, "  %s\n", loader.log().toUtf8().constData());
+            return 2;
         }
-        return 2;
+        for (const QString& warning : loader.warnings())
+            std::fprintf(stderr, "  warning: %s\n", warning.toUtf8().constData());
+    } else {
+        ctrl::ProjectLoader loader;
+        if (!loader.load(aOptions.projectPath, project, device, reporter)) {
+            std::fprintf(
+                stderr, "render_probe: failed to load '%s'\n",
+                aOptions.projectPath.toUtf8().constData()
+            );
+            for (const QString& line : loader.log()) {
+                std::fprintf(stderr, "  %s\n", line.toUtf8().constData());
+            }
+            return 2;
+        }
     }
 
     // A per-layer diagnostic: list what the project holds, or hide all but the named layers.
