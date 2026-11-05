@@ -560,7 +560,12 @@ when every gate is green on every project and the counter shows no regression, t
   deleted. If a project cannot pass, that is a design bug to fix, not a reason to keep the switch.
   Gate: residency tracks the screen-derived bytes on the 15000² project **while playing**, pixel
   equality against a full-chain reference, frame time inside budget.
-- **Stage 4**: masks in the pool (incremental page updates from the stroke).
+- **Stage 4**: masks in the pool (incremental page updates from the stroke). The blocker found
+  when scoping it: a mask's levels ARE a GPU texture built incrementally by `MaskMipChain`, so
+  paging needs the level boxes from a source that is not the full texture - a CPU pyramid (the
+  chain's area rule is deliberately the "single rule on the CPU", but its x pass stores to an R16F
+  scratch, so bit-exactness is a gate question) or a transient box pipeline. Neither is built; a
+  4096² mask measures 21.3 MiB of R8 chain, and no project in this corpus has a painted mask.
 - **What to skip**: a per-layer level manager as a shipping state. It is throwaway once pages land,
   and Stage 3's coarse fallback gives the same behaviour at the right granularity. The one useful
   checkpoint is Stage 2 + "upload the whole needed level" as a *debug path* to validate upload and
@@ -1074,6 +1079,11 @@ gains the same `VIRTUAL_TEXTURE` variation (four programs: `IS_CLIPPEE` x `VIRTU
   a fixed 61 MB; that floor is the price of the scheme on projects whose whole texture set is
   smaller than one atlas. A 2048 first atlas was built and measured and is not the answer: 57
   pages then needed a second 4096 atlas for 8 pages, 77 MB against 61 MB.
+- **Masks** (`MA1`): a 900x700 layer mask on a *paged* layer matches the full-resolution control
+  within 1/255 (mean 0.047), and the mask is proven active (its hidden half is empty, its revealed
+  half covered). The mask's cost is its R8 chain: 900x700 = 839,797 B, **4096x4096 = 22,369,621 B
+  (21.3 MiB)**. A 15000² mask is ~300 MB by the same arithmetic (the design's 225 MB was level 0
+  alone).
 - **Clippers**: nene's three clipper layers are paged (443 MiB of full textures gone; 35 more
   pages, all resident; 0 px over 8 on the steady clipped frames). The synthetic `CL1` pair - a
   900x700 disc clipper over a 900x700 opaque layer, both paged - is **max 2, mean 0.003 of 255**

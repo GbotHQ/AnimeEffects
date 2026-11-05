@@ -79,6 +79,7 @@
 #include "core/Frame.h"
 #include "core/ImageKey.h"
 #include "core/LayerNode.h"
+#include "core/MaskKey.h"
 #include "core/ObjectNode.h"
 #include "core/ObjectTree.h"
 #include "core/RenderInfo.h"
@@ -1937,6 +1938,141 @@ void suiteClipper() {
     );
 }
 
+// MA1: A MASKED LAYER ON THE PAGED PATH. LAYER_MASK and VIRTUAL_TEXTURE are independent
+// variations, but the mask is sampled by the same fragment as the paged image, through its own
+// matrix, rect and unit - a combination no gate drew. This also measures what a mask costs: the
+// field is R8 at the content's own resolution and the chain adds a third.
+void suiteMaskPaged() {
+    suiteHeader("MA1 layer mask on a paged layer");
+    if (!gl::PagePool::enabled()) {
+        std::printf("  [SKIP] AE_VIRTUAL_TEXTURE=0 is the control path\n");
+        return;
+    }
+
+    const QSize canvas(320, 320);
+    const uint8_t black[3] = {0, 0, 0};
+    const Img layerSrc = makeNoise(900, 700);
+
+    auto& fixtures = renderFixtures();
+    const QString fixtureKey = QString("%1x%2").arg(canvas.width()).arg(canvas.height());
+    auto it = fixtures.find(fixtureKey);
+    if (it == fixtures.end()) {
+        std::unique_ptr<RenderFixture> fx(new RenderFixture());
+        fx->init(canvas);
+        it = fixtures.emplace(fixtureKey, std::move(fx)).first;
+    }
+    RenderFixture& fx = *it->second;
+
+    core::CameraInfo camera;
+    camera.reset(canvas, 1.0, canvas, QPoint(0, 0));
+
+    core::ObjectTree tree;
+    auto* root = new core::FolderNode("root");
+    tree.grabTopNode(root);
+    auto* res = makeResource("ma_src", layerSrc);
+    core::LayerNode* layer = addScaledLayer(
+        tree, root, res, "layer", QVector2D(canvas.width() * 0.5f, canvas.height() * 0.5f),
+        0.6f, img::BlendMode_Normal
+    );
+    auto* imageKey = dynamic_cast<core::ImageKey*>(layer->timeLine()->defaultKey(core::TimeKeyType_Image));
+    expect(imageKey != nullptr, "MA1 the layer must have an image key");
+    if (!imageKey)
+        return;
+
+    // THE FIELD: hidden on its left half, revealed on its right - a hard vertical edge, so the
+    // screen's left half of the layer must be empty and its right half covered
+    auto* maskKey = new core::MaskKey();
+    layer->timeLine()->grabDefaultKey(core::TimeKeyType_Mask, maskKey);
+    maskKey->data().alloc(QSize(900, 700), QRectF(0, 0, 900, 700), core::MaskKey::kNeutral);
+    QImage& field = maskKey->data().field();
+    for (int y = 0; y < field.height(); ++y)
+        std::memset(field.scanLine(y), 0, 450);
+    maskKey->data().markDirty(QRect(0, 0, 450, 700));
+    expect(maskKey->data().isPainted(), "MA1 the painted field must report itself painted");
+
+    imageKey->setForceFullTexture(false);
+    std::vector<uint8_t> paged;
+    for (int i = 0; i < 8; ++i)
+        paged = fx.render(tree, camera, 0, black);
+    expect(
+        imageKey->cache().virtualTexture() != nullptr,
+        "MA1 the masked layer's image must take the paged path"
+    );
+
+    imageKey->setForceFullTexture(true);
+    const std::vector<uint8_t> control = fx.render(tree, camera, 0, black);
+
+    int maxDelta = 0, maxX = 0, maxY = 0, maxC = 0;
+    double meanDelta = 0.0;
+    int n = 0;
+    for (int y = 16; y < canvas.height() - 16; ++y) {
+        for (int x = 16; x < canvas.width() - 16; ++x) {
+            const size_t i = ((size_t)y * canvas.width() + x) * 4;
+            for (int ch = 0; ch < 4; ++ch) {
+                const int d = std::abs((int)paged[i + ch] - (int)control[i + ch]);
+                if (d > maxDelta) {
+                    maxDelta = d;
+                    maxX = x;
+                    maxY = y;
+                    maxC = ch;
+                }
+                meanDelta += d;
+                ++n;
+            }
+        }
+    }
+    meanDelta = n ? meanDelta / n : 0.0;
+    expect(
+        maxDelta <= 1,
+        QString("MA1 masked paged layer vs control max delta %1 at (%2,%3) ch %4")
+            .arg(maxDelta).arg(maxX).arg(maxY).arg(maxC)
+    );
+    expect(meanDelta < 0.5, QString("MA1 mean delta %1 below 0.5 of 255").arg(meanDelta, 0, 'f', 3));
+
+    // the mask's edge on screen is content x = 450 -> device x = 160; count coverage on each side
+    const auto coveredIn = [&](int aX0, int aX1) {
+        int count = 0;
+        for (int y = 20; y < 300; ++y)
+            for (int x = aX0; x < aX1; ++x)
+                count += (paged[((size_t)y * canvas.width() + x) * 4] |
+                          paged[((size_t)y * canvas.width() + x) * 4 + 1] |
+                          paged[((size_t)y * canvas.width() + x) * 4 + 2]) > 0;
+        return count;
+    };
+    const int hiddenPx = coveredIn(10, 150);
+    const int visiblePx = coveredIn(170, 310);
+    expect(hiddenPx == 0, QString("MA1 the masked half must be empty (%1 px)").arg(hiddenPx));
+    expect(visiblePx > 10000, QString("MA1 the revealed half must be covered (%1 px)").arg(visiblePx));
+
+    // THE COST: the field's RAM and the R8 chain's VRAM, at this size and at a 4096^2 field
+    const gl::Texture* maskTex = maskKey->data().textureId();
+    qint64 chainBytes = 0;
+    if (maskTex) {
+        QSize level = maskTex->size();
+        for (int l = 0; l < maskTex->mipmapLevels(); ++l) {
+            chainBytes += (qint64)level.width() * level.height();
+            level = QSize(std::max(1, level.width() / 2), std::max(1, level.height() / 2));
+        }
+    }
+    core::MaskKey::Data big;
+    big.alloc(QSize(4096, 4096), QRectF(0, 0, 4096, 4096), 0);
+    qint64 bigBytes = 0;
+    if (const gl::Texture* bigTex = big.textureId()) {
+        QSize level = bigTex->size();
+        for (int l = 0; l < bigTex->mipmapLevels(); ++l) {
+            bigBytes += (qint64)level.width() * level.height();
+            level = QSize(std::max(1, level.width() / 2), std::max(1, level.height() / 2));
+        }
+    }
+    caseReport(
+        "mask + paged image",
+        gFails == 0,
+        QString("max %1 mean %2 of 255; field %3 B, 900x700 chain %4 B, 4096^2 chain %5 B")
+            .arg(maxDelta).arg(meanDelta, 0, 'f', 3)
+            .arg((qint64)900 * 700).arg(chainBytes).arg(bigBytes)
+    );
+}
+
 void suiteRender() {
     suiteHeader("M3 production render: minified layer, no halo");
     const QSize canvas(64, 64);
@@ -2149,6 +2285,7 @@ int main(int argc, char** argv) {
     suitePagePool();
     suiteVirtualTexture();
     suiteClipper();
+    suiteMaskPaged();
 
     std::printf("\n%d checks, %d failures\n", gChecks, gFails);
     std::fflush(stdout);
