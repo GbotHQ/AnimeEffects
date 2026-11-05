@@ -331,6 +331,9 @@ int main(int argc, char** argv) {
         );
         cursor.setMousePress(&press, camera);
         editor.updateCursor(camera, cursor);
+        // the viewport announces the accumulated damage once per PAINT, not per pointer event
+        // (MaskEditor::flushPaint's comment); this harness has no viewport, so it takes that step
+        editor.announcePendingPaint();
         const int afterPress = announcements;
 
         QMouseEvent move(
@@ -339,6 +342,7 @@ int main(int argc, char** argv) {
         );
         cursor.setMouseMove(&move, camera);
         editor.updateCursor(camera, cursor);
+        editor.announcePendingPaint();
         const int afterMove = announcements - afterPress;
 
         QMouseEvent release(
