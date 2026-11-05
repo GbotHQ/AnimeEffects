@@ -8,6 +8,7 @@
 #include "core/ImageKey.h"
 #include "core/Constant.h"
 #include "core/VirtualTexture.h"
+#include "gl/Global.h"
 #include "qjsonobject.h"
 #include "util/LinkPointer.h"
 
@@ -158,6 +159,25 @@ void ImageKey::resetTextureCache() {
         bool paged = false;
         if (!mForceFullTexture && mVirtualTexturingAllowed && VirtualTexture::pageable(pixelSize))
             paged = mCache.buildVirtualTexture(mData.resource(), pixelSize);
+        if (qEnvironmentVariableIsSet("AE_VT_HASH")) {
+            const int level = qEnvironmentVariableIntValue("AE_VT_HASH");
+            const QSize levelSize(
+                std::max(1, pixelSize.width() >> level), std::max(1, pixelSize.height() >> level)
+            );
+            std::vector<uint8> data((size_t)levelSize.width() * levelSize.height() * 4, 0);
+            gl::Global::functions().glBindTexture(GL_TEXTURE_2D, texture.id());
+            gl::Global::functions().glGetTexImage(
+                GL_TEXTURE_2D, level, GL_RGBA, GL_UNSIGNED_BYTE, data.data()
+            );
+            gl::Global::functions().glBindTexture(GL_TEXTURE_2D, 0);
+            quint64 hash = 1469598103934665603ull;
+            for (uint8 byte : data) {
+                hash ^= byte;
+                hash *= 1099511628211ull;
+            }
+            qWarning("VTHASH %dx%d level=%d chain=%016llx", pixelSize.width(), pixelSize.height(),
+                     level, (unsigned long long)hash);
+        }
         if (paged) {
             // the chain was only the source: every sharp level is now in RAM and the pool,
             // and the always-resident coarse tail is its own texture

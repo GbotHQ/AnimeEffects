@@ -68,6 +68,37 @@ qint64 ImagePyramid::bytes() const {
     return total;
 }
 
+quint64 ImagePyramid::hashLevel(int aLevel) const {
+    if (aLevel <= 0 || aLevel > mMaxLevel || (size_t)aLevel >= mLevels.size())
+        return 0;
+    quint64 hash = 1469598103934665603ull;
+    for (uint8 byte : mLevels[(size_t)aLevel]) {
+        hash ^= byte;
+        hash *= 1099511628211ull;
+    }
+    return hash;
+}
+
+quint64 ImagePyramid::hashRegion(int aLevel, int aX, int aY, int aWidth, int aHeight) const {
+    if (aLevel <= 0 || aLevel > mMaxLevel || (size_t)aLevel >= mLevels.size())
+        return 0;
+    const QSize size = levelSize(aLevel);
+    const int x0 = std::max(0, aX), y0 = std::max(0, aY);
+    const int x1 = std::min(size.width(), aX + aWidth), y1 = std::min(size.height(), aY + aHeight);
+    if (x1 <= x0 || y1 <= y0)
+        return 0;
+    quint64 hash = 1469598103934665603ull;
+    const uint8* level = mLevels[(size_t)aLevel].data();
+    for (int y = y0; y < y1; ++y) {
+        const uint8* row = level + ((size_t)y * size.width() + x0) * 4;
+        for (int i = 0; i < (x1 - x0) * 4; ++i) {
+            hash ^= row[i];
+            hash *= 1099511628211ull;
+        }
+    }
+    return hash;
+}
+
 void ImagePyramid::copyLevel(int aLevel, uint8* aDst, const QSize& aSize) const {
     XC_PTR_ASSERT(aDst);
     XC_ASSERT(aLevel >= 1 && aLevel <= mMaxLevel);

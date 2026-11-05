@@ -96,6 +96,7 @@
 #include "core/FilterFrame.h"
 #include "core/Frame.h"
 #include "core/Project.h"
+#include "core/LayerNode.h"
 #include "core/RenderInfo.h"
 #include "core/TimeInfo.h"
 #include "ctrl/Driver.h"
@@ -120,7 +121,7 @@ namespace {
 const char* kUsage =
     "usage: render_probe --project <file.anie> --out <dir> [--size WxH] [--zoom <scale>]\n"
     "                    [--frames <a>..<b>] [--step <n>] [--offset <px>] [--supersample <n>]\n"
-    "                    [--metrics] [--require-gpu]\n"
+    "                    [--metrics] [--require-gpu] [--only-layer <text>] [--list-layers]\n"
     "\n"
     "Renders project frames offscreen through ctrl::Driver::renderGL and writes\n"
     "<out>/frame-<index>.png (RGBA8, exactly --size).\n"
@@ -132,6 +133,8 @@ const char* kUsage =
     "  --offset      horizontal sub-pixel nudge of the camera centre, in pixels\n"
     "  --supersample render at Nx the size and box-average down to --size, N in 1..16 (default 1)\n"
     "  --metrics     print FRAME <i> sharpness <float> mean <float> per frame\n"
+    "  --only-layer  hide every layer whose name does not contain <text>\n"
+    "  --list-layers print each layer's name, size and filter/mask/deform markers, then exit\n"
     "  --require-gpu exit 4 unless GL_RENDERER looks like hardware (rejects llvmpipe,\n"
     "                softpipe, swrast, software)\n";
 
@@ -235,6 +238,10 @@ struct Options {
     // render at supersample x supersample and box-average down: the ground truth for "is the 1x
     // render aliased", and a way to look at SSAA before paying for it in the viewport
     int supersample = 1;
+    // diagnostics for a per-layer question: list the layer names, or hide every layer whose name
+    // does not contain this text (the camera and the canvas stay the project's)
+    QString onlyLayer;
+    bool listLayers = false;
 };
 
 bool parseSize(const QString& aText, QSize& aOut) {
@@ -527,6 +534,56 @@ int runRender(ProbeGL& aProbe, const Options& aOptions) {
         return 2;
     }
 
+    // A per-layer diagnostic: list what the project holds, or hide all but the named layers.
+    if (aOptions.listLayers || !aOptions.onlyLayer.isEmpty()) {
+        int shown = 0;
+        core::ObjectNode::Iterator itr(project.objectTree().topNode());
+        while (itr.hasNext()) {
+            core::ObjectNode* node = itr.next();
+            if (!node || node->type() != core::ObjectType_Layer)
+                continue;
+            auto* layer = static_cast<core::LayerNode*>(node);
+            if (aOptions.listLayers) {
+                const QRect rect = layer->initialRect();
+                core::TimeLine* line = layer->timeLine();
+                QString flags;
+                if (line) {
+                    for (core::TimeKeyType type :
+                         {core::TimeKeyType_Blur, core::TimeKeyType_Wave, core::TimeKeyType_HSV}) {
+                        if (line->filterEnabled(type))
+                            flags += QStringLiteral("filter:%1 ").arg((int)type);
+                    }
+                    if (line->defaultKey(core::TimeKeyType_Mask))
+                        flags += QStringLiteral("mask ");
+                    if (!line->map(core::TimeKeyType_Bone).isEmpty()
+                        || !line->map(core::TimeKeyType_Pose).isEmpty())
+                        flags += QStringLiteral("bone ");
+                    if (!line->map(core::TimeKeyType_FFD).isEmpty()
+                        || !line->map(core::TimeKeyType_Mesh).isEmpty())
+                        flags += QStringLiteral("ffd ");
+                }
+                std::printf(
+                    "layer \"%s\" %dx%d %s\n", layer->name().toUtf8().constData(), rect.width(),
+                    rect.height(), flags.toUtf8().constData()
+                );
+                continue;
+            }
+            if (!layer->name().contains(aOptions.onlyLayer, Qt::CaseInsensitive)) {
+                layer->setVisibility(false);
+            } else {
+                ++shown;
+            }
+        }
+        if (aOptions.listLayers) {
+            std::fflush(stdout);
+            return 0;
+        }
+        if (shown == 0) {
+            return fail(2, QStringLiteral("no layer name contains '%1'").arg(aOptions.onlyLayer));
+        }
+        std::printf("render_probe: %d layer(s) match '%s'\n", shown, aOptions.onlyLayer.toUtf8().constData());
+    }
+
     const QSize imageSize = project.attribute().imageSize();
     if (imageSize.width() <= 0 || imageSize.height() <= 0) {
         return fail(2, QStringLiteral("the project has an invalid image size (%1x%2)")
@@ -671,6 +728,12 @@ int main(int argc, char** argv) {
                 return fail(2, QStringLiteral("--offset must be a number, got '%1'").arg(text));
             }
             options.offset = offset;
+        } else if (arg == QLatin1String("--only-layer")) {
+            QString text;
+            if (!value(text)) return 2;
+            options.onlyLayer = text;
+        } else if (arg == QLatin1String("--list-layers")) {
+            options.listLayers = true;
         } else if (arg == QLatin1String("--metrics")) {
             options.metrics = true;
         } else if (arg == QLatin1String("--require-gpu")) {

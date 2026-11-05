@@ -72,6 +72,11 @@ public:
     /// Used to upload the always-resident coarse chain from the same bytes the page path reads.
     void copyLevel(int aLevel, uint8* aDst, const QSize& aSize) const;
 
+    /// FNV-1a over one captured level (diagnostic: is the captured level the chain's level).
+    quint64 hashLevel(int aLevel) const;
+    /// FNV-1a over a level's rectangle (diagnostic: is the page the level's own texels).
+    quint64 hashRegion(int aLevel, int aX, int aY, int aWidth, int aHeight) const;
+
 private:
     QSize mSize;
     int mChainLevels = 0;

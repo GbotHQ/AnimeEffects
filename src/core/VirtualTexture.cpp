@@ -787,6 +787,11 @@ bool VirtualTexture::build(const img::ResourceHandle& aResource, const QSize& aS
     }
 
     registerResource(this);
+    if (qEnvironmentVariableIsSet("AE_VT_HASH")) {
+        const int level = qEnvironmentVariableIntValue("AE_VT_HASH");
+        qWarning("VTHASH %dx%d level=%d pyramid=%016llx", mSize.width(), mSize.height(), level,
+                 (unsigned long long)mPyramid.hashLevel(level));
+    }
     return true;
 }
 
@@ -1014,6 +1019,26 @@ void VirtualTexture::flushTable() {
 
 bool VirtualTexture::uploadPage(int aLevel, int aPageX, int aPageY, const gl::PagePool::Slot& aSlot) {
     fillPageBuffer(aLevel, aPageX, aPageY);
+    if (aLevel > 0 && qEnvironmentVariableIsSet("AE_VT_PAGE_HASH")) {
+        const QSize levelSize = mPyramid.levelSize(aLevel);
+        const int w = std::min((int)gl::PagePool::kPageSize, levelSize.width() - aPageX * (int)gl::PagePool::kPageSize);
+        const int h = std::min((int)gl::PagePool::kPageSize, levelSize.height() - aPageY * (int)gl::PagePool::kPageSize);
+        quint64 bufferHash = 1469598103934665603ull;
+        for (int y = 0; y < h; ++y) {
+            const uint8* row = mPageBuffer.data()
+                + ((size_t)(y + gl::PagePool::kGutter) * gl::PagePool::kPitch + gl::PagePool::kGutter) * 4;
+            for (int i = 0; i < w * 4; ++i) {
+                bufferHash ^= row[i];
+                bufferHash *= 1099511628211ull;
+            }
+        }
+        const quint64 levelHash =
+            mPyramid.hashRegion(aLevel, aPageX * (int)gl::PagePool::kPageSize, aPageY * (int)gl::PagePool::kPageSize, w, h);
+        if (bufferHash != levelHash) {
+            qWarning("VTPAGE level=%d page=(%d,%d) %dx%d buffer=%016llx level=%016llx", aLevel, aPageX,
+                     aPageY, w, h, (unsigned long long)bufferHash, (unsigned long long)levelHash);
+        }
+    }
     auto& ggl = gl::Global::functions();
     const GLuint atlas = gl::PagePool::instance().atlasTextureId(aSlot.atlas);
     if (atlas == 0)

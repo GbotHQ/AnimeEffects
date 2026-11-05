@@ -1016,10 +1016,17 @@ programs.
 ### Open, in priority order
 
 1. The nene residual above: 4 % of an animated frame's pixels differ by more than 8/255 from the
-   full-resolution control while every wanted page is resident. The level margin did not change
-   it, so it is the sampling path (magnification's single tap against the control's anisotropy, or
-   something that only shows under bone deformation). Isolate one layer, force its pages, and diff
-   the two paths level by level. This is the one item that blocks the plan's pixel-equality gate.
+   full-resolution control while every wanted page is resident. **Isolated**: `--only-layer` shows
+   it on Layer 6 (4408x4370, 816 px over 8, max 115) and nowhere on Layer 17; on Layer 6 it
+   survives (a) forcing level 3 on both samplers, (b) forcing every page of the drawn resource
+   resident (718 pages), and (c) hashing - the chain's level 3, the captured pyramid's level 3 and
+   the control run's chain level 3 are the same hash, and every uploaded page's content hashes
+   equal its level region. So it is not residency, not the level, and not the page data: it is the
+   page table's entry-to-slot mapping or the atlas coordinate in the shader for that region. The
+   diff is confined to one page of fine hatching, which is consistent with that page's samples
+   being addressed a texel-structure off or read from another page's slot. Next: dump the table
+   entry for the diff page and the sampled atlas coordinate against the full level's. This is the
+   one item that blocks the plan's pixel-equality gate.
 2. The 1-pixel edge band on test.anie: decide whether the paged magnified read should take the
    two-tap path at level 0 (matching anisotropy more closely) or whether the band is acceptable.
    Measure the band against a control with anisotropy 1 first, to separate the two causes.
