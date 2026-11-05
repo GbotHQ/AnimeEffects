@@ -39,19 +39,26 @@
 // USAGE
 //
 //   render_probe --project <file.anie> --out <dir> [--size WxH] [--zoom <scale>]
-//                [--frames <a>..<b>] [--step <n>] [--offset <px>] [--metrics]
+//                [--frames <a>..<b>] [--step <n>] [--offset <px>] [--supersample <n>]
+//                [--metrics] [--require-gpu]
 //
 //   --size    framebuffer size in pixels (default 640x640)
 //   --zoom    camera scale (1.0 = the project's pixels at 1:1); default fits the whole image
 //   --frames  inclusive project frame range; default is the project's own frame range
 //   --step    project frames advanced per output frame (default 1)
 //   --offset  horizontal sub-pixel nudge of the camera centre, in pixels
+//   --supersample render at Nx the size, then box-average down to --size (1..16, default 1)
 //   --metrics one line per frame: FRAME <i> sharpness <float> mean <float>
+//   --require-gpu fail (exit 4) when GL_RENDERER names a software renderer
+//
+// The GL renderer/vendor/version are printed at bootstrap, so a run under Xvfb (llvmpipe) is
+// distinguishable from one that got the GPU.
 //
 // Output is <out>/frame-<index>.png, RGBA8, exactly --size. Run it under
 // QT_QPA_PLATFORM=offscreen (no display needed).
 //
-// Exit codes: 0 success, 1 render/write failure, 2 usage, GL bootstrap or project load failure.
+// Exit codes: 0 success, 1 render/write failure, 2 usage, GL bootstrap or project load failure,
+// 4 --require-gpu found a software renderer.
 //
 // NOTE: this project uses Qt5Compat, which defines the classic `slots` (and `signals`) macros.
 // Range-for loop variables must not be named `slot`.
@@ -111,17 +118,21 @@ namespace {
 
 const char* kUsage =
     "usage: render_probe --project <file.anie> --out <dir> [--size WxH] [--zoom <scale>]\n"
-    "                    [--frames <a>..<b>] [--step <n>] [--offset <px>] [--metrics]\n"
+    "                    [--frames <a>..<b>] [--step <n>] [--offset <px>] [--supersample <n>]\n"
+    "                    [--metrics] [--require-gpu]\n"
     "\n"
     "Renders project frames offscreen through ctrl::Driver::renderGL and writes\n"
     "<out>/frame-<index>.png (RGBA8, exactly --size).\n"
     "\n"
-    "  --size     framebuffer size in pixels (default 640x640)\n"
-    "  --zoom     camera scale; default fits the whole project image\n"
-    "  --frames   inclusive project frame range; default: the project's range\n"
-    "  --step     project frames per output frame (default 1)\n"
-    "  --offset   horizontal sub-pixel nudge of the camera centre, in pixels\n"
-    "  --metrics  print FRAME <i> sharpness <float> mean <float> per frame\n";
+    "  --size        framebuffer size in pixels (default 640x640)\n"
+    "  --zoom        camera scale; default fits the whole project image\n"
+    "  --frames      inclusive project frame range; default: the project's range\n"
+    "  --step        project frames per output frame (default 1)\n"
+    "  --offset      horizontal sub-pixel nudge of the camera centre, in pixels\n"
+    "  --supersample render at Nx the size and box-average down to --size, N in 1..16 (default 1)\n"
+    "  --metrics     print FRAME <i> sharpness <float> mean <float> per frame\n"
+    "  --require-gpu exit 4 unless GL_RENDERER looks like hardware (rejects llvmpipe,\n"
+    "                softpipe, swrast, software)\n";
 
 int fail(int aCode, const QString& aMessage) {
     std::fprintf(stderr, "render_probe: %s\n", aMessage.toUtf8().constData());
@@ -218,6 +229,8 @@ struct Options {
     int step = 1;
     float offset = 0.0f;
     bool metrics = false;
+    // refuse to run when the driver fell back to a software rasterizer (Xvfb's GLX is llvmpipe)
+    bool requireGpu = false;
     // render at supersample x supersample and box-average down: the ground truth for "is the 1x
     // render aliased", and a way to look at SSAA before paying for it in the viewport
     int supersample = 1;
@@ -271,6 +284,8 @@ namespace {
 class ProbeGL {
 public:
     gl::DeviceInfo mDeviceInfo;
+    // GL_RENDERER as reported by the driver; empty when the driver returns null
+    QString mRenderer;
     QScopedPointer<gl::VertexArrayObject> mDefaultVao;
 
     bool init(QApplication& aApp) {
@@ -303,6 +318,15 @@ public:
         gl::DeviceInfo::setInstance(&mDeviceInfo);
         const char* version = (const char*)mContext.functions()->glGetString(GL_VERSION);
         std::fprintf(stderr, "OpenGL: %s\n", version ? version : "(unknown)");
+        // Which driver we actually got: llvmpipe under Xvfb's GLX, radeonsi on the GPU. Printed
+        // unconditionally so a caller can tell the two apart without guessing.
+        const char* renderer = (const char*)mContext.functions()->glGetString(GL_RENDERER);
+        const char* vendor = (const char*)mContext.functions()->glGetString(GL_VENDOR);
+        mRenderer = QString::fromLatin1(renderer ? renderer : "");
+        std::fprintf(
+            stderr, "GL renderer: %s (vendor: %s, version: %s)\n",
+            renderer ? renderer : "(unknown)", vendor ? vendor : "(unknown)",
+            version ? version : "(unknown)");
         // a core profile has no default VAO; the viewport keeps one bound for its lifetime
         mDefaultVao.reset(new gl::VertexArrayObject());
         mDefaultVao->bind();
@@ -602,8 +626,8 @@ int main(int argc, char** argv) {
             if (!value(text)) return 2;
             bool ok = false;
             options.supersample = text.toInt(&ok);
-            if (!ok || options.supersample < 1 || options.supersample > 4) {
-                std::fprintf(stderr, "render_probe: --supersample must be 1..4\n");
+            if (!ok || options.supersample < 1 || options.supersample > 16) {
+                std::fprintf(stderr, "render_probe: --supersample must be 1..16\n");
                 return 2;
             }
         } else if (arg == QLatin1String("--zoom")) {
@@ -643,6 +667,8 @@ int main(int argc, char** argv) {
             options.offset = offset;
         } else if (arg == QLatin1String("--metrics")) {
             options.metrics = true;
+        } else if (arg == QLatin1String("--require-gpu")) {
+            options.requireGpu = true;
         } else if (arg == QLatin1String("--help") || arg == QLatin1String("-h")) {
             std::printf("%s", kUsage);
             return 0;
@@ -670,6 +696,18 @@ int main(int argc, char** argv) {
     ProbeGL probe;
     if (!probe.init(app))
         return 2;
+
+    if (options.requireGpu) {
+        // Xvfb's GLX is llvmpipe by construction; these markers cover the Mesa software
+        // rasterizers (llvmpipe/softpipe/swrast) and drivers that spell "software" out. A
+        // hardware renderer matches none of them.
+        static const char* const kSoftwareMarkers[] = {"llvmpipe", "softpipe", "swrast", "software"};
+        for (const char* marker : kSoftwareMarkers) {
+            if (probe.mRenderer.contains(QLatin1String(marker), Qt::CaseInsensitive)) {
+                return fail(4, QStringLiteral("--require-gpu: software renderer '%1'").arg(probe.mRenderer));
+            }
+        }
+    }
 
     const int result = runRender(probe, options);
 

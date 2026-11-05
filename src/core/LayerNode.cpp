@@ -197,6 +197,7 @@ double screenAreaPx(const RenderInfo& aInfo, const TimeKeyExpans& aExpans, const
     quad = clipToHalfPlane(quad, 1, maxY, false);
     return polygonAreaPx(quad);
 }
+
 } // namespace
 
 void LayerNode::render(const RenderInfo& aInfo, const TimeCacheAccessor& aAccessor) {
@@ -759,8 +760,12 @@ void LayerNode::renderLayer(const RenderInfo& aInfo, const TimeCacheAccessor& aA
         && (aInfo.maskPreview != nullptr || aInfo.maskPreviewKey != nullptr);
     const bool useLayerMask =
         !aInfo.isGrid && !previewingMask && maskData.isValid() && maskData.isPainted();
-    auto& shader = aInfo.isGrid ? mShaderHolder.gridShader()
-                                : mShaderHolder.shader(blendMode, isClippee, useHSV, useLayerMask);
+    // THE LAYER SAMPLE's footprint is the draw's own derivatives, unconditionally (see
+    // LayerDrawingFrag.glsl's sampleLayer): a mesh/FFD/bone deformation moves the pixels without
+    // moving the SRT, so there is no second, transform-fed variant left to choose between.
+    auto& shader = aInfo.isGrid
+        ? mShaderHolder.gridShader()
+        : mShaderHolder.shader(blendMode, isClippee, useHSV, useLayerMask);
 
     // update destination color
     XC_PTR_ASSERT(aInfo.destTexturizer);
@@ -808,22 +813,14 @@ void LayerNode::renderLayer(const RenderInfo& aInfo, const TimeCacheAccessor& aA
         shader.setUniformValue("uDestTexture", 1);
 
 
-        // THE LAYER SAMPLE's footprint and level, for LayerDrawingFrag.glsl's reconstructing read.
-        // From the TRANSFORM, not from derivatives: a derivative is per 2x2 quad and shifts with the
-        // sub-pixel phase, which would modulate the sharpness the reconstruction exists to keep
-        // constant. The bias is applied HERE, so the texture's own GL_TEXTURE_LOD_BIAS must stay 0
-        // (ImageKey sets it to 0 for this reason).
-        {
-            const QVector2D meshScale = expans.srt().scale();
-            const float screenScale = aInfo.camera.scale()
-                * std::max(std::fabs(meshScale.x()), std::fabs(meshScale.y()));
-            const float footprint = 1.0f / std::max(screenScale, 1e-4f);
-            shader.setUniformValue("uLayerFootprint", QVector2D(footprint, footprint));
-            shader.setUniformValue("uLayerLodBias", ImageKey::layerLodBias());
-            shader.setUniformValue(
-                "uLayerMaxLod", float(std::max(0, expans.areaTexture()->mipmapLevels() - 1))
-            );
-        }
+        // THE LAYER SAMPLE's level controls, for LayerDrawingFrag.glsl's two-tap read. The footprint
+        // itself comes from the shader's own derivatives, so nothing about the draw's geometry is
+        // passed here. The bias is applied in the shader, so the texture's own GL_TEXTURE_LOD_BIAS
+        // must stay 0 (ImageKey sets it to 0 for this reason).
+        shader.setUniformValue("uLayerLodBias", ImageKey::layerLodBias());
+        shader.setUniformValue(
+            "uLayerMaxLod", float(std::max(0, expans.areaTexture()->mipmapLevels() - 1))
+        );
 
         if (isClippee) {
             shader.setUniformValue("uClippingId", (int)aInfo.clippingId);

@@ -44,7 +44,10 @@ cmake --build build --config Debug -j"$(nproc)"
   know is a skip.
 - **While iterating, run the gate for the unit you touched**, not the suite; the suite is for the end
   of a coherent change. Focused gates are named after their source in `tests/`.
-- GL/Canvas gates need a display: `xvfb-run -a ./build/tests/Debug/<target>`.
+- GL/Canvas gates need a display: `xvfb-run -a ./build/tests/Debug/<target>` — but the display does
+  not decide the renderer (MEASURED 2026-11-03: Xvfb's client GL is radeonsi here). A gate that
+  measures pixels should run under `scripts/gui/gpu_headless.sh`, and a scripted comparison should
+  assert the renderer instead of trusting the display.
 - `AE_FRAMEBUFFER_DUMP=<prefix>` makes the viewport write its own **scene FBO** to `<prefix>-N.png`
 while that FBO is bound and just rendered — the reliable way to see what the application drew on a
 session this harness cannot screenshot. A timer cannot do it (no current context → black) and
@@ -70,10 +73,13 @@ font-database and pointer chatter buries your output.
 
 ## Driving the GUI headlessly
 
-**First choice: `scripts/gui/gpu_headless.sh -- <command>`** (cage + wlroots headless) — an Xwayland
-whose GL is the real GPU. **Xvfb is the fallback** and its GLX is llvmpipe by construction, so any
-pixel or timing taken there is software. Cage is a **kiosk**: the command must BE the presented client,
-there is no WM, and no keyboard focus. `grim` captures it.
+**Default: `scripts/gui/gpu_headless.sh -- <command>`** (cage + wlroots headless) — an Xwayland
+whose GL is the real GPU, and the choice for anything long or interactive. **Xvfb is the last resort
+for pixels or timing**: MEASURED 2026-11-03, its client GL is radeonsi here too, so software GL is a
+possibility, not a guarantee — the display does not decide the renderer. Use Xvfb ONLY when the
+answer cannot depend on filtering, pixels or timing, and never assume the renderer: assert it with
+`render_probe --require-gpu` in any scripted comparison. Cage is a **kiosk**: the command must BE the
+presented client, there is no WM, and no keyboard focus. `grim` captures it.
 
 For Xvfb, the app needs xcb and Wayland must be off:
 
@@ -87,6 +93,12 @@ Both lines matter. Declaring `DISPLAY=:77` alone does **not** help: Qt prefers W
 pinned: a session that sets `cosmic` makes a file dialog open through `xdg-desktop-portal` **on the
 live session** while the probe waits inside Xvfb for a dialog that is not there. Only a theme with no
 portal strings works (`generic`). Neither `QT_NO_XDG_DESKTOP_PORTAL=1` nor unsetting the theme helps.
+
+### Parallel runs stall the desktop
+
+A 12-way parallel pool of `render_probe` jobs hung the desktop: each allocates 16x-supersampled
+internal buffers, so twelve at once saturate the driver and the compositor. Cap the pool at 2-4,
+`nice` it, and prefer `gpu_headless` for anything long.
 
 **`scripts/gui/_lib.sh`** provides the sandbox: `wait_ready`, `ae_guard_display` (exits 97 unless an
 Xvfb serves the current display), `ae_memory_cap`, `ae_size_window`, `ae_press`, `ae_activate`,
@@ -152,7 +164,7 @@ Traps that have each cost a run:
 | `src/gl/`, `src/img/`, `src/util/` | GL wrappers, image/PSD I/O, helpers |
 | `tests/` | headless gates, one file each, registered in `tests/CMakeLists.txt` |
 | `scripts/gui/` | `_lib.sh`, `ae_ui.py`, `ae_pix.py`, `run_probes.sh`, `probe_*.sh`, `gpu_headless.sh` |
-| `tools/render_probe/` | headless deterministic renderer: `render_probe --project x.anie --out dir --size WxH --frames a..b [--zoom s] [--offset px] [--metrics]`. Drives `ctrl::Driver::renderGL`, the viewport's own path, with no window and no event loop; run under `xvfb-run` or `scripts/gui/gpu_headless.sh`. MEASURED: for a uniformly scaled layer the two are PIXEL-IDENTICAL (same frame, same size, `cmp` clean), so software GL is faithful there; use `gpu_headless` when the question involves anisotropic footprints (llvmpipe's anisotropy limit) or timing. Use it instead of live playback whenever a rendering question needs frames: a software-GL run drops animation frames, so the motion disappears |
+| `tools/render_probe/` | headless deterministic renderer: `render_probe --project x.anie --out dir --size WxH --frames a..b [--zoom s] [--offset px] [--metrics] [--require-gpu]`. Drives `ctrl::Driver::renderGL`, the viewport's own path, with no window and no event loop. **Default for any rendering, pixel or timing question: `scripts/gui/gpu_headless.sh -- <cmd>`**; `QT_QPA_PLATFORM=offscreen` is acceptable for pure logic/CLI runs but keep concurrent instances bounded. MEASURED 2026-11-03: offscreen, Xvfb and `gpu_headless` all report the same radeonsi renderer here, so the display does not decide the renderer. It prints `GL renderer: <renderer> (vendor, version)` and `--require-gpu` exits 4 on any software renderer (llvmpipe/softpipe/swrast/software): use it in every scripted comparison, never assume the renderer. MEASURED: for a uniformly scaled layer, GPU and software are PIXEL-IDENTICAL (same frame, same size, `cmp` clean); prefer `gpu_headless` for anisotropic footprints or timing. Use it instead of live playback whenever a rendering question needs frames: a software-GL run drops animation frames, so the motion disappears |
 | `tools/mip_compare/` | the mip-chain study harness: builds every level five ways and measures each against the exact premultiplied area average |
 
 ## Document and edit model
@@ -224,6 +236,14 @@ hand it over. Its one question is `Sampling`:
   its only effect was a mode that could leave parts of the surface unpainted.
 
 ## Rendering and hosts
+
+- **The layer sampler is explained, with its figure and its numbers, in
+  `docs/design/renderer/layer-sampling.md`**: the two-tap, one-level reconstruction (the level from the
+  footprint's minor axis, both taps splitting its major axis, eight fetches, no level blend) against the
+  hardware's trilinear read, what each does, the measured cost, and why neither is anisotropic (the mip
+  chain is isotropic by construction and the read uses `textureLod`, which bypasses the sampler's
+  anisotropy). The footprint is the draw's own Jacobian from screen derivatives, so it follows a
+  mesh/FFD/bone deformation the transform cannot see.
 
 - **The texture-residency plan lives in `docs/design/renderer/texture-residency.md`** - measured
   numbers, the density metric and its anisotropy gap, the pyramid-as-authoring-data decision, the

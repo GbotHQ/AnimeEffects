@@ -35,7 +35,10 @@ MeshTransformerResource& ShaderHolder::meshTransformerResource() {
 }
 
 gl::EasyShaderProgram& ShaderHolder::reserveShader(
-    img::BlendMode aBlendMode, bool aIsClippee, bool aUseHSV, bool aUseLayerMask
+    img::BlendMode aBlendMode,
+    bool aIsClippee,
+    bool aUseHSV,
+    bool aUseLayerMask
 ) {
     const int index = aBlendMode + img::BlendMode_TERM * (int)aIsClippee + img::BlendMode_TERM * 2 * (int)aUseHSV
         + img::BlendMode_TERM * 4 * (int)aUseLayerMask;
@@ -104,16 +107,25 @@ void ShaderHolder::reserveShaders(img::BlendMode aBlendMode) {
 }
 
 gl::EasyShaderProgram& ShaderHolder::shader(
-    img::BlendMode aBlendMode, bool aIsClippee, bool aUseHSV, bool aUseLayerMask
+    img::BlendMode aBlendMode,
+    bool aIsClippee,
+    bool aUseHSV,
+    bool aUseLayerMask
 ) {
     const int index = aBlendMode + img::BlendMode_TERM * (int)aIsClippee + img::BlendMode_TERM * 2 * (int)aUseHSV
         + img::BlendMode_TERM * 4 * (int)aUseLayerMask;
+    // the variant is built on demand rather than all at once
+    if (mShaders.at(index) == nullptr)
+        reserveShader(aBlendMode, aIsClippee, aUseHSV, aUseLayerMask);
     XC_PTR_ASSERT(mShaders.at(index));
     return *(mShaders.at(index));
 }
 
 const gl::EasyShaderProgram& ShaderHolder::shader(
-    img::BlendMode aBlendMode, bool aIsClippee, bool aUseHSV, bool aUseLayerMask
+    img::BlendMode aBlendMode,
+    bool aIsClippee,
+    bool aUseHSV,
+    bool aUseLayerMask
 ) const {
     const int index = aBlendMode + img::BlendMode_TERM * (int)aIsClippee + img::BlendMode_TERM * 2 * (int)aUseHSV
         + img::BlendMode_TERM * 4 * (int)aUseLayerMask;

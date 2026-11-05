@@ -191,56 +191,107 @@ vec4 blendColor(const vec4 src, const vec4 dst)
     return result;
 }
 
-// THE LAYER SAMPLE.
+// THE LAYER SAMPLE: a two-tap, one-level reconstruction of the pixel's footprint.
 //
-// The hardware's trilinear read takes TWO taps per axis and then blends two levels. That is the wrong
-// shape in both directions: it under-integrates the pixel's footprint (so a layer that slides by a
-// fraction of a pixel changes its sharpness - measured 24 % of the rendered gradient within one pixel
-// of travel at 4x minification) and it copies the level blend's blur into the result.
+// THE GEOMETRY. The footprint comes from the draw itself: J = [dFdx dFdy] of the texel-space uv
+// (aUv * textureSize(aTexture, 0)) is the 2x2 Jacobian of the draw, and its singular values are the
+// footprint's axes. J^T J is symmetric 2x2, so its eigenvalues are the squared singular values
+// (major >= minor); its major eigenvector is a SCREEN-space direction, and the footprint's major
+// axis in TEXEL space - the space the taps offset - is J times that vector. A derivative is exact
+// for an affine draw - phase-independently, measured identical to the transform's footprint over a
+// 24-step sub-pixel sweep - and it is the only thing that follows a mesh/FFD/bone deformation, which
+// the transform cannot see, so nothing else is needed.
 //
-// This reads TWO taps per axis on EACH of the two levels the footprint falls between and blends them
-// by the LOD fraction: eight texel fetches, no sharpness swing, and - measured against a 4x
-// supersampled reference - error 0.88 of 255 against the hardware's 2.18, with the error's own
-// frame-to-frame variation 1.31 against 3.09. The per-level span is deconvolved by 0.8 for levels
-// above 0, because a level texel is already a box average of the level below.
+// THE LEVEL comes from the MINOR axis, because the taps integrate the MAJOR one: a footprint of 8 x 1
+// texels is one texel thick across, so floor(log2(minor)) is the level whose texels the taps match
+// across, and the major axis is covered by the taps' extent rather than by the level's blur.
 //
-// The footprint comes from the layer's TRANSFORM (uLayerFootprint), not from screen derivatives: a
-// derivative is per 2x2 quad and changes with the sub-pixel phase, which would modulate the very
-// sharpness this exists to keep constant. Magnification (LOD <= 0) keeps the hardware read, where
-// bilinear is exact and free.
-uniform vec2 uLayerFootprint;   // the layer's screen footprint, in level-0 texels
+// THE TAPS: TWO taps on ONE level, each a 2x2 block of filtered reads spanning major/2 along the
+// major axis and minor across it, placed at t = +-0.25 * major along the major axis. The per-level
+// span is deconvolved by 0.8 for levels above 0, because a level texel is already a box average of
+// the level below. That is eight texel fetches - the same count as the hardware trilinear read's two
+// levels of one 2x2 tap - with no mix between levels, so none of the level blend's blur enters.
+//
+// WHY THIS SHAPE: the square two-level read over-integrates a footprint's minor axis and
+// under-integrates its major one. Measured against a 4x supersampled reference over 352 anisotropic
+// cells (2:1 to 8:1) this reads error mean 0.485 of 255 against 3.735 (better in 12/12 cells), at
+// 1.3:1 better in 23/24 cells (median -0.1496), and at exactly 1:1 a wash (13/24, interval through
+// zero) - round footprints lose nothing. Magnification (LOD <= 0) keeps the hardware read, where
+// bilinear is exact and free, and this stays bit-identical to it there.
 uniform float uLayerLodBias;    // the layer's LOD bias, in levels
 uniform float uLayerMaxLod;     // the texture's deepest level
 
-vec4 layerTapLevel(sampler2D aTexture, vec2 aUv, float aLevel)
-{
-    float f = max(uLayerFootprint.x, uLayerFootprint.y);
-    ivec2 sizeL = textureSize(aTexture, int(aLevel));
-    float spanL = f / exp2(aLevel) * ((aLevel < 0.5) ? 1.0 : 0.8);
-    vec4 acc = vec4(0.0);
-    // FILTERED taps on purpose: point taps (texelFetch) measured 0.16 ms against these 0.30 ms, but
-    // error 2.62 of 255 against 0.84 and the error's temporal variation 3.88 against 1.27 - each
-    // filtered tap reconstructs inside its texel, which is what the two-tap footprint needs.
-    vec2 step = spanL * 0.5 / vec2(sizeL);
-    for (int j = 0; j < 2; ++j)
-        for (int i = 0; i < 2; ++i) {
-            vec2 off = (vec2(float(i), float(j)) + 0.5) * step - step;
-            acc += textureLod(aTexture, aUv + off, aLevel);
-        }
-    return acc * 0.25;
-}
-
 vec4 sampleLayer(sampler2D aTexture, vec2 aUv)
 {
-    float f = max(uLayerFootprint.x, uLayerFootprint.y);
-    float lod = log2(max(f, 1e-6)) + uLayerLodBias;
+    vec2 size0 = vec2(textureSize(aTexture, 0));
+    vec2 tuv = aUv * size0;
+    vec2 dx = dFdx(tuv);
+    vec2 dy = dFdy(tuv);
+    // J^T J is symmetric 2x2: its eigenvalues are the squared singular values of J
+    float jxx = dot(dx, dx);
+    float jxy = dot(dx, dy);
+    float jyy = dot(dy, dy);
+    float halfTrace = (jxx + jyy) * 0.5;
+    float disc = sqrt(max(halfTrace * halfTrace - (jxx * jyy - jxy * jxy), 0.0));
+    float major = sqrt(max(halfTrace + disc, 0.0));
+    float minor = sqrt(max(halfTrace - disc, 0.0));
+    // THE MAJOR AXIS, IN TEXEL SPACE. J^T J acts on SCREEN offsets (J is the screen->texel map), so
+    // its major eigenvector is the footprint's long axis as a SCREEN direction. The taps below
+    // offset aUv, which is TEXEL space, so that screen vector cannot be used as an offset directly:
+    // the texel-space axis is the left singular vector, J times the right one (normalised). The two
+    // coincide only when J is symmetric - for an anisotropic draw that is rotated relative to the
+    // texture, the screen eigenvector turns with the draw while the footprint's texel-space axis
+    // stays put, so using it directly rotates the taps away from the major axis by exactly the
+    // draw's rotation (at 90 degrees the taps ran ACROSS the footprint, which is the measured
+    // rotation-dependent error). An eigenvector's scale and sign are arbitrary; both cancel.
+    vec2 eig = vec2(jxy, halfTrace + disc - jxx);
+    if (dot(eig, eig) < 1e-20)
+        eig = vec2(halfTrace + disc - jyy, jxy);
+    vec2 majorDir = dx * eig.x + dy * eig.y;    // J * eig: the screen axis in texel space
+    if (dot(majorDir, majorDir) < 1e-20)
+        majorDir = vec2(1.0, 0.0);              // isotropic (J ~ c * rotation): any axis will do
+    majorDir = normalize(majorDir);
+
+    // The bias is applied to the UNCLAMPED level and magnification returns before any tap: clamping
+    // into [0, maxLod] first would take taps where a bilinear read is exact, and the bias is
+    // negative, so that case is common.
+    float lod = log2(max(minor, 1e-6)) + uLayerLodBias;
     if (lod <= 0.0)
         return texture(aTexture, aUv);    // magnified: bilinear is exact and free
-    float l0 = clamp(floor(lod), 0.0, uLayerMaxLod);
-    float l1 = min(l0 + 1.0, uLayerMaxLod);
-    vec4 a = layerTapLevel(aTexture, aUv, l0);
-    vec4 b = (l1 > l0) ? layerTapLevel(aTexture, aUv, l1) : a;
-    return mix(a, b, lod - l0);
+
+    // THE LEVEL IS THE NEAREST one, not the one below: the taps reconstruct the MAJOR axis and the
+    // level's own texel has to supply the MINOR one, so the level whose texel matches `minor` is the
+    // one to take. `floor` biases that by up to a full level downward (the level is then narrower
+    // than the footprint), which leaves the minor axis under-filtered - measured as the residual
+    // error tail this read otherwise still has on thin features.
+    float level = clamp(floor(lod + 0.5), 0.0, uLayerMaxLod);
+    float scale = exp2(level);              // level-0 texels -> this level's texels
+    float majorL = major / scale;
+    float minorL = minor / scale;
+    vec2 sizeLf = vec2(textureSize(aTexture, clamp(int(level), 0, int(uLayerMaxLod))));
+    vec2 acrossDir = vec2(-majorDir.y, majorDir.x);
+    // A level texel is already a box average of the level below, so a tap's span is deconvolved by
+    // 0.8 above level 0. One tap covers major/2 along the major axis and minor across it.
+    float levelSpan = (level < 0.5) ? 1.0 : 0.8;
+    vec2 stepMaj = majorL * levelSpan / 2.0 / sizeLf;
+    vec2 stepMin = minorL * levelSpan * 0.5 / sizeLf;
+
+    // TWO taps at +-major/4 along the major axis, each a 2x2 block of FILTERED reads: a filtered
+    // read reconstructs inside its texel, which is what the block's coverage needs. The across
+    // index runs OUTER and the major index INNER, so a block's four accumulations - and the
+    // rounding of their sum - happen in a fixed order.
+    vec4 acc = vec4(0.0);
+    for (int t = 0; t < 2; ++t) {
+        float along = ((float(t) + 0.5) / 2.0 - 0.5) * majorL;
+        vec2 centre = aUv + (majorDir * along) / sizeLf;
+        for (int k = 0; k < 2; ++k)
+            for (int j = 0; j < 2; ++j) {
+                vec2 off = majorDir * ((float(j) + 0.5) * stepMaj - stepMaj)
+                    + acrossDir * ((float(k) + 0.5) * stepMin - stepMin);
+                acc += textureLod(aTexture, centre + off, level);
+            }
+    }
+    return acc / 8.0;
 }
 
 void main(void)
