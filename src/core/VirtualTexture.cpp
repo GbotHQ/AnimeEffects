@@ -701,6 +701,14 @@ enum DemandKind {
     DemandKind_MaskScreen = 2,
 };
 
+/// AE_VT_VERIFY_PAGES' mode, read once: "table" checks the GPU page table against its CPU mirror,
+/// anything else also compares every resident page's slot with the page's own bytes (slow - it
+/// stalls per page, which changes the frame's timing; see the design doc's first open item).
+const QByteArray& verifyMode() {
+    static const QByteArray mode = qgetenv("AE_VT_VERIFY_PAGES");
+    return mode;
+}
+
 /// THE FRAME'S DEMAND BOOKKEEPING: one mark is one layer's triangles walked by the demand
 /// geometry shader; one replay is a signature repeat that walks nothing (see markDemand). Both
 /// reset in beginFrame, so the pair reads as "how did this frame get its demand" - what
@@ -769,6 +777,10 @@ void VirtualTexture::endFrame() {
         return;
     DemandMap::instance().issue();
     gl::PagePool::instance().endFrame();
+    // AFTER the frame: the pool's slots were sampled by the draws just recorded, so this is the
+    // state a wrong-content read would have read (AE_VT_VERIFY_PAGES; a no-op without it).
+    for (VirtualTexture* resource : registry())
+        resource->debugVerifyPages();
     if (qEnvironmentVariableIsSet("AE_VT_STATS")) {
         int wanted = 0, resident = 0;
         for (VirtualTexture* resource : registry()) {
@@ -1185,6 +1197,110 @@ void VirtualTexture::consumeDemand() {
     }
     if (!marked.empty())
         mLastMarked.swap(marked);
+}
+
+void VirtualTexture::debugVerifyPages() {
+    const QByteArray& mode = verifyMode();
+    if (mode.isEmpty() || mActivePages.empty())
+        return;
+    auto& ggl = gl::Global::functions();
+    auto& pool = gl::PagePool::instance();
+
+    // THE TABLE FIRST (cheap): what the shader actually reads, entry by entry, against the CPU
+    // mirror the upload wrote. A page whose SLOT is right but whose TABLE entry names another
+    // page's slot is the "displaced content" class, and the slot comparison below cannot see it.
+    if (mTable.id() != 0) {
+        std::vector<quint16> tableBytes((size_t)mTableWidth * mTableRows, 0);
+        GLint prevRead = 0;
+        GLuint fbo = 0;
+        ggl.glGetIntegerv(GL_READ_FRAMEBUFFER_BINDING, &prevRead);
+        ggl.glGenFramebuffers(1, &fbo);
+        ggl.glBindFramebuffer(GL_READ_FRAMEBUFFER, fbo);
+        ggl.glFramebufferTexture2D(
+            GL_READ_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, mTable.id(), 0
+        );
+        ggl.glPixelStorei(GL_PACK_ALIGNMENT, 2);
+        ggl.glReadPixels(
+            0, 0, mTableWidth, mTableRows, GL_RED_INTEGER, GL_UNSIGNED_SHORT, tableBytes.data()
+        );
+        ggl.glBindFramebuffer(GL_READ_FRAMEBUFFER, (GLuint)prevRead);
+        ggl.glDeleteFramebuffers(1, &fbo);
+        int badEntries = 0;
+        for (int index = 0; index < (int)mEntries.size(); ++index) {
+            if (tableBytes[(size_t)index] == mEntries[(size_t)index])
+                continue;
+            ++badEntries;
+            if (badEntries <= 4) {
+                int px = 0, py = 0;
+                const int level = levelOfIndex(index, &px, &py);
+                qWarning(
+                    "VTPAGETABLE owner=%p res=%dx%d mask=%d level=%d page=(%d,%d) gpu=%u cpu=%u",
+                    (void*)this, mSize.width(), mSize.height(), isMask() ? 1 : 0, level, px, py,
+                    (unsigned)tableBytes[(size_t)index], (unsigned)mEntries[(size_t)index]
+                );
+            }
+        }
+        if (badEntries > 0)
+            qWarning("VTPAGETABLE owner=%p entries=%d", (void*)this, badEntries);
+    }
+    if (mode == "table")
+        return;
+    const size_t pageBytes =
+        (size_t)gl::PagePool::kPitch * gl::PagePool::kPitch * (size_t)bytesPerTexel();
+    std::vector<uint8> slotBytes(pageBytes);
+    std::vector<uint8> own(pageBytes);
+    const auto hashOf = [](const uint8* aData, size_t aCount) {
+        quint64 h = 1469598103934665603ull;
+        for (size_t i = 0; i < aCount; ++i) {
+            h ^= aData[i];
+            h *= 1099511628211ull;
+        }
+        return h;
+    };
+    // every wanted page's own bytes, hashed once: a mismatching slot is then matched to the page
+    // whose upload it actually holds
+    std::vector<quint64> ownHash(mActivePages.size(), 0);
+    for (size_t i = 0; i < mActivePages.size(); ++i) {
+        int px = 0, py = 0;
+        const int level = levelOfIndex((int)mActivePages[i], &px, &py);
+        fillPageBuffer(level, px, py);
+        ownHash[i] = hashOf(mPageBuffer.data(), pageBytes);
+    }
+    for (size_t i = 0; i < mActivePages.size(); ++i) {
+        int px = 0, py = 0;
+        const int level = levelOfIndex((int)mActivePages[i], &px, &py);
+        gl::PagePool::Slot slot;
+        if (!pool.find(pageId(level, px, py), &slot))
+            continue;
+        if (!pool.readSlot(slot, slotBytes.data()))
+            continue;
+        fillPageBuffer(level, px, py);
+        std::memcpy(own.data(), mPageBuffer.data(), pageBytes);
+        int bad = 0, maxDelta = 0;
+        for (size_t b = 0; b < pageBytes; ++b) {
+            const int d = std::abs((int)own[b] - (int)slotBytes[b]);
+            if (d > 0)
+                ++bad;
+            if (d > maxDelta)
+                maxDelta = d;
+        }
+        if (bad == 0)
+            continue;
+        const quint64 slotHash = hashOf(slotBytes.data(), pageBytes);
+        int mate = -1;
+        for (size_t j = 0; j < ownHash.size(); ++j) {
+            if (j != i && ownHash[j] == slotHash) {
+                mate = (int)j;
+                break;
+            }
+        }
+        qWarning(
+            "VTPAGEBAD owner=%p res=%dx%d mask=%d level=%d page=(%d,%d) slot=a%d/%d "
+            "mismatch=%d max=%d holdsPage=%d",
+            (void*)this, mSize.width(), mSize.height(), isMask() ? 1 : 0, level, px, py,
+            slot.atlas, slot.slot, bad, maxDelta, mate
+        );
+    }
 }
 
 void VirtualTexture::resolveDemand() {

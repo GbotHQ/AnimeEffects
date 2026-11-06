@@ -281,8 +281,10 @@ hand it over. Its one question is `Sampling`:
   prints `marks=`/`replays=`, and `AE_VT_DEMAND=nodraw` measures the pass's setup against its
   geometry (measured: the geometry). `render_probe --repeat <n> --pan <px>` is the still-view and
   camera-navigation instrument (each repaint's PNG is written as `frame-<f>-r<i>.png`), and it is
-  how the **page-content defect while the pool fills** was found (a page reading another page's
-  texels, landing-order dependent) - see the doc's first open item.
+  how the **timing-sensitive wrong read** at a panned camera was found - see the doc's first open
+  item. `AE_VT_VERIFY_PAGES=table` checks the GPU page table against its CPU mirror and
+  `AE_VT_VERIFY_PAGES=1` adds a per-page slot comparison (slow: its stalls hide the defect, which
+  is the clue).
   Two sampling rules, each found as a whole-frame residual first: **the always-resident coarse tier
   takes the same two-tap reconstruction as the full path** (one bilinear tap there cost 816 px over
   8/255 on nene), and **the `lod <= 0` branch reads `textureLod(..., 0)` on BOTH paths, never

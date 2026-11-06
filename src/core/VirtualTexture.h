@@ -233,6 +233,9 @@ private:
     void resolveDemand();
     void flushTable();
     void consumeDemand();
+    /// AE_VT_VERIFY_PAGES: reads every wanted page's slot back and compares it with the page's
+    /// own bytes (a diagnostic - see the definition).
+    void debugVerifyPages();
     /// Re-stamps the pages the last consumed copy marked as wanted this frame (see markDemand).
     void replayDemand();
     /// Stores `aSignature` and reports whether it repeats the last mark's (and so can be replayed).

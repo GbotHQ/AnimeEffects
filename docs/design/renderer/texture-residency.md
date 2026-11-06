@@ -1117,6 +1117,9 @@ filter lane's field. For a paged matte that is field + levels; for a forced-full
 | `AE_VT_DEMAND=0` | diagnostic: skip the demand pass and its readback (every paged layer samples the coarse chain through the VT shader) - the control for "is the cost the shader or the demand machinery" |
 | `AE_VT_DEMAND=nodraw` | diagnostic: keep the pass's state changes, uniforms and per-layer buffer uploads and skip only the draw - the control for "is the cost the setup or the geometry" (measured: the geometry) |
 | `AE_VT_STATS=1` also prints `marks=` and `replays=` | how the frame got its demand: a mark is one layer's triangles walked, a replay is a signature repeat that walked nothing |
+| `AE_VT_VERIFY_PAGES=table` | diagnostic: reads every resource's page table back and compares it with the CPU mirror, entry by entry (cheap; the open list's first item) |
+| `AE_VT_VERIFY_PAGES=1` | the same plus every resident page's slot against the page's own bytes; SLOW (a readback per page), and it changes the frame's timing enough to hide that open item |
+| `AE_VT_PAGE_HASH=1` | diagnostic: hashes each level-0+ page's fill against the pyramid's own bytes (the source side of the upload) |
 
 `AE_FRAME_STATS`'s line gains `vt_pages`, `vt_bytes`, `vt_up`, `vt_evict`.
 
@@ -1263,24 +1266,29 @@ filter lane's field. For a paged matte that is field + levels; for a forced-full
   level-1 view wants **20 pages instead of 6** and the frame differs by **max 28 over 75,904 of
   409,600 samples**.
 
-- **A panned camera exposed a page reading ANOTHER page's texels while the pool fills**
-  (pre-existing; found while testing whether a pan could replay). On nene at the 640x640 fit view
-  the paged frame against the full-resolution control is **max 1 of 255** at the default centre and
-  **max 223 over ~300 pixels** at `--offset 280` - a strip that shows artwork from elsewhere in the
-  layer. Three discriminators:
-  - a **fully coarse** frame (`AE_VT_DEMAND=0`) at the same camera is only **max 73** from the
-    control, so the strip is NOT the coarse fallback: the frame reads a RESIDENT page whose texels
-    are not the right ones;
-  - re-marking the same camera from a cold demand with `AE_VT_UPLOAD_MB=1 --repeat 40` (every page
-    still lands, just over 40 frames) is **max 1 over 169 px** - the same numbers as the frame that
-    replayed the fit view's pages. So the defect follows the **landing sequence**, not the camera;
-  - a synthetic clipped pair swept over 8 camera positions is **bit-identical** to its control, so
-    the clipper path is not the mechanism (in that fixture at least).
+- **A panned camera exposed a TIMING-SENSITIVE wrong read** (pre-existing; found while testing
+  whether a pan could replay). On nene at the 640x640 fit view the paged frame against the
+  full-resolution control is **max 1 of 255** at the default centre and **max 223-238 over
+  ~200-470 pixels** at `--offset 280`, in a 16x27 strip. Within a run the frame is STABLE (repaints
+  4..19 are bit-identical); the strip's CONTENT differs between runs (**max 201** between two), so
+  it depends on how and when the pages landed. What is ruled out, each by measurement:
+  - **not the coarse fallback**: a fully coarse frame (`AE_VT_DEMAND=0`) at the same camera is
+    **max 73** from the control, so the strip reads a RESIDENT page - it is sharp and wrong;
+  - **not the page table**: `AE_VT_VERIFY_PAGES=table` compares the GPU table against the CPU
+    mirror entry by entry; with it on the defect still measures **max 223** and every entry
+    matches;
+  - **not the camera**: the same camera is clean when the pages are forced to land slowly
+    (`AE_VT_UPLOAD_MB=1 --repeat 40`: max 1).
 
-  A slot reused, or written twice, while another resource's table still names it fits all three:
-  this is a pool bookkeeping defect, not a demand-completeness one. Every parity measurement in
-  this document lands pages with the default 8 MB cap at the fit view, which is why the gates never
-  saw it. The open list's first item names the gate that would.
+  The STRONGEST CLUE is that the *diagnostics* hide it: with `AE_VT_PAGE_HASH=1` (CPU only, no GL
+  readback) or the full `AE_VT_VERIFY_PAGES` (per-page GPU readbacks) the same frame measures
+  **max 1**, three times out of three, while five plain runs all show it. Both slow the frame down,
+  so the next suspect is whatever the frame's duration feeds: the demand map's **fenced readback**
+  (its `consume(false)` non-blocking wait is the one place where a slower frame changes WHICH pages
+  have landed by the time a frame is drawn) - and, through it, which SLOT a page lands in. The one
+  check that could not be run on a *defective* frame is the slot-content comparison (it is the slow
+  one), so "the slot holds its own page's texels" is still unproven for the failing case. This is
+  the open list's first item.
 - **Still-view cost** (nene, 640x640, 130 layers, `--frames 6..6 --repeat 8`, `AE_VT_STATS`): the
   eight renders are one still frame repainted, which is what a pointer over the canvas asks for.
   The first marks **107** resources and costs 165 ms (it also lands the first 8 MB of pages); the
@@ -1395,17 +1403,16 @@ filter lane's field. For a paged matte that is field + levels; for a forced-full
 
 ### Open, in priority order
 
-1. **A page can read another page's texels while the pool fills** (see Measured: **max 223** over
-   ~300 px at `--offset 280` on nene, where the coarse fallback is only 73 away and a slow landing
-   is **max 1**). This is the most serious open item - wrong CONTENT, not blur, and it predates the
-   replay work. The gate that would catch it is a **landing-order** gate, not a camera sweep:
-   render one frame to a settled state twice, with different `AE_VT_UPLOAD_MB` (8 and 1), and
-   require the two settled frames to be bit-identical. The nene renders already separate (223
-   against 1), so the gate has power. Suspects, in order: a slot handed out twice (a free-list push
-   that should not happen); a table rebuilt from an entry list naming a slot the pool already
-   reused; and `PagePool::cancel`, which finds its entry BY SLOT, so a stale slot number could
-   cancel someone else's page. Instrumented slot/table dumps over one landing sequence would name
-   it quickly.
+1. **The timing-sensitive wrong read at a panned camera** (see Measured: max 223-238 in a strip;
+   max 1 with either slow diagnostic; max 73 for a fully coarse frame; the page table verified
+   entry by entry). Wrong CONTENT, not blur, and it predates the replay work. The gate it needs
+   is TIMING-INDEPENDENT by construction: settle the same frame in two ways (two trees, or a
+   purge and re-settle with a different upload cap) and require the two settled frames to be
+   bit-identical - two plain runs already differ by **max 201**, so such a gate separates today.
+   Next instruments, in order: (a) a slot-content check that does not stall - verify ONE page per
+   frame, or verify only the first frame - so the slow check can run on a defective frame;
+   (b) a debug shader variation that outputs `(level, page, table entry)` as colour, which names
+   the wrong read in a single run.
 2. The demand pass on the frames that still re-mark: after the replay, any **camera move** and
    **playback** (a new time frame re-skins, so the revision moves) walk all 107 resources on nene.
    That is **5.7-11.1 ms** a frame across the steady frames of two runs - 6-11 % of the 97-102 ms
