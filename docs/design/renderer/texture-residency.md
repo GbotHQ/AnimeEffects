@@ -1224,6 +1224,11 @@ filter lane's field. For a paged matte that is field + levels; for a forced-full
   a fixed 61 MB; that floor is the price of the scheme on projects whose whole texture set is
   smaller than one atlas. A 2048 first atlas was built and measured and is not the answer: 57
   pages then needed a second 4096 atlas for 8 pages, 77 MB against 61 MB.
+  RE-CONFIRMED 2026-11-06 after the folder-matte change, with `render_probe` on the same project
+  (640x640 fit view, frames 0..5, `AE_VIRTUAL_TEXTURE=0` as the control): frames 2-5 are
+  **bit-identical** (0 px differ), frame 1 is max 1 / mean 0.0025, and frame 0 is max 176 / mean
+  5.70 over 79,142 px - the first frame's coarse transient, which the viewport's two-frame lag
+  predicts and which the export's synchronous preparse exists to avoid.
 - **Masks** (`MA1`): a 900x700 layer mask on a *paged* layer matches the full-resolution control
   within 1/255 (mean 0.047), and the mask is proven active (its hidden half is empty, its revealed
   half covered). The mask's cost is its R8 chain: 900x700 = 839,797 B, **4096x4096 = 22,369,621 B
