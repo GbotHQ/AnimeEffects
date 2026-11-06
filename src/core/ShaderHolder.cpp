@@ -71,6 +71,12 @@ gl::EasyShaderProgram& ShaderHolder::reserveShader(
         source.setVariationValue("LAYER_MASK", aUseLayerMask ? "1" : "0");
         source.setVariationValue("VIRTUAL_TEXTURE", aVirtualTexture ? "1" : "0");
         source.setVariationValue("MASK_VIRTUAL_TEXTURE", aMaskVirtualTexture ? "1" : "0");
+        // AE_VT_MISS_MAGENTA: a DIAGNOSTIC variation (see VT_MISS_DEBUG in LayerDrawingFrag.glsl
+        // and samplePage's fallback): the page miss returns magenta instead of the coarse chain,
+        // so "which pixels did not find their page" is a picture instead of a readback.
+        source.setVariationValue(
+            "VT_MISS_DEBUG", qEnvironmentVariableIsSet("AE_VT_MISS_MAGENTA") ? "1" : "0"
+        );
 
         // The layer texture (LayerNode's uTexture) is stored alpha-premultiplied: it is the
         // mipmapped artwork texture built in ImageKey (see img::Util::makeTextureUpload), and

@@ -169,6 +169,14 @@ public:
     /// gate. Binds the atlas, which is otherwise never left bound by the pool.
     bool readSlot(const Slot& aSlot, uint8* aDst) const;
 
+    /// Every resident page with the slot it holds, for a diagnostic that must ask whether TWO
+    /// owners agree about who lives in a slot (see VirtualTexture::debugVerifyPages).
+    struct Resident {
+        PageId page;
+        Slot slot;
+    };
+    std::vector<Resident> residentList() const;
+
     void setBudgetBytes(qint64 aBytes);
     qint64 budgetBytes() const { return mBudgetBytes; }
 

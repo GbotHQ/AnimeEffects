@@ -92,6 +92,11 @@ float BlendSat(vec3 c) { return max(c.r, max(c.g, c.b)) - min(c.r, min(c.g, c.b)
 // 1: the layer's MATTE is paged too (mask page stack on units 10..15). Only meaningful with
 // LAYER_MASK and VIRTUAL_TEXTURE; see LayerSampling.glsl's sampleMask.
 #variation MASK_VIRTUAL_TEXTURE 0
+// 1: A DIAGNOSTIC, not a behaviour: the paged read's COARSE FALLBACK returns an unmistakable
+// colour instead of the coarse chain, so a frame can be asked "which pixels did not find their
+// page" by looking at it (AE_VT_MISS_MAGENTA). Undefined in every other program that includes
+// LayerSampling.glsl, where the preprocessor reads it as 0.
+#variation VT_MISS_DEBUG 0
 
 uniform vec4 uColor;
 uniform sampler2D uTexture;

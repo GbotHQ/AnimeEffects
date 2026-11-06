@@ -104,6 +104,7 @@
 #include "core/LayerNode.h"
 #include "core/RenderInfo.h"
 #include "core/TimeInfo.h"
+#include "core/VirtualTexture.h"
 #include "ctrl/Driver.h"
 #include "ctrl/DriverResources.h"
 #include "ctrl/GraphicStyle.h"
@@ -747,6 +748,10 @@ int runRender(ProbeGL& aProbe, const Options& aOptions) {
         previous = std::move(pixels);
         ++written;
     }
+
+    // AE_VT_VERIFY_PAGES=end: the page-slot check, run AFTER the last frame with nothing in
+    // flight, so it cannot re-time the landing it is asked about. A no-op for every other mode.
+    core::VirtualTexture::debugVerifyAfterRun();
 
     std::fprintf(
         stderr, "render_probe: wrote %d frame(s) at %dx%d (%s) to %s\n", written,

@@ -282,9 +282,21 @@ hand it over. Its one question is `Sampling`:
   geometry (measured: the geometry). `render_probe --repeat <n> --pan <px>` is the still-view and
   camera-navigation instrument (each repaint's PNG is written as `frame-<f>-r<i>.png`), and it is
   how the **timing-sensitive wrong read** at a panned camera was found - see the doc's first open
-  item. `AE_VT_VERIFY_PAGES=table` checks the GPU page table against its CPU mirror and
-  `AE_VT_VERIFY_PAGES=1` adds a per-page slot comparison (slow: its stalls hide the defect, which
-  is the clue).
+  item, and note what that item now measures: the defect is a **composite** one, not a page one.
+  On a DEFECTIVE frame `AE_VT_VERIFY_PAGES=end` reports every slot holding its own page's bytes,
+  the table equal to the CPU mirror, the mirror equal to the pool, and `AE_VT_DUMP_PAGES=1` prints
+  the same page->slot layout on two defective runs (114 lines, diff 0); the defect also survives
+  `AE_VT_DEMAND=0` (no page read at all) and `AE_VT_COARSE=64`, and the full-resolution control is
+  bit-identical across runs while both VT modes are not. `AE_VT_VERIFY_PAGES=end` is the form that
+  works there: it runs the slot check once AFTER the last frame, so its readbacks cannot re-time
+  the frame it is asked about (the in-frame `=1` does, and a change as small as a shader source
+  line can flip a run clean - the defect is perturbed by almost anything, so never conclude
+  "clean" from a single instrumented run). `AE_VT_MISS_MAGENTA=1` paints the coarse fallback
+  magenta and `AE_VT_ATLAS_SENTINEL=1` fills a fresh atlas magenta - two pictures that rule the
+  "no page found" and "unwritten texel" classes in or out without a readback. The suspected
+  mechanism by inspection, not yet proven: `DestinationTexturizer::update` copies the scene
+  through the layer's mesh with the PREVIOUS draw's `GL_BLEND` still enabled, and only for
+  `blendMode != Normal`, although `blendColor` reads the destination for every layer.
   Two sampling rules, each found as a whole-frame residual first: **the always-resident coarse tier
   takes the same two-tap reconstruction as the full path** (one bilinear tap there cost 816 px over
   8/255 on nene), and **the `lod <= 0` branch reads `textureLod(..., 0)` on BOTH paths, never

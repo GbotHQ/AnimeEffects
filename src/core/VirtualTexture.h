@@ -220,6 +220,12 @@ public:
     static int demandMarks();
     static int demandReplays();
 
+    /// AE_VT_VERIFY_PAGES=end: runs the slot comparison ONCE, after every frame has been drawn,
+    /// with no frame in flight to perturb (see the definition). The per-frame form stalls the
+    /// pipeline, which re-times the page landing that the check is asked about. Call it with the
+    /// GL context current, after the last frame; it is a no-op for every other mode.
+    static void debugVerifyAfterRun();
+
 private:
     // gl::PagePool::Listener
     void pageEvicted(const gl::PagePool::PageId& aPage) override;

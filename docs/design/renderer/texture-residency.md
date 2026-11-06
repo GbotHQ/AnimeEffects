@@ -1118,7 +1118,11 @@ filter lane's field. For a paged matte that is field + levels; for a forced-full
 | `AE_VT_DEMAND=nodraw` | diagnostic: keep the pass's state changes, uniforms and per-layer buffer uploads and skip only the draw - the control for "is the cost the setup or the geometry" (measured: the geometry) |
 | `AE_VT_STATS=1` also prints `marks=` and `replays=` | how the frame got its demand: a mark is one layer's triangles walked, a replay is a signature repeat that walked nothing |
 | `AE_VT_VERIFY_PAGES=table` | diagnostic: reads every resource's page table back and compares it with the CPU mirror, entry by entry (cheap; the open list's first item) |
-| `AE_VT_VERIFY_PAGES=1` | the same plus every resident page's slot against the page's own bytes; SLOW (a readback per page), and it changes the frame's timing enough to hide that open item |
+| `AE_VT_VERIFY_PAGES=1` | the same plus every resident page's slot against the page's own bytes, and the entries against the pool; SLOW (a readback per page), inside the frame |
+| `AE_VT_VERIFY_PAGES=end` | the slot + entry-vs-pool comparison **once, after the last frame**, with nothing in flight - the form that can run on a defective frame. Prints `VTPAGECHECK ... checked= bad= mirrorBad=` per resource |
+| `AE_VT_DUMP_PAGES=1` | with `=end`: the final frame's page->slot layout, one `VTPAGEMAP` line per page (114 on nene). Two runs of one command are supposed to print the same lines |
+| `AE_VT_MISS_MAGENTA=1` | diagnostic: the paged read's coarse fallback returns MAGENTA (no table entry) or CYAN (an entry that names nothing usable) instead of the coarse chain - "which pixels did not find their page" as a picture, with no readback and no stall |
+| `AE_VT_ATLAS_SENTINEL=1` | diagnostic: every new atlas is filled with MAGENTA, so a read of a texel no page upload wrote is unmistakable (`glTexImage2D` from a sentinel buffer, one upload per atlas) |
 | `AE_VT_PAGE_HASH=1` | diagnostic: hashes each level-0+ page's fill against the pyramid's own bytes (the source side of the upload) |
 
 `AE_FRAME_STATS`'s line gains `vt_pages`, `vt_bytes`, `vt_up`, `vt_evict`.
@@ -1268,27 +1272,73 @@ filter lane's field. For a paged matte that is field + levels; for a forced-full
 
 - **A panned camera exposed a TIMING-SENSITIVE wrong read** (pre-existing; found while testing
   whether a pan could replay). On nene at the 640x640 fit view the paged frame against the
-  full-resolution control is **max 1 of 255** at the default centre and **max 223-238 over
-  ~200-470 pixels** at `--offset 280`, in a 16x27 strip. Within a run the frame is STABLE (repaints
-  4..19 are bit-identical); the strip's CONTENT differs between runs (**max 201** between two), so
-  it depends on how and when the pages landed. What is ruled out, each by measurement:
-  - **not the coarse fallback**: a fully coarse frame (`AE_VT_DEMAND=0`) at the same camera is
-    **max 73** from the control, so the strip reads a RESIDENT page - it is sharp and wrong;
-  - **not the page table**: `AE_VT_VERIFY_PAGES=table` compares the GPU table against the CPU
-    mirror entry by entry; with it on the defect still measures **max 223** and every entry
-    matches;
-  - **not the camera**: the same camera is clean when the pages are forced to land slowly
-    (`AE_VT_UPLOAD_MB=1 --repeat 40`: max 1).
+  full-resolution control is **max 1 of 255** at the default centre and **max 223-238** at
+  `--offset 280`, over 296-463 samples in an **18x69 strip** at x 532..549, y 84..152 (the earlier
+  16x27 note measured a subset of the same strip). Within a run the frame is STABLE (repaints 4..7
+  bit-identical); between runs the strip's CONTENT differs. It is a **composite** difference, not a
+  sampling one: the control draws a grey ring and blade there, the paged frame draws the **pink
+  layer behind them** - the grey object's coverage is missing or diluted, and how much of it is
+  missing differs per run.
 
-  The STRONGEST CLUE is that the *diagnostics* hide it: with `AE_VT_PAGE_HASH=1` (CPU only, no GL
-  readback) or the full `AE_VT_VERIFY_PAGES` (per-page GPU readbacks) the same frame measures
-  **max 1**, three times out of three, while five plain runs all show it. Both slow the frame down,
-  so the next suspect is whatever the frame's duration feeds: the demand map's **fenced readback**
-  (its `consume(false)` non-blocking wait is the one place where a slower frame changes WHICH pages
-  have landed by the time a frame is drawn) - and, through it, which SLOT a page lands in. The one
-  check that could not be run on a *defective* frame is the slot-content comparison (it is the slow
-  one), so "the slot holds its own page's texels" is still unproven for the failing case. This is
-  the open list's first item.
+  **THE SHAPE OF THE FAILURE IS "ONE CLEAN STATE, A FAMILY OF WRONG ONES."** Ten runs of the same
+  command were compared pixel for pixel:
+
+  | runs | vs the control | vs each other |
+  |---|---|---|
+  | `AE_VIRTUAL_TEXTURE=0` (control) x3 | - | **0 samples** (bit-identical) |
+  | clean paged x4 (`AE_VT_UPLOAD_MB=999`, `AE_VT_ATLAS_SENTINEL`, x2, `AE_VT_MISS_MAGENTA`) | max 1 | **0 samples** (bit-identical with each other) |
+  | defective paged x6 (plain, x2; `=end` dump, x2; `UPLOAD_MB=999`; sentinel) | max 223-238 | **82-294 samples differ**, all inside the strip |
+
+  So the correct frame is reproducible to the pixel and the wrong ones are not even equal to each
+  other. Everything else in every frame is identical across all ten runs.
+
+  Ruled out ON A DEFECTIVE FRAME, each by a measurement:
+  - **not the page table**: `AE_VT_VERIFY_PAGES=table` compares the GPU table with the CPU mirror
+    entry by entry; the defect still measures max 223 and every entry matches;
+  - **not the slot contents**: `AE_VT_VERIFY_PAGES=end` (the slot comparison, moved out of the frame
+    so its stalls cannot re-time anything - it runs once after the last draw) reports, for all 15
+    paged resources, `checked == wanted` **114 of 114 pages, bad=0, max=0** on a defective run: every
+    slot holds the bytes its own page's fill produces;
+  - **not the entries against the pool**: the same run's `mirrorBad=0` (the table's entry for each
+    page names the slot the pool really maps), so the table, the CPU mirror and the pool agree;
+  - **not the layout**: `AE_VT_DUMP_PAGES=1` prints the page->slot layout of the final frame (114
+    lines). Two defective runs print **identical** layouts (0 differing lines) and still differ
+    from each other by 107 samples inside the strip, so which page sits in which slot is not the
+    variable;
+  - **not unwritten atlas memory**: `AE_VT_ATLAS_SENTINEL=1` creates each atlas filled with MAGENTA,
+    so any read of a texel no page upload wrote is unmistakable. A defective run with the sentinel
+    measures max 223 at the strip and contains **0 magenta pixels**, anywhere;
+  - **not the tier**: `AE_VT_DEMAND=0` - no page uploaded at all, every paged level on the coarse
+    chain - is **also nondeterministic**: three runs differ from each other by 100-113 samples
+    (max 129-175), **all inside the strip**, and sit 223 from the control at the strip (the 23,232
+    samples of 1-2 units elsewhere are the coarse tier's designed one-level blur);
+  - **not the page depth**: with `AE_VT_COARSE=64` (deeper paged levels, so the strip's pixels read
+    pages instead of the coarse chain) two runs still differ by **182 samples, max 223**, while the
+    frame is max 1 from the control - the nondeterminism follows the PIXELS, not the tier.
+  - **not Layer 6**: `--only-layer '=Layer 6'` (the layer the coarse-tier measurement used) is
+    **bit-identical** to its control, so the strip needs the rest of the composite.
+
+  Two of the earlier claims were wrong and are struck out here: a fully coarse frame is **not**
+  "max 73 from the control" at this camera (that number was measured at the default centre; at
+  `--offset 280` it is 223), so "the strip reads a resident page - sharp and wrong" does not follow;
+  and the *diagnostics* do not "hide it because they are slow" - a change as small as a shader
+  source line (`AE_VT_MISS_MAGENTA`, which changes no behaviour where it is not taken) turned five
+  plain runs' worth of defect into a clean run. What the diagnostics share is *perturbation*, not
+  duration.
+
+  The measured content of the failure - a layer's coverage missing from a **composite**, with the
+  pages, the table, the slots and the layout all exact, and the defect surviving with **no page
+  read at all** (`AE_VT_DEMAND=0`) - points at the one thing the VT and the no-page runs share and
+  the control does not: **the `VIRTUAL_TEXTURE` program itself and the destination it blends
+  against**. One real defect was found by inspection on the way (not yet proven to be this one):
+  `DestinationTexturizer::update()` copies the scene through the layer's mesh into the destination
+  texture with **the previous draw's GL state** - `GL_BLEND` is left enabled by the layer draw that
+  precedes it, and the copy shader writes the scene premultiplied with its alpha unchanged, so the
+  copy is `src over <the texturizer's own previous content>` in every semi-transparent pixel - and
+  it is refreshed only when `blendMode != Normal` even though `blendColor` is the fragment shader's
+  output for **every** layer. Both are worth fixing on their own; neither explains a scene that does
+  not change between repaints (`AE_VT_DEMAND=0`) varying between runs, so the root cause is still
+  open. This is the open list's first item.
 - **Still-view cost** (nene, 640x640, 130 layers, `--frames 6..6 --repeat 8`, `AE_VT_STATS`): the
   eight renders are one still frame repainted, which is what a pointer over the canvas asks for.
   The first marks **107** resources and costs 165 ms (it also lands the first 8 MB of pages); the
@@ -1403,16 +1453,30 @@ filter lane's field. For a paged matte that is field + levels; for a forced-full
 
 ### Open, in priority order
 
-1. **The timing-sensitive wrong read at a panned camera** (see Measured: max 223-238 in a strip;
-   max 1 with either slow diagnostic; max 73 for a fully coarse frame; the page table verified
-   entry by entry). Wrong CONTENT, not blur, and it predates the replay work. The gate it needs
-   is TIMING-INDEPENDENT by construction: settle the same frame in two ways (two trees, or a
-   purge and re-settle with a different upload cap) and require the two settled frames to be
-   bit-identical - two plain runs already differ by **max 201**, so such a gate separates today.
-   Next instruments, in order: (a) a slot-content check that does not stall - verify ONE page per
-   frame, or verify only the first frame - so the slow check can run on a defective frame;
-   (b) a debug shader variation that outputs `(level, page, table entry)` as colour, which names
-   the wrong read in a single run.
+1. **The timing-sensitive wrong read at a panned camera** (see Measured: the full table of ten
+   runs). It is a **composite** defect, not a page defect: on a defective frame the table, the
+   mirror-vs-pool mapping, the slot contents and the page->slot layout are all exact, no read
+   touches an unwritten atlas texel, and the defect survives with **no page read at all**
+   (`AE_VT_DEMAND=0`) and at a deeper paged level (`AE_VT_COARSE=64`). The control is
+   bit-identical across runs while both VT modes are not, and there is exactly ONE clean state
+   (four runs identical) against a family of wrong ones (six runs, 82-294 samples apart from each
+   other). It is confined to one 18x69 strip of a thin grey stroke whose pink backdrop shows
+   through, so a layer's coverage is missing from the composite and the amount varies per run.
+   The gate it needs is TIMING-INDEPENDENT by construction - settle the same frame in two ways and
+   require bit-identical frames - and that gate would separate today (the clean and wrong states
+   are 300+ samples apart, and two plain runs differ). Next steps, in order:
+   (a) fix the two real defects found by inspection on the way and re-measure: the destination copy
+   is drawn with the previous draw's `GL_BLEND` state (`DestinationTexturizer::update`), and it is
+   refreshed only when `blendMode != Normal` although `blendColor` reads the destination for every
+   layer;
+   (b) force `AE_VT_MISS_MAGENTA` to fire once (draw a frame before any page lands) so the "no
+   page found" class is PROVEN to be observable, then re-run the pair until a defective run
+   carries the diagnostic - the miss class is the one still untested, because the run in which the
+   diagnostic was on came out clean;
+   (c) compare the COARSE CHAIN's bytes across a clean and a defective run (the one texture the VT
+   path reads that no verifier here hashes), and the layer meshes' positions/texcoords - with
+   `AE_VT_DEMAND=0` those are the only inputs left that could differ between two runs of one
+   command.
 2. The demand pass on the frames that still re-mark: after the replay, any **camera move** and
    **playback** (a new time frame re-skins, so the revision moves) walk all 107 resources on nene.
    That is **5.7-11.1 ms** a frame across the steady frames of two runs - 6-11 % of the 97-102 ms

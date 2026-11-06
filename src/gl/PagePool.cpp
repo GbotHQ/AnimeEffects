@@ -1,6 +1,7 @@
 #include <QOpenGLContext>
 #include <algorithm>
 #include <cstdio>
+#include <vector>
 #include "gl/FrameStats.h"
 #include "gl/Global.h"
 #include "gl/PagePool.h"
@@ -130,6 +131,35 @@ void PagePool::endFrame() {
 
 void PagePool::setBudgetBytes(qint64 aBytes) { mBudgetBytes = std::max<qint64>(0, aBytes); }
 
+/// AE_VT_ATLAS_SENTINEL: a fresh atlas starts MAGENTA instead of whatever the driver left in the
+/// allocation. It answers the one question no verifier in this file or in core::VirtualTexture
+/// asks: does any READ reach a texel that no page upload wrote? A slot check reads the slot the
+/// pool maps, so a read that lands anywhere else (another slot, an atlas that holds no page, the
+/// dead margin) is invisible to it - and its content is whatever the allocation held, which is
+/// stable for a run and different on the next. That is exactly the shape of the panned-camera
+/// defect in docs/design/renderer/texture-residency.md, so the sentinel is how the class is
+/// confirmed or struck out: the defect appears as magenta, or it does not exist.
+std::vector<uint8>& sentinelAtlasBytes(PagePool::Format aFormat) {
+    static std::vector<uint8> rgba;
+    static std::vector<uint8> r8;
+    std::vector<uint8>& bytes = aFormat == PagePool::Format_R8 ? r8 : rgba;
+    if (bytes.empty()) {
+        const size_t texels = (size_t)PagePool::kAtlasSize * PagePool::kAtlasSize;
+        const int channels = aFormat == PagePool::Format_R8 ? 1 : 4;
+        bytes.resize(texels * (size_t)channels);
+        for (size_t i = 0; i < texels; ++i) {
+            uint8* texel = bytes.data() + i * (size_t)channels;
+            texel[0] = 255;
+            if (channels == 4) {
+                texel[1] = 0;
+                texel[2] = 255;
+                texel[3] = 255;
+            }
+        }
+    }
+    return bytes;
+}
+
 bool PagePool::makeAtlas(Format aFormat) {
     if (!ensureContext())
         return false;
@@ -158,11 +188,15 @@ bool PagePool::makeAtlas(Format aFormat) {
     // texture() at level 0. NEAREST between slots would break the gutter, so the atlas is
     // LINEAR and the gutter is what keeps the filter inside a page's own content. The mask
     // stack is R8: its pages are one channel and the sampler reads .r.
+    const bool sentinel = qEnvironmentVariableIsSet("AE_VT_ATLAS_SENTINEL");
+    const void* initial = sentinel ? (const void*)sentinelAtlasBytes(aFormat).data() : nullptr;
     if (aFormat == Format_R8)
-        ggl.glTexImage2D(GL_TEXTURE_2D, 0, GL_R8, kAtlasSize, kAtlasSize, 0, GL_RED, GL_UNSIGNED_BYTE, nullptr);
+        ggl.glTexImage2D(
+            GL_TEXTURE_2D, 0, GL_R8, kAtlasSize, kAtlasSize, 0, GL_RED, GL_UNSIGNED_BYTE, initial
+        );
     else
         ggl.glTexImage2D(
-            GL_TEXTURE_2D, 0, GL_RGBA8, kAtlasSize, kAtlasSize, 0, GL_RGBA, GL_UNSIGNED_BYTE, nullptr
+            GL_TEXTURE_2D, 0, GL_RGBA8, kAtlasSize, kAtlasSize, 0, GL_RGBA, GL_UNSIGNED_BYTE, initial
         );
     ggl.glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
     ggl.glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
@@ -414,6 +448,18 @@ bool PagePool::readSlot(const Slot& aSlot, uint8* aDst) const {
     ggl.glBindFramebuffer(GL_READ_FRAMEBUFFER, (GLuint)prevRead);
     ggl.glDeleteFramebuffers(1, &fbo);
     return true;
+}
+
+std::vector<PagePool::Resident> PagePool::residentList() const {
+    std::vector<Resident> list;
+    list.reserve(mPages.size());
+    for (const auto& itr : mPages) {
+        Resident resident;
+        resident.page = itr.first;
+        resident.slot = itr.second.slot;
+        list.push_back(resident);
+    }
+    return list;
 }
 
 } // namespace gl

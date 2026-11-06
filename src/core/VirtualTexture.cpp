@@ -704,10 +704,15 @@ enum DemandKind {
 /// AE_VT_VERIFY_PAGES' mode, read once: "table" checks the GPU page table against its CPU mirror,
 /// anything else also compares every resident page's slot with the page's own bytes (slow - it
 /// stalls per page, which changes the frame's timing; see the design doc's first open item).
+/// "end" is that same comparison, run once after the last frame instead of inside each one.
 const QByteArray& verifyMode() {
     static const QByteArray mode = qgetenv("AE_VT_VERIFY_PAGES");
     return mode;
 }
+
+/// Set only between debugVerifyAfterRun's first and last resource: the slot comparison runs for
+/// mode "end" then and at no other time.
+bool sVerifyAfterRun = false;
 
 /// THE FRAME'S DEMAND BOOKKEEPING: one mark is one layer's triangles walked by the demand
 /// geometry shader; one replay is a signature repeat that walks nothing (see markDemand). Both
@@ -1203,6 +1208,10 @@ void VirtualTexture::debugVerifyPages() {
     const QByteArray& mode = verifyMode();
     if (mode.isEmpty() || mActivePages.empty())
         return;
+    // "end" is the same check, but only from the post-run entry point: a per-frame readback stalls
+    // the pipeline and re-times the landing - which is the thing under test.
+    if (mode == "end" && !sVerifyAfterRun)
+        return;
     auto& ggl = gl::Global::functions();
     auto& pool = gl::PagePool::instance();
 
@@ -1266,6 +1275,7 @@ void VirtualTexture::debugVerifyPages() {
         fillPageBuffer(level, px, py);
         ownHash[i] = hashOf(mPageBuffer.data(), pageBytes);
     }
+    int checked = 0, badPages = 0, worst = 0;
     for (size_t i = 0; i < mActivePages.size(); ++i) {
         int px = 0, py = 0;
         const int level = levelOfIndex((int)mActivePages[i], &px, &py);
@@ -1274,6 +1284,7 @@ void VirtualTexture::debugVerifyPages() {
             continue;
         if (!pool.readSlot(slot, slotBytes.data()))
             continue;
+        ++checked;
         fillPageBuffer(level, px, py);
         std::memcpy(own.data(), mPageBuffer.data(), pageBytes);
         int bad = 0, maxDelta = 0;
@@ -1284,8 +1295,11 @@ void VirtualTexture::debugVerifyPages() {
             if (d > maxDelta)
                 maxDelta = d;
         }
+        if (maxDelta > worst)
+            worst = maxDelta;
         if (bad == 0)
             continue;
+        ++badPages;
         const quint64 slotHash = hashOf(slotBytes.data(), pageBytes);
         int mate = -1;
         for (size_t j = 0; j < ownHash.size(); ++j) {
@@ -1301,6 +1315,92 @@ void VirtualTexture::debugVerifyPages() {
             slot.atlas, slot.slot, bad, maxDelta, mate
         );
     }
+    // THE LINK NEITHER CHECK ABOVE CLOSES: the table is the CPU mirror of the entries, and each
+    // slot holds the page the POOL maps - but neither asks whether the MIRROR names the slot the
+    // pool really holds for that page. A stale mirror (an entry naming a slot the pool has since
+    // given to another page) passes both, and the shader reads that other page's texels: sharp,
+    // wrong, and stable for as long as the mirror stays stale. No GL, so it costs nothing beside
+    // the readbacks above.
+    const std::vector<gl::PagePool::Resident> residents = pool.residentList();
+    const auto occupantOf = [&residents](int aAtlas, int aSlot) -> const gl::PagePool::Resident* {
+        for (const auto& resident : residents) {
+            if (resident.slot.atlas == aAtlas && resident.slot.slot == aSlot)
+                return &resident;
+        }
+        return nullptr;
+    };
+    int mirrorBad = 0;
+    for (size_t i = 0; i < mActivePages.size(); ++i) {
+        int px = 0, py = 0;
+        const int level = levelOfIndex((int)mActivePages[i], &px, &py);
+        gl::PagePool::Slot slot;
+        if (!pool.find(pageId(level, px, py), &slot))
+            continue; // not resident (the frame's upload cap deferred it): entry 0 is the coarse tier
+        const quint16 entry = mEntries[(size_t)mActivePages[i]];
+        if (entry == 0) {
+            ++mirrorBad;
+            qWarning(
+                "VTPAGEMIRROR owner=%p res=%dx%d mask=%d level=%d page=(%d,%d) entry=0 but "
+                "resident=a%d/%d",
+                (void*)this, mSize.width(), mSize.height(), isMask() ? 1 : 0, level, px, py,
+                slot.atlas, slot.slot
+            );
+            continue;
+        }
+        const int atlas = (int)(entry >> 8) + (int)mFormat * gl::PagePool::kMaxAtlasCount;
+        const int slotIndex = (int)(entry & 255u) - 1;
+        // AE_VT_DUMP_PAGES: the page -> slot layout of the final frame, one line per page. Two
+        // runs of the same command are supposed to land the same pages in the same slots; when
+        // they do not, a read that is one texel off shows a DIFFERENT NEIGHBOUR's content per
+        // run, which is the shape of the panned-camera defect. This is how that is checked.
+        if (sVerifyAfterRun && qEnvironmentVariableIsSet("AE_VT_DUMP_PAGES")) {
+            qWarning(
+                "VTPAGEMAP owner=%p res=%dx%d mask=%d level=%d page=(%d,%d) atlas=%d slot=%d",
+                (void*)this, mSize.width(), mSize.height(), isMask() ? 1 : 0, level, px, py, atlas,
+                slotIndex
+            );
+        }
+        if (atlas == slot.atlas && slotIndex == slot.slot)
+            continue;
+        ++mirrorBad;
+        const gl::PagePool::Resident* occupant = occupantOf(atlas, slotIndex);
+        if (occupant) {
+            qWarning(
+                "VTPAGEMIRROR owner=%p res=%dx%d mask=%d level=%d page=(%d,%d) entry names="
+                "a%d/%d pool=a%d/%d occupant owner=%p level=%d page=(%d,%d)",
+                (void*)this, mSize.width(), mSize.height(), isMask() ? 1 : 0, level, px, py,
+                atlas, slotIndex, slot.atlas, slot.slot,
+                (void*)(uintptr_t)occupant->page.owner, occupant->page.level, occupant->page.x,
+                occupant->page.y
+            );
+        } else {
+            qWarning(
+                "VTPAGEMIRROR owner=%p res=%dx%d mask=%d level=%d page=(%d,%d) entry names="
+                "a%d/%d pool=a%d/%d occupant=none",
+                (void*)this, mSize.width(), mSize.height(), isMask() ? 1 : 0, level, px, py,
+                atlas, slotIndex, slot.atlas, slot.slot
+            );
+        }
+    }
+    // A CLEAN RUN MUST SAY IT CHECKED SOMETHING, or "no VTPAGEBAD" cannot be told from "the
+    // verifier never ran". Printed only for the post-run form, whose whole point is that its
+    // silence is evidence.
+    if (sVerifyAfterRun) {
+        qWarning(
+            "VTPAGECHECK owner=%p res=%dx%d mask=%d wanted=%d checked=%d bad=%d mirrorBad=%d max=%d",
+            (void*)this, mSize.width(), mSize.height(), isMask() ? 1 : 0,
+            (int)mActivePages.size(), checked, badPages, mirrorBad, worst
+        );
+    }
+}
+
+void VirtualTexture::debugVerifyAfterRun() {
+    if (verifyMode() != "end")
+        return;
+    sVerifyAfterRun = true;
+    for (VirtualTexture* resource : registry())
+        resource->debugVerifyPages();
+    sVerifyAfterRun = false;
 }
 
 void VirtualTexture::resolveDemand() {
