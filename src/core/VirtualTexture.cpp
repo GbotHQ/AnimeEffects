@@ -1414,20 +1414,27 @@ void VirtualTexture::debugVerifyAfterRun() {
         for (VirtualTexture* resource : registry()) {
             if (resource->mCoarse.id() == 0 || !resource->mSize.isValid())
                 continue;
-            const quint64 cpu = resource->mPyramid.hashLevel(resource->mCoarseLevel);
-            const QSize size = resource->mPyramid.levelSize(resource->mCoarseLevel);
-            std::vector<uint8> gpuBytes((size_t)size.width() * size.height() * 4, 0);
-            ggl.glBindTexture(GL_TEXTURE_2D, resource->mCoarse.id());
-            ggl.glPixelStorei(GL_PACK_ALIGNMENT, 1);
-            ggl.glGetTexImage(GL_TEXTURE_2D, 0, GL_RGBA, GL_UNSIGNED_BYTE, gpuBytes.data());
-            ggl.glBindTexture(GL_TEXTURE_2D, 0);
-            const quint64 gpu = hashOf(gpuBytes.data(), gpuBytes.size());
-            qWarning(
-                "VTCOARSE owner=%p res=%dx%d mask=%d coarse=%d size=%dx%d cpu=%016llx gpu=%016llx",
-                (void*)resource, resource->mSize.width(), resource->mSize.height(),
-                resource->isMask() ? 1 : 0, resource->mCoarseLevel, size.width(), size.height(),
-                (unsigned long long)cpu, (unsigned long long)gpu
-            );
+            // EVERY level, so the chain's level k and the coarse chain's copy of it (k -
+            // coarseLevel) can be compared one by one: the copy is what a page miss samples, and
+            // the live chain is what the control samples, so a mismatch at level k is exactly the
+            // "paged frame differs from the control at the same level" the design doc is chasing.
+            for (int rel = 0; rel <= resource->mMaxLevel - resource->mCoarseLevel; ++rel) {
+                const int level = resource->mCoarseLevel + rel;
+                const QSize size = resource->mPyramid.levelSize(level);
+                std::vector<uint8> gpuBytes((size_t)size.width() * size.height() * 4, 0);
+                ggl.glBindTexture(GL_TEXTURE_2D, resource->mCoarse.id());
+                ggl.glPixelStorei(GL_PACK_ALIGNMENT, 1);
+                ggl.glGetTexImage(GL_TEXTURE_2D, rel, GL_RGBA, GL_UNSIGNED_BYTE, gpuBytes.data());
+                ggl.glBindTexture(GL_TEXTURE_2D, 0);
+                const quint64 gpu = hashOf(gpuBytes.data(), gpuBytes.size());
+                qWarning(
+                    "VTCOARSE owner=%p res=%dx%d mask=%d coarse=%d level=%d size=%dx%d "
+                    "gpu=%016llx",
+                    (void*)resource, resource->mSize.width(), resource->mSize.height(),
+                    resource->isMask() ? 1 : 0, resource->mCoarseLevel, level, size.width(),
+                    size.height(), (unsigned long long)gpu
+                );
+            }
         }
     }
     if (verifyMode() != "end")
@@ -1849,6 +1856,11 @@ void VirtualTexture::bind(gl::EasyShaderProgram& aShader) const {
     aShader.setUniformValue("uPageGutter", (float)gl::PagePool::kGutter);
     aShader.setUniformValue("uPageTexels", (float)gl::PagePool::kPageSize);
     aShader.setUniformValue("uAtlasCount", (int)gl::PagePool::kMaxAtlasCount);
+    // AE_VT_MISS_MAGENTA is a UNIFORM, so the program (and therefore the frame's timing) is the
+    // same with it on: see the declaration in LayerSampling.glsl.
+    aShader.setUniformValue(
+        "uVtMissDebug", qEnvironmentVariableIsSet("AE_VT_MISS_MAGENTA") ? 1 : 0
+    );
     aShader.setUniformValue("uAtlas0", 6);
     aShader.setUniformValue("uAtlas1", 7);
     aShader.setUniformValue("uAtlas2", 8);

@@ -293,19 +293,28 @@ hand it over. Its one question is `Sampling`:
   line can flip a run clean - the defect is perturbed by almost anything, so never conclude
   "clean" from a single instrumented run). `AE_VT_MISS_MAGENTA=1` paints the coarse fallback
   magenta and `AE_VT_ATLAS_SENTINEL=1` fills a fresh atlas magenta - two pictures that rule the
-  "no page found" and "unwritten texel" classes in or out without a readback. The only input left
-  unmeasured is the DRAW'S GEOMETRY (the vertex buffer the pass binds):
+  "no page found" and "unwritten texel" classes in or out without a readback.
   `AE_TRACE_DEST=1` struck out the destination texture (all 130 layers of nene at frame 6 are
   `blend=0 clippee=0 refreshed=0`, and `blendColor` returns the source identically for Normal
   whatever the destination holds, so `DestinationTexturizer::update` is not even called). Two real
   defects remain in that code and are unrelated to this frame: the copy is drawn with the PREVIOUS
   draw's `GL_BLEND` still enabled, and it is refreshed only for `blendMode != Normal`.
-  **The GPU mip chain itself is not byte-reproducible**: `AE_VT_HASH=<level>` hashes every chain
-  right after `gl::Texture::create` builds it, and 240 of 241 chains print the same hash on two
-  runs while `384x1715 level=2` does not - `AE_VT_DUMP_CHAIN=<W>x<H>` + `AE_VT_DUMP_CHAIN_DIR`
+  **The GPU mip chain itself is not byte-reproducible**: `AE_VT_HASH=<level>|all` hashes every
+  chain right after `gl::Texture::create` builds it, and 240 of 241 chains print the same hash on
+  two runs while `384x1715 level=2` does not - `AE_VT_DUMP_CHAIN=<W>x<H>` + `AE_VT_DUMP_CHAIN_DIR`
   writes that level to a PNG, and the difference is 758 of 41,088 texels in the near-transparent
   fringe (`(24,14,26,126)` against `(24,14,26,3)`). Treat a chain as reproducible only where a
   hash says so; a paged path that copies one inherits what the copy took.
+  **The layer at the defect is `Layer 19 Copy` (384x1715)** - found with `AE_VT_TAG_LAYER=1`, which
+  gives every draw a colour derived from its name (the frame then names the topmost layer at a
+  pixel). Isolated with `--only-layer '=Layer 19 Copy'` it shows the defect alone (123 samples,
+  max 68). For that draw the uv (`AE_VT_DEBUG_UV=1`) and the level (`AE_VT_DEBUG_LEVEL=1`) are
+  BIT-IDENTICAL between the paged and control programs, `AE_VT_HASH=all` + `AE_VT_HASH_COARSE`
+  match the coarse chain against 9 of 9 chain levels byte for byte, and `AE_TRACE_DEST=1` reports
+  `blend=0 clippee=0 mask=0 maskPaged=0` - so the read is the same read, and the remaining
+  difference is in a pass `--only-layer` does not disable: a FOLDER MATTE. The image's coarse copy
+  is byte-exact at every level; a mask's (`MaskPyramid` -> `buildMaskCoarse`) has never been
+  compared that way, and that comparison is the next instrument.
   Two sampling rules, each found as a whole-frame residual first: **the always-resident coarse tier
   takes the same two-tap reconstruction as the full path** (one bilinear tap there cost 816 px over
   8/255 on nene), and **the `lod <= 0` branch reads `textureLod(..., 0)` on BOTH paths, never

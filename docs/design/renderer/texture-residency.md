@@ -1124,10 +1124,13 @@ filter lane's field. For a paged matte that is field + levels; for a forced-full
 | `AE_VT_MISS_MAGENTA=1` | diagnostic: the paged read's coarse fallback returns MAGENTA (no table entry) or CYAN (an entry that names nothing usable) instead of the coarse chain - "which pixels did not find their page" as a picture, with no readback and no stall |
 | `AE_VT_ATLAS_SENTINEL=1` | diagnostic: every new atlas is filled with MAGENTA, so a read of a texel no page upload wrote is unmistakable (`glTexImage2D` from a sentinel buffer, one upload per atlas) |
 | `AE_VT_PAGE_HASH=1` | diagnostic: hashes each level-0+ page's fill against the pyramid's own bytes (the source side of the upload) |
-| `AE_VT_HASH=<level>` | diagnostic, at load: hashes one level of EVERY GPU chain just after it is built (`VTHASH <W>x<H> level= chain=`). Two runs of one command are supposed to print the same lines - and did for 240 of 241 chains (see Measured) |
+| `AE_VT_HASH=<level>\|all` | diagnostic, at load: hashes one level (or every level) of EVERY GPU chain just after it is built (`VTHASH <W>x<H> level= chain=`). Two runs of one command are supposed to print the same lines - and did for 240 of 241 chains (see Measured) |
 | `AE_VT_DUMP_CHAIN=<W>x<H>` (+ `AE_VT_DUMP_CHAIN_DIR`) | with `AE_VT_HASH`: writes that resource's level to a PNG, so two runs can be diffed TEXEL BY TEXEL |
-| `AE_VT_HASH_COARSE=1` | diagnostic, after the last frame: the GPU coarse chain of every resource against the pyramid's own bytes (`VTCOARSE ... cpu= gpu=`) |
-| `AE_TRACE_DEST=1` | diagnostic, per layer draw: `VTDEST layer= blend= clippee= refreshed=` - whether this draw refreshed the destination texture its blend reads (measured: all 130 layers of nene at frame 6 are Normal, clipped by nothing, and refresh nothing) |
+| `AE_VT_HASH_COARSE=1` | diagnostic, after the last frame: every level of every GPU coarse chain (`VTCOARSE ... coarse= level= gpu=`), to be compared level by level with `AE_VT_HASH=all` |
+| `AE_TRACE_DEST=1` | diagnostic, per layer draw: `VTDEST layer= blend= clippee= refreshed= mask= maskPaged=` - whether this draw refreshed the destination its blend reads, and whether it takes a clipped or masked variant |
+| `AE_VT_TAG_LAYER=1` | diagnostic: each draw outputs an opaque colour derived from its name and prints `VTTAG layer= tag=`, so the colour at a pixel names the layer on top there (how `Layer 19 Copy` was found) |
+| `AE_VT_DEBUG_LEVEL=1` | diagnostic: each fragment outputs `(level/16, lod/16)` instead of the read, on BOTH paths - the two programs' level fields can be compared pixel for pixel |
+| `AE_VT_DEBUG_UV=1` | diagnostic: each fragment outputs the uv it samples, on BOTH paths - compares the read's GEOMETRY rather than its result |
 
 `AE_FRAME_STATS`'s line gains `vt_pages`, `vt_bytes`, `vt_up`, `vt_evict`.
 
@@ -1343,6 +1346,33 @@ filter lane's field. For a paged matte that is field + levels; for a forced-full
   source line (`AE_VT_MISS_MAGENTA`, which changes no behaviour where it is not taken) turned five
   plain runs' worth of defect into a clean run. What the diagnostics share is *perturbation*, not
   duration.
+
+  **THE LAYER AT THE STRIP IS NAMED: `Layer 19 Copy` (384x1715).** `AE_VT_TAG_LAYER=1` makes every
+  draw output an opaque colour derived from its name and prints the mapping (`VTTAG layer= tag=`),
+  so the colour at a pixel names the topmost layer there without a bisection over 130 of them: at
+  the strip that colour is `Layer 19 Copy`'s (`tag=244,88,162`), the same in both paths. Isolated
+  with `--only-layer '=Layer 19 Copy'` it alone shows the defect - **123 samples, max 68, all inside
+  the strip** - so the composite story above is that one layer's own read. And every input of that
+  read was then measured equal:
+  - **the same level**: `AE_VT_DEBUG_LEVEL=1` outputs `(level/16, lod/16)`. On the isolated layer the
+    two fields are **bit-identical** (0 px of 409,600), level 3, lod 3.2, at the strip included;
+  - **the same uv**: `AE_VT_DEBUG_UV=1` outputs the sampled uv. **Bit-identical** again (0 px), so
+    the taps are at the same texels in both programs;
+  - **the same content**: `AE_VT_HASH=all` hashes every chain level and `AE_VT_HASH_COARSE` now
+    hashes every coarse level. For that layer **9 of 9 levels match byte for byte** (level 2 =
+    `61b4fd8a...` through level 10 = `714991b1...`), so the coarse chain - the tier the paged path
+    samples at this camera - is a faithful copy of what the control samples;
+  - **no mask, no clipper, no destination**: `AE_TRACE_DEST=1` reports
+    `blend=0 clippee=0 refreshed=0 mask=0 maskPaged=0` for that draw.
+
+  So for this layer the paged read is *provably the same read*, and its isolated frame still differs
+  in the strip. What is left is a pass `--only-layer` does NOT disable: **folder mattes** are
+  fullscreen composite passes that draw regardless of layer visibility, and a matte's coarse chain
+  is the one copy in the whole system this document has never compared against its source (the
+  image's is byte-exact at every level now; `MaskPyramid`'s has no equivalent check). That is the
+  next instrument: hash `mMaskPyramid` level by level against the mask coarse chain's copies, the
+  same way `AE_VT_HASH=all` + `AE_VT_HASH_COARSE` does for images, and isolate the folder rather
+  than the layer.
 
   The measured content of the failure - a layer's coverage missing from a **composite**, with the
   pages, the table, the slots and the layout all exact, and the defect surviving with **no page

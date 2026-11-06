@@ -24,6 +24,12 @@ uniform int uPageSlotsPerAxis;         // 4096 / 260 = 15
 uniform int uAtlasCount;               // how many of the four below are real
 #endif
 
+// 0: an absent page samples the coarse chain (production). 1: it returns MAGENTA (no entry) or
+// CYAN (an entry that names nothing usable). A RUNTIME uniform, not a compile-time variation, so
+// the program is the SAME in both modes: a diagnostic that changed the shader's code would also
+// change the frame's timing, and this defect is perturbed by timing (see the design doc).
+uniform int uVtMissDebug;
+
 #if VIRTUAL_TEXTURE
 uniform sampler2D uCoarseTexture;      // unit 4: the always-resident levels
 uniform usampler2D uPageTable;         // unit 5: (pageX, levelRow + pageY) -> slot
@@ -56,6 +62,14 @@ uniform float uMaskMaxLod;
 
 uniform float uLayerLodBias;    // the layer's LOD bias, in levels
 uniform float uLayerMaxLod;     // the texture's deepest level
+// AE_VT_DEBUG_LEVEL: 1 outputs the level this fragment CHOSE as red (level/16), on BOTH paths, so
+// a control frame and a paged frame can be compared level for level. A uniform, so the program
+// does not change with it and the two runs differ only in what the read returns.
+uniform int uVtDebugLevel;
+// AE_VT_TAG_LAYER: 2 in uVtDebugLevel makes every draw output uVtTag as an OPAQUE colour, so the
+// composite shows which layer is on top at a pixel. The layer prints its own tag, so the colour at
+// a pixel names the layer without a bisection over 130 of them.
+uniform vec3 uVtTag;
 
 // THE FOOTPRINT. The footprint comes from the draw itself: J = [dFdx dFdy] of the texel-space uv
 // (aUv * size0) is the 2x2 Jacobian of the draw, and its singular values are the footprint's
@@ -219,27 +233,18 @@ vec4 samplePage(vec2 aUv, float aLevel)
     int level = int(aLevel);
 
     uint entry = texelFetch(uPageTable, ivec2(page) + ivec2(0, uPageLevelRow[level]), 0).r;
-#if VT_MISS_DEBUG
     // THE FALLBACK MADE VISIBLE (AE_VT_MISS_MAGENTA): magenta is a page the table has no entry
     // for, cyan an entry that names nothing usable. A frame drawn with this on answers "which
     // pixels did not find their page" by inspection, with no readback and no stall - the two
     // properties every other page verifier here lacks.
     if (entry == 0u)
-        return vec4(1.0, 0.0, 1.0, 1.0);
-#else
-    if (entry == 0u)
-        return sampleCoarse(aUv, aLevel);
-#endif
+        return (uVtMissDebug != 0) ? vec4(1.0, 0.0, 1.0, 1.0) : sampleCoarse(aUv, aLevel);
 
     int atlas = int(entry >> 8);
     int slot = int(entry & 255u) - 1;
-#if VT_MISS_DEBUG
     if (slot < 0 || atlas >= uAtlasCount)
-        return vec4(0.0, 1.0, 1.0, 1.0);
-#else
-    if (slot < 0 || atlas >= uAtlasCount)
-        return sampleCoarse(aUv, aLevel);   // a stale entry: never a hole
-#endif
+        return (uVtMissDebug != 0) ? vec4(0.0, 1.0, 1.0, 1.0)
+                                   : sampleCoarse(aUv, aLevel);   // a stale entry: never a hole
 
     // the slot's CONTENT origin, in atlas texels, plus the gutter the tap reads from
     vec2 origin = vec2(float(slot % uPageSlotsPerAxis), float(slot / uPageSlotsPerAxis))
@@ -255,20 +260,16 @@ vec4 sampleLayer(sampler2D aTexture, vec2 aUv)
 #else
     vec2 size0 = vec2(textureSize(aTexture, 0));
 #endif
+    if (uVtDebugLevel == 2)
+        return vec4(uVtTag, 1.0);
+    // 3: the uv this fragment samples, as colour (R = u, G = v, B = level/16). A control frame and
+    // a paged frame of the SAME layer then compare the read's geometry, not its result.
+    if (uVtDebugLevel == 3)
+        return vec4(aUv.x, aUv.y, 0.0, 1.0);
     LayerFootprint footprint = layerFootprint(aUv, size0);
     if (footprint.lod <= 0.0)
 #if VIRTUAL_TEXTURE
-    {
-        vec4 magnified = samplePage(aUv, 0.0); // magnified: level 0 bilinear is exact and free
-#if VT_MISS_DEBUG
-        // GREEN: this pixel took the magnified (level 0) branch. The branch is chosen from the
-        // fragment's OWN footprint, which on a thin stroke is a minor axis of one texel - so a
-        // pixel here is exactly where a triangle's demand, computed from the whole triangle,
-        // can have marked a sharper level than the one this fragment reads.
-        magnified *= vec4(0.5, 1.0, 0.5, 1.0);
-#endif
-        return magnified;
-    }
+        return samplePage(aUv, 0.0);      // magnified: level 0 bilinear is exact and free
 #else
         // LEVEL 0 BY POLICY, not by the hardware's own LOD. With the negative layer bias this
         // branch is entered while the unbiased footprint can still be minifying, and the
@@ -286,6 +287,8 @@ vec4 sampleLayer(sampler2D aTexture, vec2 aUv)
     // than the footprint), which leaves the minor axis under-filtered - measured as the residual
     // error tail this read otherwise still has on thin features.
     float level = clamp(floor(footprint.lod + 0.5), 0.0, uLayerMaxLod);
+    if (uVtDebugLevel != 0)
+        return vec4(level / 16.0, footprint.lod / 16.0, 0.0, 1.0);
     float scale = exp2(level);
 #if VIRTUAL_TEXTURE
     vec2 sizeLf = max(vec2(1.0), floor(size0 / scale));
@@ -305,17 +308,9 @@ vec4 sampleLayer(sampler2D aTexture, vec2 aUv)
         // texture's two taps, and that difference (not residency, not the table) measured
         // 816 px over 8/255, max 115, on nene's Layer 6 while every page was resident.
         // The tap offsets are level texels either way; only the level index shifts.
-#if VT_MISS_DEBUG
-        // BLUE: the tap read the always-resident coarse tier (its level is at or past
-        // uCoarseLevel). A pixel that should have read a page but shows blue fell back.
-        acc += (level >= float(uCoarseLevel))
-            ? sampleCoarse(centres[i], level) * vec4(0.5, 0.5, 1.0, 1.0)
-            : samplePage(centres[i], level);
-#else
         acc += (level >= float(uCoarseLevel))
             ? sampleCoarse(centres[i], level)
             : samplePage(centres[i], level);
-#endif
 #else
         acc += textureLod(aTexture, centres[i], level);
 #endif

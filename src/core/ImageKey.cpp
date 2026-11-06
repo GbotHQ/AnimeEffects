@@ -153,36 +153,61 @@ void ImageKey::resetTextureCache() {
         if (!mForceFullTexture && VirtualTexture::pageable(pixelSize))
             paged = mCache.buildVirtualTexture(mData.resource(), pixelSize);
         if (qEnvironmentVariableIsSet("AE_VT_HASH")) {
-            const int level = qEnvironmentVariableIntValue("AE_VT_HASH");
-            const QSize levelSize(
-                std::max(1, pixelSize.width() >> level), std::max(1, pixelSize.height() >> level)
-            );
-            std::vector<uint8> data((size_t)levelSize.width() * levelSize.height() * 4, 0);
-            gl::Global::functions().glBindTexture(GL_TEXTURE_2D, texture.id());
-            gl::Global::functions().glGetTexImage(
-                GL_TEXTURE_2D, level, GL_RGBA, GL_UNSIGNED_BYTE, data.data()
-            );
-            gl::Global::functions().glBindTexture(GL_TEXTURE_2D, 0);
-            quint64 hash = 1469598103934665603ull;
-            for (uint8 byte : data) {
-                hash ^= byte;
-                hash *= 1099511628211ull;
+            // "AE_VT_HASH=all" prints every level, so a chain level can be compared with the coarse
+            // chain's copy of it level by level (see VirtualTexture's AE_VT_HASH_COARSE).
+            const QByteArray hashSpec = qgetenv("AE_VT_HASH");
+            const int only = hashSpec == "all" ? -1 : qEnvironmentVariableIntValue("AE_VT_HASH");
+            for (int level = only < 0 ? 0 : only;
+                 level <= (only < 0 ? texture.mipmapLevels() - 1 : only); ++level) {
+                const QSize levelSize(
+                    std::max(1, pixelSize.width() >> level), std::max(1, pixelSize.height() >> level)
+                );
+                std::vector<uint8> data((size_t)levelSize.width() * levelSize.height() * 4, 0);
+                gl::Global::functions().glBindTexture(GL_TEXTURE_2D, texture.id());
+                gl::Global::functions().glGetTexImage(
+                    GL_TEXTURE_2D, level, GL_RGBA, GL_UNSIGNED_BYTE, data.data()
+                );
+                gl::Global::functions().glBindTexture(GL_TEXTURE_2D, 0);
+                quint64 hash = 1469598103934665603ull;
+                for (uint8 byte : data) {
+                    hash ^= byte;
+                    hash *= 1099511628211ull;
+                }
+                qWarning(
+                    "VTHASH %dx%d level=%d chain=%016llx", pixelSize.width(), pixelSize.height(),
+                    level, (unsigned long long)hash
+                );
             }
-            qWarning("VTHASH %dx%d level=%d chain=%016llx", pixelSize.width(), pixelSize.height(),
-                     level, (unsigned long long)hash);
-            // AE_VT_DUMP_CHAIN=<W>x<H>: write this level to <AE_VT_DUMP_CHAIN_DIR or /tmp>/chain-<W>x<H>-l<level>.png.
-            // Two runs of one command can then be diffed TEXEL BY TEXEL: the level's hash was measured
-            // to differ between runs for one resource, and this is how the differing texels are seen
-            // rather than counted.
+        }
+        if (qEnvironmentVariableIsSet("AE_VT_DUMP_CHAIN")) {
+            // AE_VT_DUMP_CHAIN=<W>x<H>: write the level the hash reported to
+            // <AE_VT_DUMP_CHAIN_DIR or /tmp>/chain-<W>x<H>-l<level>.png, so two runs can be diffed
+            // TEXEL BY TEXEL: the hash says a level differs between runs, this shows HOW.
             const QByteArray dumpSpec = qgetenv("AE_VT_DUMP_CHAIN");
             if (dumpSpec == QStringLiteral("%1x%2").arg(pixelSize.width()).arg(pixelSize.height()).toLatin1()) {
+                const int level = qEnvironmentVariableIntValue("AE_VT_HASH");
+                const QSize levelSize(
+                    std::max(1, pixelSize.width() >> level), std::max(1, pixelSize.height() >> level)
+                );
+                std::vector<uint8> data((size_t)levelSize.width() * levelSize.height() * 4, 0);
+                gl::Global::functions().glBindTexture(GL_TEXTURE_2D, texture.id());
+                gl::Global::functions().glGetTexImage(
+                    GL_TEXTURE_2D, level, GL_RGBA, GL_UNSIGNED_BYTE, data.data()
+                );
+                gl::Global::functions().glBindTexture(GL_TEXTURE_2D, 0);
                 const QByteArray dir = qgetenv("AE_VT_DUMP_CHAIN_DIR");
                 const QString path = QString::fromLocal8Bit(dir.isEmpty() ? "/tmp" : dir.constData())
-                    + QStringLiteral("/chain-%1x%2-l%3.png").arg(pixelSize.width()).arg(pixelSize.height()).arg(level);
+                    + QStringLiteral("/chain-%1x%2-l%3.png")
+                          .arg(pixelSize.width())
+                          .arg(pixelSize.height())
+                          .arg(level);
                 const QImage image(
                     data.data(), levelSize.width(), levelSize.height(), QImage::Format_RGBA8888
                 );
-                qWarning("VTCHAIND The dump of %s: %s", qPrintable(path), image.save(path, "PNG") ? "written" : "FAILED");
+                qWarning(
+                    "VTCHAIND The dump of %s: %s", qPrintable(path),
+                    image.save(path, "PNG") ? "written" : "FAILED"
+                );
             }
         }
         if (paged) {

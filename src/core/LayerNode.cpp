@@ -892,8 +892,9 @@ void LayerNode::renderLayer(const RenderInfo& aInfo, const TimeCacheAccessor& aA
     // a draw with refreshed=0 is blending against whatever the texturizer last held.
     if (qEnvironmentVariableIsSet("AE_TRACE_DEST") && !aInfo.isGrid) {
         qWarning(
-            "VTDEST layer=%s blend=%d clippee=%d refreshed=%d", qPrintable(name()), (int)blendMode,
-            isClippee ? 1 : 0, refreshDestination ? 1 : 0
+            "VTDEST layer=%s blend=%d clippee=%d refreshed=%d mask=%d maskPaged=%d", qPrintable(name()),
+            (int)blendMode, isClippee ? 1 : 0, refreshDestination ? 1 : 0, useLayerMask ? 1 : 0,
+            maskVirtualTexture ? 1 : 0
         );
     }
 
@@ -943,6 +944,29 @@ void LayerNode::renderLayer(const RenderInfo& aInfo, const TimeCacheAccessor& aA
             "uLayerMaxLod", float(virtualTexture ? virtualTexture->maxLevel()
                                                  : std::max(0, expans.areaTexture()->mipmapLevels() - 1))
         );
+        // AE_VT_DEBUG_LEVEL: the level this fragment chose, as colour, on BOTH paths (see
+        // LayerSampling.glsl). Two runs - control and paged - then differ only in this value, so
+        // the level fields can be compared pixel for pixel. AE_VT_TAG_LAYER makes each draw output
+        // its own opaque tag instead, which names the layer on top at a pixel; the tag is printed
+        // once per frame so the colour in the frame can be looked up.
+        const bool tagLayer = qEnvironmentVariableIsSet("AE_VT_TAG_LAYER");
+        shader.setUniformValue(
+            "uVtDebugLevel",
+            tagLayer ? 2
+                      : (qEnvironmentVariableIsSet("AE_VT_DEBUG_UV")
+                             ? 3
+                             : (qEnvironmentVariableIsSet("AE_VT_DEBUG_LEVEL") ? 1 : 0))
+        );
+        if (tagLayer) {
+            const quint32 tag = qHash(name());
+            const int tr = (int)((tag >> 16) & 255u);
+            const int tg = (int)((tag >> 8) & 255u);
+            const int tb = (int)(tag & 255u);
+            shader.setUniformValue(
+                "uVtTag", QVector3D(float(tr) / 255.0f, float(tg) / 255.0f, float(tb) / 255.0f)
+            );
+            qWarning("VTTAG layer=%s tag=%d,%d,%d", qPrintable(name()), tr, tg, tb);
+        }
         // THE PAGED READ's own state: the coarse chain, the page table, the atlases and the
         // per-resource grid. It also re-sets uLayerMaxLod (the chain's last level), so the two
         // values cannot disagree.
