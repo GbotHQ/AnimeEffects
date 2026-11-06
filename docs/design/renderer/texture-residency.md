@@ -1270,16 +1270,25 @@ filter lane's field. For a paged matte that is field + levels; for a forced-full
   target; the target remains a large-canvas painted mask.
 - **Folder matte** (`FM1`): a 640² field on a 640x640 canvas at 1:1, over a 900x700 layer. The
   paged frame against the forced-full control is **max 0 of 255, mean 0.000**; the demand is
-  exactly **9 pages** (its level-0 3x3 grid, no other level), all resident after eight frames,
-  and the frame is **bit-identical** to the control. At the scale-2 partial view the demand is
-  exactly **4** of those pages and the frame is bit-identical too. The rubylith preview is bit-identical to the
-  full-mask overlay too (**max 0** against a tolerance of 3). With the pool emptied the coarse
+  exactly **9 pages** (its level-0 3x3 grid, no other level), all resident after eight frames, and
+  the frame is **bit-identical** to the control. At the scale-2 partial view the demand is exactly
+  **4** of those pages and the frame is bit-identical too. The rubylith preview is bit-identical
+  to the full-mask overlay (**max 0** against a tolerance of 3). With the pool emptied the coarse
   chain still hides and shows. The export sequence (demand-only, `synchronize`, one draw) from a
-  cold pool lands all 9 pages and matches the control (**max 0**); with the demand-only folder
-  mark removed the same case measures **0 of 0 pages** and **max 64** at the matte's edge. The cost at this size: field 409,600 B, pyramid
-  136,530 B, resident coarse 136,530 B, against a 546,130 B full chain. (The pyramid equals the
-  coarse tier here because the 640² field's coarse level is already level 1 - see the residual
-  list; a 4096² matte's pyramid is 5.33 MiB against a 0.33 MiB coarse tier.)
+  cold pool lands all 9 pages and matches the control (**max 0**); with the demand-only folder mark
+  removed the same case measures **0 of 0 pages** and **max 64** at the matte's edge.
+
+  The cost at this size: field 409,600 B, pyramid 136,530 B, resident coarse 136,530 B, against a
+  546,130 B full chain. (The pyramid equals the coarse tier here because the 640² field's coarse
+  level is already level 1 - see the residual list; a 4096² matte's pyramid is 5.33 MiB against a
+  0.33 MiB coarse tier.)
+
+  **No project in the local dataset has a folder matte** (checked with `render_probe
+  --list-layers`, which now prints folders and sees a matte on animated keys as well as on the
+  default key), so this gate builds its own field: the gain is structural - the pass joined the
+  sampler and the pool - rather than measured on existing content. The target case is the one the
+  design named: a folder matte covers the CANVAS, so a 15000² project's folder matte would have
+  held a ~300 MB chain and now holds its coarse tier (0.33 MiB) plus the pages it samples.
 - **Export**: `media_exporter_e2e` passes with the demand preparse; the first exported frame is
   the one that exercises it.
 
