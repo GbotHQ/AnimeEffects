@@ -1124,6 +1124,8 @@ filter lane's field. For a paged matte that is field + levels; for a forced-full
 | `AE_VT_MISS_MAGENTA=1` | diagnostic: the paged read's coarse fallback returns MAGENTA (no table entry) or CYAN (an entry that names nothing usable) instead of the coarse chain - "which pixels did not find their page" as a picture, with no readback and no stall |
 | `AE_VT_ATLAS_SENTINEL=1` | diagnostic: every new atlas is filled with MAGENTA, so a read of a texel no page upload wrote is unmistakable (`glTexImage2D` from a sentinel buffer, one upload per atlas) |
 | `AE_VT_PAGE_HASH=1` | diagnostic: hashes each level-0+ page's fill against the pyramid's own bytes (the source side of the upload) |
+| `AE_NO_MIP_TAIL=1` | diagnostic: skip the GPU area-weighted mip tail and keep `glGenerateMipmap`'s levels (the chain becomes reproducible and visibly coarser: 20,036 samples / max 52 from the control on nene) - the switch that confirmed the tail build as the nondeterminism's source |
+| `AE_MIP_TAIL_OLD_PATH=1` | diagnostic: the MUTATION CONTROL for the fix - build the tail by rendering into the chain, the read-while-write the fix removes. Two runs of one command then differ (325/305 samples from the control, 109 apart, max 223 in the strip) |
 | `AE_VT_HASH=<level>\|all` | diagnostic, at load: hashes one level (or every level) of EVERY GPU chain just after it is built (`VTHASH <W>x<H> level= chain=`). Two runs of one command are supposed to print the same lines - and did for 240 of 241 chains (see Measured) |
 | `AE_VT_DUMP_CHAIN=<W>x<H>` (+ `AE_VT_DUMP_CHAIN_DIR`) | with `AE_VT_HASH`: writes that resource's level to a PNG, so two runs can be diffed TEXEL BY TEXEL |
 | `AE_VT_HASH_COARSE=1` | diagnostic, after the last frame: every level of every GPU coarse chain (`VTCOARSE ... coarse= level= gpu=`), to be compared level by level with `AE_VT_HASH=all` |
@@ -1145,6 +1147,12 @@ filter lane's field. For a paged matte that is field + levels; for a forced-full
   chain. Tolerances are 1 unit (2 for the on-edge 0.3 case): the fixture measures 0 for the
   paged and magnified cases under `gpu_headless` and 1 on the Xvfb/xcb path's sub-texel rounding,
   while each bug class measures 23-53 on it (see Measured).
+- **M1b chain determinism**: builds one source's chain twice with a full readback of the first in
+  between and requires the two chains to be bit-identical (9 levels here). It is a STRUCTURAL
+  guard, not this defect's gate: measured, the old tail construction passes it too (worst channel
+  0), because inside one process the read-while-write is stable - the defect only appears across
+  processes. The gate with power is the two-run comparison under Measured, with
+  `AE_MIP_TAIL_OLD_PATH=1` as its control.
 - **CL1 clipper singulation**: a 900x700 disc clipper over a 900x700 opaque clipped layer, both
   paged, against the full-resolution control. Asserts both keys took the paged path, the clipper's
   pages were demanded and are all resident, the paged pair is within 2/255 of the control (the
@@ -1277,8 +1285,40 @@ filter lane's field. For a paged matte that is field + levels; for a forced-full
   level-1 view wants **20 pages instead of 6** and the frame differs by **max 28 over 75,904 of
   409,600 samples**.
 
+- **The mip tail's read-while-write is what the panned camera exposed** (found while testing
+  whether a pan could replay; **fixed**). `buildMipTailOnGpu` built each level of a chain with the
+  chain attached as its own render target and the source level fetched from the same texture. The
+  spec's feedback rule is per IMAGE, so that is legal on paper - but this driver resolves a
+  whole-texture write-while-sample by renaming, and the result then depends on what else is in the
+  command stream. The paged path's pyramid capture reads every level back immediately after the
+  build, and that readback is what exposed it:
+  - with virtual texturing, `AE_VT_HASH=all` prints the same hashes on two runs for **240 of 241
+    chains but not for `384x1715`**, where **all ten levels differ** (`level=2`
+    `cde1be62...` against `e59d2916...`); with `AE_VIRTUAL_TEXTURE=0` the same two runs print
+    **identical hashes at every level** (0 differing lines);
+  - with the tail build switched off (`AE_NO_MIP_TAIL=1`) the paged frames of two runs become
+    **bit-identical** (0 samples) - but they then sit **20,036 samples / max 52** from the control,
+    because `glGenerateMipmap`'s tail is the wrong filter, which is why the tail exists;
+  - a `glTextureBarrier()` between the passes and a single `glFinish()` after the build were both
+    tried and **did not remove it** (the hashes still differed at all ten levels).
+  The fix: each level is rendered into a **scratch texture** (the size of the largest tail level,
+  1/4 of the base at most) and blitted into the chain level, so the pass samples the chain and
+  writes the scratch and the blit reads the scratch and writes the chain. Measured on nene at
+  `--offset 280 --repeat 8`: the two runs are now **bit-identical**, both sit **max 1 (169 samples
+  of 1) from the full-resolution control**, and the **18x69 strip is empty** - against **max 223
+  with the runs 109 samples apart** before. The mutation control `AE_MIP_TAIL_OLD_PATH=1` (render
+  into the chain, as before) reproduces the defect on both runs (**325 and 305 samples, max 223**,
+  **109 apart**), so the comparison has power.
+  What is *not* the cause, each measured on a defective frame before the fix: the page table, the
+  entries against the pool, the slot contents, the page->slot layout (two runs printed identical
+  114-line layouts), the tier (`AE_VT_DEMAND=0` and `AE_VT_COARSE=64` both still showed it), the
+  layer (named `Layer 19 Copy` with `AE_VT_TAG_LAYER=1`; its uv and level were bit-identical
+  between the paths and its coarse chain matched 9 of 9 chain levels byte for byte), the
+  destination texture (all 130 layers are Normal, so `blendColor` cancels it), and the mask tier
+  (nene registers zero mask resources).
 - **A panned camera exposed a TIMING-SENSITIVE wrong read** (pre-existing; found while testing
-  whether a pan could replay). On nene at the 640x640 fit view the paged frame against the
+  whether a pan could replay; superseded by the finding above - this is the record of how it was
+  chased and what each step ruled out). On nene at the 640x640 fit view the paged frame against the
   full-resolution control is **max 1 of 255** at the default centre and **max 223-238** at
   `--offset 280`, over 296-463 samples in an **18x69 strip** at x 532..549, y 84..152 (the earlier
   16x27 note measured a subset of the same strip). Within a run the frame is STABLE (repaints 4..7
@@ -1502,30 +1542,15 @@ filter lane's field. For a paged matte that is field + levels; for a forced-full
 
 ### Open, in priority order
 
-1. **The timing-sensitive wrong read at a panned camera** (see Measured: the full table of ten
-   runs). It is a **composite** defect, not a page defect: on a defective frame the table, the
-   mirror-vs-pool mapping, the slot contents and the page->slot layout are all exact, no read
-   touches an unwritten atlas texel, and the defect survives with **no page read at all**
-   (`AE_VT_DEMAND=0`) and at a deeper paged level (`AE_VT_COARSE=64`). The control is
-   bit-identical across runs while both VT modes are not, and there is exactly ONE clean state
-   (four runs identical) against a family of wrong ones (six runs, 82-294 samples apart from each
-   other). It is confined to one 18x69 strip of a thin grey stroke whose pink backdrop shows
-   through, so a layer's coverage is missing from the composite and the amount varies per run.
-   The gate it needs is TIMING-INDEPENDENT by construction - settle the same frame in two ways and
-   require bit-identical frames - and that gate would separate today (the clean and wrong states
-   are 300+ samples apart, and two plain runs differ). Next steps, in order:
-   (a) fix the two real defects found by inspection on the way and re-measure: the destination copy
-   is drawn with the previous draw's `GL_BLEND` state (`DestinationTexturizer::update`), and it is
-   refreshed only when `blendMode != Normal` although `blendColor` reads the destination for every
-   layer;
-   (b) force `AE_VT_MISS_MAGENTA` to fire once (draw a frame before any page lands) so the "no
-   page found" class is PROVEN to be observable, then re-run the pair until a defective run
-   carries the diagnostic - the miss class is the one still untested, because the run in which the
-   diagnostic was on came out clean;
-   (c) compare the COARSE CHAIN's bytes across a clean and a defective run (the one texture the VT
-   path reads that no verifier here hashes), and the layer meshes' positions/texcoords - with
-   `AE_VT_DEMAND=0` those are the only inputs left that could differ between two runs of one
-   command.
+1. ~~**The timing-sensitive wrong read at a panned camera**~~ - **FOUND AND FIXED**: the mip tail
+   build rendered each level into the texture it was sampling. See Measured, "the mip tail's
+   read-while-write". The defect was never in the paged read: everything the paged path samples
+   was proven identical to the control (uv, level, content byte for byte), and the chain that both
+   paths share was the thing that changed from run to run. The fix builds each tail level into a
+   scratch texture and blits it into the chain, so no command samples a texture it writes; the
+   two-run comparison on nene went from **max 223 in an 18x69 strip with the two runs 109 samples
+   apart** to **bit-identical runs, max 1 from the control, 0 samples in the strip**, and the
+   mutation control (`AE_MIP_TAIL_OLD_PATH=1`) brings the defect back on demand.
 2. The demand pass on the frames that still re-mark: after the replay, any **camera move** and
    **playback** (a new time frame re-skins, so the revision moves) walk all 107 resources on nene.
    That is **5.7-11.1 ms** a frame across the steady frames of two runs - 6-11 % of the 97-102 ms

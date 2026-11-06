@@ -985,6 +985,16 @@ bool VirtualTexture::buildCoarse(gl::Texture& aFullChain) {
     // uploaded level by level. Manual is the policy whose point is "the caller owns every
     // level" - and every one of them is a level of the chain that was just captured, not a
     // rebuild, so the fallback and the control path cannot disagree about a texel.
+    // THE PIXEL-STORE STATE IS SAVED AND RESTORED. This runs at load, between the chain builds of
+    // the resources around it; leaving UNPACK_ALIGNMENT at 1 (which every row here needs) was
+    // measured to change the NEXT chain's mip tail: the chain hashes of a project differ across two
+    // paged runs and are identical across two full-resolution ones (design doc, Measured).
+    auto& gglState = gl::Global::functions();
+    GLint prevUnpackAlignment = 4;
+    GLint prevUnpackRowLength = 0;
+    gglState.glGetIntegerv(GL_UNPACK_ALIGNMENT, &prevUnpackAlignment);
+    gglState.glGetIntegerv(GL_UNPACK_ROW_LENGTH, &prevUnpackRowLength);
+
     std::vector<uint8> levelBytes((size_t)coarseSize.width() * coarseSize.height() * 4);
     mPyramid.copyLevel(mCoarseLevel, levelBytes.data(), coarseSize);
 
@@ -1021,6 +1031,8 @@ bool VirtualTexture::buildCoarse(gl::Texture& aFullChain) {
     mCoarse.setWrap(GL_CLAMP_TO_BORDER, QColor(0, 0, 0, 0));
     mCoarse.setLodBias(0.0f);
 
+    gglState.glPixelStorei(GL_UNPACK_ALIGNMENT, prevUnpackAlignment);
+    gglState.glPixelStorei(GL_UNPACK_ROW_LENGTH, prevUnpackRowLength);
     return true;
 }
 

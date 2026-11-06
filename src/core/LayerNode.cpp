@@ -926,6 +926,38 @@ void LayerNode::renderLayer(const RenderInfo& aInfo, const TimeCacheAccessor& aA
         shader.setAttributeBuffer("inPosition", mMeshTransformer.positions(), GL_FLOAT, 3);
         shader.setAttributeArray("inTexCoord", mCurrentMesh->texCoords(), mCurrentMesh->vertexCount());
 
+        // AE_TRACE_GEO: the DRAW'S GEOMETRY, hashed. Everything else about the paged read has been
+        // proven equal to the control path (see the design doc): the uv, the level and the texels.
+        // The positions come from the skinning pass and decide which fragments exist at all, so a
+        // sub-pixel difference there is exactly an edge-only difference on a thin stroke. Two runs
+        // of one command either print the same hashes or they do not.
+        if (qEnvironmentVariableIsSet("AE_TRACE_GEO")) {
+            const int count = mCurrentMesh->vertexCount();
+            std::vector<float> positions((size_t)count * 3, 0.0f);
+            ggl.glBindBuffer(GL_ARRAY_BUFFER, mMeshTransformer.positions().id());
+            ggl.glGetBufferSubData(
+                GL_ARRAY_BUFFER, 0, (GLsizeiptr)(positions.size() * sizeof(float)), positions.data()
+            );
+            ggl.glBindBuffer(GL_ARRAY_BUFFER, 0);
+            const auto hashBytes = [](const void* aData, size_t aCount) {
+                const uint8* bytes = (const uint8*)aData;
+                quint64 h = 1469598103934665603ull;
+                for (size_t i = 0; i < aCount; ++i) {
+                    h ^= bytes[i];
+                    h *= 1099511628211ull;
+                }
+                return h;
+            };
+            const quint64 posHash = hashBytes(positions.data(), positions.size() * sizeof(float));
+            const quint64 uvHash = hashBytes(
+                mCurrentMesh->texCoords(), (size_t)count * sizeof(gl::Vector2)
+            );
+            qWarning(
+                "VTGEO layer=%s verts=%d pos=%016llx uv=%016llx", qPrintable(name()), count,
+                (unsigned long long)posHash, (unsigned long long)uvHash
+            );
+        }
+
         shader.setUniformValue("uViewMatrix", viewMatrix);
         shader.setUniformValue("uScreenSize", QSizeF(aInfo.camera.deviceScreenSize()));
         shader.setUniformValue("uImageSize", QSizeF(textureSize));

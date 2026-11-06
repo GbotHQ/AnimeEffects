@@ -283,43 +283,30 @@ hand it over. Its one question is `Sampling`:
   camera-navigation instrument (each repaint's PNG is written as `frame-<f>-r<i>.png`), and it is
   how the **timing-sensitive wrong read** at a panned camera was found - see the doc's first open
   item, and note what that item now measures: the defect is a **composite** one, not a page one.
-  On a DEFECTIVE frame `AE_VT_VERIFY_PAGES=end` reports every slot holding its own page's bytes,
-  the table equal to the CPU mirror, the mirror equal to the pool, and `AE_VT_DUMP_PAGES=1` prints
-  the same page->slot layout on two defective runs (114 lines, diff 0); the defect also survives
-  `AE_VT_DEMAND=0` (no page read at all) and `AE_VT_COARSE=64`, and the full-resolution control is
-  bit-identical across runs while both VT modes are not. `AE_VT_VERIFY_PAGES=end` is the form that
-  works there: it runs the slot check once AFTER the last frame, so its readbacks cannot re-time
-  the frame it is asked about (the in-frame `=1` does, and a change as small as a shader source
-  line can flip a run clean - the defect is perturbed by almost anything, so never conclude
-  "clean" from a single instrumented run). `AE_VT_MISS_MAGENTA=1` paints the coarse fallback
-  magenta and `AE_VT_ATLAS_SENTINEL=1` fills a fresh atlas magenta - two pictures that rule the
-  "no page found" and "unwritten texel" classes in or out without a readback.
-  `AE_TRACE_DEST=1` struck out the destination texture (all 130 layers of nene at frame 6 are
-  `blend=0 clippee=0 refreshed=0`, and `blendColor` returns the source identically for Normal
-  whatever the destination holds, so `DestinationTexturizer::update` is not even called). Two real
-  defects remain in that code and are unrelated to this frame: the copy is drawn with the PREVIOUS
-  draw's `GL_BLEND` still enabled, and it is refreshed only for `blendMode != Normal`.
-  **The GPU mip chain itself is not byte-reproducible**: `AE_VT_HASH=<level>|all` hashes every
-  chain right after `gl::Texture::create` builds it, and 240 of 241 chains print the same hash on
-  two runs while `384x1715 level=2` does not - `AE_VT_DUMP_CHAIN=<W>x<H>` + `AE_VT_DUMP_CHAIN_DIR`
-  writes that level to a PNG, and the difference is 758 of 41,088 texels in the near-transparent
-  fringe (`(24,14,26,126)` against `(24,14,26,3)`). Treat a chain as reproducible only where a
-  hash says so; a paged path that copies one inherits what the copy took.
-  **The layer at the defect is `Layer 19 Copy` (384x1715)** - found with `AE_VT_TAG_LAYER=1`, which
-  gives every draw a colour derived from its name (the frame then names the topmost layer at a
-  pixel). Isolated with `--only-layer '=Layer 19 Copy'` it shows the defect alone (123 samples,
-  max 68). For that draw the uv (`AE_VT_DEBUG_UV=1`) and the level (`AE_VT_DEBUG_LEVEL=1`) are
-  BIT-IDENTICAL between the paged and control programs, `AE_VT_HASH=all` + `AE_VT_HASH_COARSE`
-  match the coarse chain against 9 of 9 chain levels byte for byte, and `AE_TRACE_DEST=1` reports
-  `blend=0 clippee=0 mask=0 maskPaged=0` - so the read is the same read, and a folder matte is out
-  too (nene registers zero mask resources). What is left is the COVERAGE, i.e. the vertex
-  positions: a sub-pixel difference there is an edge-only difference on a thin stroke, and a hash
-  of the positions buffer each draw binds is the one input not yet measured.
-  A real defect WAS found and fixed there: `DestinationTexturizer::update`/`updateAll` drew their
-  copy with the caller's `GL_BLEND` still enabled, so the copy is `scene over the previous
-  texturizer content` in every semi-transparent pixel and the residue compounds through the folder
-  tree; they now save/disable/restore blend and scissor (behaviour-neutral on nene, whose folders
-  draw no present pass).
+  **THE PAN-CAMERA DEFECT WAS THE MIP TAIL'S READ-WHILE-WRITE, AND IS FIXED.**
+  `buildMipTailOnGpu` rendered each level of a chain into that chain while fetching a level of the
+  same texture. Legal per IMAGE by the spec, but this driver resolves a whole-texture
+  write-while-sample by renaming, so the content depends on what else is in the stream - and the
+  paged path's pyramid capture reads every level back right after the build, which is what exposed
+  it: with VT on, 240 of 241 chains hash identically across two runs and `384x1715` differs at ALL
+  ten levels; with `AE_VIRTUAL_TEXTURE=0` the same two runs hash identically at every level; with
+  the tail off (`AE_NO_MIP_TAIL=1`) two paged runs are bit-identical but 20,036 samples from the
+  control. A `glTextureBarrier` and a `glFinish` were tried and did not help. The fix renders each
+  tail level into a SCRATCH texture and blits it into the chain; two runs at
+  `--offset 280 --repeat 8` went from max 223 in an 18x69 strip and 109 samples apart to
+  bit-identical runs at max 1 from the control with an empty strip. `AE_MIP_TAIL_OLD_PATH=1`
+  reproduces the defect on demand. Before the fix, the page table, the entries against the pool,
+  the slot contents, the layout, the tier (`AE_VT_DEMAND=0`, `AE_VT_COARSE=64`), the layer
+  (`Layer 19 Copy`, named with `AE_VT_TAG_LAYER=1`, its uv and level bit-identical between paths,
+  its coarse chain byte-exact at 9 of 9 levels), the destination texture and the mask tier were
+  each ruled out by measurement. Read the doc's Measured section before re-opening any of them.
+  The instruments are still the way to ask: `AE_VT_VERIFY_PAGES=end` runs the slot check once after
+  the last frame (the in-frame `=1` re-times the frame and can hide the answer), `AE_VT_DUMP_PAGES`
+  prints the layout, `AE_VT_MISS_MAGENTA` (a RUNTIME uniform, so it does not perturb the program)
+  paints a miss magenta, `AE_VT_ATLAS_SENTINEL` fills a fresh atlas magenta, `AE_VT_HASH=all` +
+  `AE_VT_HASH_COARSE` compare a coarse chain with its source level by level, `AE_TRACE_GEO` hashes
+  the drawn positions/uvs, and `AE_VT_TAG_LAYER`/`AE_VT_DEBUG_LEVEL`/`AE_VT_DEBUG_UV` put a
+  layer's identity, level and uv into the frame.
   Two sampling rules, each found as a whole-frame residual first: **the always-resident coarse tier
   takes the same two-tap reconstruction as the full path** (one bilinear tap there cost 816 px over
   8/255 on nene), and **the `lod <= 0` branch reads `textureLod(..., 0)` on BOTH paths, never

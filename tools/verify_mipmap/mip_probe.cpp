@@ -740,6 +740,88 @@ void suiteChain() {
 }
 
 //-------------------------------------------------------------------------------------------------
+// M1b: THE CHAIN MUST BE A FUNCTION OF ITS SOURCE, not of the command stream around it.
+//
+// The area-weighted tail used to build each level of a chain while sampling another level of the
+// same texture. The spec's feedback rule is per IMAGE, so that is legal on paper, but the driver
+// resolves a whole-texture write-while-sample by renaming, and the result then depends on what
+// else is in the stream - which is why the paged path, whose pyramid capture reads every level
+// back right after the build, was the only path that saw it (measured on nene: 240 of 241 chains
+// hash identically across two runs and one differs at all ten levels; with AE_VIRTUAL_TEXTURE=0
+// two runs agree everywhere). The fix renders into a scratch texture and blits.
+//
+// So this case builds the same source's chain twice, WITH A FULL READBACK OF THE FIRST IN BETWEEN
+// (the exact perturbation the capture applies), and requires the two chains to be bit-identical.
+// AE_MIP_TAIL_OLD_PATH=1 reinstates the old construction and the case reports which path it
+// measured - but MEASURED, the old path passes this case too (9 levels, worst channel 0): inside
+// one process it is stable, and the defect only appears across processes, where the readback's
+// position in the stream differs. So this case is a structural guard, NOT the defect's gate; the
+// gate with power is the two-run comparison in the design doc's Measured section, and
+// AE_MIP_TAIL_OLD_PATH=1 is the control that reproduces the defect for it (325/305 samples from
+// the control, 109 apart, max 223).
+void suiteChainDeterminism() {
+    suiteHeader("M1b the mip chain is a function of its source, not of the command stream");
+    // a size whose levels do NOT all halve exactly, so the tail exists: 384 halves to level 7 and
+    // then has to reduce 3:1, and the odd height gives the tail an inexact first step
+    const int w = 384;
+    const int h = 259;
+    const Pattern& pat = kPatterns[0];
+    Img src;
+    src.w = w;
+    src.h = h;
+    src.d.assign((size_t)w * h * 4, 0);
+    for (int y = 0; y < h; ++y) {
+        for (int x = 0; x < w; ++x) {
+            uint8_t* p = src.at(x, y);
+            const bool on = ((x * 3 + y * 5) % 11) < 5;
+            const uint8_t* c = on ? pat.inside : pat.outside;
+            p[0] = c[0];
+            p[1] = c[1];
+            p[2] = c[2];
+            p[3] = on ? 255 : (uint8_t)(y & 0xFF);
+        }
+    }
+
+    const std::vector<Img> first = readChain(src, true);
+    // THE PERTURBATION: read every level back before the second build, which is what the pyramid
+    // capture does, and what used to change how the first chain was resolved
+    const std::vector<Img> second = readChain(src, true);
+
+    const QString prefix = "chain determinism";
+    const int failsBefore = gFails;
+    expect(!first.empty() && first.size() == second.size(),
+        QString("%1: both builds must produce the same level count (%2 vs %3)")
+            .arg(prefix).arg(first.size()).arg(second.size()));
+    int differingLevels = 0;
+    int worstChannel = 0;
+    const size_t levels = std::min(first.size(), second.size());
+    for (size_t l = 0; l < levels; ++l) {
+        if (first[l].w != second[l].w || first[l].h != second[l].h) {
+            ++differingLevels;
+            worstChannel = 255;
+            continue;
+        }
+        int delta = 0;
+        for (size_t i = 0; i < first[l].d.size(); ++i)
+            delta = std::max(delta, std::abs((int)first[l].d[i] - (int)second[l].d[i]));
+        if (delta > 0)
+            ++differingLevels;
+        worstChannel = std::max(worstChannel, delta);
+    }
+    expect(differingLevels == 0,
+        QString("%1: two builds of one source must be bit-identical (%2 level(s) differ, worst %3) - "
+                "a chain that changes with the stream is the mip tail's read-while-write")
+            .arg(prefix).arg(differingLevels).arg(worstChannel));
+    caseReport(
+        prefix, gFails == failsBefore,
+        QString("%1 levels, worst channel %2, tail %3")
+            .arg((int)levels)
+            .arg(worstChannel)
+            .arg(qEnvironmentVariableIsSet("AE_MIP_TAIL_OLD_PATH") ? "OLD PATH" : "scratch")
+    );
+}
+
+//-------------------------------------------------------------------------------------------------
 // M2: the production core::ImageKey texture must be the content's own size, and its chain - the
 // tail gl::Texture::create builds on the GPU included - must be the analytic area average.
 //
@@ -3672,6 +3754,7 @@ int main(int argc, char** argv) {
     glWidget->makeCurrent();
 
     suiteChain();
+    suiteChainDeterminism();
     suiteImageKey();
     suiteChainExactness();
     suiteRender();

@@ -46,8 +46,14 @@ bool ImagePyramid::capture(gl::Texture& aChain, int aLastLevel) {
     mLevels.resize((size_t)last + 1);
     auto& ggl = gl::Global::functions();
     ggl.glBindTexture(GL_TEXTURE_2D, aChain.id());
-    // Rows are uploaded with the default 4-byte pack alignment; every level here is RGBA8 and
-    // width*4 is a multiple of 4, so the line length is the level's own width.
+    // Rows are read with the default 4-byte pack alignment; every level here is RGBA8 and width*4
+    // is a multiple of 4, so the line length is the level's own width. THE ALIGNMENT IS RESTORED:
+    // this runs once per resource at load, between the chain builds of the resources around it, and
+    // a pixel-store value left behind is exactly the kind of cross-resource state that makes a
+    // chain build differ from run to run (measured: the GPU chains' hashes differ across two paged
+    // runs and are identical across two full-resolution ones - see the design doc).
+    GLint prevPackAlignment = 4;
+    ggl.glGetIntegerv(GL_PACK_ALIGNMENT, &prevPackAlignment);
     ggl.glPixelStorei(GL_PACK_ALIGNMENT, 4);
     for (int l = 1; l <= last; ++l) {
         const QSize size = levelSize(l);
@@ -56,6 +62,7 @@ bool ImagePyramid::capture(gl::Texture& aChain, int aLastLevel) {
         ggl.glGetTexImage(GL_TEXTURE_2D, l, GL_RGBA, GL_UNSIGNED_BYTE, data.data());
     }
     ggl.glBindTexture(GL_TEXTURE_2D, 0);
+    ggl.glPixelStorei(GL_PACK_ALIGNMENT, prevPackAlignment);
 
     mMaxLevel = last;
     return true;
