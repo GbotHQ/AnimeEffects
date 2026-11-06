@@ -276,7 +276,8 @@ void main() { oDemand = 1.0; }
 
         /// Marks one resource's pages into its layer. `aViewMatrix` and `aDeviceSize` are the
         /// draw's own; the page map's NDC uses the ARRAY CELL, so the layer's sub-rect lands at
-        /// its grid position and the rest stays cleared.
+        /// its grid position and the rest stays cleared. The buffers are raw ids because a
+        /// fullscreen pass has no vertex data of its own (see markFullscreen).
         void mark(
             int aLayer,
             const QSize& aGrid,
@@ -284,10 +285,10 @@ void main() { oDemand = 1.0; }
             const QMatrix4x4& aViewMatrix,
             const QSize& aDeviceSize,
             const QVector2D& aTexCoordOffset,
-            gl::BufferObject& aPositions,
+            GLuint aPositions,
             const gl::Vector2* aTexCoords,
             int aVtxCount,
-            gl::BufferObject& aIndexBuffer,
+            GLuint aIndexBuffer,
             int aIndexCount
         ) {
             if (aLayer < 0 || aGrid.isEmpty() || aVtxCount <= 0 || aIndexCount < 3
@@ -347,7 +348,7 @@ void main() { oDemand = 1.0; }
             mProgram->setUniformValue("uMaskTexelSize", aParams.maskTexelSize);
 
             mVAO->bind();
-            ggl.glBindBuffer(GL_ARRAY_BUFFER, aPositions.id());
+            ggl.glBindBuffer(GL_ARRAY_BUFFER, aPositions);
             ggl.glEnableVertexAttribArray(mPositionLocation);
             mProgram->setAttributeArray(mPositionLocation, GL_FLOAT, nullptr, 3, 0);
             if (aParams.uvFromScreen) {
@@ -364,9 +365,9 @@ void main() { oDemand = 1.0; }
                 ggl.glEnableVertexAttribArray(mTexCoordLocation);
                 mProgram->setAttributeArray(mTexCoordLocation, GL_FLOAT, nullptr, 2, 0);
             }
-            aIndexBuffer.bind();
+            ggl.glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, aIndexBuffer);
             ggl.glDrawElements(GL_TRIANGLES, aIndexCount, GL_UNSIGNED_INT, nullptr);
-            aIndexBuffer.release();
+            ggl.glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
             mProgram->release();
 
             ggl.glBindFramebuffer(GL_DRAW_FRAMEBUFFER, (GLuint)prevDrawFbo);
@@ -385,6 +386,25 @@ void main() { oDemand = 1.0; }
             restore(GL_SCISSOR_TEST, prevScissor);
             restore(GL_CULL_FACE, prevCull);
             mDrawFrame = mFrame;
+        }
+
+        /// THE FULLSCREEN PASS'S DEMAND (a folder's matte). There is no mesh to walk and no
+        /// per-vertex uv: the pass covers its whole target, and its uv is the screen->content
+        /// affine the fragment shader applies to the same coord. So the quad is the target rect
+        /// in NDC and the vertex shader's uUvFromScreen branch derives every vertex's texel
+        /// position from it - the SAME formula (and the same Jacobian) a layer's demand uses,
+        /// rather than a second CPU implementation that could drift from the shader.
+        void markFullscreen(
+            int aLayer, const QSize& aGrid, const Params& aParams, const QSize& aTargetSize
+        ) {
+            if (!aParams.uvFromScreen || aTargetSize.isEmpty() || aGrid.isEmpty())
+                return;
+            if (!ensureBuilt() || !ensureQuad())
+                return;
+            mark(
+                aLayer, aGrid, aParams, QMatrix4x4(), aTargetSize, QVector2D(0.0f, 0.0f),
+                mQuadPositions, nullptr, 4, mQuadIndices, 6
+            );
         }
 
         /// One copy of every layer into a PBO, one fence. Skipped when no layer drew this frame.
@@ -479,6 +499,8 @@ void main() { oDemand = 1.0; }
                 mProgram.reset();
                 mVAO.reset();
                 mTexCoordVbo = 0;
+                mQuadPositions = 0;
+                mQuadIndices = 0;
                 mTexture = 0;
                 mFbo = 0;
                 mClearedFrame = 0;
@@ -509,6 +531,31 @@ void main() { oDemand = 1.0; }
                 mVAO.reset(new gl::VertexArrayObject());
             }
             return mProgram != nullptr;
+        }
+
+        /// The fullscreen quad markFullscreen draws: the target rect in NDC, two triangles. Its
+        /// uv is DERIVED from the screen position in the shader, so there is no texcoord buffer.
+        bool ensureQuad() {
+            if (mQuadPositions != 0 && mQuadIndices != 0)
+                return true;
+            auto& ggl = gl::Global::functions();
+            const GLfloat positions[4][3] = {
+                {-1.0f, -1.0f, 0.0f}, {1.0f, -1.0f, 0.0f}, {1.0f, 1.0f, 0.0f}, {-1.0f, 1.0f, 0.0f}
+            };
+            const GLuint indices[6] = {0, 1, 2, 0, 2, 3};
+            if (mQuadPositions == 0) {
+                ggl.glGenBuffers(1, &mQuadPositions);
+                ggl.glBindBuffer(GL_ARRAY_BUFFER, mQuadPositions);
+                ggl.glBufferData(GL_ARRAY_BUFFER, sizeof(positions), positions, GL_STATIC_DRAW);
+                ggl.glBindBuffer(GL_ARRAY_BUFFER, 0);
+            }
+            if (mQuadIndices == 0) {
+                ggl.glGenBuffers(1, &mQuadIndices);
+                ggl.glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, mQuadIndices);
+                ggl.glBufferData(GL_ELEMENT_ARRAY_BUFFER, sizeof(indices), indices, GL_STATIC_DRAW);
+                ggl.glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
+            }
+            return mQuadPositions != 0 && mQuadIndices != 0;
         }
 
         bool ensureCapacity(int aLayers, const QSize& aGrid) {
@@ -592,6 +639,8 @@ void main() { oDemand = 1.0; }
         std::unique_ptr<QOpenGLShaderProgram> mProgram;
         std::unique_ptr<gl::VertexArrayObject> mVAO;
         GLuint mTexCoordVbo = 0;
+        GLuint mQuadPositions = 0;
+        GLuint mQuadIndices = 0;
         GLuint mTexture = 0;
         GLuint mFbo = 0;
         int mPositionLocation = -1;
@@ -1323,8 +1372,7 @@ void VirtualTexture::markDemand(
 
     DemandMap::instance().mark(
         mDemandLayer, QSize(mTableWidth, mTableRows), params, aViewMatrix, aDeviceScreenSize,
-        aTexCoordOffset, const_cast<gl::BufferObject&>(aPositions), aTexCoords, aVtxCount,
-        const_cast<gl::BufferObject&>(aIndexBuffer), aIndexCount
+        aTexCoordOffset, aPositions.id(), aTexCoords, aVtxCount, aIndexBuffer.id(), aIndexCount
     );
 }
 
@@ -1359,8 +1407,34 @@ void VirtualTexture::markMaskDemand(
 
     DemandMap::instance().mark(
         mDemandLayer, QSize(mTableWidth, mTableRows), params, aViewMatrix, aDeviceScreenSize,
-        QVector2D(0.0f, 0.0f), const_cast<gl::BufferObject&>(aPositions), nullptr, aVtxCount,
-        const_cast<gl::BufferObject&>(aIndexBuffer), aIndexCount
+        QVector2D(0.0f, 0.0f), aPositions.id(), nullptr, aVtxCount, aIndexBuffer.id(), aIndexCount
+    );
+}
+
+void VirtualTexture::markScreenMaskDemand(
+    const QMatrix4x4& aScreenToContent, const QRectF& aMaskRect, const QSize& aTargetSize
+) {
+    if (!isMask() || mDemandLayer < 0 || !demandEnabled() || aMaskRect.isEmpty()
+        || aTargetSize.isEmpty())
+        return;
+
+    DemandMap::Params params;
+    params.layerSize = mSize;
+    params.coarseLevel = mCoarseLevel;
+    params.maxLevel = mMaxLevel;
+    params.bias = ImageKey::layerLodBias();
+    for (int i = 0; i < kMaxPageLevels; ++i)
+        params.levelRow[i] = mLevelRow[i];
+    params.uvFromScreen = true;
+    params.screenToContent = aScreenToContent;
+    params.maskRect = QVector4D(
+        float(aMaskRect.x()), float(aMaskRect.y()), float(aMaskRect.width()),
+        float(aMaskRect.height())
+    );
+    params.maskTexelSize = QVector2D((float)mSize.width(), (float)mSize.height());
+
+    DemandMap::instance().markFullscreen(
+        mDemandLayer, QSize(mTableWidth, mTableRows), params, aTargetSize
     );
 }
 

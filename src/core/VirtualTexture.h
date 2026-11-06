@@ -152,6 +152,15 @@ public:
         int aIndexCount
     );
 
+    /// THE FULLSCREEN PASS'S DEMAND: a folder's matte is applied over its whole isolated
+    /// composite, so its uv is the screen->content affine at every pixel of the target - there
+    /// is no mesh to walk. `aTargetSize` is the FilterFrame's size (the pass's own coord space),
+    /// not the device size. Marked with the demand pass's quad, so the level is computed by the
+    /// same Jacobian code the layer and layer-mask demands use.
+    void markScreenMaskDemand(
+        const QMatrix4x4& aScreenToContent, const QRectF& aMaskRect, const QSize& aTargetSize
+    );
+
     /// Marks the pages this layer's triangles sample this frame. `aPositions` is the skinned
     /// position buffer the layer is drawn from; `aTexCoords` its mesh uv (content pixels).
     void markDemand(

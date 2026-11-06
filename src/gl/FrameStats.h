@@ -22,8 +22,11 @@ namespace gl {
 //     GL 3.3 core, where per-draw sample queries are not available portably.
 //   * tex_live_bytes / tex_peak_bytes - the bytes of every gl::Texture ever created minus the ones
 //     destroyed: the texture residency the process is holding right now.
-//   * mask_bytes - the RAM of the painted fields (core::MaskKey / core::FilterMask), which is not
-//     a texture until it is uploaded.
+//   * mask_bytes - the RAM of the document's MATTES: every node's blended MaskKey field (one
+//     byte per content texel) plus the CPU pyramid a paged matte keeps for its levels, and every
+//     filter lane's painted field. RAM, not VRAM - a chain's GPU bytes belong to tex_live. Fed
+//     once per frame from ObjectTree::maskRamBytes, and only while the counter is on (the tree
+//     walk is the cost).
 //   * dens / dens_max - the DISTRIBUTION of the texel density the deformation produced, not just
 //     its worst case. A triangle's density is its deformed content-space area divided by its uv
 //     area in content pixels: 1.0 for a layer that is merely scaled uniformly, above 1 where the

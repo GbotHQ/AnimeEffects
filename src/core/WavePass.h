@@ -23,8 +23,9 @@ struct MaskInput {
     GLuint texture = 0;
     QRectF rect;
     // A PAGED field: when set, the pass samples its page stack instead of `texture` (which is
-    // then only a completeness binding). The rubylith is the only user - a filter mask is never
-    // paged - and it needs this because a pageable matte has no full chain at all.
+    // then only a completeness binding). A LAYER MASK's rubylith, a FOLDER's matte and a folder's
+    // rubylith use it - a pageable matte has no full chain at all. A FILTER mask (an HSV/wave/blur
+    // input) is never paged: it has no field key of its own, only a lane slot.
     const VirtualTexture* paged = nullptr;
     // the value "the filter is unaffected" at, 0..1 (core::filterMaskNeutral). The
     // preview tints where the field DEVIATES from it; the filters themselves do not

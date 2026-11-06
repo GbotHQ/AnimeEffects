@@ -51,6 +51,7 @@
 // Exit code: 0 = all pass, 1 = test failures, 2 = GL bootstrap failure.
 
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <cstdint>
 #include <cstdio>
@@ -1278,7 +1279,10 @@ struct RenderFixture {
         core::ObjectTree& aTree, const core::CameraInfo& aCamera, int aFrame, const uint8_t aBackdrop[3],
         bool aIsGrid = false, bool aWorkingCache = false,
         const core::MaskKey* aMaskPreviewKey = nullptr, const core::ObjectNode* aMaskPreviewTarget = nullptr,
-        const QColor& aMaskPreviewColor = QColor(255, 0, 0, 128)
+        const QColor& aMaskPreviewColor = QColor(255, 0, 0, 128),
+        // the export policy's two extra frames (see renderExported): a demand-only pass draws
+        // nothing and is not a frame boundary of its own
+        bool aDemandOnly = false, bool aSkipFrameBoundary = false
     ) {
         auto& ggl = gl::Global::functions();
 
@@ -1319,16 +1323,33 @@ struct RenderFixture {
         info.maskPreviewKey = aMaskPreviewKey;
         info.maskPreviewTarget = aMaskPreviewTarget;
         info.maskPreviewColor = aMaskPreviewColor;
+        info.demandOnly = aDemandOnly;
 
         // the production frame boundary (Driver::renderGL does this for the app)
-        core::VirtualTexture::beginFrame();
+        if (!aSkipFrameBoundary)
+            core::VirtualTexture::beginFrame();
         aTree.render(info, aWorkingCache);
-        core::VirtualTexture::endFrame();
+        if (!aSkipFrameBoundary)
+            core::VirtualTexture::endFrame();
 
         std::vector<uint8_t> out((size_t)size.width() * size.height() * 4, 0);
         ggl.glReadPixels(0, 0, size.width(), size.height(), GL_RGBA, GL_UNSIGNED_BYTE, out.data());
         ggl.glBindFramebuffer(GL_FRAMEBUFFER, 0);
         return out;
+    }
+
+    /// THE EXPORT POLICY (ctrl::Exporter's exact sequence, see texture-residency.md): a
+    /// demand-only pass for this frame's camera, synchronise the pages it marked, then ONE real
+    /// pass. The exported first frame must be as sharp as the last, so a paged resource the
+    /// demand-only pass misses (a folder matte, say) shows up as a coarse frame here.
+    std::vector<uint8_t> renderExported(
+        core::ObjectTree& aTree, const core::CameraInfo& aCamera, int aFrame, const uint8_t aBackdrop[3]
+    ) {
+        core::VirtualTexture::beginFrame();
+        render(aTree, aCamera, aFrame, aBackdrop, false, false, nullptr, nullptr, QColor(), true, true);
+        core::VirtualTexture::endFrame();
+        core::VirtualTexture::synchronize();
+        return render(aTree, aCamera, aFrame, aBackdrop);
     }
 };
 
@@ -2797,6 +2818,401 @@ void suiteMaskPyramidMemory() {
     );
 }
 
+// FM1: A FOLDER'S MATTE ON THE PAGED PATH. A layer mask is sampled inside the layer's own draw;
+// a folder applies its matte as one FULLSCREEN multiply over its isolated composite, which used
+// to read the full chain with the hardware's implicit-LOD texture() and had no demand source at
+// all - a page stack could not reproduce that read, and nothing marked the pages it would need.
+// This gate pages a composite folder's matte end to end and checks the three things that decide
+// whether the pass is really paged:
+//   - the pages are DEMANDED and RESIDENT (wanted > 0 proves the fullscreen demand marked them;
+//     a resource built by an accessor alone would have wanted == 0);
+//   - the paged frame equals the forced-full control (the same sampleMask on both paths, so a
+//     difference is residency, not a filter);
+//   - the matte is active in both, and the rubylith preview pages through the same stack.
+// The field is 640^2 on a 640x640 canvas: level 0 is a 3x3 page grid, the coarse chain starts at
+// 320^2, and the camera is 1:1 - so the demand's level is 0 and exactly its 9 pages are wanted.
+void suiteFolderMask() {
+    suiteHeader("FM1 folder matte: paged vs the full-resolution control");
+    if (!gl::PagePool::enabled()) {
+        std::printf("  [SKIP] AE_VIRTUAL_TEXTURE=0 is the control path\n");
+        return;
+    }
+
+    const QSize canvas(640, 640);
+    const uint8_t black[3] = {0, 0, 0};
+    // WHITE opaque content: the frame's pixel IS the matte's value, so the matte's edge is read
+    // in mask units instead of being scaled by whatever the artwork happened to hold
+    Img src;
+    src.w = 900;
+    src.h = 700;
+    src.d.assign((size_t)src.w * src.h * 4, 255);
+
+    auto& fixtures = renderFixtures();
+    const QString fixtureKey = "640x640-fm1";
+    auto it = fixtures.find(fixtureKey);
+    if (it == fixtures.end()) {
+        std::unique_ptr<RenderFixture> fx(new RenderFixture());
+        fx->init(canvas);
+        it = fixtures.emplace(fixtureKey, std::move(fx)).first;
+    }
+    RenderFixture& fx = *it->second;
+
+    core::CameraInfo camera;
+    camera.reset(canvas, 1.0, canvas, QPoint(0, 0));
+
+    // One tree per mode, each built from scratch: the mask's force-full flag rides the VALUE and
+    // the expansion caches its copy, so a control toggled after the first blend would not reach
+    // the renderer. The layer is 900x700 at 0.6, centred: it spans screen x 50..590, so the
+    // field's left half and its right half both lie over content.
+    const auto buildTree = [&](bool aForceFull, std::unique_ptr<core::ObjectTree>& aTree,
+                               core::FolderNode** aRoot, core::MaskKey** aMask) {
+        aTree.reset(new core::ObjectTree());
+        auto* root = new core::FolderNode("root");
+        aTree->grabTopNode(root);
+        auto* res = makeResource(aForceFull ? "fm1_src_full" : "fm1_src_paged", src);
+        addScaledLayer(
+            *aTree, root, res, "layer", QVector2D(canvas.width() * 0.5f, canvas.height() * 0.5f),
+            0.6f, img::BlendMode_Normal
+        );
+        auto* maskKey = new core::MaskKey();
+        maskKey->data().setForceFullTexture(aForceFull);
+        root->timeLine()->grabDefaultKey(core::TimeKeyType_Mask, maskKey);
+        maskKey->data().alloc(QSize(640, 640), QRectF(0, 0, 640, 640), core::MaskKey::kNeutral);
+        QImage& field = maskKey->data().field();
+        for (int y = 0; y < field.height(); ++y)
+            std::memset(field.scanLine(y), 0, 320);
+        maskKey->data().markDirty(QRect(0, 0, 320, 640));
+        expect(maskKey->data().isPainted(), "FM1 the painted field must report itself painted");
+        *aRoot = root;
+        *aMask = maskKey;
+    };
+
+    std::unique_ptr<core::ObjectTree> pagedTree, fullTree;
+    core::FolderNode* pagedRoot = nullptr;
+    core::FolderNode* fullRoot = nullptr;
+    core::MaskKey* pagedMask = nullptr;
+    core::MaskKey* fullMask = nullptr;
+    buildTree(false, pagedTree, &pagedRoot, &pagedMask);
+    buildTree(true, fullTree, &fullRoot, &fullMask);
+
+    std::vector<uint8_t> paged;
+    for (int i = 0; i < 8; ++i)
+        paged = fx.render(*pagedTree, camera, 0, black);
+
+    // THE PAGES MUST BE THE DEMAND PASS'S, not an accessor's: markFolderMaskDemand builds the
+    // resource through virtualTexture(), so a wanted count here is evidence the render path ran
+    // the fullscreen demand. 1:1 on a 640^2 field is level 0, a 3x3 grid.
+    core::VirtualTexture* maskVT = pagedMask->data().virtualTexture();
+    expect(maskVT != nullptr, "FM1 the folder matte must take the paged path");
+    if (!maskVT)
+        return;
+    expect(maskVT->isMask(), "FM1 the folder matte's resource must be an R8 mask");
+    expect(
+        maskVT->size() == QSize(640, 640),
+        QString("FM1 the matte's grid is the field's (%1x%2)")
+            .arg(maskVT->size().width()).arg(maskVT->size().height())
+    );
+    expect(
+        maskVT->coarseLevel() == 1 && maskVT->maxLevel() == 9,
+        QString("FM1 the coarse chain starts at 320^2 (coarse %1 of %2)")
+            .arg(maskVT->coarseLevel()).arg(maskVT->maxLevel())
+    );
+    const int wanted = maskVT->wantedPageCount();
+    const int resident = maskVT->residentWantedCount();
+    expect(
+        wanted == 9,
+        QString("FM1 a 1:1 640^2 matte demands exactly its level-0 3x3 grid (got %1)").arg(wanted)
+    );
+    expect(
+        resident == wanted,
+        QString("FM1 every wanted matte page must be resident (%1 of %2)").arg(resident).arg(wanted)
+    );
+
+    // THE CONTROL: the same field forced onto the full chain. It must really be full, and the
+    // matte must not be paged beside it (virtualTexture declines while the flag is set).
+    expect(fullMask->data().forceFullTexture(), "FM1 the control must hold the force-full flag");
+    expect(
+        fullMask->data().virtualTexture() == nullptr,
+        "FM1 the forced-full matte must not take the paged path"
+    );
+    const gl::Texture* fullTexture = fullMask->data().textureId();
+    expect(fullTexture != nullptr && fullTexture->id() != 0, "FM1 the control must build a full matte");
+    // EIGHT FRAMES LIKE THE PAGED SIDE, even though the MATTE is full: the control tree's LAYER
+    // IMAGE is still a pageable resource, and its first frame samples the coarse chain until the
+    // demand readback lands. Comparing a settled paged frame against an unsettled control measured
+    // 40 units at the layer's silhouette - the image's transition, not the matte's.
+    std::vector<uint8_t> control;
+    for (int i = 0; i < 8; ++i)
+        control = fx.render(*fullTree, camera, 0, black);
+    if (fullTexture) {
+        expect(
+            fullTexture->mipmapLevels() == 10,
+            QString("FM1 the control's chain must be complete (10 levels, got %1)")
+                .arg(fullTexture->mipmapLevels())
+        );
+    }
+
+    int maxDelta = 0, maxX = 0, maxY = 0, maxC = 0;
+    double meanDelta = 0.0;
+    int n = 0;
+    for (int y = 16; y < canvas.height() - 16; ++y) {
+        for (int x = 16; x < canvas.width() - 16; ++x) {
+            const size_t i = ((size_t)y * canvas.width() + x) * 4;
+            for (int ch = 0; ch < 4; ++ch) {
+                const int d = std::abs((int)paged[i + ch] - (int)control[i + ch]);
+                if (d > maxDelta) {
+                    maxDelta = d;
+                    maxX = x;
+                    maxY = y;
+                    maxC = ch;
+                }
+                meanDelta += d;
+                ++n;
+            }
+        }
+    }
+    meanDelta = n ? meanDelta / n : 0.0;
+    expect(
+        maxDelta <= 1,
+        QString("FM1 folder matte paged vs full max delta %1 at (%2,%3) ch %4")
+            .arg(maxDelta).arg(maxX).arg(maxY).arg(maxC)
+    );
+    expect(meanDelta < 0.5, QString("FM1 mean delta %1 below 0.5 of 255").arg(meanDelta, 0, 'f', 3));
+
+    // THE MATTE IS DOING SOMETHING, in both frames: the field hides content x < 320 (screen
+    // 0..320 at 1:1), so the layer's left part must be empty and its right part covered.
+    const auto coveredIn = [&](const std::vector<uint8_t>& aFrame, int aX0, int aX1) {
+        int count = 0;
+        for (int y = 100; y < 540; ++y)
+            for (int x = aX0; x < aX1; ++x)
+                count += (aFrame[((size_t)y * canvas.width() + x) * 4] |
+                          aFrame[((size_t)y * canvas.width() + x) * 4 + 1] |
+                          aFrame[((size_t)y * canvas.width() + x) * 4 + 2]) > 0;
+        return count;
+    };
+    {
+        const int hidden = coveredIn(paged, 60, 300);
+        const int visible = coveredIn(paged, 340, 580);
+        expect(hidden == 0, QString("FM1 the paged frame must hide the matte's left half (%1 px)").arg(hidden));
+        expect(visible > 70000, QString("FM1 the paged frame must show its right half (%1 px)").arg(visible));
+        const int controlHidden = coveredIn(control, 60, 300);
+        const int controlVisible = coveredIn(control, 340, 580);
+        expect(
+            controlHidden == 0,
+            QString("FM1 the control must hide the matte's left half (%1 px)").arg(controlHidden)
+        );
+        expect(
+            controlVisible > 70000,
+            QString("FM1 the control must show its right half (%1 px)").arg(controlVisible)
+        );
+    }
+
+    // THE RUBYLITH PREVIEW pages through the same stack (FolderNode's preview branch asks
+    // virtualTexture() first). It marks the hidden half red and leaves the visible half alone,
+    // and the paged overlay matches the full-mask one.
+    const QColor tint(255, 0, 0, 128);
+    std::vector<uint8_t> pagedPreview, fullPreview;
+    for (int i = 0; i < 2; ++i)
+        pagedPreview = fx.render(*pagedTree, camera, 0, black, false, false, pagedMask, pagedRoot, tint);
+    for (int i = 0; i < 2; ++i)
+        fullPreview = fx.render(*fullTree, camera, 0, black, false, false, fullMask, fullRoot, tint);
+
+    const auto pixel = [&](const std::vector<uint8_t>& aFrame, int aX, int aY) {
+        const size_t i = ((size_t)aY * canvas.width() + aX) * 4;
+        return std::array<int, 4>{aFrame[i], aFrame[i + 1], aFrame[i + 2], aFrame[i + 3]};
+    };
+    const auto hiddenPx = pixel(pagedPreview, 150, 300);
+    const auto visiblePx = pixel(pagedPreview, 450, 300);
+    expect(
+        hiddenPx[0] > hiddenPx[1] + 40,
+        QString("FM1 the paged rubylith must tint the hidden half (r=%1 g=%2)")
+            .arg(hiddenPx[0]).arg(hiddenPx[1])
+    );
+    expect(
+        visiblePx[1] > 200,
+        QString("FM1 the paged rubylith must leave the visible half white (g=%1)").arg(visiblePx[1])
+    );
+
+    int previewDelta = 0;
+    for (int y = 16; y < canvas.height() - 16; ++y)
+        for (int x = 16; x < canvas.width() - 16; ++x) {
+            const size_t i = ((size_t)y * canvas.width() + x) * 4;
+            for (int ch = 0; ch < 4; ++ch)
+                previewDelta = std::max(
+                    previewDelta, std::abs((int)pagedPreview[i + ch] - (int)fullPreview[i + ch])
+                );
+        }
+    expect(
+        previewDelta <= 3,
+        QString("FM1 paged rubylith vs the full-mask overlay max delta %1 (tolerance 3)")
+            .arg(previewDelta)
+    );
+
+    // NO HOLES WITH THE POOL EMPTIED: the coarse chain is the only fallback, and the matte must
+    // still hide what it hides. The layer's image falls back too; both are coarse, neither is a
+    // hole, so the visible half stays covered and the hidden half stays empty.
+    {
+        const qint64 savedBudget = gl::PagePool::instance().budgetBytes();
+        gl::PagePool::instance().setBudgetBytes(1);
+        gl::PagePool::instance().purge();
+        std::vector<uint8_t> noPages;
+        for (int i = 0; i < 3; ++i)
+            noPages = fx.render(*pagedTree, camera, 0, black);
+        gl::PagePool::instance().setBudgetBytes(savedBudget);
+
+        const int hidden = coveredIn(noPages, 60, 300);
+        const int visible = coveredIn(noPages, 340, 580);
+        expect(hidden == 0, QString("FM1 with no page resident the matte still hides (%1 px)").arg(hidden));
+        expect(
+            visible > 70000,
+            QString("FM1 with no page resident the coarse chain still shows the layer (%1 px)")
+                .arg(visible)
+        );
+    }
+
+    // THE DEMAND'S MAPPING, at a camera where only PART of the field is on screen. The camera's
+    // view matrix is `screen = center + scale * (content - centerOffset())` with centerOffset =
+    // imageSize/2, so scale 2 centred on (400, 480) shows content 120..440 x 80..400: level 0
+    // needs pages 0..1 x 0..1, FOUR of the nine. A demand that marked the quad's whole screen rect
+    // would say 9; a mirrored one would mark the complementary pages and leave one the pass
+    // samples out of the pool. The paged frame must still match the control, which is what makes
+    // a wrong page SET fail even when its count looks plausible.
+    int zoomedDelta = 0;
+    {
+        core::CameraInfo zoomed = camera;
+        zoomed.setScale(2.0f);
+        zoomed.setCenter(QVector2D(400.0f, 480.0f));
+        std::vector<uint8_t> zoomedPaged, zoomedControl;
+        for (int i = 0; i < 8; ++i)
+            zoomedPaged = fx.render(*pagedTree, zoomed, 0, black);
+        const int zoomedWanted = maskVT->wantedPageCount();
+        expect(
+            zoomedWanted == 4,
+            QString("FM1 a scale-2 view of content 120..440 x 80..400 needs 4 pages, not the grid's 9 (got %1)")
+                .arg(zoomedWanted)
+        );
+        expect(
+            maskVT->residentWantedCount() == zoomedWanted,
+            QString("FM1 the zoomed matte's wanted pages must be resident (%1 of %2)")
+                .arg(maskVT->residentWantedCount()).arg(zoomedWanted)
+        );
+        for (int i = 0; i < 8; ++i)
+            zoomedControl = fx.render(*fullTree, zoomed, 0, black);
+
+        for (int y = 2; y < canvas.height() - 2; ++y)
+            for (int x = 2; x < canvas.width() - 2; ++x) {
+                const size_t i = ((size_t)y * canvas.width() + x) * 4;
+                for (int ch = 0; ch < 4; ++ch)
+                    zoomedDelta = std::max(
+                        zoomedDelta, std::abs((int)zoomedPaged[i + ch] - (int)zoomedControl[i + ch])
+                    );
+            }
+        expect(
+            zoomedDelta <= 1,
+            QString("FM1 the zoomed folder matte must match the control (max %1)").arg(zoomedDelta)
+        );
+    }
+
+    // THE EXPORT POLICY, from an EMPTY pool: a demand-only pass for the exported frame's camera,
+    // a synchronous upload of what it marked, then ONE real pass. The folder matte's fullscreen
+    // demand has to run in that pass too - FolderNode::render returns before renderComposite -
+    // or the exported first frame samples the coarse chain and only the matte's edge is soft.
+    int exportedDelta = 0;
+    {
+        // AND FORGET WHAT WAS WANTED FIRST. resolveDemand re-acquires every page still inside
+        // kKeepFrames even without a fresh mark, so a purge alone leaves the previous frame's
+        // wanted set ready to be re-uploaded on the next beginFrame - which made this block pass
+        // with the demand-only folder mark deleted (measured: delta 0, 0 of 0 pages). Blank frames
+        // age the timestamps out while the pages are still resident, THEN the purge releases them,
+        // so the export really starts cold.
+        for (int i = 0; i < core::VirtualTexture::kKeepFrames + 3; ++i) {
+            core::VirtualTexture::beginFrame();
+            core::VirtualTexture::endFrame();
+        }
+        expect(
+            maskVT->wantedPageCount() == 0,
+            QString("FM1 blank frames must empty the wanted set before the export (%1)")
+                .arg(maskVT->wantedPageCount())
+        );
+        gl::PagePool::instance().purge();
+        expect(
+            gl::PagePool::instance().residentPages() == 0,
+            QString("FM1 the export must start from an empty pool (%1 pages)")
+                .arg(gl::PagePool::instance().residentPages())
+        );
+
+        const std::vector<uint8_t> exported = fx.renderExported(*pagedTree, camera, 0, black);
+        const int exportedWanted = maskVT->wantedPageCount();
+        const int exportedResident = maskVT->residentWantedCount();
+        expect(
+            exportedWanted == 9 && exportedResident == exportedWanted,
+            QString("FM1 the export preparse must land every matte page (%1 of %2)")
+                .arg(exportedResident).arg(exportedWanted)
+        );
+
+        int exportedMaxX = 0, exportedMaxY = 0;
+        for (int y = 16; y < canvas.height() - 16; ++y)
+            for (int x = 16; x < canvas.width() - 16; ++x) {
+                const size_t i = ((size_t)y * canvas.width() + x) * 4;
+                for (int ch = 0; ch < 4; ++ch) {
+                    const int d = std::abs((int)exported[i + ch] - (int)control[i + ch]);
+                    if (d > exportedDelta) {
+                        exportedDelta = d;
+                        exportedMaxX = x;
+                        exportedMaxY = y;
+                    }
+                }
+            }
+        expect(
+            exportedDelta <= 1,
+            QString("FM1 the exported first frame must match the control (max %1 at %2,%3)")
+                .arg(exportedDelta).arg(exportedMaxX).arg(exportedMaxY)
+        );
+    }
+
+    // THE COST, in the queue's own units: the full chain this replaces against the pyramid the
+    // pages come from and the always-resident coarse tier.
+    qint64 chainBytes = 0;
+    qint64 coarseBytes = 0;
+    for (QSize level = QSize(640, 640);; level = QSize(std::max(1, level.width() / 2), std::max(1, level.height() / 2))) {
+        chainBytes += (qint64)level.width() * level.height();
+        if (level.width() == 1 && level.height() == 1)
+            break;
+    }
+    for (QSize level = QSize(320, 320);; level = QSize(std::max(1, level.width() / 2), std::max(1, level.height() / 2))) {
+        coarseBytes += (qint64)level.width() * level.height();
+        if (level.width() == 1 && level.height() == 1)
+            break;
+    }
+    expect(
+        maskVT->pyramidBytes() == chainBytes - (qint64)640 * 640,
+        QString("FM1 the pyramid holds levels 1.. only (%1 B of a %2 B chain)")
+            .arg((qint64)maskVT->pyramidBytes()).arg(chainBytes)
+    );
+
+    // THE FRAME LINE'S NUMBER is this walk: a paged matte is its field plus the pyramid its page
+    // fills read, a forced-full one is its field alone (its chain is a texture, counted by
+    // tex_live). If the walk double-counted the shared holder or missed the pyramid, the two
+    // numbers would be equal and the line would understate a paged document's RAM.
+    expect(
+        pagedTree->maskRamBytes() == (qint64)640 * 640 + maskVT->pyramidBytes(),
+        QString("FM1 mask_bytes must count the field plus the pyramid (%1 B)")
+            .arg(pagedTree->maskRamBytes())
+    );
+    expect(
+        fullTree->maskRamBytes() == (qint64)640 * 640,
+        QString("FM1 a forced-full matte counts its field only (%1 B)").arg(fullTree->maskRamBytes())
+    );
+    caseReport(
+        "folder matte", gFails == 0,
+        QString("max %1 mean %2 of 255; %3 pages resident; zoom(4 pages) max %4; rubylith max %5; "
+                "export max %6; field %7 B, pyramid %8 B, coarse %9 B; chain was %10 B")
+            .arg(maxDelta).arg(meanDelta, 0, 'f', 3).arg(resident).arg(zoomedDelta).arg(previewDelta)
+            .arg(exportedDelta).arg((qint64)640 * 640).arg((qint64)maskVT->pyramidBytes())
+            .arg(coarseBytes).arg(chainBytes)
+    );
+}
+
 void suiteRender() {
     suiteHeader("M3 production render: minified layer, no halo");
     const QSize canvas(64, 64);
@@ -3014,6 +3430,7 @@ int main(int argc, char** argv) {
     suiteMaskPyramid();
     suiteMaskPyramidUpdate();
     suiteMaskPyramidMemory();
+    suiteFolderMask();
 
     std::printf("\n%d checks, %d failures\n", gChecks, gFails);
     std::fflush(stdout);

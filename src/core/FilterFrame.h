@@ -157,15 +157,18 @@ public:
         const QColor& aColor
     );
 
-    // THE MASKED BLUR'S MIX: `mix(aSharp, aBlurred, mask)` per pixel, in content
-    // space. A blur cannot vary its kernel per pixel affordably, so a masked blur
-    // renders both results and mixes them - one full-screen pass, no extra blur
-    // taps. Both sources are premultiplied, like every composite.
     // Multiplies a node's isolated composite by its MATTE (core/MaskKey): a folder's
-    // present path applies it here, the way a layer applies it in its own shader.
+    // present path applies it here, the way a layer applies it in its own shader. The
+    // field is read through the SAME reconstruction as a layer mask (LayerSampling.glsl's
+    // sampleMask), so a folder matte and a layer matte cannot disagree at their edges.
     GLuint maskTexture(
         int aTargetSlot, GLuint aSrcTexture, GLuint aMaskTexture, const QRectF& aMaskRect,
         const QMatrix4x4& aScreenToLayer
+    );
+    /// The same pass for a mask source that may be paged (see MaskInput::paged). A pageable
+    /// folder matte has no full chain at all, so the field comes from its page stack.
+    GLuint maskTexture(
+        int aTargetSlot, GLuint aSrcTexture, const MaskInput& aMask, const QMatrix4x4& aScreenToLayer
     );
 
     // The painting RUBYLITH: a flat translucent overlay where the field says HIDDEN,
@@ -181,6 +184,10 @@ public:
         const QColor& aOverlayColor
     );
 
+    // THE MASKED BLUR'S MIX: `mix(aSharp, aBlurred, mask)` per pixel, in content
+    // space. A blur cannot vary its kernel per pixel affordably, so a masked blur
+    // renders both results and mixes them - one full-screen pass, no extra blur
+    // taps. Both sources are premultiplied, like every composite.
     GLuint mixTexture(
         int aTargetSlot, GLuint aSharpTexture, GLuint aBlurredTexture, const MaskInput& aMask,
         const QMatrix4x4& aScreenToLayer
@@ -233,6 +240,10 @@ private:
     // blend mode needs the combined variant (the plain HSV pass is fixed to BlendNormal)
     gl::EasyShaderProgram& presentHSVShader(img::BlendMode aMode);
 
+    // lazily compiled LayerMaskFrag variant for a PAGED folder matte (MASK_VIRTUAL_TEXTURE=1);
+    // the full-texture variant is mPassShaders[Kind_LayerMask]
+    gl::EasyShaderProgram& layerMaskPagedShader();
+
     GLuint ladderFramebuffer(int aLevel) const { return mFramebuffersL[aLevel - 1]->id(); }
     GLuint ladderFramebuffer2(int aLevel) const { return mFramebuffersL2[aLevel - 1]->id(); }
 
@@ -260,6 +271,7 @@ private:
     gl::EasyShaderProgram mPassShaders[Kind_TERM];
     QScopedPointer<gl::EasyShaderProgram> mHsvMaskShader;
     QScopedPointer<gl::EasyShaderProgram> mMaskOverlayPaged;
+    QScopedPointer<gl::EasyShaderProgram> mLayerMaskPaged;
     // per-blend present variants (see presentShader)
     std::array<QScopedPointer<gl::EasyShaderProgram>, img::BlendMode_TERM> mPresentShaders;
     // per-blend present variants with per-pass HSV (see presentHSVShader)

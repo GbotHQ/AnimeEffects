@@ -224,29 +224,10 @@ static const char* kTintFrag =
     "  oFragColor = color;"
     "}";
 
-// THE NODE'S OWN MATTE, applied to a FOLDER's isolated composite. A layer multiplies
-// its matte in the layer shader's own fragment pass; a folder presents an ISOLATED
-// COMPOSITE, so the same multiply is one fullscreen pass over it - the same
-// content-space sampling (uScreenToLayer, the matrix every content-space field uses)
-// and the same rule: outside the field the node is fully visible.
-static const char* kLayerMaskFrag =
-    "#version 330 \n"
-    "uniform sampler2D uTexture;"
-    "uniform sampler2D uLayerMask;"
-    "uniform vec4 uLayerMaskRect;"
-    "uniform mat3 uScreenToLayer;"
-    "in vec2 vDestCoord;"
-    "layout(location = 0, index = 0) out vec4 oFragColor;"
-    "void main() {"
-    "  vec4 color = texture(uTexture, vDestCoord / vec2(textureSize(uTexture, 0)));"
-    "  vec2 q = (uScreenToLayer * vec3(vDestCoord, 1.0)).xy;"
-    "  vec2 uv = (q - uLayerMaskRect.xy) / uLayerMaskRect.zw;"
-    "  float visible = (uv.x < 0.0 || 1.0 < uv.x || uv.y < 0.0 || 1.0 < uv.y)"
-    "      ? 1.0 : texture(uLayerMask, uv).r;"
-    // the composite is PREMULTIPLIED, so hiding part of it scales colour and alpha
-    // together; scaling alpha alone would brighten what survives
-    "  oFragColor = color * visible;"
-    "}";
+// THE NODE'S OWN MATTE, applied to a FOLDER's isolated composite, lives in
+// assets/shaders/LayerMaskFrag.glsl: it includes LayerSampling.glsl and reads the
+// field through sampleMask, because a folder matte and a layer matte must be one
+// filter (and because a pageable matte has no full chain to read).
 
 } // namespace
 
@@ -557,7 +538,12 @@ GLuint FilterFrame::maskTexture(
     mask.texture = aMaskTexture;
     mask.rect = aMaskRect;
     mask.neutral = 1.0f;
+    return maskTexture(aTargetSlot, aSrcTexture, mask, aScreenToLayer);
+}
 
+GLuint FilterFrame::maskTexture(
+    int aTargetSlot, GLuint aSrcTexture, const MaskInput& aMask, const QMatrix4x4& aScreenToLayer
+) {
     bind(aTargetSlot);
     gl::Util::setViewportAsActualPixels(size());
     gl::Util::resetRenderState();
@@ -565,7 +551,7 @@ GLuint FilterFrame::maskTexture(
     gl::Global::functions().glClear(GL_COLOR_BUFFER_BIT);
     drawQuad(
         aSrcTexture, Kind_LayerMask, QList<int>(), BlurParams(), 1.0f, false, QSizeF(), QSizeF(), false,
-        img::BlendMode_Normal, 0, nullptr, nullptr, aScreenToLayer, 0, nullptr, nullptr, QColor(), &mask
+        img::BlendMode_Normal, 0, nullptr, nullptr, aScreenToLayer, 0, nullptr, nullptr, QColor(), &aMask
     );
     return texture(aTargetSlot);
 }
@@ -654,27 +640,54 @@ static void fBuildLayerDrawingVariant(
     }
 }
 
+namespace {
+
+// One fullscreen fragment pass from a shader FILE, with one variation switched on or off.
+// The file is expanded (LayerSampling.glsl's #include) and varied before compilation, which is
+// what lets the mask passes share one source between their full-texture and paged variants.
+void fBuildFullscreenFileVariant(
+    gl::EasyShaderProgram& aShader, const char* aFragFile, const char* aVariation, bool aValue,
+    const char* aWhat
+) {
+    gl::ExtendShader source;
+    source.openFromTextVert(QString(kFullscreenVert));
+    if (!source.openFromFileFrag(aFragFile)) {
+        XC_FATAL_ERROR("FileIO Error", QString("Failed to open %1.").arg(aWhat), source.log());
+    }
+    source.setVariationValue(aVariation, aValue ? "1" : "0");
+    if (!source.resolveVariation()) {
+        XC_FATAL_ERROR("OpenGL Error", QString("Failed to resolve %1.").arg(aWhat), source.log());
+    }
+    if (!aShader.setAllSource(source)) {
+        XC_FATAL_ERROR("OpenGL Error", QString("Failed to compile %1.").arg(aWhat), aShader.log());
+    }
+    if (!aShader.link()) {
+        XC_FATAL_ERROR("OpenGL Error", QString("Failed to link %1.").arg(aWhat), aShader.log());
+    }
+}
+
+} // namespace
+
 gl::EasyShaderProgram& FilterFrame::maskOverlayShader() {
     if (!mMaskOverlayPaged) {
-        gl::ExtendShader source;
-        source.openFromTextVert(QString(kFullscreenVert));
-        if (!source.openFromFileFrag(":/shaders/MaskOverlayFrag.glsl")) {
-            XC_FATAL_ERROR("FileIO Error", "Failed to open mask overlay shader.", source.log());
-        }
-        source.setVariationValue("MASK_VIRTUAL_TEXTURE", "1");
-        if (!source.resolveVariation()) {
-            XC_FATAL_ERROR("OpenGL Error", "Failed to resolve mask overlay shader.", source.log());
-        }
         auto shader = std::make_unique<gl::EasyShaderProgram>();
-        if (!shader->setAllSource(source)) {
-            XC_FATAL_ERROR("OpenGL Error", "Failed to compile mask overlay shader.", shader->log());
-        }
-        if (!shader->link()) {
-            XC_FATAL_ERROR("OpenGL Error", "Failed to link mask overlay shader.", shader->log());
-        }
+        fBuildFullscreenFileVariant(
+            *shader, ":/shaders/MaskOverlayFrag.glsl", "MASK_VIRTUAL_TEXTURE", true, "mask overlay shader"
+        );
         mMaskOverlayPaged.reset(shader.release());
     }
     return *mMaskOverlayPaged;
+}
+
+gl::EasyShaderProgram& FilterFrame::layerMaskPagedShader() {
+    if (!mLayerMaskPaged) {
+        auto shader = std::make_unique<gl::EasyShaderProgram>();
+        fBuildFullscreenFileVariant(
+            *shader, ":/shaders/LayerMaskFrag.glsl", "MASK_VIRTUAL_TEXTURE", true, "paged layer mask shader"
+        );
+        mLayerMaskPaged.reset(shader.release());
+    }
+    return *mLayerMaskPaged;
 }
 
 void FilterFrame::createShaders() {
@@ -695,27 +708,20 @@ void FilterFrame::createShaders() {
     build(Kind_Wave, kFullscreenVert, kWaveFrag);
     build(Kind_Mix, kFullscreenVert, kMixFrag);
     build(Kind_Tint, kFullscreenVert, kTintFrag);
-    build(Kind_LayerMask, kFullscreenVert, kLayerMaskFrag);
+
+    // THE FOLDER MATTE'S FULL-TEXTURE VARIANT, from the same file as the paged one
+    // (layerMaskPagedShader): both read the field through sampleMask, so paging is a
+    // residency change and not a filter change.
+    fBuildFullscreenFileVariant(
+        mPassShaders[Kind_LayerMask], ":/shaders/LayerMaskFrag.glsl", "MASK_VIRTUAL_TEXTURE", false,
+        "layer mask shader"
+    );
 
     // THE RUBYLITH'S FULL-TEXTURE VARIANT, from the same file as the paged one (maskOverlayShader)
-    {
-        gl::EasyShaderProgram& shader = mPassShaders[Kind_MaskOverlay];
-        gl::ExtendShader source;
-        source.openFromTextVert(QString(kFullscreenVert));
-        if (!source.openFromFileFrag(":/shaders/MaskOverlayFrag.glsl")) {
-            XC_FATAL_ERROR("FileIO Error", "Failed to open mask overlay shader.", source.log());
-        }
-        source.setVariationValue("MASK_VIRTUAL_TEXTURE", "0");
-        if (!source.resolveVariation()) {
-            XC_FATAL_ERROR("OpenGL Error", "Failed to resolve mask overlay shader.", source.log());
-        }
-        if (!shader.setAllSource(source)) {
-            XC_FATAL_ERROR("OpenGL Error", "Failed to compile mask overlay shader.", shader.log());
-        }
-        if (!shader.link()) {
-            XC_FATAL_ERROR("OpenGL Error", "Failed to link mask overlay shader.", shader.log());
-        }
-    }
+    fBuildFullscreenFileVariant(
+        mPassShaders[Kind_MaskOverlay], ":/shaders/MaskOverlayFrag.glsl", "MASK_VIRTUAL_TEXTURE", false,
+        "mask overlay shader"
+    );
 
     // HSV pass: shared layer fragment shader with variations
     fBuildLayerDrawingVariant(mPassShaders[Kind_HSV], QString("BlendNormal"), 0, 1, 1, 0, 0);
@@ -825,6 +831,9 @@ void FilterFrame::drawQuad(
         shader = &presentHSVShader(aPresentBlend);
     } else if (aKind == Kind_MaskOverlay && aLayerMask && aLayerMask->paged) {
         shader = &maskOverlayShader();
+    } else if (aKind == Kind_LayerMask && aLayerMask && aLayerMask->paged) {
+        // a pageable matte has no full chain: its field comes from the mask's page stack
+        shader = &layerMaskPagedShader();
     } else {
         shader = &mPassShaders[aKind];
     }
@@ -933,10 +942,17 @@ void FilterFrame::drawQuad(
         );
     } else if (aKind == Kind_LayerMask) {
         XC_PTR_ASSERT(aLayerMask);
-        ggl.glActiveTexture(GL_TEXTURE1);
-        ggl.glBindTexture(GL_TEXTURE_2D, aLayerMask->texture);
-        ggl.glActiveTexture(GL_TEXTURE0);
-        shader->setUniformValue("uLayerMask", 1);
+        if (aLayerMask->paged) {
+            aLayerMask->paged->bindMask(*shader);
+        } else {
+            ggl.glActiveTexture(GL_TEXTURE1);
+            ggl.glBindTexture(GL_TEXTURE_2D, aLayerMask->texture);
+            ggl.glActiveTexture(GL_TEXTURE0);
+            shader->setUniformValue("uLayerMask", 1);
+        }
+        // the reconstruction is LayerSampling.glsl's, so the pass states the same LOD bias a
+        // layer mask does - otherwise the two mattes would pick different levels at the same zoom
+        shader->setUniformValue("uLayerLodBias", core::ImageKey::layerLodBias());
         shader->setUniformValue(
             "uLayerMaskRect",
             QVector4D(

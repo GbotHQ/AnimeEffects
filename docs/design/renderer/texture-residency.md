@@ -578,8 +578,9 @@ when every gate is green on every project and the counter shows no regression, t
   The real PSD `000145.psd` (24 masks, 6 of them pageable) matches the control at max 1/255 after
   the pages land. The pyramid stores levels 1 and deeper only: level 0 IS the field, the same rule
   the image pyramid follows, so a 4096² mask's CPU levels are 5.33 MiB (against 21.33 for a full
-  copy) and the GPU's resident floor is the 0.33 MiB coarse chain; `MX4` pins the split. Residual:
-  folder masks stay full (see the not-paged list).
+  copy) and the GPU's resident floor is the 0.33 MiB coarse chain; `MX4` pins the split. A
+  FOLDER's matte pages through the same stack (see "Folder mattes" below): its pass is
+  fullscreen, so its demand is a quad rather than a mesh walk.
 - **What to skip**: a per-layer level manager as a shipping state. It is throwaway once pages land,
   and Stage 3's coarse fallback gives the same behaviour at the right granularity. The one useful
   checkpoint is Stage 2 + "upload the whole needed level" as a *debug path* to validate upload and
@@ -827,6 +828,10 @@ as the A/B control.** This section records what was built, where it differs from
 and what the gates measure. The design text is left as written so the reasons survive; where the
 implementation differs, the difference is stated here.
 
+Stage 4 follows in the same section: clippers and LAYER masks were paged with it, and a FOLDER's
+matte joined them on 2026-11-06 ("Folder mattes"), which leaves the filter-lane masks as the only
+resource textures outside the pool.
+
 ### What a paged image is now
 
 `core::VirtualTexture` (one per `ImageKey`, owned by `ImageKey::Cache`) is three things:
@@ -990,13 +995,69 @@ control a control for the mask as well (and a layer's two textures are always pa
 The rubylith overlay is compiled from `MaskOverlayFrag.glsl` with the same variation, so the mask
 tool paints a paged matte end to end - for a pageable layer mask there is no full chain at all.
 
+### Folder mattes (2026-11-06)
+
+A FOLDER's matte is not sampled inside a layer draw: the folder renders its subtree into an
+isolated composite and multiplies that whole image by the field in one fullscreen pass
+(`FilterFrame::maskTexture`, `Kind_LayerMask`). It was the last matte outside the page pool, and
+it was outside it for two reasons that were both in the pass, not in the pool:
+
+- **the read was the hardware's.** The pass took `texture(uLayerMask, uv)` - the implicit-LOD,
+  possibly anisotropic read - while a layer mask had already moved to `sampleMask` on both paths.
+  Two mattes of one engine therefore had different filters, and a matte's whole job is its edge,
+  so the difference landed exactly where it is visible. A page stack cannot reproduce that read
+  at all.
+- **there was no demand source.** The layer/mask demand walks a layer's own triangles; the folder
+  pass has no layer - it covers its composite. Nothing walked a quad on its behalf.
+
+Both are closed the same way. The pass now lives in `assets/shaders/LayerMaskFrag.glsl`, includes
+`LayerSampling.glsl` and calls `sampleMask`, compiled in two variations (`MASK_VIRTUAL_TEXTURE`
+0/1) exactly like the rubylith; **the full path changed with the paged one**, so paging is a
+residency change and not a filter change. The demand is a quad, not a mesh: a folder's pass
+covers its whole target and its uv is the screen->content affine the fragment shader applies, so
+`VirtualTexture::markScreenMaskDemand` draws the target rect through the SAME demand program with
+`uUvFromScreen` - no second Jacobian implementation that could drift from the shader.
+
+Two consequences the implementation had to state:
+
+- **The target size, not the device size.** The pass's coord space is the FilterFrame's size, and
+  the mapping that must be inverted is built with that same size (`waveContentToScreen(camera,
+  frame.size(), ...)`). The viewport's frame is device-sized, so the distinction does not show
+  there; an export or a resized frame is where it would.
+- **The export preparse must mark it too.** `FolderNode::render`'s `demandOnly` branch returns
+  before `renderComposite`, so the folder's own matte got no demand from the exporter - measured,
+  with that call removed: the exported frame's matte was the coarse chain, max **64** of 255 at
+  the matte's edge, and the wanted set was **0 pages**. The call now precedes the children walk
+  in that branch. (The gate also had to age the wanted set out before purging: `resolveDemand`
+  re-acquires every page still inside `kKeepFrames` even without a fresh mark, so a purge alone
+  left the previous frame's set ready to be re-uploaded and the block passed with the mark
+  deleted. That is a property of the pool worth knowing, not a test artefact.)
+
+The folder matte's rubylith preview pages through the same stack (`FolderNode`'s preview branch
+asks `virtualTexture()` first, like `LayerNode`'s): a pageable matte has no full chain, and the
+tool paints one end to end. The control for all of this is `MaskKey::Data::setForceFullTexture`,
+the mask twin of `ImageKey::setForceFullTexture`; it rides the value (`assign` copies it) because
+the renderer reads an expansion's copy, not the key.
+
+`AE_FRAME_STATS`'s `mask_bytes` is fed now (`ObjectTree::maskRamBytes`, once per frame and only
+while the counter is on): each node's blended field plus the pyramid a paged form keeps, and each
+filter lane's field. For a paged matte that is field + levels; for a forced-full one, field only
+(its chain is a texture and belongs to `tex_live`).
+
 ### What is deliberately not paged yet
 
-- **Folder masks are not paged.** A LAYER mask is (above); a folder's matte is one fullscreen
-  multiply over its isolated composite (`FilterFrame::maskTexture`), and that pass still binds the
-  full chain. The folder's field covers the CANVAS, so paging it would need a page stack in that
-  pass and a demand source for the composite's screen area - a separate change. Layer masks are
-  the ones the PSD dataset and the target case produce.
+- **Filter-lane masks are not paged** (`core::FilterMask`: the HSV amount mask, the wave's two
+  fields, the blur's mix mask). They are the last resource textures outside the pool. Unlike a
+  node matte they are sampled by three different passes at content-space uvs, and their demand
+  would have to follow each pass's screen area; the layer/folder mattes were the ones the PSD
+  dataset and the target case produce, and they are done. A large painted HSV mask on a 15000²
+  canvas is still a ~300 MB chain.
+- **A matte's coarse tail is stored twice on the CPU.** `MaskPyramid` keeps levels 1..max, which
+  includes the levels the resident coarse chain owns (they are both the page source and the
+  mirror a stroke patches). At 4096² that is 5.33 MiB against a 0.33 MiB coarse tier; at 640² the
+  whole pyramid is the tail (136,530 B against a 546,130 B full chain) and the duplication is
+  trivial. Dropping it would mean patching the coarse chain from the field with a second CPU
+  rule. Not worth it now; stated so the number is not a surprise.
 - **The pyramid is per ImageKey, not per resource.** Duplicated layers that share an image still
   build two pyramids. Sharing is a RAM optimisation with a lifetime question (the resource may be
   reloaded under both keys); it is not needed for correctness and is not done.
@@ -1054,6 +1115,32 @@ tool paints a paged matte end to end - for a pageable layer mask there is no ful
   the second row, a slot's texels read back exactly; the per-frame upload cap; eviction order and
   the owner callback; cancel returning a slot and refunding its bytes; purge changing the
   generation and releasing every atlas.
+- **FM1 a folder's matte on the paged path**: a composite folder (a painted matte, so the folder
+  takes the isolated-composite path) over a 900x700 layer, 640x640 canvas and a 640² field at
+  1:1, against a tree whose matte is forced full (`MaskKey::Data::setForceFullTexture`). It
+  asserts the reasoned failures, not just "the frames agree":
+  - **the pages are the demand pass's**: at 1:1 a 640² field needs exactly its level-0 3x3 grid,
+    so `wanted == 9`, every one resident after eight frames, coarse level 1 of 9. A resource
+    built by an accessor alone would have `wanted == 0`; the gate would fail before the compare.
+  - **the paged frame equals the control** (max 0, mean 0.000) and the matte is active in both
+    (left half empty, right half covered).
+  - **the demand's mapping, not just its count**: a scale-2 camera centred on content (400, 480)
+    shows content 120..440 x 80..400, so exactly 4 of the 9 level-0 pages are wanted (a demand
+    that marked the quad's whole screen rect would say 9, a mirrored one would mark the
+    complementary pages and leave one sampled page out of the pool), and the frame still
+    matches the control (max 0).
+  - **the rubylith pages too**: the paged preview tints the hidden half red, leaves the visible
+    half white, and matches the full-mask overlay within 3 units (measured 0).
+  - **no holes with the pool emptied** (budget 1, purge): the coarse chain still hides and still
+    shows.
+  - **the export preparse**: blank frames age the wanted set out, the pool is purged, and
+    `RenderFixture::renderExported` runs the exporter's exact sequence (demand-only, synchro-
+    nise, one draw). The matte's pages must all land and the exported frame match the control.
+    With the demand-only folder mark removed this case measures **0 of 0 pages** and **max 64**
+    at the matte's edge - the gate has power, checked by that mutation.
+  - **`mask_bytes`**: the paged tree's `ObjectTree::maskRamBytes()` must equal field + pyramid,
+    the forced-full one field only - the frame line's number is the walk, and the two would be
+    equal if either side were miscounted.
 - `media_exporter_e2e` runs the export path with the demand preparse.
 
 ### Measured
@@ -1181,6 +1268,18 @@ tool paints a paged matte end to end - for a pageable layer mask there is no ful
   dataset's masks are decorative and small (2.15 M texels in all, 2.73 MiB of chains), so it is
   functional coverage of both paths (18 masks below the coarse threshold, 6 paged), not the memory
   target; the target remains a large-canvas painted mask.
+- **Folder matte** (`FM1`): a 640² field on a 640x640 canvas at 1:1, over a 900x700 layer. The
+  paged frame against the forced-full control is **max 0 of 255, mean 0.000**; the demand is
+  exactly **9 pages** (its level-0 3x3 grid, no other level), all resident after eight frames,
+  and the frame is **bit-identical** to the control. At the scale-2 partial view the demand is
+  exactly **4** of those pages and the frame is bit-identical too. The rubylith preview is bit-identical to the
+  full-mask overlay too (**max 0** against a tolerance of 3). With the pool emptied the coarse
+  chain still hides and shows. The export sequence (demand-only, `synchronize`, one draw) from a
+  cold pool lands all 9 pages and matches the control (**max 0**); with the demand-only folder
+  mark removed the same case measures **0 of 0 pages** and **max 64** at the matte's edge. The cost at this size: field 409,600 B, pyramid
+  136,530 B, resident coarse 136,530 B, against a 546,130 B full chain. (The pyramid equals the
+  coarse tier here because the 640² field's coarse level is already level 1 - see the residual
+  list; a 4096² matte's pyramid is 5.33 MiB against a 0.33 MiB coarse tier.)
 - **Export**: `media_exporter_e2e` passes with the demand preparse; the first exported frame is
   the one that exercises it.
 
@@ -1192,11 +1291,15 @@ tool paints a paged matte end to end - for a pageable layer mask there is no ful
    `AE_FRAME_STATS`. Beside it, the pool's landing rate: 8 MB/frame still costs 10-20 ms while it
    fills, and a large import's synchronous capture is a visible pause; an asynchronous/deferred
    capture and a page upload batched per atlas row are the two obvious next reductions.
-2. Mask residuals: folder masks still hold a full chain (above); an ANIMATED mask (two keys)
-   blends a new field every frame, so its resource is rebuilt per frame - the blend path predates
-   paging and already rebuilt the full chain, but the paged form adds a readback to that build
-   and a per-frame pool registration; and `AE_FRAME_STATS`'s `mask_bytes` reads 0 because no one
-   feeds the setter, so the mask RAM is not yet visible in the frame line.
+2. An ANIMATED mask (two keys) blends a new field every frame, so its resource is rebuilt per
+   frame - the blend path predates paging and already rebuilt the full chain, but the paged form
+   adds a readback to that build and a per-frame pool registration. The property that makes this
+   fixable is linearity: every level is a linear filter of the field, so `level(lerp(A, B, t))`
+   equals `lerp(level(A), level(B), t)` for the SAME t - a per-key pyramid plus a blended view
+   would remove the per-frame build rather than make it cheaper. (Inference, not measured: it
+   follows from the box average being linear, but the easing quantisation and the box updates a
+   stroke applies are what a gate would have to pin.) Folder mattes and `mask_bytes` are done;
+   filter-lane masks are the remaining full-chain textures (above).
 3. Per-resource pyramids for duplicated layers.
 4. The first-atlas floor (61 MB) for projects whose whole texture set is smaller than it: a
    demand-aware first allocation is the measured-shaped answer (see the pool's header comment).
@@ -1204,4 +1307,4 @@ tool paints a paged matte end to end - for a pageable layer mask there is no ful
 The parity gaps are closed - the nene residual (the coarse tier's single tap) and the test.anie
 band (the control's implicit-LOD read in the biased magnified branch) - and the clipper layers are
 paged through the same sampler, with `CL1` gating a paged clipped pair. The pixel-equality gate is
-met on both projects.
+met on both projects, and `FM1` extends it to a folder's matte.

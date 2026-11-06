@@ -44,7 +44,7 @@ const gl::Texture* MaskKey::Data::textureId() const {
 }
 
 VirtualTexture* MaskKey::Data::virtualTexture() const {
-    if (mField.isNull() || !mPainted)
+    if (mField.isNull() || !mPainted || mForceFullTexture)
         return nullptr;
     if (!VirtualTexture::pageable(mField.size()))
         return nullptr;
@@ -107,6 +107,17 @@ VirtualTexture* MaskKey::Data::virtualTexture() const {
         mTexture->uploaded = false;
     }
     return mTexture->paged.get();
+}
+
+qint64 MaskKey::Data::ramBytes() const {
+    if (mField.isNull())
+        return 0;
+    // Format_Grayscale8: one byte per texel, and the field is the level-0 authority (the pyramid
+    // stores levels 1 and deeper, so the two never overlap)
+    qint64 bytes = (qint64)mField.width() * mField.height();
+    if (mTexture && mTexture->pyramid)
+        bytes += mTexture->pyramid->bytes();
+    return bytes;
 }
 
 void MaskKey::Data::markDirty(const QRect& aTexels) {
@@ -181,6 +192,7 @@ void MaskKey::Data::assign(const Data& aRhs) {
     mContentRect = aRhs.mContentRect;
     mEasings = aRhs.mEasings;
     mPainted = aRhs.mPainted;
+    mForceFullTexture = aRhs.mForceFullTexture;
 
     // ONE HOLDER FOR ONE FIELD, AND THE SOURCE IS LINKED TO IT. The per-frame expansion assignment
     // used to take the source's holder only when it was already built; a holder built on the
@@ -216,11 +228,13 @@ void MaskKey::Data::swap(Data& aRhs) {
     std::swap(mPainted, aRhs.mPainted);
     std::swap(mContentRect, aRhs.mContentRect);
     std::swap(mEasings, aRhs.mEasings);
+    std::swap(mForceFullTexture, aRhs.mForceFullTexture);
 }
 
 void MaskKey::Data::clear() {
     mTexture.reset();
     mPainted = false;
+    mForceFullTexture = false;
     mField = QImage();
     mContentRect = QRectF();
 }

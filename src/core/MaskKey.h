@@ -103,6 +103,8 @@ public:
         QImage mField;
         QRectF mContentRect;
         bool mPainted = false;
+        // see setForceFullTexture: an A/B control, not a user-facing fallback
+        bool mForceFullTexture = false;
 
     public:
         Data();
@@ -132,6 +134,14 @@ public:
         // pageable, is not painted, or the pool is disabled - the caller then uses textureId().
         VirtualTexture* virtualTexture() const;
 
+        // FORCES THE FULL-RESOLUTION CHAIN, the A/B control for the page gates (the mask twin of
+        // ImageKey::setForceFullTexture). virtualTexture() declines while it is set, so a pageable
+        // field is built as a full chain instead - including one already built as a page stack,
+        // which then stays alive beside it exactly as ImageKey's control keeps both. It rides the
+        // VALUE (assign copies it): the renderer reads an expansion's copy, not the key.
+        void setForceFullTexture(bool aForce) { mForceFullTexture = aForce; }
+        bool forceFullTexture() const { return mForceFullTexture; }
+
         // HAS ANYTHING BEEN HIDDEN? A matte at its neutral is a no-op, and it must cost
         // nothing and change nothing: measured, a freshly added folder mask put the
         // folder on the isolated-composite path and shifted 2098 px of the picture
@@ -147,6 +157,12 @@ public:
         QImage& field() { return mField; }
         QSize texelSize() const { return mField.size(); }
         QRectF contentRect() const { return mContentRect; }
+
+        // THE RAM THIS FIELD HOLDS: its level-0 image (one byte per texel) plus the CPU pyramid a
+        // paged form keeps for its levels. It never BUILDS anything - a matte that has not been
+        // drawn yet reports its field only - and it holds no GPU bytes: those are the texture
+        // accounting (gl::FrameStats::textureCreated) and the pool's own line.
+        qint64 ramBytes() const;
 
         util::Easing::Param& easing(int aComponent) {
             XC_ASSERT(aComponent == 0);
