@@ -1127,6 +1127,7 @@ filter lane's field. For a paged matte that is field + levels; for a forced-full
 | `AE_VT_HASH=<level>` | diagnostic, at load: hashes one level of EVERY GPU chain just after it is built (`VTHASH <W>x<H> level= chain=`). Two runs of one command are supposed to print the same lines - and did for 240 of 241 chains (see Measured) |
 | `AE_VT_DUMP_CHAIN=<W>x<H>` (+ `AE_VT_DUMP_CHAIN_DIR`) | with `AE_VT_HASH`: writes that resource's level to a PNG, so two runs can be diffed TEXEL BY TEXEL |
 | `AE_VT_HASH_COARSE=1` | diagnostic, after the last frame: the GPU coarse chain of every resource against the pyramid's own bytes (`VTCOARSE ... cpu= gpu=`) |
+| `AE_TRACE_DEST=1` | diagnostic, per layer draw: `VTDEST layer= blend= clippee= refreshed=` - whether this draw refreshed the destination texture its blend reads (measured: all 130 layers of nene at frame 6 are Normal, clipped by nothing, and refresh nothing) |
 
 `AE_FRAME_STATS`'s line gains `vt_pages`, `vt_bytes`, `vt_up`, `vt_evict`.
 
@@ -1345,17 +1346,18 @@ filter lane's field. For a paged matte that is field + levels; for a forced-full
 
   The measured content of the failure - a layer's coverage missing from a **composite**, with the
   pages, the table, the slots and the layout all exact, and the defect surviving with **no page
-  read at all** (`AE_VT_DEMAND=0`) - points at the one thing the VT and the no-page runs share and
-  the control does not: **the `VIRTUAL_TEXTURE` program itself and the destination it blends
-  against**. One real defect was found by inspection on the way (not yet proven to be this one):
-  `DestinationTexturizer::update()` copies the scene through the layer's mesh into the destination
-  texture with **the previous draw's GL state** - `GL_BLEND` is left enabled by the layer draw that
-  precedes it, and the copy shader writes the scene premultiplied with its alpha unchanged, so the
-  copy is `src over <the texturizer's own previous content>` in every semi-transparent pixel - and
-  it is refreshed only when `blendMode != Normal` even though `blendColor` is the fragment shader's
-  output for **every** layer. Both are worth fixing on their own; neither explains a scene that does
-  not change between repaints (`AE_VT_DEMAND=0`) varying between runs, so the root cause is still
-  open. This is the open list's first item.
+  read at all** (`AE_VT_DEMAND=0`) - leaves exactly one class of input unmeasured: the **draw's own
+  geometry**, i.e. the vertex buffer the pass used. `AE_TRACE_DEST=1` struck out the other
+  candidate: it prints, per draw, whether the destination texture the fragment shader's blend reads
+  was refreshed, and on this frame **all 130 layers are `blend=0 clippee=0 refreshed=0`** - every
+  layer blends Normal, `blendColor` therefore returns the source identically whatever the
+  destination holds, and `DestinationTexturizer::update` is not called at all. (Two real defects
+  remain in that code, worth their own fix but unrelated to this frame: the copy is drawn with the
+  PREVIOUS draw's `GL_BLEND` still enabled, and it is refreshed only when `blendMode != Normal`
+  although `blendColor` is every layer's output.) With the geometry as the last variable, the next
+  instrument is a hash of the positions/texcoords the draw binds, printed once per frame: two runs
+  of one command either print the same buffer or they do not, and that is a five-line diagnostic
+  rather than another theory. This is the open list's first item.
 - **Still-view cost** (nene, 640x640, 130 layers, `--frames 6..6 --repeat 8`, `AE_VT_STATS`): the
   eight renders are one still frame repainted, which is what a pointer over the canvas asks for.
   The first marks **107** resources and costs 165 ms (it also lands the first 8 MB of pages); the

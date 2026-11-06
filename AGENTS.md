@@ -293,10 +293,13 @@ hand it over. Its one question is `Sampling`:
   line can flip a run clean - the defect is perturbed by almost anything, so never conclude
   "clean" from a single instrumented run). `AE_VT_MISS_MAGENTA=1` paints the coarse fallback
   magenta and `AE_VT_ATLAS_SENTINEL=1` fills a fresh atlas magenta - two pictures that rule the
-  "no page found" and "unwritten texel" classes in or out without a readback. The suspected
-  mechanism by inspection, not yet proven: `DestinationTexturizer::update` copies the scene
-  through the layer's mesh with the PREVIOUS draw's `GL_BLEND` still enabled, and only for
-  `blendMode != Normal`, although `blendColor` reads the destination for every layer.
+  "no page found" and "unwritten texel" classes in or out without a readback. The only input left
+  unmeasured is the DRAW'S GEOMETRY (the vertex buffer the pass binds):
+  `AE_TRACE_DEST=1` struck out the destination texture (all 130 layers of nene at frame 6 are
+  `blend=0 clippee=0 refreshed=0`, and `blendColor` returns the source identically for Normal
+  whatever the destination holds, so `DestinationTexturizer::update` is not even called). Two real
+  defects remain in that code and are unrelated to this frame: the copy is drawn with the PREVIOUS
+  draw's `GL_BLEND` still enabled, and it is refreshed only for `blendMode != Normal`.
   **The GPU mip chain itself is not byte-reproducible**: `AE_VT_HASH=<level>` hashes every chain
   right after `gl::Texture::create` builds it, and 240 of 241 chains print the same hash on two
   runs while `384x1715 level=2` does not - `AE_VT_DUMP_CHAIN=<W>x<H>` + `AE_VT_DUMP_CHAIN_DIR`

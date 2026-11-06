@@ -881,9 +881,19 @@ void LayerNode::renderLayer(const RenderInfo& aInfo, const TimeCacheAccessor& aA
     // update destination color
     XC_PTR_ASSERT(aInfo.destTexturizer);
     auto destTextureId = aInfo.destTexturizer->texture().id();
-    if (!aInfo.isGrid && blendMode != img::BlendMode_Normal) {
+    const bool refreshDestination = !aInfo.isGrid && blendMode != img::BlendMode_Normal;
+    if (refreshDestination) {
         aInfo.destTexturizer->update(
             aInfo.framebuffer, aInfo.dest, viewMatrix, *mCurrentMesh, mMeshTransformer.positions()
+        );
+    }
+    // AE_TRACE_DEST: which draws read the destination texture and which of them refreshed it.
+    // The fragment shader's output goes through blendColor(color, destColor) for EVERY layer, so
+    // a draw with refreshed=0 is blending against whatever the texturizer last held.
+    if (qEnvironmentVariableIsSet("AE_TRACE_DEST") && !aInfo.isGrid) {
+        qWarning(
+            "VTDEST layer=%s blend=%d clippee=%d refreshed=%d", qPrintable(name()), (int)blendMode,
+            isClippee ? 1 : 0, refreshDestination ? 1 : 0
         );
     }
 
