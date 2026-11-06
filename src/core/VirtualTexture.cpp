@@ -1521,12 +1521,22 @@ void VirtualTexture::markScreenMaskDemand(const DemandSignature& aInputSignature
 bool VirtualTexture::DemandSignature::operator==(const DemandSignature& aRhs) const {
     // EXACT comparisons, deliberately: a value that drifted by an epsilon re-marks, which costs
     // one geometry pass, while a value that changed and compared equal would leave the frame
-    // sampling the coarse chain. The values are the pass's own uniforms, produced by the same
-    // expressions every frame, so an unchanged input does compare equal here.
-    return kind == aRhs.kind && positions == aRhs.positions && targetSize == aRhs.targetSize
-        && viewMatrix == aRhs.viewMatrix && screenToContent == aRhs.screenToContent
-        && texCoordOffset == aRhs.texCoordOffset && maskRect == aRhs.maskRect
-        && bias == aRhs.bias;
+    // sampling the coarse chain. The values come from the same expressions every frame, so an
+    // unchanged input does compare equal.
+    if (kind != aRhs.kind || positions != aRhs.positions || targetSize != aRhs.targetSize
+        || texCoordOffset != aRhs.texCoordOffset || maskRect != aRhs.maskRect
+        || bias != aRhs.bias)
+        return false;
+    // THE WHOLE MATRIX, even though a mesh walk's page RECTS do not move with the camera. The
+    // LEVEL does not either in exact arithmetic - it comes from the triangle's screen edges, where
+    // a translation cancels - but the FRAGMENT's level comes from the hardware's derivatives of
+    // the very same screen positions, and those round differently for a different camera. A mark
+    // made at one camera therefore does not predict what the fragment will sample at another:
+    // measured on nene, reusing the fit view's mark across a 40 px pan left 263 pixels reading the
+    // coarse chain, and at a 280 px pan the reused mark was SHARPER than a fresh one (max 1 against
+    // the control, where the fresh mark measured max 223) - it happened to be a superset. Correct
+    // by luck is not correct, so a camera move re-marks.
+    return viewMatrix == aRhs.viewMatrix && screenToContent == aRhs.screenToContent;
 }
 
 bool VirtualTexture::demandSignatureRepeats(const DemandSignature& aSignature) const {

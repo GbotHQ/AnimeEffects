@@ -270,10 +270,17 @@ hand it over. Its one question is `Sampling`:
   take a `DemandSignature` whose `positions` field is `LayerNode::mMeshRevision` - the skinning
   pass's own stamp, because the position buffer's id is stable while its values change. A still
   view's repaint (a pointer move, a matte stroke, a panel redraw) therefore walks no triangles and
-  re-stamps the pages it last marked, which is what keeps them inside `kKeepFrames`; a camera pan
-  or a playback frame still marks (the view matrix or the revision moved). `AE_VT_STATS` prints
-  `marks=`/`replays=`, and `AE_VT_DEMAND=nodraw` measures the pass's setup against its geometry
-  (measured: the geometry).
+  re-stamps the pages it last marked, which is what keeps them inside `kKeepFrames`. **A camera
+  move still marks**: the page RECTS do not move with a translation, but the fragment's LEVEL comes
+  from the hardware's derivatives of the same screen positions and its rounding follows the camera,
+  so a mark from another camera does not predict what the fragment samples - measured: a pan
+  replay left 263 pixels of nene on the coarse chain, and at a bigger pan was sharper than a fresh
+  mark by luck (max 1 against the control where the fresh mark measured max 223). The signature
+  compares the whole matrix; only an exact repeat (same frame, same camera) replays. `AE_VT_STATS`
+  prints `marks=`/`replays=`, and `AE_VT_DEMAND=nodraw` measures the pass's setup against its
+  geometry (measured: the geometry). `render_probe --repeat <n> --pan <px>` is the still-view and
+  camera-navigation instrument (each repaint's PNG is written as `frame-<f>-r<i>.png`), and it is
+  how the **incomplete demand at a panned camera** was found - see the doc's first open item.
   Two sampling rules, each found as a whole-frame residual first: **the always-resident coarse tier
   takes the same two-tap reconstruction as the full path** (one bilinear tap there cost 816 px over
   8/255 on nene), and **the `lod <= 0` branch reads `textureLod(..., 0)` on BOTH paths, never

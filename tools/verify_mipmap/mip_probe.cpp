@@ -3366,8 +3366,37 @@ void suiteDemandReplay() {
             .arg(movedWanted)
     );
 
-    // THE ORACLE: a fresh tree that never replayed anything, at the same camera. Its page set and
-    // its pixels must equal the replayed tree's - the control differs in exactly the history.
+    // A CAMERA PAN RE-MARKS, and this pins a decision that was measured, not a limitation: the
+    // page RECTS do not move with a translation, but the fragment's LEVEL comes from the
+    // hardware's derivatives of the same screen positions, whose rounding follows the camera. A
+    // mark from another camera therefore does not predict what the fragment samples - on nene the
+    // fit view's mark reused across a pan measured 263 pixels reading the coarse chain, and at a
+    // 280 px pan it happened to be SHARPER than a fresh mark (max 1 against the control, where the
+    // fresh one measured max 223). Correct by luck is not correct. See the doc's open list.
+    core::CameraInfo panned = zoomed;
+    panned.setCenter(QVector2D(canvas.width() * 0.5f + 120.0f, canvas.height() * 0.5f));
+    std::vector<uint8_t> pannedFrame = fx.render(*tree, panned, 5, black);
+    expect(
+        core::VirtualTexture::demandMarks() >= 1 && core::VirtualTexture::demandReplays() == 0,
+        "DR1 a camera pan must re-mark, not replay (see the open list)"
+    );
+    for (int i = 0; i < 4; ++i)
+        pannedFrame = fx.render(*tree, panned, 5, black);
+    expect(
+        vt->wantedPageCount() == movedWanted,
+        QString("DR1 the pan must want the same pages (%1 against %2)")
+            .arg(vt->wantedPageCount())
+            .arg(movedWanted)
+    );
+    expect(
+        vt->residentWantedCount() == movedWanted,
+        QString("DR1 the panned frame's pages must all be resident (%1 of %2)")
+            .arg(vt->residentWantedCount())
+            .arg(movedWanted)
+    );
+
+    // THE ORACLE: a fresh tree that never replayed anything, at the panned camera. Its page set
+    // and its pixels must equal tree A's - the control differs in exactly the history.
     std::unique_ptr<core::ObjectTree> oracleTree;
     core::ImageKey* oracleKey = buildTree(oracleTree);
     expect(oracleKey != nullptr, "DR1 the oracle layer must have an image key");
@@ -3375,7 +3404,7 @@ void suiteDemandReplay() {
         return;
     std::vector<uint8_t> oracleFrame;
     for (int i = 0; i < 8; ++i)
-        oracleFrame = fx.render(*oracleTree, zoomed, 5, black);
+        oracleFrame = fx.render(*oracleTree, panned, 5, black);
     const core::VirtualTexture* oracleVT = oracleKey->cache().virtualTexture();
     expect(oracleVT != nullptr, "DR1 the oracle image must take the paged path");
     if (!oracleVT)
@@ -3393,7 +3422,7 @@ void suiteDemandReplay() {
         for (int x = 0; x < canvas.width(); ++x) {
             const size_t i = ((size_t)y * canvas.width() + x) * 4;
             for (int ch = 0; ch < 4; ++ch) {
-                const int d = std::abs((int)moved[i + ch] - (int)oracleFrame[i + ch]);
+                const int d = std::abs((int)pannedFrame[i + ch] - (int)oracleFrame[i + ch]);
                 if (d > 0)
                     ++differing;
                 if (d > maxDelta) {
@@ -3414,7 +3443,7 @@ void suiteDemandReplay() {
     // texture-residency.md).
     expect(
         maxDelta <= 1 && differing * 1000 <= canvas.width() * canvas.height() * 4,
-        QString("DR1 the re-marked frame must match a tree that never replayed (max %1 at "
+        QString("DR1 the replayed frame must match a tree that never replayed (max %1 at "
                 "(%2,%3), %4 of %5 samples differ; see the slot-rounding note)")
             .arg(maxDelta)
             .arg(maxX)
@@ -3429,8 +3458,8 @@ void suiteDemandReplay() {
 
     caseReport(
         "demand replay", gFails == 0,
-        QString("%1 level-0 pages wanted by the fit view, %2 level-1 after the zoom; 6 repaints "
-                "marked nothing; oracle max %3")
+        QString("%1 level-0 pages wanted by the fit view, %2 level-1 after the zoom, unchanged by "
+                "a 120 px pan (which re-marks); 6 repaints marked nothing; oracle max %3")
             .arg(landed)
             .arg(movedWanted)
             .arg(maxDelta)

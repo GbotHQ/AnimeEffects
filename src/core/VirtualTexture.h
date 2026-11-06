@@ -146,6 +146,11 @@ public:
     /// while the values behind it change (TimeKeyExpans::revision does the same job one level up).
     /// A fullscreen pass has no vertex data, so its stamp stays 0 and its matrices are the whole
     /// signature.
+    ///
+    /// A CAMERA MOVE IS ALWAYS A NEW SIGNATURE, even for a mesh walk whose page rects do not
+    /// move: the fragment shader's level comes from the hardware's derivatives of the screen
+    /// positions, and their rounding follows the camera, so a mark made at one camera does not
+    /// predict what the fragment samples at another (measured, see the definition).
     struct DemandSignature {
         quint64 positions = 0;
         // device pixels for a mesh walk; the pass's own target for a fullscreen mark

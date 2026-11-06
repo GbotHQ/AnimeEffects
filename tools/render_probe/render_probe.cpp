@@ -48,6 +48,7 @@
 //   --step    project frames advanced per output frame (default 1)
 //   --repeat  render each frame N times and keep the last: the SAME frame repainted, i.e. a
 //             still view (the measurement behind the demand replay, and the interactive case)
+//   --pan     pan the camera right by N output pixels per repaint: the camera-navigation case
 //   --offset  horizontal sub-pixel nudge of the camera centre, in pixels
 //   --supersample render at Nx the size, then box-average down to --size (1..16, default 1)
 //   --metrics one line per frame: FRAME <i> sharpness <float> mean <float>
@@ -138,6 +139,9 @@ const char* kUsage =
     "  --step        project frames per output frame (default 1)\n"
     "  --repeat      render each frame N times, keeping the last (default 1): the SAME frame\n"
     "                repainted, which is what a still view does (a pointer move, a brush stroke)\n"
+    "  --pan         pan the camera right by N output pixels per repaint (with --repeat): the\n"
+    "                camera-navigation instrument, and how the incomplete demand at a panned\n"
+    "                camera was found (texture-residency.md's open list)\n"
     "  --offset      horizontal sub-pixel nudge of the camera centre, in pixels\n"
     "  --supersample render at Nx the size and box-average down to --size, N in 1..16 (default 1)\n"
     "  --metrics     print FRAME <i> sharpness <float> mean <float> per frame\n"
@@ -236,6 +240,8 @@ struct Options {
     QSize size = QSize(640, 640);
     bool zoomSet = false;
     float zoom = 1.0f;
+    // per-repaint pan, in output pixels: the camera moves sideways
+    float pan = 0.0f;
     bool framesSet = false;
     int frameBegin = 0;
     int frameEnd = 0;
@@ -388,8 +394,12 @@ struct RenderFixture {
     }
 
     // Renders one project frame and returns the RGBA8 pixels TOP-DOWN (readback is bottom-up).
+    // `aPanPixels` shifts the camera centre to the RIGHT by that many output pixels. A pan is the
+    // camera-navigation case: the demand's page RECTS do not move with it, but the pass re-marks
+    // every frame because the fragment's level rounding does (see --pan and VirtualTexture.h).
     std::vector<uint8_t> render(
-        core::Project& aProject, ctrl::Driver& aDriver, const Options& aOptions, int aFrame
+        core::Project& aProject, ctrl::Driver& aDriver, const Options& aOptions, int aFrame,
+        float aPanPixels = 0.0f
     ) {
         auto& ggl = gl::Global::functions();
 
@@ -435,7 +445,10 @@ struct RenderFixture {
         camera.setScreenSize(size);
         camera.setImageSize(attr.imageSize());
         camera.setCenter(
-            QVector2D(size.width() * 0.5f + aOptions.offset * ssScale, size.height() * 0.5f)
+            QVector2D(
+                size.width() * 0.5f + (aOptions.offset + aPanPixels) * ssScale,
+                size.height() * 0.5f
+            )
         );
         float scale = 1.0f;
         if (aOptions.zoomSet) {
@@ -697,16 +710,29 @@ int runRender(ProbeGL& aProbe, const Options& aOptions) {
         // THE STILL VIEW: the same frame, the same camera, repainted. Nothing about the scene
         // changed, so the demand pass has nothing new to learn - which is exactly the case the
         // paged renderer's signature replay exists for (see core::VirtualTexture::markDemand).
-        for (int i = 1; i < aOptions.repeat; ++i)
-            pixels = fixture.render(project, driver, aOptions, frame);
+        // Each repaint is also written as frame-<f>-r<i>.png, so a `--pan` sequence can be
+        // compared pixel for pixel against a run that re-marked.
+        const QString path = outDir.filePath(QStringLiteral("frame-%1.png").arg(frame));
+        const auto savePng = [&](const QString& aPath) {
+            const QImage image(
+                pixels.data(), aOptions.size.width(), aOptions.size.height(),
+                QImage::Format_RGBA8888
+            );
+            return image.save(aPath, "PNG");
+        };
+        for (int i = 1; i < aOptions.repeat; ++i) {
+            pixels = fixture.render(project, driver, aOptions, frame, aOptions.pan * float(i));
+            if (ss > 1)
+                pixels = boxDownsample(pixels, renderSize, aOptions.size, ss);
+            const QString repaintPath =
+                outDir.filePath(QStringLiteral("frame-%1-r%2.png").arg(frame).arg(i));
+            if (!savePng(repaintPath)) {
+                return fail(1, QStringLiteral("cannot write '%1'").arg(repaintPath));
+            }
+        }
         if (ss > 1)
             pixels = boxDownsample(pixels, renderSize, aOptions.size, ss);
-
-        const QString path = outDir.filePath(QStringLiteral("frame-%1.png").arg(frame));
-        const QImage image(
-            pixels.data(), aOptions.size.width(), aOptions.size.height(), QImage::Format_RGBA8888
-        );
-        if (!image.save(path, "PNG")) {
+        if (!savePng(path)) {
             return fail(1, QStringLiteral("cannot write '%1'").arg(path));
         }
 
@@ -795,6 +821,15 @@ int main(int argc, char** argv) {
                 return fail(2, QStringLiteral("--step must be a positive integer, got '%1'").arg(text));
             }
             options.step = step;
+        } else if (arg == QLatin1String("--pan")) {
+            QString text;
+            if (!value(text)) return 2;
+            bool ok = false;
+            const float pan = text.toFloat(&ok);
+            if (!ok || !std::isfinite(pan)) {
+                return fail(2, QStringLiteral("--pan must be a number, got '%1'").arg(text));
+            }
+            options.pan = pan;
         } else if (arg == QLatin1String("--repeat")) {
             QString text;
             if (!value(text)) return 2;
