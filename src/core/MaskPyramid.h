@@ -42,9 +42,19 @@ public:
     const std::vector<uint8>& levelBytes(int aLevel) const;
 
     /// The page fill: the page's content plus the 2-texel gutter, kPitch rows of R8. The gutter is
-    /// the level's neighbouring texels, transparent (zero) outside it - the same rule the image
-    /// pyramid follows, so the mask page and its sampler cannot disagree about the border.
+    /// the level's neighbouring texels; outside the LEVEL it is the nearest edge texel, not zero,
+    /// because the mask's full texture is sampled GL_CLAMP_TO_EDGE (see MaskMipChain::create) -
+    /// a zero gutter would darken the matte's outermost texels against the control's read.
     void fillPage(int aLevel, int aPageX, int aPageY, uint8* aDst) const;
+
+    /// One whole level, tightly packed. Used to build the always-resident coarse chain from the
+    /// same bytes the pages read.
+    void copyLevel(int aLevel, uint8* aDst) const;
+
+    /// The box one level is rebuilt over for a level-0 damage box: the same integer rule
+    /// updateBox applies, exposed so the pager can upload exactly the coarse levels a stroke
+    /// touched. Rounded outwards and clamped into the level.
+    QRect boxAtLevel(int aLevel, const QRect& aBaseBox) const;
 
     /// Rebuilds the levels over the damage a stroke reports: level 0's box from the field and one
     /// box per level above it, halved and rounded outwards. The field must be Grayscale8 and the

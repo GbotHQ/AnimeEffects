@@ -193,21 +193,43 @@ void MaskPyramid::fillPage(int aLevel, int aPageX, int aPageY, uint8* aDst) cons
     const int originY = aPageY * (int)gl::PagePool::kPageSize - gutter;
 
     for (int y = 0; y < pitch; ++y) {
-        const int gy = originY + y;
+        // GL_CLAMP_TO_EDGE: outside the level, the nearest edge texel - see the header. The level
+        // itself is copied, so a page's interior is exact and only the border repeats.
+        const int gy = std::min(std::max(originY + y, 0), size.height() - 1);
+        const uint8* src = level.data() + (size_t)gy * size.width();
         uint8* row = aDst + (size_t)y * pitch;
-        if (gy < 0 || gy >= size.height()) {
-            std::memset(row, 0, (size_t)pitch);
-            continue;
-        }
         const int x0 = std::max(0, -originX);
         const int x1 = std::min(pitch, size.width() - originX);
-        if (x0 > 0)
-            std::memset(row, 0, (size_t)x0);
-        if (x1 < pitch)
-            std::memset(row + x1, 0, (size_t)(pitch - x1));
+        for (int x = 0; x < x0; ++x)
+            row[x] = src[0];
         if (x1 > x0)
-            std::memcpy(row + x0, level.data() + (size_t)gy * size.width() + (originX + x0), (size_t)(x1 - x0));
+            std::memcpy(row + x0, src + (originX + x0), (size_t)(x1 - x0));
+        for (int x = std::max(x0, x1); x < pitch; ++x)
+            row[x] = src[size.width() - 1];
     }
+}
+
+void MaskPyramid::copyLevel(int aLevel, uint8* aDst) const {
+    XC_PTR_ASSERT(aDst);
+    if (aLevel < 0 || aLevel >= (int)mLevels.size())
+        return;
+    const std::vector<uint8>& level = mLevels[(size_t)aLevel];
+    std::memcpy(aDst, level.data(), level.size());
+}
+
+QRect MaskPyramid::boxAtLevel(int aLevel, const QRect& aBaseBox) const {
+    if (aLevel < 0 || aLevel >= (int)mLevels.size())
+        return QRect();
+    QRect box = aBaseBox;
+    QSize aboveSize = mSizes[0];
+    for (int l = 1; l <= aLevel; ++l) {
+        const QSize size = mSizes[(size_t)l];
+        box = coveredBox(box, aboveSize, size);
+        if (box.isEmpty())
+            return QRect();
+        aboveSize = size;
+    }
+    return box;
 }
 
 } // namespace core

@@ -6,7 +6,7 @@
 namespace core {
 
 ShaderHolder::ShaderHolder(): mShaders(), mGridShaders(), mClipperShaders() {
-    mShaders.resize(img::BlendMode_TERM * 2 * 2 * 2 * 2);
+    mShaders.resize(img::BlendMode_TERM * 2 * 2 * 2 * 2 * 2);
     mGridShaders.resize(1);
     mClipperShaders.resize(2 * 2);
 }
@@ -39,10 +39,12 @@ gl::EasyShaderProgram& ShaderHolder::reserveShader(
     bool aIsClippee,
     bool aUseHSV,
     bool aUseLayerMask,
-    bool aVirtualTexture
+    bool aVirtualTexture,
+    bool aMaskVirtualTexture
 ) {
     const int index = aBlendMode + img::BlendMode_TERM * (int)aIsClippee + img::BlendMode_TERM * 2 * (int)aUseHSV
-        + img::BlendMode_TERM * 4 * (int)aUseLayerMask + img::BlendMode_TERM * 8 * (int)aVirtualTexture;
+        + img::BlendMode_TERM * 4 * (int)aUseLayerMask + img::BlendMode_TERM * 8 * (int)aVirtualTexture
+        + img::BlendMode_TERM * 16 * (int)aMaskVirtualTexture;
     if (!mShaders[index]) {
         mShaders[index] = new gl::EasyShaderProgram();
         auto shader = mShaders[index];
@@ -68,6 +70,7 @@ gl::EasyShaderProgram& ShaderHolder::reserveShader(
         source.setVariationValue("USE_HSV", aUseHSV ? "1" : "0");
         source.setVariationValue("LAYER_MASK", aUseLayerMask ? "1" : "0");
         source.setVariationValue("VIRTUAL_TEXTURE", aVirtualTexture ? "1" : "0");
+        source.setVariationValue("MASK_VIRTUAL_TEXTURE", aMaskVirtualTexture ? "1" : "0");
 
         // The layer texture (LayerNode's uTexture) is stored alpha-premultiplied: it is the
         // mipmapped artwork texture built in ImageKey (see img::Util::makeTextureUpload), and
@@ -105,6 +108,9 @@ void ShaderHolder::reserveShaders(img::BlendMode aBlendMode, bool aVirtualTextur
         reserveShader(aBlendMode, false, true, mask != 0, aVirtualTexture);
         reserveShader(aBlendMode, false, false, mask != 0, aVirtualTexture);
     }
+    // the MATTE'S page stack (MASK_VIRTUAL_TEXTURE) is NOT warmed here: it costs four more
+    // programs per blend on every paged layer, while most layers have no mask and only the
+    // pageable ones need it. It is built on demand like any other unseen combination.
 }
 
 gl::EasyShaderProgram& ShaderHolder::shader(
@@ -112,13 +118,15 @@ gl::EasyShaderProgram& ShaderHolder::shader(
     bool aIsClippee,
     bool aUseHSV,
     bool aUseLayerMask,
-    bool aVirtualTexture
+    bool aVirtualTexture,
+    bool aMaskVirtualTexture
 ) {
     const int index = aBlendMode + img::BlendMode_TERM * (int)aIsClippee + img::BlendMode_TERM * 2 * (int)aUseHSV
-        + img::BlendMode_TERM * 4 * (int)aUseLayerMask + img::BlendMode_TERM * 8 * (int)aVirtualTexture;
+        + img::BlendMode_TERM * 4 * (int)aUseLayerMask + img::BlendMode_TERM * 8 * (int)aVirtualTexture
+        + img::BlendMode_TERM * 16 * (int)aMaskVirtualTexture;
     // the variant is built on demand rather than all at once
     if (mShaders.at(index) == nullptr)
-        reserveShader(aBlendMode, aIsClippee, aUseHSV, aUseLayerMask, aVirtualTexture);
+        reserveShader(aBlendMode, aIsClippee, aUseHSV, aUseLayerMask, aVirtualTexture, aMaskVirtualTexture);
     XC_PTR_ASSERT(mShaders.at(index));
     return *(mShaders.at(index));
 }
@@ -128,10 +136,12 @@ const gl::EasyShaderProgram& ShaderHolder::shader(
     bool aIsClippee,
     bool aUseHSV,
     bool aUseLayerMask,
-    bool aVirtualTexture
+    bool aVirtualTexture,
+    bool aMaskVirtualTexture
 ) const {
     const int index = aBlendMode + img::BlendMode_TERM * (int)aIsClippee + img::BlendMode_TERM * 2 * (int)aUseHSV
-        + img::BlendMode_TERM * 4 * (int)aUseLayerMask + img::BlendMode_TERM * 8 * (int)aVirtualTexture;
+        + img::BlendMode_TERM * 4 * (int)aUseLayerMask + img::BlendMode_TERM * 8 * (int)aVirtualTexture
+        + img::BlendMode_TERM * 16 * (int)aMaskVirtualTexture;
     XC_PTR_ASSERT(mShaders.at(index));
     return *(mShaders.at(index));
 }

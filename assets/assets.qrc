@@ -106,6 +106,7 @@
     <file>shaders/GridDrawingVert.glsl</file>
     <file>shaders/LayerDrawingFrag.glsl</file>
     <file>shaders/LayerSampling.glsl</file>
+    <file>shaders/MaskOverlayFrag.glsl</file>
     <file>shaders/LayerDrawingVert.glsl</file>
     <file>shaders/MeshTransformVert.glsl</file>
     <file>shaders/PartialScreenCopyingFrag.glsl</file>

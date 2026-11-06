@@ -277,15 +277,34 @@ void LayerNode::render(const RenderInfo& aInfo, const TimeCacheAccessor& aAccess
         if (aInfo.isGrid || !mCurrentMesh)
             return;
         const TimeKeyExpans& expans = aAccessor.get(mTimeLine);
-        VirtualTexture* virtualTexture = expans.areaVirtualTexture();
-        if (!virtualTexture)
-            return;
-        virtualTexture->markDemand(
-            aInfo.camera.viewMatrix(), aInfo.camera.deviceScreenSize(),
-            mCurrentMesh->originOffset() - expans.imageOffset(), mMeshTransformer.positions(),
-            mCurrentMesh->texCoords(), mCurrentMesh->vertexCount(), mCurrentMesh->getIndexBuffer(),
-            mCurrentMesh->indexCount()
-        );
+        if (VirtualTexture* virtualTexture = expans.areaVirtualTexture()) {
+            virtualTexture->markDemand(
+                aInfo.camera.viewMatrix(), aInfo.camera.deviceScreenSize(),
+                mCurrentMesh->originOffset() - expans.imageOffset(), mMeshTransformer.positions(),
+                mCurrentMesh->texCoords(), mCurrentMesh->vertexCount(), mCurrentMesh->getIndexBuffer(),
+                mCurrentMesh->indexCount()
+            );
+        }
+        // THE MATTE'S OWN PAGES. The mask is paged by its own stack (its grid is the field's,
+        // not the image's: replacing an image leaves an authored mask at its old resolution), and
+        // it is sampled through the node's screen-content mapping rather than the mesh's uv, so
+        // its demand pass gets that mapping and the same skinned triangles. It is marked even
+        // while the mask is previewed: the rubylith samples the SAME paged mask.
+        const MaskKey::Data& mask = expans.mask();
+        // The MATTE follows the layer's paging policy: a pageable mask on an unpaged image stays
+        // a full chain, so the two textures of one draw are always paged together (and the A/B
+        // control, which forces the image full, is a control for the mask too).
+        if (expans.areaVirtualTexture() && mask.isValid() && mask.isPainted()) {
+            if (VirtualTexture* pagedMask = mask.virtualTexture()) {
+                pagedMask->markMaskDemand(
+                    aInfo.camera.viewMatrix(),
+                    contentMappingFor(aInfo, aAccessor, aInfo.camera.deviceScreenSize()),
+                    mask.contentRect(), aInfo.camera.deviceScreenSize(), mMeshTransformer.positions(),
+                    mCurrentMesh->vertexCount(), mCurrentMesh->getIndexBuffer(),
+                    mCurrentMesh->indexCount()
+                );
+            }
+        }
     };
 
     // THE EXPORT'S DEMAND-ONLY PASS: mark this layer's pages, walk the clippees too (they are
@@ -572,10 +591,21 @@ void LayerNode::renderComposite(const RenderInfo& aInfo, const TimeCacheAccessor
     if (isPreviewTarget(aInfo)) {
         auto slot = std::make_unique<FilterFrame::ScopedSlot>(frame);
         if (aInfo.maskPreviewKey) {
-            if (const gl::Texture* keyTexture = aInfo.maskPreviewKey->data().textureId()) {
+            // THE RUBYLITH PAGES WITH THE MATTE. A pageable field has no full chain at all
+            // (MaskKey::Data::virtualTexture), and the overlay is drawn over the very content
+            // whose pages the demand pass marks, so the tool paints a paged matte end to end.
+            const MaskKey::Data& previewData = aInfo.maskPreviewKey->data();
+            MaskInput preview;
+            preview.rect = previewData.contentRect();
+            if (VirtualTexture* paged = expans.areaVirtualTexture() ? previewData.virtualTexture()
+                                                                  : nullptr) {
+                preview.paged = paged;
+            } else if (const gl::Texture* keyTexture = previewData.textureId()) {
+                preview.texture = keyTexture->id();
+            }
+            if (preview.isValid()) {
                 srcTexture = frame.maskOverlayTexture(
-                    slot->slot(), srcTexture, keyTexture->id(), aInfo.maskPreviewKey->data().contentRect(),
-                    contentMapping(), aInfo.maskPreviewColor
+                    slot->slot(), srcTexture, preview, contentMapping(), aInfo.maskPreviewColor
                 );
                 srcSlot = slot->slot();
                 scratchSlots.push_back(std::move(slot));
@@ -814,12 +844,20 @@ void LayerNode::renderLayer(const RenderInfo& aInfo, const TimeCacheAccessor& aA
         && (aInfo.maskPreview != nullptr || aInfo.maskPreviewKey != nullptr);
     const bool useLayerMask =
         !aInfo.isGrid && !previewingMask && maskData.isValid() && maskData.isPainted();
+    // A PAGED MATTE has its own chain: the layer's VIRTUAL_TEXTURE bit says the image is paged,
+    // the mask's says the field is (same field, its own page grid). The mask accessor builds it
+    // on first use; the demand pass has already asked for it this frame in the normal case.
+    VirtualTexture* maskVirtualTexture =
+        (virtualTexture && useLayerMask) ? maskData.virtualTexture() : nullptr;
     // THE LAYER SAMPLE's footprint is the draw's own derivatives, unconditionally (see
     // LayerDrawingFrag.glsl's sampleLayer): a mesh/FFD/bone deformation moves the pixels without
     // moving the SRT, so there is no second, transform-fed variant left to choose between.
     auto& shader = aInfo.isGrid
         ? mShaderHolder.gridShader()
-        : mShaderHolder.shader(blendMode, isClippee, useHSV, useLayerMask, virtualTexture != nullptr);
+        : mShaderHolder.shader(
+            blendMode, isClippee, useHSV, useLayerMask, virtualTexture != nullptr,
+            maskVirtualTexture != nullptr
+        );
 
     // update destination color
     XC_PTR_ASSERT(aInfo.destTexturizer);
@@ -888,23 +926,29 @@ void LayerNode::renderLayer(const RenderInfo& aInfo, const TimeCacheAccessor& aA
         }
 
         if (useLayerMask) {
-            if (const gl::Texture* maskTexture = maskData.textureId()) {
-                // unit 3: 0 is the layer, 1 the destination, 2 the clipping frame
-                ggl.glActiveTexture(GL_TEXTURE3);
-                ggl.glBindTexture(GL_TEXTURE_2D, maskTexture->id());
-                ggl.glActiveTexture(GL_TEXTURE0);
-                shader.setUniformValue("uLayerMask", 3);
-                const QRectF rect = maskData.contentRect();
-                shader.setUniformValue(
-                    "uLayerMaskRect",
-                    QVector4D(
-                        float(rect.x()), float(rect.y()), float(rect.width()), float(rect.height())
-                    )
-                );
-                shader.setUniformValue(
-                    "uScreenToLayer", waveAffine3(contentMappingFor(aInfo, aAccessor, aInfo.camera.deviceScreenSize()))
-                );
+            // unit 3: 0 is the layer, 1 the destination, 2 the clipping frame. A PAGED mask
+            // binds its coarse chain there - the variation never samples unit 3, but GL wants
+            // every sampler it can reach complete, and the coarse chain is what a miss reads.
+            const gl::Texture* fullMask = nullptr;
+            ggl.glActiveTexture(GL_TEXTURE3);
+            if (maskVirtualTexture) {
+                ggl.glBindTexture(GL_TEXTURE_2D, maskVirtualTexture->coarseTexture().id());
+                maskVirtualTexture->bindMask(shader);
+            } else if ((fullMask = maskData.textureId()) != nullptr) {
+                ggl.glBindTexture(GL_TEXTURE_2D, fullMask->id());
             }
+            ggl.glActiveTexture(GL_TEXTURE0);
+            shader.setUniformValue("uLayerMask", 3);
+            const QRectF rect = maskData.contentRect();
+            shader.setUniformValue(
+                "uLayerMaskRect",
+                QVector4D(
+                    float(rect.x()), float(rect.y()), float(rect.width()), float(rect.height())
+                )
+            );
+            shader.setUniformValue(
+                "uScreenToLayer", waveAffine3(contentMappingFor(aInfo, aAccessor, aInfo.camera.deviceScreenSize()))
+            );
         }
 
         if (useHSV && !HSVData.isEmpty()) {

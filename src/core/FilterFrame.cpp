@@ -5,6 +5,8 @@
 #include "gl/ExtendShader.h"
 #include "img/BlendMode.h"
 #include "core/FilterFrame.h"
+#include "core/ImageKey.h"
+#include "core/VirtualTexture.h"
 
 namespace {
 
@@ -244,32 +246,6 @@ static const char* kLayerMaskFrag =
     // the composite is PREMULTIPLIED, so hiding part of it scales colour and alpha
     // together; scaling alpha alone would brighten what survives
     "  oFragColor = color * visible;"
-    "}";
-
-// THE RUBYLITH. A mask overlay is NOT a tint on the artwork: a tint only shows where
-// the composite has colour, so a stroke across transparent pixels left the red out and
-// a stroke across linework dyed the lines - "why are some of the lines red?". An
-// overlay paints the hidden region as a FLAT translucent red, over whatever is there
-// and over nothing, which is what Photoshop's quick mask means.
-static const char* kMaskOverlayFrag =
-    "#version 330 \n"
-    "uniform sampler2D uTexture;"
-    "uniform sampler2D uLayerMask;"
-    "uniform vec4 uLayerMaskRect;"
-    "uniform vec4 uOverlayColor;"   // rgb + alpha
-    "uniform mat3 uScreenToLayer;"
-    "in vec2 vDestCoord;"
-    "layout(location = 0, index = 0) out vec4 oFragColor;"
-    "void main() {"
-    "  vec4 color = texture(uTexture, vDestCoord / vec2(textureSize(uTexture, 0)));"
-    "  vec2 q = (uScreenToLayer * vec3(vDestCoord, 1.0)).xy;"
-    "  vec2 uv = (q - uLayerMaskRect.xy) / uLayerMaskRect.zw;"
-    "  float hidden = 0.0;"
-    "  if (0.0 <= uv.x && uv.x <= 1.0 && 0.0 <= uv.y && uv.y <= 1.0)"
-    "      hidden = 1.0 - texture(uLayerMask, uv).r;"
-    "  float k = hidden * uOverlayColor.a;"
-    // src-over with a premultiplied overlay: the composite is premultiplied too
-    "  oFragColor = color * (1.0 - k) + vec4(uOverlayColor.rgb * k, k);"
     "}";
 
 } // namespace
@@ -601,7 +577,13 @@ GLuint FilterFrame::maskOverlayTexture(
     MaskInput mask;
     mask.texture = aMaskTexture;
     mask.rect = aMaskRect;
+    return maskOverlayTexture(aTargetSlot, aSrcTexture, mask, aScreenToLayer, aOverlayColor);
+}
 
+GLuint FilterFrame::maskOverlayTexture(
+    int aTargetSlot, GLuint aSrcTexture, const MaskInput& aMask, const QMatrix4x4& aScreenToLayer,
+    const QColor& aOverlayColor
+) {
     bind(aTargetSlot);
     gl::Util::setViewportAsActualPixels(size());
     gl::Util::resetRenderState();
@@ -609,7 +591,7 @@ GLuint FilterFrame::maskOverlayTexture(
     gl::Global::functions().glClear(GL_COLOR_BUFFER_BIT);
     drawQuad(
         aSrcTexture, Kind_MaskOverlay, QList<int>(), BlurParams(), 1.0f, false, QSizeF(), QSizeF(), false,
-        img::BlendMode_Normal, 0, nullptr, nullptr, aScreenToLayer, 0, nullptr, nullptr, aOverlayColor, &mask
+        img::BlendMode_Normal, 0, nullptr, nullptr, aScreenToLayer, 0, nullptr, nullptr, aOverlayColor, &aMask
     );
     return texture(aTargetSlot);
 }
@@ -672,6 +654,29 @@ static void fBuildLayerDrawingVariant(
     }
 }
 
+gl::EasyShaderProgram& FilterFrame::maskOverlayShader() {
+    if (!mMaskOverlayPaged) {
+        gl::ExtendShader source;
+        source.openFromTextVert(QString(kFullscreenVert));
+        if (!source.openFromFileFrag(":/shaders/MaskOverlayFrag.glsl")) {
+            XC_FATAL_ERROR("FileIO Error", "Failed to open mask overlay shader.", source.log());
+        }
+        source.setVariationValue("MASK_VIRTUAL_TEXTURE", "1");
+        if (!source.resolveVariation()) {
+            XC_FATAL_ERROR("OpenGL Error", "Failed to resolve mask overlay shader.", source.log());
+        }
+        auto shader = std::make_unique<gl::EasyShaderProgram>();
+        if (!shader->setAllSource(source)) {
+            XC_FATAL_ERROR("OpenGL Error", "Failed to compile mask overlay shader.", shader->log());
+        }
+        if (!shader->link()) {
+            XC_FATAL_ERROR("OpenGL Error", "Failed to link mask overlay shader.", shader->log());
+        }
+        mMaskOverlayPaged.reset(shader.release());
+    }
+    return *mMaskOverlayPaged;
+}
+
 void FilterFrame::createShaders() {
     auto build = [this](int aIndex, const char* aVert, const char* aFrag) {
         gl::EasyShaderProgram& shader = mPassShaders[aIndex];
@@ -691,7 +696,26 @@ void FilterFrame::createShaders() {
     build(Kind_Mix, kFullscreenVert, kMixFrag);
     build(Kind_Tint, kFullscreenVert, kTintFrag);
     build(Kind_LayerMask, kFullscreenVert, kLayerMaskFrag);
-    build(Kind_MaskOverlay, kFullscreenVert, kMaskOverlayFrag);
+
+    // THE RUBYLITH'S FULL-TEXTURE VARIANT, from the same file as the paged one (maskOverlayShader)
+    {
+        gl::EasyShaderProgram& shader = mPassShaders[Kind_MaskOverlay];
+        gl::ExtendShader source;
+        source.openFromTextVert(QString(kFullscreenVert));
+        if (!source.openFromFileFrag(":/shaders/MaskOverlayFrag.glsl")) {
+            XC_FATAL_ERROR("FileIO Error", "Failed to open mask overlay shader.", source.log());
+        }
+        source.setVariationValue("MASK_VIRTUAL_TEXTURE", "0");
+        if (!source.resolveVariation()) {
+            XC_FATAL_ERROR("OpenGL Error", "Failed to resolve mask overlay shader.", source.log());
+        }
+        if (!shader.setAllSource(source)) {
+            XC_FATAL_ERROR("OpenGL Error", "Failed to compile mask overlay shader.", shader.log());
+        }
+        if (!shader.link()) {
+            XC_FATAL_ERROR("OpenGL Error", "Failed to link mask overlay shader.", shader.log());
+        }
+    }
 
     // HSV pass: shared layer fragment shader with variations
     fBuildLayerDrawingVariant(mPassShaders[Kind_HSV], QString("BlendNormal"), 0, 1, 1, 0, 0);
@@ -799,6 +823,8 @@ void FilterFrame::drawQuad(
         shader = &presentShader(aPresentBlend);
     } else if (aKind == Kind_HSV && aNeedHSV && aPresentBlend != img::BlendMode_Normal) {
         shader = &presentHSVShader(aPresentBlend);
+    } else if (aKind == Kind_MaskOverlay && aLayerMask && aLayerMask->paged) {
+        shader = &maskOverlayShader();
     } else {
         shader = &mPassShaders[aKind];
     }
@@ -884,10 +910,16 @@ void FilterFrame::drawQuad(
         shader->setUniformValue("uTintNeutral", aTintMask->neutral);
     } else if (aKind == Kind_MaskOverlay) {
         XC_PTR_ASSERT(aLayerMask);
-        ggl.glActiveTexture(GL_TEXTURE1);
-        ggl.glBindTexture(GL_TEXTURE_2D, aLayerMask->texture);
-        ggl.glActiveTexture(GL_TEXTURE0);
-        shader->setUniformValue("uLayerMask", 1);
+        // the TWO variants read different sources, and their uniforms differ accordingly
+        if (aLayerMask->paged) {
+            aLayerMask->paged->bindMask(*shader);
+        } else {
+            ggl.glActiveTexture(GL_TEXTURE1);
+            ggl.glBindTexture(GL_TEXTURE_2D, aLayerMask->texture);
+            ggl.glActiveTexture(GL_TEXTURE0);
+            shader->setUniformValue("uLayerMask", 1);
+        }
+        shader->setUniformValue("uLayerLodBias", core::ImageKey::layerLodBias());
         shader->setUniformValue(
             "uLayerMaskRect",
             QVector4D(

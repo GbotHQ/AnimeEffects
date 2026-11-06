@@ -252,10 +252,16 @@ hand it over. Its one question is `Sampling`:
   (paged layer textures) is built** (`gl::PagePool`, `core::VirtualTexture`, `core::ImagePyramid`,
   the `VIRTUAL_TEXTURE` shader variation): `AE_VIRTUAL_TEXTURE=0` is the full-resolution control,
   `AE_VT_STATS=1` prints the pool each frame, and the V1/P1/P2 suites in `verify_mipmap` are the
-  gates. Masks deliberately keep the full texture; clipper layers are paged through the same
-  sampler (`assets/shaders/LayerSampling.glsl`, `#include`d by both the layer and the clipper
-  fragment shaders; `gl::ExtendShader` expands includes before the variation pass), and CL1 in
-  `verify_mipmap` compares a paged clipped pair against the control. See the doc's open list.
+  gates. Clipper layers and **layer masks are paged too** (Stage 4): a mask has its own R8
+  coarse chain, table and atlases (units 10..15), its own demand pass (`uUvFromScreen` computes the
+  uv from the screen->content matrix), and its own `MASK_VIRTUAL_TEXTURE` shader variation, only
+  ever set with `VIRTUAL_TEXTURE`. A pageable mask's levels live in `core::MaskPyramid` (captured
+  once from the GPU chain, then patched by a stroke's box); `MaskKey::Data::virtualTexture()` is
+  the pool resource, and the rubylith overlay pages with it (`MaskOverlayFrag.glsl`). Folder masks
+  and the CPU pyramid's level 0 copy are the known residuals. All of these share the sampler in
+  `assets/shaders/LayerSampling.glsl` (`#include`d by the layer, clipper and overlay shaders;
+  `gl::ExtendShader` expands includes before the variation pass); CL1/MA1/MX3 in `verify_mipmap`
+  are the clipper and mask gates. See the doc's open list.
   Two sampling rules, each found as a whole-frame residual first: **the always-resident coarse tier
   takes the same two-tap reconstruction as the full path** (one bilinear tap there cost 816 px over
   8/255 on nene), and **the `lod <= 0` branch reads `textureLod(..., 0)` on BOTH paths, never
@@ -294,7 +300,15 @@ hand it over. Its one question is `Sampling`:
 - **A mask is NOT "low frequency"**: hard edges and painted texture are legitimate, so a mask needs
   the same sampling treatment as an image (mips) and its pyramid must be updated INCREMENTALLY from
   the stroke's dirty box, level by level, not regenerated whole. Any note that called masks soft
-  was wrong.
+  was wrong. The sampled read is now the same two-tap reconstruction as the layer
+  (`sampleMask`): the old `texture()` was the hardware's implicit LOD on BOTH paths, and a page
+  stack cannot reproduce it - so the full path changed too, by design.
+- **A mask's chain is `CLAMP_TO_EDGE`, not border colour**: `MaskMipChain::create` sets it, and a
+  paged mask must mirror it exactly - `MaskPyramid::fillPage` repeats the level's edge texel in
+  the gutter and `sampleMask` clamps each tap's texel position. A zero gutter would darken the
+  field's outermost texels against the full chain's clamp. The mask copies its field's *content*
+  pixels, so its levels and the layer image's are separate pyramids (`MaskPyramid`, span-1 CPU
+  boxes) even when their sizes match.
 - A layer mask's overlay is a flat rubylith **over** the composite (`Kind_MaskOverlay`), not a tint; the
   thumbnail and tree chip show the matte itself in grayscale.
 - The brush is one model (`ctrl/Brush.h`): `BrushStroke` walks spacing between samples and carries the

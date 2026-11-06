@@ -560,15 +560,26 @@ when every gate is green on every project and the counter shows no regression, t
   deleted. If a project cannot pass, that is a design bug to fix, not a reason to keep the switch.
   Gate: residency tracks the screen-derived bytes on the 15000² project **while playing**, pixel
   equality against a full-chain reference, frame time inside budget.
-- **Stage 4**: masks in the pool (incremental page updates from the stroke). The blocker found
-  when scoping it: a mask's levels ARE a GPU texture built incrementally by `MaskMipChain`, so
-  paging needs the level boxes from a source that is not the full texture - a CPU pyramid (the
-  chain's area rule is deliberately the "single rule on the CPU", but its x pass stores to an R16F
-  scratch: `MX1` measures the CPU mirror at max 2 LSB (2-4 % of texels), so a CPU-sourced pager
-  needs a 2-LSB tolerance at the tier seam or an exact mirror of the shader's arithmetic) or a
-  transient box pipeline. Neither is built; a  4096² mask measures 21.3 MiB of R8 chain. `~/Downloads/kemono_psd_1` supplies real masked PSDs
-  (000145.psd: 24 masks, rendered paged vs control at max 1/255), but its masks are decorative and
-  small; the memory target is a large-canvas painted mask.
+- **Stage 4 - masks in the pool, BUILT.** The blocker was that a mask's levels ARE a GPU texture
+  built incrementally by `MaskMipChain`, so the pages need the level boxes from a source that is
+  not the full texture. The resolution is a hybrid: the GPU builds the field's chain ONCE (96 ms
+  for 4096² against 3.6 s for a CPU whole build), the chain's levels are captured into
+  `core::MaskPyramid` (byte-exact), the full chain is destroyed, and from then on a stroke
+  rebuilds the CPU pyramid's boxes (span-1 two-pass with the chain's R16F half store, within 1-2
+  LSB of a GPU rebuild) and `VirtualTexture::updateMaskBox` refreshes the coarse chain's levels
+  and the RESIDENT pages the box touches. Page fills come from the pyramid
+  (`MaskPyramid::fillPage`), and the mask pages live in the pool's R8 stack
+  (`gl::PagePool::Format_R8`, atlases 4..7) with their own table and coarse chain.
+  The field cannot be sampled through the image's stack: its uv is the node's content mapping, so
+  the demand pass computes it per vertex from the same affine the fragment shader uses. Measured:
+  a 900x700 painted mask is `MA1`-identical to the full chain within 1/255 (mean 0.047, the
+  residual is the image's paging) with all 12 wanted pages resident, and a stroke painted into a
+  live paged matte (`MX3`) is identical to the full chain rebuilt from the same field (max 0).
+  The real PSD `000145.psd` (24 masks, 6 of them pageable) matches the control at max 1/255 after
+  the pages land. Residuals: folder masks stay full (see the not-paged list), and the CPU pyramid
+  stores level 0 as well as the field - one redundant copy of the largest level (16 MiB of a 4096²
+  mask's 21.3 MiB of levels), which the image pyramid avoids by filling level 0 from the
+  resource's own pixels; that is the next memory refinement.
 - **What to skip**: a per-layer level manager as a shipping state. It is throwaway once pages land,
   and Stage 3's coarse fallback gives the same behaviour at the right granularity. The one useful
   checkpoint is Stage 2 + "upload the whole needed level" as a *debug path* to validate upload and
@@ -954,9 +965,38 @@ mask samples the same mesh, so the demand-only pass has nothing extra to do. The
 gains the same `VIRTUAL_TEXTURE` variation (four programs: `IS_CLIPPEE` x `VIRTUAL_TEXTURE`), and
 `renderClipper` binds the coarse chain to unit 0 when the layer is paged.
 
+**Masks take the same sampler, from their own page stack.** A matte is a field with hard edges and
+painted texture, so it is sampled like the layer it masks: `LayerSampling.glsl`'s `sampleMask`
+uses the same footprint/level rule and the same eight taps, with the mask's uv (the
+screen->content affine, not the mesh's) and the mask's own size. Two consequences:
+
+- **The full path changed too.** The old `texture(uLayerMask, uv)` was the hardware's implicit
+  read, which a page stack cannot reproduce; both paths now read `textureLod` at the computed
+  level, so a paged matte is a residency change and not a filter change (the same reasoning as the
+  clipper).
+- **The mask's border is `CLAMP_TO_EDGE`**, its chain's own policy, not the image's border colour:
+  `MaskPyramid::fillPage` repeats the level's edge texel in the gutter outside the LEVEL, and
+  `sampleMask` clamps each tap's texel position exactly as GL clamps the full chain's. A zero
+  gutter would darken the matte's outermost texels against that read (the clamped coordinate's
+  bilinear footprint still reaches the gutter texel); the clamp is the exact rule, not a tolerance.
+
+The paged mask has its own R8 coarse chain, `R16UI` table and R8 atlases (units 10..15; the pool's
+R8 stack is atlases 4..7, and the table stores the FORMAT-RELATIVE atlas index so one shader
+branch serves both stacks), and its own demand pass: the same skinned triangles, with the uv
+computed per vertex from the fragment shader's screen->content matrix (`uUvFromScreen` in the
+demand program). The `MASK_VIRTUAL_TEXTURE` variation is only ever set together with
+`VIRTUAL_TEXTURE`: a pageable mask on an unpaged image stays a full chain, which keeps the A/B
+control a control for the mask as well (and a layer's two textures are always paged together).
+The rubylith overlay is compiled from `MaskOverlayFrag.glsl` with the same variation, so the mask
+tool paints a paged matte end to end - for a pageable layer mask there is no full chain at all.
+
 ### What is deliberately not paged yet
 
-- **Masks are not paged.** `core::MaskKey` still has its own mip chain and texture (Stage 4).
+- **Folder masks are not paged.** A LAYER mask is (above); a folder's matte is one fullscreen
+  multiply over its isolated composite (`FilterFrame::maskTexture`), and that pass still binds the
+  full chain. The folder's field covers the CANVAS, so paging it would need a page stack in that
+  pass and a demand source for the composite's screen area - a separate change. Layer masks are
+  the ones the PSD dataset and the target case produce.
 - **The pyramid is per ImageKey, not per resource.** Duplicated layers that share an image still
   build two pyramids. Sharing is a RAM optimisation with a lifetime question (the resource may be
   reloaded under both keys); it is not needed for correctness and is not done.
@@ -995,6 +1035,17 @@ gains the same `VIRTUAL_TEXTURE` variation (four programs: `IS_CLIPPEE` x `VIRTU
   disc's mask edge), and the mask is doing something: the clipped frame leaves a corner empty that
   an unclipped render covers. Without the clipper-demand check the gate would pass with the mask
   served from the coarse chain.
+- **MA1 masked layer on the paged path**: a 900x700 painted mask on a paged layer against the
+  full-resolution control, plus the assertion that the MATTE itself took the paged path (an R8
+  resource at the field's grid, wanted pages > 0, every wanted page resident after eight frames).
+  The frame delta is 1/255 (mean 0.047), the residual the image's paging.
+- **MX3 paged matte stroke**: paints the middle band of a live paged mask hidden, re-blends the
+  expansion (the editor's own notification), and compares against the full chain rebuilt from the
+  same field: max 0, mean 0. The painted-over and previously revealed bands must be empty and the
+  untouched part visible, so a stale matte or a skipped box update fails the gate. It also renders
+  the tool's RUBYLITH (`FilterFrame::maskOverlayTexture` with a `MaskInput::paged`): the overlay
+  must tint the hidden band and not the revealed part, and the paged rubylith must match the
+  full-mask one within 3 units.
 - **P1/P2 page pool**: slot 0 at the gutter origin, slot 1 one pitch over, slot 15 the first of
   the second row, a slot's texels read back exactly; the per-frame upload cap; eviction order and
   the owner callback; cancel returning a slot and refunding its bytes; purge changing the
@@ -1111,6 +1162,21 @@ gains the same `VIRTUAL_TEXTURE` variation (four programs: `IS_CLIPPEE` x `VIRTU
   one leaves empty. The mask's read changed from the hardware's implicit-LOD `texture()` to the
   layer's own two-tap sampler on BOTH paths: that is what makes paging exact, and it removes the
   old mismatch between the mask's filtering and the clipped layer's.
+- **Masks** (`MA1`, `MX3`): a 900x700 mask on a paged layer is 12 pages (all resident) and
+  matches the full chain within 1/255 (mean 0.047). A stroke painted into the live paged mask is
+  identical to the full chain rebuilt from the same field (max 0, mean 0) after the re-blend, which
+  exercises `MaskPyramid::updateBox`, the coarse chain's box uploads and the resident pages'
+  re-fills. The rubylith overlay pages through the same stack and matches the full-mask overlay
+  within 3 units. The full chain a 4096² mask would have held is 21.3 MiB; the paged form holds
+  its coarse levels (0.33 MiB) and pages on demand, at the price of the CPU pyramid (21.3 MiB,
+  level 0 included - see the Stage 4 residual).
+- **A real masked PSD** (`~/Downloads/kemono_psd_1/000145.psd`, imported through the app's
+  `ctrl::ImageFileLoader`, 640x640, frames 0..9): 24 masked layers, 6 of them pageable; the paged
+  and full-resolution frames are **max 1/255, mean 0.00005, 0 px over 8** once the pages land
+  (frame 3 onward; frame 0 is the coarse fallback, as the viewport's two-frame lag implies). The
+  dataset's masks are decorative and small (2.15 M texels in all, 2.73 MiB of chains), so it is
+  functional coverage of both paths (18 masks below the coarse threshold, 6 paged), not the memory
+  target; the target remains a large-canvas painted mask.
 - **Export**: `media_exporter_e2e` passes with the demand preparse; the first exported frame is
   the one that exercises it.
 
@@ -1122,7 +1188,10 @@ gains the same `VIRTUAL_TEXTURE` variation (four programs: `IS_CLIPPEE` x `VIRTU
    `AE_FRAME_STATS`. Beside it, the pool's landing rate: 8 MB/frame still costs 10-20 ms while it
    fills, and a large import's synchronous capture is a visible pause; an asynchronous/deferred
    capture and a page upload batched per atlas row are the two obvious next reductions.
-2. Masks (Stage 4).
+2. Mask residuals: folder masks still hold a full chain (above); the CPU pyramid duplicates level
+   0, which is the field itself (the image pyramid fills level 0 from the resource instead) - at a
+   4096² mask that is 16 MiB of RAM per mask; and `AE_FRAME_STATS`'s `mask_bytes` reads 0 because
+   no one feeds the setter, so the mask RAM is not yet visible in the frame line.
 3. Per-resource pyramids for duplicated layers.
 4. The first-atlas floor (61 MB) for projects whose whole texture set is smaller than it: a
    demand-aware first allocation is the measured-shaped answer (see the pool's header comment).

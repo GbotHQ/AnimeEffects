@@ -87,6 +87,7 @@
 #include "core/ScaleKey.h"
 #include "core/TimeInfo.h"
 #include "core/TimeKeyType.h"
+#include "core/TimeKeyBlender.h"
 #include "core/VirtualTexture.h"
 #include "gl/DeviceInfo.h"
 #include "gl/Framebuffer.h"
@@ -1275,7 +1276,9 @@ struct RenderFixture {
 
     std::vector<uint8_t> render(
         core::ObjectTree& aTree, const core::CameraInfo& aCamera, int aFrame, const uint8_t aBackdrop[3],
-        bool aIsGrid = false, bool aWorkingCache = false
+        bool aIsGrid = false, bool aWorkingCache = false,
+        const core::MaskKey* aMaskPreviewKey = nullptr, const core::ObjectNode* aMaskPreviewTarget = nullptr,
+        const QColor& aMaskPreviewColor = QColor(255, 0, 0, 128)
     ) {
         auto& ggl = gl::Global::functions();
 
@@ -1312,6 +1315,10 @@ struct RenderFixture {
         info.filterFrame = filters.data();
         info.opacityScale = 1.0f;
         info.camera = aCamera;
+        info.maskPreview = nullptr;
+        info.maskPreviewKey = aMaskPreviewKey;
+        info.maskPreviewTarget = aMaskPreviewTarget;
+        info.maskPreviewColor = aMaskPreviewColor;
 
         // the production frame boundary (Driver::renderGL does this for the app)
         core::VirtualTexture::beginFrame();
@@ -2172,6 +2179,28 @@ void suiteMaskPaged() {
         "MA1 the masked layer's image must take the paged path"
     );
 
+    // THE MASK ITSELF MUST BE PAGED, not just drawn beside a paged image: the page pool has an R8
+    // stack and the mask has its own table/coarse chain (MaskKey::Data::virtualTexture). The
+    // demand pass runs every frame, so by now every wanted page should be resident.
+    {
+        core::VirtualTexture* maskVT = maskKey->data().virtualTexture();
+        expect(maskVT != nullptr, "MA1 the matte must take the paged path");
+        if (maskVT) {
+            expect(maskVT->isMask(), "MA1 the matte's resource must be an R8 mask");
+            expect(
+                maskVT->size() == QSize(900, 700),
+                QString("MA1 the matte's grid is the field's (%1x%2)")
+                    .arg(maskVT->size().width()).arg(maskVT->size().height())
+            );
+            expect(maskVT->wantedPageCount() > 0, "MA1 the matte must have wanted pages");
+            expect(
+                maskVT->residentWantedCount() == maskVT->wantedPageCount(),
+                QString("MA1 every wanted matte page must be resident (%1 of %2)")
+                    .arg(maskVT->residentWantedCount()).arg(maskVT->wantedPageCount())
+            );
+        }
+    }
+
     imageKey->setForceFullTexture(true);
     const std::vector<uint8_t> control = fx.render(tree, camera, 0, black);
 
@@ -2243,6 +2272,195 @@ void suiteMaskPaged() {
         QString("max %1 mean %2 of 255; field %3 B, 900x700 chain %4 B, 4096^2 chain %5 B")
             .arg(maxDelta).arg(meanDelta, 0, 'f', 3)
             .arg((qint64)900 * 700).arg(chainBytes).arg(bigBytes)
+    );
+}
+
+// MX3: THE PAGED MATTE'S STROKE PATH. MA1 pages a mask whose field was finished before the first
+// upload; this gate paints into it while the paged resource is live, so the box path is what runs:
+// MaskPyramid::updateBox for the levels, the coarse chain's box uploads and the RESIDENT pages'
+// re-fills (MaskKey::Data::markDirty -> VirtualTexture::updateMaskBox). The reference is the full
+// chain built from the SAME field, which is what the forced-full control draws.
+void suiteMaskPagedUpdate() {
+    suiteHeader("MX3 paged mask: a stroke updates the paged matte");
+    if (!gl::PagePool::enabled()) {
+        std::printf("  [SKIP] AE_VIRTUAL_TEXTURE=0 is the control path\n");
+        return;
+    }
+
+    const QSize canvas(320, 320);
+    const uint8_t black[3] = {0, 0, 0};
+    // a WHITE opaque image: the frame's pixel IS the matte's value, so an edge difference is
+    // read in mask units instead of being scaled by whatever the noise happened to hold
+    Img layerSrc;
+    layerSrc.w = 900;
+    layerSrc.h = 700;
+    layerSrc.d.assign((size_t)900 * 700 * 4, 255);
+
+    auto& fixtures = renderFixtures();
+    const QString fixtureKey = QString("%1x%2-mx3").arg(canvas.width()).arg(canvas.height());
+    auto it = fixtures.find(fixtureKey);
+    if (it == fixtures.end()) {
+        std::unique_ptr<RenderFixture> fx(new RenderFixture());
+        fx->init(canvas);
+        it = fixtures.emplace(fixtureKey, std::move(fx)).first;
+    }
+    RenderFixture& fx = *it->second;
+
+    core::CameraInfo camera;
+    camera.reset(canvas, 1.0, canvas, QPoint(0, 0));
+
+    core::ObjectTree tree;
+    auto* root = new core::FolderNode("root");
+    tree.grabTopNode(root);
+    auto* res = makeResource("mx3_src", layerSrc);
+    core::LayerNode* layer = addScaledLayer(
+        tree, root, res, "layer", QVector2D(canvas.width() * 0.5f, canvas.height() * 0.5f),
+        0.6f, img::BlendMode_Normal
+    );
+    auto* imageKey = dynamic_cast<core::ImageKey*>(layer->timeLine()->defaultKey(core::TimeKeyType_Image));
+    expect(imageKey != nullptr, "MX3 the layer must have an image key");
+    if (!imageKey)
+        return;
+
+    // the field starts hidden on its left half and revealed on its right; the stroke below hides
+    // the middle band, leaving only content x >= 675 visible (device x >= ~295 at scale 0.6)
+    auto* maskKey = new core::MaskKey();
+    layer->timeLine()->grabDefaultKey(core::TimeKeyType_Mask, maskKey);
+    maskKey->data().alloc(QSize(900, 700), QRectF(0, 0, 900, 700), core::MaskKey::kNeutral);
+    QImage& field = maskKey->data().field();
+    for (int y = 0; y < field.height(); ++y)
+        std::memset(field.scanLine(y), 0, 450);
+    maskKey->data().markDirty(QRect(0, 0, 450, 700));
+
+    imageKey->setForceFullTexture(false);
+    std::vector<uint8_t> paged;
+    for (int i = 0; i < 8; ++i)
+        paged = fx.render(tree, camera, 0, black);
+
+    core::VirtualTexture* maskVT = maskKey->data().virtualTexture();
+    expect(maskVT != nullptr, "MX3 the matte must take the paged path");
+    if (!maskVT)
+        return;
+    expect(
+        maskVT->wantedPageCount() > 0 && maskVT->residentWantedCount() == maskVT->wantedPageCount(),
+        QString("MX3 the pages must be resident before the stroke (%1 of %2)")
+            .arg(maskVT->residentWantedCount()).arg(maskVT->wantedPageCount())
+    );
+
+    // THE STROKE. Paint the middle band hidden and report the box exactly as the brush does; the
+    // paged resource has no full chain, so the only way this reaches the screen is the box path.
+    for (int y = 0; y < field.height(); ++y)
+        std::memset(field.scanLine(y) + 450, 0, 225);
+    maskKey->data().markDirty(QRect(450, 0, 225, 700));
+    // THE EDITOR'S OWN NOTIFICATION, in the gate's terms: a paint detaches the field and changes
+    // its cacheKey, and the expansion only sees it when the timeline re-blends (the app does this
+    // from onTimeLineModified). Without it the expans keeps the pre-paint field and the stroke is
+    // invisible to every renderer, paged or not.
+    {
+        core::TimeInfo time;
+        time.fps = 24;
+        time.frameRange = util::Range(0, 200);
+        time.loop = false;
+        time.frame = core::Frame(0);
+        core::TimeKeyBlender blender(*root, false);
+        blender.updateCurrents(root, time);
+    }
+    for (int i = 0; i < 8; ++i)
+        paged = fx.render(tree, camera, 0, black);
+
+    const auto coveredIn = [&](const std::vector<uint8_t>& aFrame, int aX0, int aX1) {
+        int count = 0;
+        for (int y = 20; y < 300; ++y)
+            for (int x = aX0; x < aX1; ++x)
+                count += (aFrame[((size_t)y * canvas.width() + x) * 4] |
+                          aFrame[((size_t)y * canvas.width() + x) * 4 + 1] |
+                          aFrame[((size_t)y * canvas.width() + x) * 4 + 2]) > 0;
+        return count;
+    };
+    expect(coveredIn(paged, 10, 150) == 0, "MX3 the painted-over band must be hidden");
+    expect(coveredIn(paged, 170, 290) == 0, "MX3 the revealed half the stroke covers must be hidden");
+    expect(coveredIn(paged, 300, 315) > 1000, "MX3 the part the stroke left alone must stay visible");
+
+    // THE REFERENCE: the same field through a full chain (the control's mask path)
+    imageKey->setForceFullTexture(true);
+    const std::vector<uint8_t> control = fx.render(tree, camera, 0, black);
+
+    int maxDelta = 0, maxX = 0, maxY = 0, maxC = 0;
+    double meanDelta = 0.0;
+    int n = 0;
+    for (int y = 16; y < canvas.height() - 16; ++y) {
+        for (int x = 16; x < canvas.width() - 16; ++x) {
+            const size_t i = ((size_t)y * canvas.width() + x) * 4;
+            for (int ch = 0; ch < 4; ++ch) {
+                const int d = std::abs((int)paged[i + ch] - (int)control[i + ch]);
+                if (d > maxDelta) {
+                    maxDelta = d;
+                    maxX = x;
+                    maxY = y;
+                    maxC = ch;
+                }
+                meanDelta += d;
+                ++n;
+            }
+        }
+    }
+    meanDelta = n ? meanDelta / n : 0.0;
+    expect(
+        maxDelta <= 3,
+        QString("MX3 a stroke's box vs a rebuilt full chain: max %1 at (%2,%3) ch %4")
+            .arg(maxDelta).arg(maxX).arg(maxY).arg(maxC)
+    );
+    expect(meanDelta < 0.5, QString("MX3 mean delta %1 below 0.5 of 255").arg(meanDelta, 0, 'f', 3));
+
+    // THE RUBYLITH PAGES WITH THE MATTE. The mask tool's preview is a separate pass
+    // (FilterFrame::maskOverlayTexture with MASK_VIRTUAL_TEXTURE), and it is what the artist
+    // paints against: a paged matte has no full chain, so the overlay must draw from the page
+    // stack. The white image makes the tint unambiguous; the hidden band is the middle third.
+    const auto pixelAt = [&](const std::vector<uint8_t>& aFrame, int aX, int aY) {
+        const size_t i = ((size_t)aY * canvas.width() + aX) * 4;
+        return std::array<int, 3>{aFrame[i], aFrame[i + 1], aFrame[i + 2]};
+    };
+    imageKey->setForceFullTexture(false);
+    const std::vector<uint8_t> pagedPreview =
+        fx.render(tree, camera, 0, black, false, false, maskKey, layer, QColor(255, 0, 0, 128));
+    const auto hiddenPx = pixelAt(pagedPreview, 200, 100);
+    const auto shownPx = pixelAt(pagedPreview, 310, 100);
+    expect(
+        hiddenPx[0] > 230 && hiddenPx[1] > 80 && hiddenPx[1] < 170,
+        QString("MX3 the rubylith must tint the hidden band (got %1,%2,%3)")
+            .arg(hiddenPx[0]).arg(hiddenPx[1]).arg(hiddenPx[2])
+    );
+    expect(
+        shownPx[1] > 230,
+        QString("MX3 the rubylith must not tint the revealed part (got %1,%2,%3)")
+            .arg(shownPx[0]).arg(shownPx[1]).arg(shownPx[2])
+    );
+    // the paged rubylith against the full-mask one: same field, same sampler, so only the
+    // image's paging and the CPU pyramid's 1-2 LSB can differ
+    imageKey->setForceFullTexture(true);
+    const std::vector<uint8_t> fullPreview =
+        fx.render(tree, camera, 0, black, false, false, maskKey, layer, QColor(255, 0, 0, 128));
+    int previewDelta = 0;
+    for (size_t i = 0; i < pagedPreview.size(); i += 4)
+        previewDelta = std::max(
+            previewDelta,
+            std::max(
+                std::abs((int)pagedPreview[i] - (int)fullPreview[i]),
+                std::max(
+                    std::abs((int)pagedPreview[i + 1] - (int)fullPreview[i + 1]),
+                    std::abs((int)pagedPreview[i + 2] - (int)fullPreview[i + 2])
+                )
+            )
+        );
+    expect(
+        previewDelta <= 3,
+        QString("MX3 the paged rubylith must match the full-mask one (max %1)").arg(previewDelta)
+    );
+
+    caseReport(
+        "paged matte stroke", gFails == 0,
+        QString("max %1 mean %2 of 255; %3 wanted pages")
+            .arg(maxDelta).arg(meanDelta, 0, 'f', 3).arg(maskVT->wantedPageCount())
     );
 }
 
@@ -2476,9 +2694,11 @@ void suiteMaskPyramidUpdate() {
                     break;
                 }
         expect(pageOk, "MX2 the page fill must place the level at the gutter's origin");
+        // GL_CLAMP_TO_EDGE: outside the level the gutter repeats the nearest edge texel, so a
+        // bilinear read at the matte's border matches the full chain's (see MaskPyramid.h)
         expect(
-            page[0] == 0 && page[1] == 0,
-            "MX2 the first page's outside gutter must be transparent"
+            page[0] == level0[0] && page[1] == level0[0],
+            "MX2 the page's outside gutter must repeat the level's edge texel"
         );
         expect(
             page[(size_t)2 * gl::PagePool::kPitch + 258] == level0[256],
@@ -2486,8 +2706,8 @@ void suiteMaskPyramidUpdate() {
         );
         expect(
             page[(size_t)2 * gl::PagePool::kPitch + 259]
-                == (size.width() > 257 ? level0[257] : 0),
-            "MX2 the gutter's second texel must be the level's next one or transparent"
+                == level0[std::min(257, size.width() - 1)],
+            "MX2 the gutter's second texel must be the level's next one or its edge"
         );
 
         caseReport(
@@ -2712,6 +2932,7 @@ int main(int argc, char** argv) {
     suiteVirtualTexture();
     suiteClipper();
     suiteMaskPaged();
+    suiteMaskPagedUpdate();
     suiteMaskPyramid();
     suiteMaskPyramidUpdate();
 

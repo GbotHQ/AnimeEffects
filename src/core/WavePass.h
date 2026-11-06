@@ -15,16 +15,22 @@
 
 namespace core {
 
+class VirtualTexture;
+
 // One painted field as a pass sees it: the texture plus the content rectangle it
 // covers (see core/FilterMask.h). Absent = a zero texture and an empty rect.
 struct MaskInput {
     GLuint texture = 0;
     QRectF rect;
+    // A PAGED field: when set, the pass samples its page stack instead of `texture` (which is
+    // then only a completeness binding). The rubylith is the only user - a filter mask is never
+    // paged - and it needs this because a pageable matte has no full chain at all.
+    const VirtualTexture* paged = nullptr;
     // the value "the filter is unaffected" at, 0..1 (core::filterMaskNeutral). The
     // preview tints where the field DEVIATES from it; the filters themselves do not
     // need it (they are told what their neutral means by their own logic).
     float neutral = 1.0f;
-    bool isValid() const { return texture != 0 && !rect.isEmpty(); }
+    bool isValid() const { return (texture != 0 || paged != nullptr) && !rect.isEmpty(); }
 };
 
 // Everything FilterFrame::waveTexture needs to deform one isolated composite.

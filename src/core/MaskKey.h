@@ -15,6 +15,9 @@
 
 namespace core {
 
+class MaskPyramid;
+class VirtualTexture;
+
 // A MASK is an alpha field in the node's CONTENT space: the matte that says how
 // much of the node is visible. 0 is fully hidden, 255 fully visible, and the
 // renderer multiplies it into the node's present alpha AFTER its filters, so a
@@ -73,11 +76,26 @@ public:
         // pre-paint pixels, so markDirty moves the key forward with the patch: a copy taken
         // before the stamp (the undo state) then fails its own key check and rebuilds, which is
         // exactly what restoring a whole field must do.
+        //
+        // THE PAGED FORM lives in the same holder, because it describes the same two things the
+        // full chain does - the field and its levels. `pyramid` is the CPU authority a stroke
+        // patches; `paged` is the R8 pool resource built from it. A holder is in ONE of
+        // the modes at a time while it is used: textureId() builds the full chain and leaves a
+        // paged holder alone (both can be current, and markDirty then patches both); the paged
+        // accessor captures the chain's levels once and drops it. Nothing may assume the full
+        // texture exists: `built()` is the test, and it covers both.
         struct TextureHolder {
             gl::Texture texture;
             MaskMipChain mip;
+            std::unique_ptr<MaskPyramid> pyramid;
+            std::unique_ptr<VirtualTexture> paged;
             quint64 key = 0;
             bool uploaded = false;
+            // a paged holder's damage awaiting the next GL-safe call (see markDirty)
+            QRect dirtyBox;
+            bool dirtyBoxValid = false;
+            ~TextureHolder();
+            bool built() const { return uploaded || paged != nullptr; }
         };
         mutable std::shared_ptr<TextureHolder> mTexture;
 
@@ -104,9 +122,15 @@ public:
 
         bool isValid() const { return !mField.isNull(); }
 
-        // The field as a GL texture (uploaded lazily, re-uploaded only when the
-        // image behind it changes). Null when there is no field.
+        // The field as a FULL GL texture (uploaded lazily, re-uploaded only when the
+        // image behind it changes). Null when there is no field. The matte and its rubylith
+        // ask virtualTexture() first: a pageable field is drawn from the page pool.
         const gl::Texture* textureId() const;
+
+        // THE PAGED FORM. Builds (once per field) the CPU pyramid from the field's own chain
+        // and the R8 pool resource from it, then drops the chain. Null when the field is not
+        // pageable, is not painted, or the pool is disabled - the caller then uses textureId().
+        VirtualTexture* virtualTexture() const;
 
         // HAS ANYTHING BEEN HIDDEN? A matte at its neutral is a no-op, and it must cost
         // nothing and change nothing: measured, a freshly added folder mask put the

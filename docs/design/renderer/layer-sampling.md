@@ -92,10 +92,15 @@ Cost: **eight fetches**, unchanged from the read it replaces - two levels × one
 level × two 2×2 taps. The covariance adds a few scalar ops. The two-level blend and the
 `DERIVED_FOOTPRINT` variation are gone; the footprint is always the draw's own Jacobian.
 
-The sampler lives in `assets/shaders/LayerSampling.glsl` and is included by both the layer draw
-and the clipper's singulation pass. A clipper's mask used to be the hardware's implicit-LOD read
-while the layer it clipped used this one - two filters at every clipped edge, and a read no page
-stack could reproduce; the shared include is what lets clipper layers be paged exactly.
+The sampler lives in `assets/shaders/LayerSampling.glsl` and is included by the layer draw, the
+clipper's singulation pass and the mask rubylith overlay. A clipper's mask used to be the
+hardware's implicit-LOD read while the layer it clipped used this one - two filters at every
+clipped edge, and a read no page stack could reproduce; the shared include is what lets clipper
+layers be paged exactly. `sampleMask` is the same footprint/level rule and the same eight taps for
+a node's own matte, with the mask's uv and chain: the old `texture(uLayerMask, ...)` was the same
+kind of implicit read, so the full mask path changed with the paged one. Its border is
+`CLAMP_TO_EDGE` (the mask chain's), and the paged form's gutter repeats the level's edge texel to
+match - see `MaskPyramid::fillPage`.
 
 ## Anisotropy
 

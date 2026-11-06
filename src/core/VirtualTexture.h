@@ -1,7 +1,9 @@
 #ifndef CORE_VIRTUALTEXTURE_H
 #define CORE_VIRTUALTEXTURE_H
 
+#include <QImage>
 #include <QMatrix4x4>
+#include <QRectF>
 #include <QSize>
 #include <QtGlobal>
 #include <memory>
@@ -21,10 +23,12 @@ struct Vector2;
 
 namespace core {
 
-/// ONE PAGED IMAGE: the always-resident coarse chain, the page table, the demand map and the
+class MaskPyramid;
+
+/// ONE PAGED RESOURCE: the always-resident coarse chain, the page table, the demand map and the
 /// frame's upload work. Owned by the ImageKey cache that built it (one per key, like the texture
-/// it replaces), registered with the static frame loop so demand, upload and readback happen
-/// even while the key is not the one being drawn.
+/// it replaces) or by a MaskKey's shared holder, registered with the static frame loop so demand,
+/// upload and readback happen even while the key is not the one being drawn.
 ///
 /// THE THREE TIERS, and why each exists:
 ///   - the COARSE CHAIN is every level from the one whose longest side is at most
@@ -51,6 +55,12 @@ namespace core {
 /// level the fragment shader will pick (see assets/shaders/LayerDrawingFrag.glsl). The pass also
 /// rasterizes the triangle's page rectangle into the map, so the demand is a page set, not a
 /// number.
+///
+/// A MASK (buildMask) is the same three tiers over an R8 field: its pages are filled from
+/// core::MaskPyramid (the CPU authority an edit patches), they live in the pool's R8 stack, and
+/// its demand pass computes the uv from the screen->content affine rather than the mesh's own
+/// texture coordinates (markMaskDemand). Its coarse chain samples GL_CLAMP_TO_EDGE, the mask
+/// chain's policy, and the page gutter repeats the level's edge texel to match.
 class VirtualTexture: public gl::PagePool::Listener, private util::NonCopyable {
 public:
     enum {
@@ -87,6 +97,14 @@ public:
     /// gl::Texture::GenerateMipmap). Returns false with nothing built when the size is not
     /// pageable or the capture failed.
     bool build(const img::ResourceHandle& aResource, const QSize& aSize, gl::Texture& aFullChain);
+
+    /// Builds a paged MASK: an R8 field whose levels already live on the CPU (core::MaskPyramid,
+    /// captured from the mask's GPU chain). The coarse chain is copied from the pyramid, pages are
+    /// filled by MaskPyramid::fillPage and updated in place by a stroke's box. The pyramid must
+    /// outlive this object - the mask's holder owns both. Returns false when the field is not
+    /// pageable or the pool is off.
+    bool buildMask(MaskPyramid& aPyramid);
+    bool isMask() const { return mMaskPyramid != nullptr; }
     void destroy();
 
     bool isValid() const { return mSize.isValid(); }
@@ -102,6 +120,31 @@ public:
     /// VIRTUAL_TEXTURE shader variation reads. Unit assignment is fixed: 4 coarse, 5 table,
     /// 6..9 atlases.
     void bind(gl::EasyShaderProgram& aShader) const;
+
+    /// THE MASK'S OWN STACK: coarse on unit 10, table on 11, R8 atlases on 12..15, and the
+    /// uMask* uniforms (see LayerSampling.glsl's sampleMask). The page geometry constants the
+    /// two stacks share are set here too, so a draw that pages only the mask (the rubylith
+    /// overlay) has them.
+    void bindMask(gl::EasyShaderProgram& aShader) const;
+
+    /// A stroke's damage: rebuilds the pyramid's boxes and refreshes what is resident - the
+    /// coarse chain's levels and every RESIDENT page the box touches. A page that is not
+    /// resident needs nothing: its next fill comes from the pyramid, which is now current.
+    void updateMaskBox(const QImage& aField, const QRect& aTexelBox);
+
+    /// The mask's demand: the same triangles, but the uv is the mask's own mapping - the
+    /// screen->content affine the fragment shader uses, then the mask rect and texel grid. It is
+    /// affine, so the per-vertex values are exact for the demand pass's Jacobian.
+    void markMaskDemand(
+        const QMatrix4x4& aViewMatrix,
+        const QMatrix4x4& aScreenToContent,
+        const QRectF& aMaskRect,
+        const QSize& aDeviceScreenSize,
+        const gl::BufferObject& aPositions,
+        int aVtxCount,
+        const gl::BufferObject& aIndexBuffer,
+        int aIndexCount
+    );
 
     /// Marks the pages this layer's triangles sample this frame. `aPositions` is the skinned
     /// position buffer the layer is drawn from; `aTexCoords` its mesh uv (content pixels).
@@ -132,7 +175,9 @@ private:
     void pageEvicted(const gl::PagePool::PageId& aPage) override;
 
     bool buildCoarse(gl::Texture& aFullChain);
+    bool buildMaskCoarse();
     bool createTargets();
+    bool uploadCoarseMaskBox(int aRelLevel, const QRect& aBox);
     void fillPageBuffer(int aLevel, int aPageX, int aPageY);
     bool uploadPage(int aLevel, int aPageX, int aPageY, const gl::PagePool::Slot& aSlot);
     void resolveDemand();
@@ -148,6 +193,9 @@ private:
     QSize mSize;
     int mMaxLevel = 0;
     int mCoarseLevel = 0;
+    gl::PagePool::Format mFormat = gl::PagePool::Format_RGBA8;
+    // the mask's levels, owned by the mask holder (null for an image)
+    MaskPyramid* mMaskPyramid = nullptr;
     ImagePyramid mPyramid;
     gl::Texture mCoarse;
     gl::Texture mTable;
@@ -176,6 +224,7 @@ private:
 
     // one page's upload scratch, kept between uploads (one resource is resolved at a time)
     std::vector<uint8> mPageBuffer;
+    int bytesPerTexel() const { return gl::PagePool::bytesPerTexel(mFormat); }
 };
 
 } // namespace core

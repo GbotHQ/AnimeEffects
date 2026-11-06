@@ -89,12 +89,13 @@ float BlendSat(vec3 c) { return max(c.r, max(c.g, c.b)) - min(c.r, min(c.g, c.b)
 // texture still exists as a uniform (unit 0) but is not read: uLayerSize carries what
 // textureSize used to.
 #variation VIRTUAL_TEXTURE 0
+// 1: the layer's MATTE is paged too (mask page stack on units 10..15). Only meaningful with
+// LAYER_MASK and VIRTUAL_TEXTURE; see LayerSampling.glsl's sampleMask.
+#variation MASK_VIRTUAL_TEXTURE 0
 
 uniform vec4 uColor;
 uniform sampler2D uTexture;
 uniform sampler2D uDestTexture;
-
-#include ":/shaders/LayerSampling.glsl"
 
 #if USE_HSV
 uniform bool setColor;
@@ -131,6 +132,9 @@ uniform vec4 uLayerMaskRect; // content x, y, w, h
 uniform int uClippingId;
 uniform usampler2D uClippingTexture;
 #endif
+
+// The sampler need the mask's uniforms, so the include comes after them.
+#include ":/shaders/LayerSampling.glsl"
 
 in vec2 vTexCoord;
 in vec2 vDestCoord;
@@ -243,7 +247,7 @@ void main(void)
         vec2 uv = (q - uLayerMaskRect.xy) / uLayerMaskRect.zw;
         float visible = (uv.x < 0.0 || 1.0 < uv.x || uv.y < 0.0 || 1.0 < uv.y)
             ? 1.0
-            : texture(uLayerMask, uv).r;
+            : sampleMask(uv);
         color.a *= visible;
         if (color.a <= 0.0)
             discard;

@@ -22,12 +22,16 @@ public:
     // the sampler resolves them through a page table and the atlases (see
     // core::VirtualTexture). Every other input is independent of it, so a pageable layer costs
     // one more program per (blend, clippee, hsv, mask) combination.
+    // aMaskVirtualTexture is the matte's OWN page stack (MASK_VIRTUAL_TEXTURE). It is only
+    // meaningful together with aUseLayerMask && aVirtualTexture, and the combination is built on
+    // demand like every other unseen one; reserveShaders warms the four it can create.
     gl::EasyShaderProgram& reserveShader(
         img::BlendMode aBlendMode,
         bool aIsClippee,
         bool aUseHSV,
         bool aUseLayerMask,
-        bool aVirtualTexture
+        bool aVirtualTexture,
+        bool aMaskVirtualTexture = false
     );
     void reserveShaders(img::BlendMode aBlendMode, bool aVirtualTexture);
     gl::EasyShaderProgram& shader(
@@ -35,14 +39,16 @@ public:
         bool aIsClippee,
         bool aUseHSV,
         bool aUseLayerMask,
-        bool aVirtualTexture
+        bool aVirtualTexture,
+        bool aMaskVirtualTexture = false
     );
     const gl::EasyShaderProgram& shader(
         img::BlendMode aBlendMode,
         bool aIsClippee,
         bool aUseHSV,
         bool aUseLayerMask,
-        bool aVirtualTexture
+        bool aVirtualTexture,
+        bool aMaskVirtualTexture = false
     ) const;
 
     /// The three mesh-transform programs (plain, skinning, dual quaternion), built ONCE per holder

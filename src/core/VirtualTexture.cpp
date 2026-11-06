@@ -1,11 +1,13 @@
 #include <QOpenGLContext>
 #include <QOpenGLShaderProgram>
 #include <QVector2D>
+#include <QVector4D>
 #include <algorithm>
 #include <cmath>
 #include <cstring>
 #include <memory>
 #include "core/ImageKey.h"
+#include "core/MaskPyramid.h"
 #include "core/VirtualTexture.h"
 #include "gl/EasyShaderProgram.h"
 #include "gl/Global.h"
@@ -33,16 +35,27 @@ in vec3 inPosition;
 in vec2 inTexCoord;
 uniform mat4 uViewMatrix;
 uniform vec2 uScreenSize;
+// MASKS sample a screen->content affine, not the mesh's own uv (LayerSampling.glsl's
+// sampleMask): the demand must name the pages THAT mapping reaches, so the vertex shader
+// computes the mask's texel-space coordinate from the SAME matrix the fragment shader uses.
+uniform int uUvFromScreen;
+uniform mat4 uScreenToContent;
+uniform vec4 uMaskRect;
+uniform vec2 uMaskTexelSize;
 out vec2 vScreen;
 out vec2 vTexCoord;
 void main() {
-    // DEVICE pixels - the space the layer shader's derivatives are taken in. The view matrix
-    // maps to NDC ([-1, 1]), so the pixel scale is half the device screen: leaving it out makes
-    // every footprint read as ~log2(dpr*width/2) levels too coarse, which is the whole
-    // difference between a page and the coarse chain.
+    // DEVICE pixels - the space the layer shader's derivatives are taken in, and exactly the
+    // layer vertex shader's vDestCoord (the matrix uniforms are built for that convention).
     vec4 p = uViewMatrix * vec4(inPosition, 1.0);
-    vScreen = p.xy * uScreenSize * 0.5;
-    vTexCoord = inTexCoord;
+    vec3 ndc = p.xyz / p.w;
+    vScreen = (ndc.xy + 1.0) * uScreenSize * 0.5;
+    if (uUvFromScreen != 0) {
+        vec2 q = (uScreenToContent * vec4(vScreen, 0.0, 1.0)).xy;
+        vTexCoord = ((q - uMaskRect.xy) / uMaskRect.zw) * uMaskTexelSize;
+    } else {
+        vTexCoord = inTexCoord;
+    }
     gl_Position = vec4(0.0);
 }
 )";
@@ -171,6 +184,12 @@ void main() { oDemand = 1.0; }
             int maxLevel = 0;
             float bias = 0.0f;
             int levelRow[VirtualTexture::kMaxPageLevels] = {};
+            // a MASK's uv is the fragment shader's screen->content mapping, not the mesh's own
+            // texture coordinates (see the vertex shader)
+            bool uvFromScreen = false;
+            QMatrix4x4 screenToContent;
+            QVector4D maskRect;
+            QVector2D maskTexelSize;
         };
 
         static DemandMap& instance() {
@@ -271,7 +290,8 @@ void main() { oDemand = 1.0; }
             gl::BufferObject& aIndexBuffer,
             int aIndexCount
         ) {
-            if (aLayer < 0 || aGrid.isEmpty() || aVtxCount <= 0 || aIndexCount < 3 || !aTexCoords)
+            if (aLayer < 0 || aGrid.isEmpty() || aVtxCount <= 0 || aIndexCount < 3
+                || (!aTexCoords && !aParams.uvFromScreen))
                 return;
             if (!ensureBuilt() || !ensureCapacity((int)mGrids.size(), aGrid))
                 return;
@@ -321,17 +341,29 @@ void main() { oDemand = 1.0; }
             mProgram->setUniformValue("uPageTexels", (float)gl::PagePool::kPageSize);
             mProgram->setUniformValue("uTexCoordOffset", aTexCoordOffset);
             mProgram->setUniformValue("uDemandLayer", aLayer);
+            mProgram->setUniformValue("uUvFromScreen", aParams.uvFromScreen ? 1 : 0);
+            mProgram->setUniformValue("uScreenToContent", aParams.screenToContent);
+            mProgram->setUniformValue("uMaskRect", aParams.maskRect);
+            mProgram->setUniformValue("uMaskTexelSize", aParams.maskTexelSize);
 
             mVAO->bind();
             ggl.glBindBuffer(GL_ARRAY_BUFFER, aPositions.id());
             ggl.glEnableVertexAttribArray(mPositionLocation);
             mProgram->setAttributeArray(mPositionLocation, GL_FLOAT, nullptr, 3, 0);
-            ggl.glBindBuffer(GL_ARRAY_BUFFER, mTexCoordVbo);
-            ggl.glBufferData(
-                GL_ARRAY_BUFFER, (GLsizeiptr)aVtxCount * 2 * sizeof(GLfloat), aTexCoords, GL_DYNAMIC_DRAW
-            );
-            ggl.glEnableVertexAttribArray(mTexCoordLocation);
-            mProgram->setAttributeArray(mTexCoordLocation, GL_FLOAT, nullptr, 2, 0);
+            if (aParams.uvFromScreen) {
+                // the mask's uv is derived from the vertex's screen position; no per-vertex
+                // texcoord exists to bind, and leaving a stale one enabled would feed the
+                // attribute a buffer this draw did not write
+                ggl.glDisableVertexAttribArray(mTexCoordLocation);
+            } else {
+                ggl.glBindBuffer(GL_ARRAY_BUFFER, mTexCoordVbo);
+                ggl.glBufferData(
+                    GL_ARRAY_BUFFER, (GLsizeiptr)aVtxCount * 2 * sizeof(GLfloat), aTexCoords,
+                    GL_DYNAMIC_DRAW
+                );
+                ggl.glEnableVertexAttribArray(mTexCoordLocation);
+                mProgram->setAttributeArray(mTexCoordLocation, GL_FLOAT, nullptr, 2, 0);
+            }
             aIndexBuffer.bind();
             ggl.glDrawElements(GL_TRIANGLES, aIndexCount, GL_UNSIGNED_INT, nullptr);
             aIndexBuffer.release();
@@ -795,6 +827,51 @@ bool VirtualTexture::build(const img::ResourceHandle& aResource, const QSize& aS
     return true;
 }
 
+bool VirtualTexture::buildMask(MaskPyramid& aPyramid) {
+    destroy();
+    if (!aPyramid.isValid() || !pageable(aPyramid.size()) || !gl::PagePool::enabled())
+        return false;
+
+    mFormat = gl::PagePool::Format_R8;
+    mMaskPyramid = &aPyramid;
+    mSize = aPyramid.size();
+    mMaxLevel = aPyramid.levelCount() - 1;
+    if (mMaxLevel < 1) {
+        mMaskPyramid = nullptr;
+        mSize = QSize();
+        return false;
+    }
+
+    mCoarseLevel = 0;
+    QSize coarseSize = mSize;
+    while (std::max(coarseSize.width(), coarseSize.height()) > gl::PagePool::coarseSize()
+           && mCoarseLevel < mMaxLevel) {
+        coarseSize = QSize(std::max(1, coarseSize.width() >> 1), std::max(1, coarseSize.height() >> 1));
+        ++mCoarseLevel;
+    }
+    if (mCoarseLevel < 1 || mCoarseLevel >= kMaxPageLevels) {
+        qWarning("VT mask: coarse level %d out of range", mCoarseLevel);
+        mMaskPyramid = nullptr;
+        mSize = QSize();
+        mFormat = gl::PagePool::Format_RGBA8;
+        return false;
+    }
+    if (!buildMaskCoarse()) {
+        qWarning("VT mask: coarse build failed (coarse %d of %d)", mCoarseLevel, mMaxLevel);
+        mMaskPyramid = nullptr;
+        mSize = QSize();
+        mFormat = gl::PagePool::Format_RGBA8;
+        return false;
+    }
+    if (!createTargets()) {
+        qWarning("VT mask: targets failed (table %dx%d)", mTableWidth, mTableRows);
+        destroy();
+        return false;
+    }
+    registerResource(this);
+    return true;
+}
+
 bool VirtualTexture::buildCoarse(gl::Texture& aFullChain) {
     (void)aFullChain;
     const QSize coarseSize = mPyramid.levelSize(mCoarseLevel);
@@ -843,11 +920,59 @@ bool VirtualTexture::buildCoarse(gl::Texture& aFullChain) {
     return true;
 }
 
+bool VirtualTexture::buildMaskCoarse() {
+    XC_PTR_ASSERT(mMaskPyramid);
+    const QSize coarseSize = mMaskPyramid->levelSize(mCoarseLevel);
+    if (coarseSize.isEmpty())
+        return false;
+
+    // THE SAME BYTES THE PAGES READ: the coarse tier is copied out of the pyramid, not rebuilt,
+    // so a page miss and a page hit are the same field - the same rule the image's coarse chain
+    // follows (buildCoarse).
+    std::vector<uint8> levelBytes((size_t)coarseSize.width() * coarseSize.height());
+    mMaskPyramid->copyLevel(mCoarseLevel, levelBytes.data());
+    auto& ggl = gl::Global::functions();
+    // BEFORE the level-0 upload, not after it: an R8 row of 450 texels is not a multiple of the
+    // default 4-byte alignment, and glTexImage2D would skew every row by the padding (measured:
+    // the coarse held the field shifted by two texels per row)
+    ggl.glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
+    mCoarse.create(
+        coarseSize, levelBytes.data(), GL_RED, GL_R8, GL_UNSIGNED_BYTE, gl::Texture::Manual
+    );
+    if (mCoarse.id() == 0) {
+        ggl.glPixelStorei(GL_UNPACK_ALIGNMENT, 4);
+        return false;
+    }
+
+    for (int rel = 1; rel <= mMaxLevel - mCoarseLevel; ++rel) {
+        const QSize levelSize = mMaskPyramid->levelSize(mCoarseLevel + rel);
+        levelBytes.resize((size_t)levelSize.width() * levelSize.height());
+        mMaskPyramid->copyLevel(mCoarseLevel + rel, levelBytes.data());
+        ggl.glBindTexture(GL_TEXTURE_2D, mCoarse.id());
+        ggl.glTexSubImage2D(
+            GL_TEXTURE_2D, rel, 0, 0, levelSize.width(), levelSize.height(), GL_RED,
+            GL_UNSIGNED_BYTE, levelBytes.data()
+        );
+        ggl.glBindTexture(GL_TEXTURE_2D, 0);
+    }
+    ggl.glPixelStorei(GL_UNPACK_ALIGNMENT, 4);
+
+    // The mask's chain is sampled GL_CLAMP_TO_EDGE (MaskMipChain::create), and the page gutter
+    // reproduces that at the level's border (MaskPyramid::fillPage): a zero border here would
+    // make the fallback differ from the page path at every field edge.
+    mCoarse.setFilter(GL_LINEAR_MIPMAP_LINEAR, GL_LINEAR);
+    mCoarse.setWrap(GL_CLAMP_TO_EDGE);
+    mCoarse.setLodBias(0.0f);
+    return true;
+}
+
 bool VirtualTexture::createTargets() {
     mTableWidth = 0;
     mTableRows = 0;
     for (int l = 0; l < mCoarseLevel; ++l) {
-        const QSize size = mPyramid.levelSize(l);
+        // the level's own grid, from whichever source holds the levels: the image's capture or
+        // the mask's CPU pyramid
+        const QSize size = isMask() ? mMaskPyramid->levelSize(l) : mPyramid.levelSize(l);
         mLevelGridX[l] = (size.width() + gl::PagePool::kPageSize - 1) / gl::PagePool::kPageSize;
         mLevelGridY[l] = (size.height() + gl::PagePool::kPageSize - 1) / gl::PagePool::kPageSize;
         mLevelRow[l] = mTableRows;
@@ -863,7 +988,7 @@ bool VirtualTexture::createTargets() {
     mActiveFlags.assign((size_t)count, 0);
     mActivePages.clear();
     mActivePages.reserve(512);
-    mPageBuffer.resize((size_t)gl::PagePool::kPitch * gl::PagePool::kPitch * 4);
+    mPageBuffer.resize((size_t)gl::PagePool::kPitch * gl::PagePool::kPitch * bytesPerTexel());
 
     const QSize mapSize(mTableWidth, mTableRows);
     std::vector<quint16> tableZeros((size_t)count, 0);
@@ -904,10 +1029,12 @@ void VirtualTexture::destroy() {
         mCoarse.destroy();
     }
     mPyramid.clear();
+    mMaskPyramid = nullptr;
     mResource.reset();
     mSize = QSize();
     mMaxLevel = 0;
     mCoarseLevel = 0;
+    mFormat = gl::PagePool::Format_RGBA8;
     mTableWidth = 0;
     mTableRows = 0;
     mEntries.clear();
@@ -1003,7 +1130,7 @@ void VirtualTexture::resolveDemand() {
         gl::PagePool::Slot slot;
         if (pool.find(id, &slot))
             continue;
-        if (!pool.acquire(id, this, &slot))
+        if (!pool.acquire(id, this, &slot, mFormat))
             break; // budget or upload cap: the rest waits, the coarse chain covers it
         if (!uploadPage(level, px, py, slot)) {
             pool.cancel(slot);
@@ -1019,7 +1146,7 @@ void VirtualTexture::flushTable() {
 
 bool VirtualTexture::uploadPage(int aLevel, int aPageX, int aPageY, const gl::PagePool::Slot& aSlot) {
     fillPageBuffer(aLevel, aPageX, aPageY);
-    if (aLevel > 0 && qEnvironmentVariableIsSet("AE_VT_PAGE_HASH")) {
+    if (!isMask() && aLevel > 0 && qEnvironmentVariableIsSet("AE_VT_PAGE_HASH")) {
         const QSize levelSize = mPyramid.levelSize(aLevel);
         const int w = std::min((int)gl::PagePool::kPageSize, levelSize.width() - aPageX * (int)gl::PagePool::kPageSize);
         const int h = std::min((int)gl::PagePool::kPageSize, levelSize.height() - aPageY * (int)gl::PagePool::kPageSize);
@@ -1052,19 +1179,27 @@ bool VirtualTexture::uploadPage(int aLevel, int aPageX, int aPageY, const gl::Pa
         aSlot.y - gl::PagePool::kGutter,
         gl::PagePool::kPitch,
         gl::PagePool::kPitch,
-        GL_RGBA,
+        isMask() ? GL_RED : GL_RGBA,
         GL_UNSIGNED_BYTE,
         mPageBuffer.data()
     );
     ggl.glBindTexture(GL_TEXTURE_2D, 0);
 
     const int index = pageIndex(aLevel, aPageX, aPageY);
-    mEntries[(size_t)index] = (quint16)((aSlot.atlas << 8) | (aSlot.slot + 1));
+    // the shader's atlas branch is PER STACK: the entry names 0..3 inside the resource's own
+    // format, not the pool's global atlas index (R8 lives at 4..7 - see PagePool::Format)
+    const int shaderAtlas = aSlot.atlas - (int)mFormat * gl::PagePool::kMaxAtlasCount;
+    mEntries[(size_t)index] = (quint16)((shaderAtlas << 8) | (aSlot.slot + 1));
     mTableDirty = true;
     return true;
 }
 
 void VirtualTexture::fillPageBuffer(int aLevel, int aPageX, int aPageY) {
+    if (isMask()) {
+        XC_PTR_ASSERT(mMaskPyramid);
+        mMaskPyramid->fillPage(aLevel, aPageX, aPageY, mPageBuffer.data());
+        return;
+    }
     const uint8* base = nullptr;
     QSize baseSize;
     if (aLevel == 0 && mResource && mResource->hasImage()) {
@@ -1072,6 +1207,75 @@ void VirtualTexture::fillPageBuffer(int aLevel, int aPageX, int aPageY) {
         baseSize = mResource->image().pixelSize();
     }
     mPyramid.fillPage(aLevel, aPageX, aPageY, base, baseSize, mPageBuffer.data());
+}
+
+void VirtualTexture::updateMaskBox(const QImage& aField, const QRect& aTexelBox) {
+    if (!isMask() || !mMaskPyramid || aField.isNull() || aField.size() != mSize)
+        return;
+    const QRect box = aTexelBox.intersected(QRect(QPoint(0, 0), mSize));
+    if (box.isEmpty())
+        return;
+
+    // THE PYRAMID IS THE AUTHORITY; what is RESIDENT is brought in step. A level the box misses
+    // does not change; a page that is not resident needs nothing - its next fill reads the
+    // pyramid, which now holds the stroke.
+    mMaskPyramid->updateBox(aField, box);
+
+    auto& ggl = gl::Global::functions();
+    ggl.glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
+
+    // the always-resident coarse chain: one box per level, halved and rounded outwards exactly
+    // like the pyramid's own rule
+    if (mCoarse.id() != 0) {
+        ggl.glBindTexture(GL_TEXTURE_2D, mCoarse.id());
+        for (int rel = 0; rel <= mMaxLevel - mCoarseLevel; ++rel) {
+            const int level = mCoarseLevel + rel;
+            const QSize levelSize = mMaskPyramid->levelSize(level);
+            const QRect levelBox = mMaskPyramid->boxAtLevel(level, box);
+            if (levelBox.isEmpty())
+                break;
+            const std::vector<uint8>& bytes = mMaskPyramid->levelBytes(level);
+            const uint8* base =
+                bytes.data() + (size_t)levelBox.top() * levelSize.width() + levelBox.left();
+            ggl.glPixelStorei(GL_UNPACK_ROW_LENGTH, levelSize.width());
+            ggl.glTexSubImage2D(
+                GL_TEXTURE_2D, rel, levelBox.left(), levelBox.top(), levelBox.width(),
+                levelBox.height(), GL_RED, GL_UNSIGNED_BYTE, base
+            );
+        }
+        ggl.glPixelStorei(GL_UNPACK_ROW_LENGTH, 0);
+        ggl.glBindTexture(GL_TEXTURE_2D, 0);
+    }
+
+    // the pages: only those already resident, and only the ones the box's level-box touches
+    for (int level = 0; level < mCoarseLevel; ++level) {
+        const QRect levelBox = mMaskPyramid->boxAtLevel(level, box);
+        if (levelBox.isEmpty())
+            break;
+        const int px0 = levelBox.left() / gl::PagePool::kPageSize;
+        const int px1 = levelBox.right() / gl::PagePool::kPageSize;
+        const int py0 = levelBox.top() / gl::PagePool::kPageSize;
+        const int py1 = levelBox.bottom() / gl::PagePool::kPageSize;
+        for (int py = py0; py <= py1; ++py) {
+            for (int px = px0; px <= px1; ++px) {
+                gl::PagePool::Slot slot;
+                if (!gl::PagePool::instance().find(pageId(level, px, py), &slot))
+                    continue;
+                const GLuint atlas = gl::PagePool::instance().atlasTextureId(slot.atlas);
+                if (atlas == 0)
+                    continue;
+                fillPageBuffer(level, px, py);
+                ggl.glBindTexture(GL_TEXTURE_2D, atlas);
+                ggl.glTexSubImage2D(
+                    GL_TEXTURE_2D, 0, slot.x - gl::PagePool::kGutter,
+                    slot.y - gl::PagePool::kGutter, gl::PagePool::kPitch, gl::PagePool::kPitch,
+                    GL_RED, GL_UNSIGNED_BYTE, mPageBuffer.data()
+                );
+                ggl.glBindTexture(GL_TEXTURE_2D, 0);
+            }
+        }
+    }
+    ggl.glPixelStorei(GL_UNPACK_ALIGNMENT, 4);
 }
 
 void VirtualTexture::rebuildTable() {
@@ -1117,6 +1321,42 @@ void VirtualTexture::markDemand(
     );
 }
 
+void VirtualTexture::markMaskDemand(
+    const QMatrix4x4& aViewMatrix,
+    const QMatrix4x4& aScreenToContent,
+    const QRectF& aMaskRect,
+    const QSize& aDeviceScreenSize,
+    const gl::BufferObject& aPositions,
+    int aVtxCount,
+    const gl::BufferObject& aIndexBuffer,
+    int aIndexCount
+) {
+    if (!isMask() || mDemandLayer < 0 || aIndexCount < 3 || aVtxCount <= 0
+        || !demandEnabled() || aMaskRect.isEmpty())
+        return;
+
+    DemandMap::Params params;
+    params.layerSize = mSize;
+    params.coarseLevel = mCoarseLevel;
+    params.maxLevel = mMaxLevel;
+    params.bias = ImageKey::layerLodBias();
+    for (int i = 0; i < kMaxPageLevels; ++i)
+        params.levelRow[i] = mLevelRow[i];
+    params.uvFromScreen = true;
+    params.screenToContent = aScreenToContent;
+    params.maskRect = QVector4D(
+        float(aMaskRect.x()), float(aMaskRect.y()), float(aMaskRect.width()),
+        float(aMaskRect.height())
+    );
+    params.maskTexelSize = QVector2D((float)mSize.width(), (float)mSize.height());
+
+    DemandMap::instance().mark(
+        mDemandLayer, QSize(mTableWidth, mTableRows), params, aViewMatrix, aDeviceScreenSize,
+        QVector2D(0.0f, 0.0f), const_cast<gl::BufferObject&>(aPositions), nullptr, aVtxCount,
+        const_cast<gl::BufferObject&>(aIndexBuffer), aIndexCount
+    );
+}
+
 void VirtualTexture::bind(gl::EasyShaderProgram& aShader) const {
     auto& ggl = gl::Global::functions();
     // A HOLE in the atlas list is bound to the coarse texture, never left incomplete: a slot
@@ -1155,6 +1395,47 @@ void VirtualTexture::bind(gl::EasyShaderProgram& aShader) const {
     aShader.setUniformValue("uAtlas1", 7);
     aShader.setUniformValue("uAtlas2", 8);
     aShader.setUniformValue("uAtlas3", 9);
+}
+
+void VirtualTexture::bindMask(gl::EasyShaderProgram& aShader) const {
+    auto& ggl = gl::Global::functions();
+    // a hole in the atlas list is bound to the coarse chain, never left incomplete (the same
+    // rule as bind)
+    for (int i = 0; i < gl::PagePool::kMaxAtlasCount; ++i) {
+        const GLuint id =
+            gl::PagePool::instance().atlasTextureId((int)mFormat * gl::PagePool::kMaxAtlasCount + i);
+        ggl.glActiveTexture(GL_TEXTURE12 + i);
+        ggl.glBindTexture(GL_TEXTURE_2D, id != 0 ? id : mCoarse.id());
+    }
+    ggl.glActiveTexture(GL_TEXTURE10);
+    ggl.glBindTexture(GL_TEXTURE_2D, mCoarse.id());
+    ggl.glActiveTexture(GL_TEXTURE11);
+    ggl.glBindTexture(GL_TEXTURE_2D, mTable.id());
+    ggl.glActiveTexture(GL_TEXTURE0);
+
+    int rows[kMaxPageLevels];
+    for (int i = 0; i < kMaxPageLevels; ++i)
+        rows[i] = mLevelRow[i];
+
+    aShader.setUniformValue("uMaskCoarseTexture", 10);
+    aShader.setUniformValue("uMaskPageTable", 11);
+    aShader.setUniformValueArray("uMaskPageLevelRow", rows, kMaxPageLevels);
+    aShader.setUniformValue("uMaskSize", QVector2D((float)mSize.width(), (float)mSize.height()));
+    aShader.setUniformValue("uMaskMaxLod", (float)mMaxLevel);
+    aShader.setUniformValue("uMaskCoarseLevel", mCoarseLevel);
+    aShader.setUniformValue("uMaskAtlas0", 12);
+    aShader.setUniformValue("uMaskAtlas1", 13);
+    aShader.setUniformValue("uMaskAtlas2", 14);
+    aShader.setUniformValue("uMaskAtlas3", 15);
+
+    // the page geometry both stacks share; a draw that pages only the mask (the rubylith
+    // overlay) has no image VT to set them
+    aShader.setUniformValue("uPageAtlasSize", (float)gl::PagePool::kAtlasSize);
+    aShader.setUniformValue("uPageSlotsPerAxis", gl::PagePool::kSlotsPerAxis);
+    aShader.setUniformValue("uPagePitch", (float)gl::PagePool::kPitch);
+    aShader.setUniformValue("uPageGutter", (float)gl::PagePool::kGutter);
+    aShader.setUniformValue("uPageTexels", (float)gl::PagePool::kPageSize);
+    aShader.setUniformValue("uAtlasCount", (int)gl::PagePool::kMaxAtlasCount);
 }
 
 int VirtualTexture::residentWantedCount() const {
