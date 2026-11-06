@@ -95,6 +95,7 @@
 #include "core/ClippingFrame.h"
 #include "core/DestinationTexturizer.h"
 #include "core/FilterFrame.h"
+#include "core/FolderNode.h"
 #include "core/Frame.h"
 #include "core/Project.h"
 #include "core/LayerNode.h"
@@ -564,7 +565,37 @@ int runRender(ProbeGL& aProbe, const Options& aOptions) {
         core::ObjectNode::Iterator itr(project.objectTree().topNode());
         while (itr.hasNext()) {
             core::ObjectNode* node = itr.next();
-            if (!node || node->type() != core::ObjectType_Layer)
+            if (!node)
+                continue;
+            // A FOLDER is not drawn as a layer, but it is where a folder MATTE lives (and where
+            // the composite path starts), so the diagnostic must show it - otherwise a project
+            // with a folder mask looks like it has none at all.
+            if (node->type() == core::ObjectType_Folder) {
+                if (aOptions.listLayers) {
+                    auto* folder = static_cast<core::FolderNode*>(node);
+                    QString flags;
+                    if (folder->blendMode() != img::BlendMode_Normal)
+                        flags += QStringLiteral("blend:%1 ").arg((int)folder->blendMode());
+                    if (core::TimeLine* line = folder->timeLine()) {
+                        for (core::TimeKeyType type :
+                             {core::TimeKeyType_Blur, core::TimeKeyType_Wave, core::TimeKeyType_HSV}) {
+                            if (line->filterEnabled(type))
+                                flags += QStringLiteral("filter:%1 ").arg((int)type);
+                        }
+                        // a matte can live on the default key OR on animated keys; the old test
+                        // saw only the first, so a keyed mask read as "no mask"
+                        if (line->defaultKey(core::TimeKeyType_Mask)
+                            || !line->map(core::TimeKeyType_Mask).isEmpty())
+                            flags += QStringLiteral("mask ");
+                    }
+                    std::printf(
+                        "folder \"%s\" %s\n", folder->name().toUtf8().constData(),
+                        flags.toUtf8().constData()
+                    );
+                }
+                continue;
+            }
+            if (node->type() != core::ObjectType_Layer)
                 continue;
             auto* layer = static_cast<core::LayerNode*>(node);
             if (aOptions.listLayers) {
@@ -577,7 +608,8 @@ int runRender(ProbeGL& aProbe, const Options& aOptions) {
                         if (line->filterEnabled(type))
                             flags += QStringLiteral("filter:%1 ").arg((int)type);
                     }
-                    if (line->defaultKey(core::TimeKeyType_Mask))
+                    if (line->defaultKey(core::TimeKeyType_Mask)
+                        || !line->map(core::TimeKeyType_Mask).isEmpty())
                         flags += QStringLiteral("mask ");
                     if (!line->map(core::TimeKeyType_Bone).isEmpty()
                         || !line->map(core::TimeKeyType_Pose).isEmpty())
