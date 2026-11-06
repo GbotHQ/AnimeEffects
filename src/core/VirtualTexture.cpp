@@ -17,6 +17,9 @@ namespace core {
 
 namespace {
 
+    // the two AE_VT_DEMAND diagnostics, defined with the other helpers at the end of this block
+    bool demandDrawEnabled();
+
     //------------------------------------------------------------------------------
     // THE DEMAND PASS
     //------------------------------------------------------------------------------
@@ -278,7 +281,7 @@ void main() { oDemand = 1.0; }
         /// draw's own; the page map's NDC uses the ARRAY CELL, so the layer's sub-rect lands at
         /// its grid position and the rest stays cleared. The buffers are raw ids because a
         /// fullscreen pass has no vertex data of its own (see markFullscreen).
-        void mark(
+        bool mark(
             int aLayer,
             const QSize& aGrid,
             const Params& aParams,
@@ -293,9 +296,9 @@ void main() { oDemand = 1.0; }
         ) {
             if (aLayer < 0 || aGrid.isEmpty() || aVtxCount <= 0 || aIndexCount < 3
                 || (!aTexCoords && !aParams.uvFromScreen))
-                return;
+                return false;
             if (!ensureBuilt() || !ensureCapacity((int)mGrids.size(), aGrid))
-                return;
+                return false;
 
             auto& ggl = gl::Global::functions();
             GLint prevDrawFbo = 0;
@@ -366,7 +369,8 @@ void main() { oDemand = 1.0; }
                 mProgram->setAttributeArray(mTexCoordLocation, GL_FLOAT, nullptr, 2, 0);
             }
             ggl.glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, aIndexBuffer);
-            ggl.glDrawElements(GL_TRIANGLES, aIndexCount, GL_UNSIGNED_INT, nullptr);
+            if (demandDrawEnabled())
+                ggl.glDrawElements(GL_TRIANGLES, aIndexCount, GL_UNSIGNED_INT, nullptr);
             ggl.glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
             mProgram->release();
 
@@ -386,6 +390,7 @@ void main() { oDemand = 1.0; }
             restore(GL_SCISSOR_TEST, prevScissor);
             restore(GL_CULL_FACE, prevCull);
             mDrawFrame = mFrame;
+            return true;
         }
 
         /// THE FULLSCREEN PASS'S DEMAND (a folder's matte). There is no mesh to walk and no
@@ -394,14 +399,14 @@ void main() { oDemand = 1.0; }
         /// in NDC and the vertex shader's uUvFromScreen branch derives every vertex's texel
         /// position from it - the SAME formula (and the same Jacobian) a layer's demand uses,
         /// rather than a second CPU implementation that could drift from the shader.
-        void markFullscreen(
+        bool markFullscreen(
             int aLayer, const QSize& aGrid, const Params& aParams, const QSize& aTargetSize
         ) {
             if (!aParams.uvFromScreen || aTargetSize.isEmpty() || aGrid.isEmpty())
-                return;
+                return false;
             if (!ensureBuilt() || !ensureQuad())
-                return;
-            mark(
+                return false;
+            return mark(
                 aLayer, aGrid, aParams, QMatrix4x4(), aTargetSize, QVector2D(0.0f, 0.0f),
                 mQuadPositions, nullptr, 4, mQuadIndices, 6
             );
@@ -673,9 +678,35 @@ void main() { oDemand = 1.0; }
 /// skipped, so every paged layer samples the coarse chain through the VT shader. That is the
 /// control for "is the cost the shader or the demand machinery" - both were measured with it.
 bool demandEnabled() {
-    static const bool on = qgetenv("AE_VT_DEMAND") != "0";
-    return on;
+    static const QByteArray mode = qgetenv("AE_VT_DEMAND");
+    return mode != "0";
 }
+
+/// The draw alone, for the second diagnostic form: AE_VT_DEMAND=nodraw keeps the pass's state
+/// changes, uniforms and per-layer buffer uploads and issues no glDrawElements. Measured on nene's
+/// 130 layers: 91.2-92.4 ms a frame against 91.1-91.8 with the whole machinery off and 96.8-102.3
+/// with it, so the pass's cost IS the geometry - batching its setup would buy nothing.
+bool demandDrawEnabled() {
+    static const QByteArray mode = qgetenv("AE_VT_DEMAND");
+    return mode != "nodraw";
+}
+
+/// WHICH ENTRY POINT A SIGNATURE CAME FROM (see DemandSignature::kind). A resource is normally
+/// marked by one of them - an image by the layer walk, a layer's matte by the mask walk, a
+/// folder's matte by the fullscreen quad - and the kind is compared so one form can never replay
+/// another's page set.
+enum DemandKind {
+    DemandKind_Layer = 0,
+    DemandKind_MaskMesh = 1,
+    DemandKind_MaskScreen = 2,
+};
+
+/// THE FRAME'S DEMAND BOOKKEEPING: one mark is one layer's triangles walked by the demand
+/// geometry shader; one replay is a signature repeat that walks nothing (see markDemand). Both
+/// reset in beginFrame, so the pair reads as "how did this frame get its demand" - what
+/// AE_VT_STATS prints and what the replay's gate asserts.
+int sDemandMarks = 0;
+int sDemandReplays = 0;
 
 std::vector<VirtualTexture*>& registry() {
         static std::vector<VirtualTexture*> resources;
@@ -702,6 +733,8 @@ bool VirtualTexture::pageable(const QSize& aSize) {
 }
 
 int VirtualTexture::instanceCount() { return (int)registry().size(); }
+int VirtualTexture::demandMarks() { return sDemandMarks; }
+int VirtualTexture::demandReplays() { return sDemandReplays; }
 
 VirtualTexture::VirtualTexture(): mResource(), mSize(), mPyramid(), mCoarse(), mTable() {}
 VirtualTexture::~VirtualTexture() { destroy(); }
@@ -713,6 +746,8 @@ void VirtualTexture::beginFrame() {
     // clear that starts this frame's map, then the uploads: a page about to be sampled goes in
     // before the frame's draws.
     gl::PagePool::instance().beginFrame();
+    sDemandMarks = 0;
+    sDemandReplays = 0;
     DemandMap& demandMap = DemandMap::instance();
     if (demandMap.consume(false)) {
         for (VirtualTexture* resource : registry())
@@ -741,11 +776,14 @@ void VirtualTexture::endFrame() {
             resident += resource->residentWantedCount();
         }
         qWarning(
-            "VT frame %llu resources=%d wanted=%d resident=%d poolPages=%d poolBytes=%lld",
+            "VT frame %llu resources=%d wanted=%d resident=%d marks=%d replays=%d poolPages=%d "
+            "poolBytes=%lld",
             (unsigned long long)gl::PagePool::instance().frame(),
             (int)registry().size(),
             wanted,
             resident,
+            sDemandMarks,
+            sDemandReplays,
             gl::PagePool::instance().residentPages(),
             (long long)gl::PagePool::instance().residentBytes()
         );
@@ -1091,6 +1129,9 @@ void VirtualTexture::destroy() {
     mDemandFrame.clear();
     mActiveFlags.clear();
     mActivePages.clear();
+    mLastMarked.clear();
+    mDemandSignature = DemandSignature();
+    mDemandSignatureValid = false;
     mPageBuffer.clear();
     mTableDirty = false;
     mDemandParsedFrame = 0;
@@ -1118,6 +1159,10 @@ void VirtualTexture::consumeDemand() {
     mDemandParsedFrame = demandMap.mappedFrame();
     const quint64 frame = gl::PagePool::instance().frame();
     const int stride = demandMap.stride();
+    // THIS COPY'S OWN SET is what a repeated signature replays. A copy that marked nothing - the
+    // frames a replay produced - leaves the previous set in place: those pages are still exactly
+    // what the same signature demands, and dropping them would age a still view's residency out.
+    std::vector<quint32> marked;
     for (int l = 0; l < mCoarseLevel; ++l) {
         const int row0 = mLevelRow[l];
         for (int py = 0; py < mLevelGridY[l]; ++py) {
@@ -1130,6 +1175,7 @@ void VirtualTexture::consumeDemand() {
                 if (mDemandFrame[(size_t)index] == (int)frame)
                     continue;
                 mDemandFrame[(size_t)index] = (int)frame;
+                marked.push_back((quint32)index);
                 if (!mActiveFlags[(size_t)index]) {
                     mActiveFlags[(size_t)index] = 1;
                     mActivePages.push_back((quint32)index);
@@ -1137,6 +1183,8 @@ void VirtualTexture::consumeDemand() {
             }
         }
     }
+    if (!marked.empty())
+        mLastMarked.swap(marked);
 }
 
 void VirtualTexture::resolveDemand() {
@@ -1348,9 +1396,7 @@ void VirtualTexture::rebuildTable() {
 }
 
 void VirtualTexture::markDemand(
-    const QMatrix4x4& aViewMatrix,
-    const QSize& aDeviceScreenSize,
-    const QVector2D& aTexCoordOffset,
+    const DemandSignature& aInputSignature,
     const gl::BufferObject& aPositions,
     const gl::Vector2* aTexCoords,
     int aVtxCount,
@@ -1362,80 +1408,150 @@ void VirtualTexture::markDemand(
     if (mDemandLayer < 0)
         return;
 
+    DemandSignature signature = aInputSignature;
+    signature.kind = DemandKind_Layer;
+    // the level bias is a session policy, not a caller's argument: read it here so a signature
+    // cannot disagree with the uniform the pass actually used
+    signature.bias = ImageKey::layerLodBias();
+    if (demandSignatureRepeats(signature)) {
+        replayDemand();
+        return;
+    }
+
     DemandMap::Params params;
     params.layerSize = mSize;
     params.coarseLevel = mCoarseLevel;
     params.maxLevel = mMaxLevel;
-    params.bias = ImageKey::layerLodBias();
+    params.bias = signature.bias;
     for (int i = 0; i < kMaxPageLevels; ++i)
         params.levelRow[i] = mLevelRow[i];
 
-    DemandMap::instance().mark(
-        mDemandLayer, QSize(mTableWidth, mTableRows), params, aViewMatrix, aDeviceScreenSize,
-        aTexCoordOffset, aPositions.id(), aTexCoords, aVtxCount, aIndexBuffer.id(), aIndexCount
+    const bool marked = DemandMap::instance().mark(
+        mDemandLayer, QSize(mTableWidth, mTableRows), params, signature.viewMatrix,
+        signature.targetSize, signature.texCoordOffset, aPositions.id(), aTexCoords, aVtxCount,
+        aIndexBuffer.id(), aIndexCount
     );
+    if (marked) {
+        mDemandSignature = signature;
+        mDemandSignatureValid = true;
+        ++sDemandMarks;
+    }
 }
 
 void VirtualTexture::markMaskDemand(
-    const QMatrix4x4& aViewMatrix,
-    const QMatrix4x4& aScreenToContent,
-    const QRectF& aMaskRect,
-    const QSize& aDeviceScreenSize,
+    const DemandSignature& aInputSignature,
     const gl::BufferObject& aPositions,
     int aVtxCount,
     const gl::BufferObject& aIndexBuffer,
     int aIndexCount
 ) {
     if (!isMask() || mDemandLayer < 0 || aIndexCount < 3 || aVtxCount <= 0
-        || !demandEnabled() || aMaskRect.isEmpty())
+        || !demandEnabled() || aInputSignature.maskRect.z() <= 0.0f
+        || aInputSignature.maskRect.w() <= 0.0f)
         return;
+
+    DemandSignature signature = aInputSignature;
+    signature.kind = DemandKind_MaskMesh;
+    signature.bias = ImageKey::layerLodBias();
+    if (demandSignatureRepeats(signature)) {
+        replayDemand();
+        return;
+    }
 
     DemandMap::Params params;
     params.layerSize = mSize;
     params.coarseLevel = mCoarseLevel;
     params.maxLevel = mMaxLevel;
-    params.bias = ImageKey::layerLodBias();
+    params.bias = signature.bias;
     for (int i = 0; i < kMaxPageLevels; ++i)
         params.levelRow[i] = mLevelRow[i];
     params.uvFromScreen = true;
-    params.screenToContent = aScreenToContent;
-    params.maskRect = QVector4D(
-        float(aMaskRect.x()), float(aMaskRect.y()), float(aMaskRect.width()),
-        float(aMaskRect.height())
-    );
+    params.screenToContent = signature.screenToContent;
+    params.maskRect = signature.maskRect;
     params.maskTexelSize = QVector2D((float)mSize.width(), (float)mSize.height());
 
-    DemandMap::instance().mark(
-        mDemandLayer, QSize(mTableWidth, mTableRows), params, aViewMatrix, aDeviceScreenSize,
-        QVector2D(0.0f, 0.0f), aPositions.id(), nullptr, aVtxCount, aIndexBuffer.id(), aIndexCount
+    const bool marked = DemandMap::instance().mark(
+        mDemandLayer, QSize(mTableWidth, mTableRows), params, signature.viewMatrix,
+        signature.targetSize, QVector2D(0.0f, 0.0f), aPositions.id(), nullptr, aVtxCount,
+        aIndexBuffer.id(), aIndexCount
     );
+    if (marked) {
+        mDemandSignature = signature;
+        mDemandSignatureValid = true;
+        ++sDemandMarks;
+    }
 }
 
-void VirtualTexture::markScreenMaskDemand(
-    const QMatrix4x4& aScreenToContent, const QRectF& aMaskRect, const QSize& aTargetSize
-) {
-    if (!isMask() || mDemandLayer < 0 || !demandEnabled() || aMaskRect.isEmpty()
-        || aTargetSize.isEmpty())
+void VirtualTexture::markScreenMaskDemand(const DemandSignature& aInputSignature) {
+    if (!isMask() || mDemandLayer < 0 || !demandEnabled()
+        || aInputSignature.maskRect.z() <= 0.0f || aInputSignature.maskRect.w() <= 0.0f
+        || aInputSignature.targetSize.isEmpty())
         return;
+
+    DemandSignature signature = aInputSignature;
+    signature.kind = DemandKind_MaskScreen;
+    signature.bias = ImageKey::layerLodBias();
+    if (demandSignatureRepeats(signature)) {
+        replayDemand();
+        return;
+    }
 
     DemandMap::Params params;
     params.layerSize = mSize;
     params.coarseLevel = mCoarseLevel;
     params.maxLevel = mMaxLevel;
-    params.bias = ImageKey::layerLodBias();
+    params.bias = signature.bias;
     for (int i = 0; i < kMaxPageLevels; ++i)
         params.levelRow[i] = mLevelRow[i];
     params.uvFromScreen = true;
-    params.screenToContent = aScreenToContent;
-    params.maskRect = QVector4D(
-        float(aMaskRect.x()), float(aMaskRect.y()), float(aMaskRect.width()),
-        float(aMaskRect.height())
-    );
+    params.screenToContent = signature.screenToContent;
+    params.maskRect = signature.maskRect;
     params.maskTexelSize = QVector2D((float)mSize.width(), (float)mSize.height());
 
-    DemandMap::instance().markFullscreen(
-        mDemandLayer, QSize(mTableWidth, mTableRows), params, aTargetSize
+    const bool marked = DemandMap::instance().markFullscreen(
+        mDemandLayer, QSize(mTableWidth, mTableRows), params, signature.targetSize
     );
+    if (marked) {
+        mDemandSignature = signature;
+        mDemandSignatureValid = true;
+        ++sDemandMarks;
+    }
+}
+
+bool VirtualTexture::DemandSignature::operator==(const DemandSignature& aRhs) const {
+    // EXACT comparisons, deliberately: a value that drifted by an epsilon re-marks, which costs
+    // one geometry pass, while a value that changed and compared equal would leave the frame
+    // sampling the coarse chain. The values are the pass's own uniforms, produced by the same
+    // expressions every frame, so an unchanged input does compare equal here.
+    return kind == aRhs.kind && positions == aRhs.positions && targetSize == aRhs.targetSize
+        && viewMatrix == aRhs.viewMatrix && screenToContent == aRhs.screenToContent
+        && texCoordOffset == aRhs.texCoordOffset && maskRect == aRhs.maskRect
+        && bias == aRhs.bias;
+}
+
+bool VirtualTexture::demandSignatureRepeats(const DemandSignature& aSignature) const {
+    // NO MARK YET is not a repeat: the first frame of a resource must walk its triangles, and a
+    // resource whose mark failed keeps mDemandSignatureValid false so the next frame tries again.
+    return mDemandSignatureValid && mDemandSignature == aSignature;
+}
+
+void VirtualTexture::replayDemand() {
+    ++sDemandReplays;
+    const int frame = (int)gl::PagePool::instance().frame();
+    for (quint32 value : mLastMarked) {
+        const int index = (int)value;
+        if (mDemandFrame[(size_t)index] == frame)
+            continue;
+        // The page is wanted THIS frame, exactly as if the pass had marked it: the kKeepFrames
+        // window moves with the replay, so a still view keeps its pages instead of letting them
+        // age out while they are still sampled. resolveDemand (next beginFrame) uploads any page
+        // that is no longer resident.
+        mDemandFrame[(size_t)index] = frame;
+        if (!mActiveFlags[(size_t)index]) {
+            mActiveFlags[(size_t)index] = 1;
+            mActivePages.push_back(value);
+        }
+    }
 }
 
 void VirtualTexture::bind(gl::EasyShaderProgram& aShader) const {

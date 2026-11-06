@@ -34,6 +34,7 @@ LayerNode::LayerNode(const QString& aName, ShaderHolder& aShaderHolder):
     mIsClipped(),
     mMeshTransformer(aShaderHolder.meshTransformerResource()),
     mCurrentMesh(),
+    mMeshRevision(0),
     mTransformKey(),
     mTransformKeyValid(),
     mClippees() {}
@@ -277,12 +278,20 @@ void LayerNode::render(const RenderInfo& aInfo, const TimeCacheAccessor& aAccess
         if (aInfo.isGrid || !mCurrentMesh)
             return;
         const TimeKeyExpans& expans = aAccessor.get(mTimeLine);
+        // THE DEMAND'S INPUTS, so a repaint of the same frame can replay its pages instead of
+        // walking every triangle again (VirtualTexture::markDemand). `mMeshRevision` is the
+        // skinning pass's own stamp: the buffer it writes into is stable while the values behind
+        // it change, so the revision - not the buffer's identity - is what says "same vertices".
+        // A camera-only pan keeps the revision and changes the view matrix, which re-marks.
         if (VirtualTexture* virtualTexture = expans.areaVirtualTexture()) {
+            VirtualTexture::DemandSignature signature;
+            signature.positions = mMeshRevision;
+            signature.targetSize = aInfo.camera.deviceScreenSize();
+            signature.viewMatrix = aInfo.camera.viewMatrix();
+            signature.texCoordOffset = mCurrentMesh->originOffset() - expans.imageOffset();
             virtualTexture->markDemand(
-                aInfo.camera.viewMatrix(), aInfo.camera.deviceScreenSize(),
-                mCurrentMesh->originOffset() - expans.imageOffset(), mMeshTransformer.positions(),
-                mCurrentMesh->texCoords(), mCurrentMesh->vertexCount(), mCurrentMesh->getIndexBuffer(),
-                mCurrentMesh->indexCount()
+                signature, mMeshTransformer.positions(), mCurrentMesh->texCoords(),
+                mCurrentMesh->vertexCount(), mCurrentMesh->getIndexBuffer(), mCurrentMesh->indexCount()
             );
         }
         // THE MATTE'S OWN PAGES. The mask is paged by its own stack (its grid is the field's,
@@ -296,12 +305,21 @@ void LayerNode::render(const RenderInfo& aInfo, const TimeCacheAccessor& aAccess
         // control, which forces the image full, is a control for the mask too).
         if (expans.areaVirtualTexture() && mask.isValid() && mask.isPainted()) {
             if (VirtualTexture* pagedMask = mask.virtualTexture()) {
+                // the matte walks the SAME vertices: same revision, and its uv mapping is the
+                // screen->content matrix the fragment shader applies (not the mesh's texcoords)
+                VirtualTexture::DemandSignature signature;
+                signature.positions = mMeshRevision;
+                signature.targetSize = aInfo.camera.deviceScreenSize();
+                signature.viewMatrix = aInfo.camera.viewMatrix();
+                signature.screenToContent =
+                    contentMappingFor(aInfo, aAccessor, aInfo.camera.deviceScreenSize());
+                const QRectF rect = mask.contentRect();
+                signature.maskRect = QVector4D(
+                    float(rect.x()), float(rect.y()), float(rect.width()), float(rect.height())
+                );
                 pagedMask->markMaskDemand(
-                    aInfo.camera.viewMatrix(),
-                    contentMappingFor(aInfo, aAccessor, aInfo.camera.deviceScreenSize()),
-                    mask.contentRect(), aInfo.camera.deviceScreenSize(), mMeshTransformer.positions(),
-                    mCurrentMesh->vertexCount(), mCurrentMesh->getIndexBuffer(),
-                    mCurrentMesh->indexCount()
+                    signature, mMeshTransformer.positions(), mCurrentMesh->vertexCount(),
+                    mCurrentMesh->getIndexBuffer(), mCurrentMesh->indexCount()
                 );
             }
         }
@@ -790,6 +808,7 @@ void LayerNode::transformShape(const RenderInfo& aInfo, const TimeCacheAccessor&
     mMeshTransformer.callGL(
         expans, mesh->getMeshBuffer(), mesh->originOffset(), positions, aInfo.nonPosed, useInfluence
     );
+    ++mMeshRevision;
 
     mCurrentMesh = mesh;
     mTransformKey = key;

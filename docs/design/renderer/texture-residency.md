@@ -655,6 +655,7 @@ equality against the current path, and the counter showing the pixels saved.
 | `tests/density_meter.cpp` | the metric itself: 1x/2x/4x exact, and an animated case where placement changes every frame |
 | `scripts/gui/probe_camera_transform.sh` | a camera move skips the pass; a frame step re-runs it |
 | `tests/verify_mipmap` (branch) | chain correctness: premultiplied averages, halo, the level a footprint reads |
+| `tools/render_probe --repeat <n>` | the SAME frame repainted n times - a still view (a pointer move, a matte stroke) - for the demand replay's cost and `AE_VT_STATS`'s `marks=`/`replays=` |
 
 ## Sub-pixel shimmer is Nyquist content, not the chain and not anisotropy
 
@@ -896,7 +897,8 @@ before sampling, so a dead slot number can never reach the shader.
 The design's "the density pass already walks the triangles" became a dedicated geometry pass,
 because the density meter exists only under `AE_FRAME_STATS` and a paged renderer cannot have its
 demand switched off. The pass is one indexed draw per layer, before the layer's own draw, reading
-the same skinned position buffer; it does not read anything back synchronously.
+the same skinned position buffer; it does not read anything back synchronously. A **repeat of the
+same inputs** skips the draw entirely and replays the pages the last one marked (see below).
 
 Per triangle it computes `J = d(screen)/d(texel)` from the three screen positions and the three
 uvs, takes `s_max` (the demand's level is the one the fragment shader's derivatives pick:
@@ -925,6 +927,32 @@ The array's layers are written with `gl_Layer` in a geometry shader and an FBO w
 attached as a layered color target (GL 3.2); the per-layer grid is a sub-rect of the cell, and the
 rest stays cleared. Reallocation (a new resource with a larger grid) recreates the array empty -
 the map is cleared every frame anyway, so there is nothing to copy.
+
+#### The replay: a still view does not re-walk the triangles
+
+A repaint of the same frame - a pointer moving over the canvas (the brush ring follows it), a matte
+stroke, a dock animating, a panel asking for a redraw - wants exactly the pages it wanted last
+time. The pass is a pure function of its inputs: the deformed vertices, the camera's view matrix
+and device size, the uv offset, the session's level bias, and for a matte the screen->content
+mapping and the rect. `VirtualTexture::markDemand` (and its two matte forms) takes those as a
+`DemandSignature`, and a repeat **replays** the pages the last consumed copy of the map marked
+instead of drawing.
+
+- **"Same vertices" is a stamp, not a buffer.** `MeshTransformer::callGL` writes into a buffer
+  whose id is stable while the values behind it change, so a buffer comparison would be a lie.
+  `LayerNode::mMeshRevision` is bumped every time the skinning pass writes, exactly the reason
+  `TimeKeyExpans::revision` exists one level up, and `LayerNode` passes it as `positions`. A
+  resource marked by two layers (a duplicated layer) can only replay the one whose signature
+  repeats last; the replay re-stamps the last copy's union, which is a superset.
+- **The replay re-stamps, it does not skip.** The wanted set is the last `kKeepFrames` window of
+  marks, so a mark that simply was not issued would let a still view's pages age out *while they
+  are still sampled*: the pixels would look right until the first eviction, then blur a frame
+  nobody touched. The replay sets the pages' timestamps to this frame, which is why the gate holds
+  a still frame for **twice** the window and measures the wanted set: a broken replay would leave
+  the pixels right until the first eviction.
+- **What it does not cover.** Any frame whose inputs moved re-marks: a camera pan keeps the mesh
+  revision and changes the view matrix; playback changes the time frame, which re-skins and bumps
+  the revision. The win is the interactive still frame.
 
 ### The shader
 
@@ -1076,10 +1104,12 @@ filter lane's field. For a paged matte that is field + levels; for a forced-full
 | `AE_VT_COARSE` | longest side of the always-resident chain, default 512 |
 | `AE_VT_STATS=1` | one line per frame: resources, wanted, resident, pool pages/bytes |
 | `AE_VT_DEMAND=0` | diagnostic: skip the demand pass and its readback (every paged layer samples the coarse chain through the VT shader) - the control for "is the cost the shader or the demand machinery" |
+| `AE_VT_DEMAND=nodraw` | diagnostic: keep the pass's state changes, uniforms and per-layer buffer uploads and skip only the draw - the control for "is the cost the setup or the geometry" (measured: the geometry) |
+| `AE_VT_STATS=1` also prints `marks=` and `replays=` | how the frame got its demand: a mark is one layer's triangles walked, a replay is a signature repeat that walked nothing |
 
 `AE_FRAME_STATS`'s line gains `vt_pages`, `vt_bytes`, `vt_up`, `vt_evict`.
 
-### Gates (all in `tools/verify_mipmap`; run it under Xvfb like the other GL gates)
+### Gates (all in `tools/verify_mipmap`; a pixel gate runs under `scripts/gui/gpu_headless.sh`)
 
 - **V1 paged layer vs the full-resolution control**, at scales 0.25, 0.0625x0.25 (a 4:1 footprint
   on the coarse tier), 0.3 (level 0 paged, the layer's edges on screen), 0.5, 0.6 (the magnified
@@ -1141,6 +1171,19 @@ filter lane's field. For a paged matte that is field + levels; for a forced-full
   - **`mask_bytes`**: the paged tree's `ObjectTree::maskRamBytes()` must equal field + pyramid,
     the forced-full one field only - the frame line's number is the walk, and the two would be
     equal if either side were miscounted.
+- **DR1 the demand replay**: a 1200x1000 source (coarse level 2, so level 1 is pageable too) on a
+  320 canvas with the layer at 0.3, so a camera change can move the demanded *level*. The first
+  render must MARK; the fit view must want **exactly its level-0 grid** (20 pages) with all of it
+  resident. **Six more repaints** (twice `kKeepFrames`) must mark **nothing**, must still replay,
+  must keep the wanted set at 20 with every page resident, and must be bit-identical to the frame
+  the mark produced. Then the camera goes to half scale - footprint 0.15 texels per pixel,
+  `log2(1/0.15) - 1.35 = 1.39`, so the fragment shader reads level 1: that frame must MARK again,
+  the wanted set must become **exactly level 1's grid** (6 pages, not level 0's 20), and the frame
+  must match a tree that never replayed. The comparison's tolerance is **1 unit at under 0.1 % of
+  samples**: two independently built paged resources of the same content land in different pool
+  slots, and the atlas read's sub-texel rounding follows the slot (two oracle trees that never
+  replayed differ by 1 at 133 samples too). Mutating the signature to compare only the vertex
+  stamp fails five checks, the pixel one at **max 28 over 75,904 samples**.
 - `media_exporter_e2e` runs the export path with the demand preparse.
 
 ### Measured
@@ -1197,6 +1240,25 @@ filter lane's field. For a paged matte that is field + levels; for a forced-full
   114 pages have landed (frames 7-8). The landing frames (5-6) show up to 3072 px over 8 - the
   page transient, not a sampling difference. The plan's pixel-equality gate is met on this project,
   clipper layers included.
+- **The demand replay** (`DR1`): the fit view wants exactly **20 of 20** level-0 pages, all
+  resident; six repaints of the same frame mark **nothing** (one replay each), keep the wanted set
+  at 20 - past twice `kKeepFrames` - and are bit-identical to the frame the mark produced. At half
+  scale the demand is exactly level 1's **6 pages**, and the frame matches a fresh tree within
+  **max 1 at 97 of 409,600 samples** (the slot-rounding tolerance above). With the signature
+  reduced to the vertex stamp the gate fails five checks: the level-1 view wants **20 pages
+  instead of 6** and the frame differs by **max 28 over 75,904 of 409,600 samples**.
+- **Still-view cost** (nene, 640x640, 130 layers, `--frames 6..6 --repeat 8`, `AE_VT_STATS`): the
+  eight renders are one still frame repainted, which is what a pointer over the canvas asks for.
+  The first marks **107** resources and costs 165 ms (it also lands the first 8 MB of pages); the
+  seven after it **replay 107 of 107** and never mark. With all 114 pages resident the last three
+  repaints cost **9.2-9.8 ms**, against **15.2-16.0 ms** with the replay disabled (the same
+  mutation) - the demand pass's geometry is **36-41 %** of that still frame. Playback is untouched by design: a
+  new time frame re-skins every layer, so the revision moves and every frame marks.
+- **The pass's cost is the geometry, not its setup**: `AE_VT_DEMAND=nodraw` - state changes,
+  uniforms and per-layer buffer uploads kept, only `glDrawElements` skipped - costs
+  **91.2-92.4 ms** a frame on nene's playback, the same as **91.1-91.8 ms** with the whole demand
+  machinery off, against **96.8-102.3 ms** with it. Hoisting or batching the pass's setup would
+  buy nothing; the only win is not walking the triangles.
 - **V1 parity**: 900x700 source, 320x320 canvas, coarse level 1, 12 level-0 pages wanted and all
   resident. The source is deterministic per-texel **noise**, not the old smooth curve: a ramp
   hides a filtering difference in 1/255 rounding, noise turns the same difference into tens. At
@@ -1299,13 +1361,22 @@ filter lane's field. For a paged matte that is field + levels; for a forced-full
 
 ### Open, in priority order
 
-1. The demand pass's ~8 ms on 130 layers: it re-walks every visible triangle every frame even
-   when the camera and the transform cache have not changed. A static view could skip it; the
-   density meter already reads the same positions, so the two could share one pass under
-   `AE_FRAME_STATS`. Beside it, the pool's landing rate: 8 MB/frame still costs 10-20 ms while it
-   fills, and a large import's synchronous capture is a visible pause; an asynchronous/deferred
-   capture and a page upload batched per atlas row are the two obvious next reductions.
-2. An ANIMATED mask (two keys) blends a new field every frame, so its resource is rebuilt per
+1. The demand pass on the frames that still re-mark: after the replay, a **camera pan** (the mesh
+   revision holds, the view matrix changes) and **playback** (a new time frame re-skins, so the
+   revision moves) walk all 107 resources on nene. That is **5.7-11.1 ms** a frame across the
+   steady frames of two runs - 6-11 % of the 97-102 ms playback frame and 36-41 % of a still one -
+   and it is the geometry, not its setup (`nodraw` measured the same as off), so sharing the
+   density meter's vertex work would only help a `AE_FRAME_STATS` run, which is a diagnostic.
+   Two candidate reductions, neither built: an **affine fast path** (a layer with no deformation
+   has one footprint for its whole surface, so its demand is the quad's page box and not the
+   grid's - inference: the per-triangle boxes' union is what the quad's box covers, but the tap
+   reach is per triangle and would need a gate), and **culling** (the pass walks triangles the
+   camera cannot see at all; the engine has no bounds test yet).
+2. The pool's landing rate: 8 MB/frame still costs 10-20 ms while it fills, and a large import's
+   synchronous capture is a visible pause (1.47 s across 136 keys on nene, worst 130 ms). An
+   asynchronous/deferred capture and a page upload batched per atlas row are the two obvious next
+   reductions.
+3. An ANIMATED mask (two keys) blends a new field every frame, so its resource is rebuilt per
    frame - the blend path predates paging and already rebuilt the full chain, but the paged form
    adds a readback to that build and a per-frame pool registration. The property that makes this
    fixable is linearity: every level is a linear filter of the field, so `level(lerp(A, B, t))`
@@ -1314,8 +1385,8 @@ filter lane's field. For a paged matte that is field + levels; for a forced-full
    follows from the box average being linear, but the easing quantisation and the box updates a
    stroke applies are what a gate would have to pin.) Folder mattes and `mask_bytes` are done;
    filter-lane masks are the remaining full-chain textures (above).
-3. Per-resource pyramids for duplicated layers.
-4. The first-atlas floor (61 MB) for projects whose whole texture set is smaller than it: a
+4. Per-resource pyramids for duplicated layers.
+5. The first-atlas floor (61 MB) for projects whose whole texture set is smaller than it: a
    demand-aware first allocation is the measured-shaped answer (see the pool's header comment).
 
 The parity gaps are closed - the nene residual (the coarse tier's single tap) and the test.anie

@@ -40,12 +40,14 @@
 //
 //   render_probe --project <file.anie> --out <dir> [--size WxH] [--zoom <scale>]
 //                [--frames <a>..<b>] [--step <n>] [--offset <px>] [--supersample <n>]
-//                [--metrics] [--require-gpu]
+//                [--metrics] [--require-gpu] [--repeat <n>]
 //
 //   --size    framebuffer size in pixels (default 640x640)
 //   --zoom    camera scale (1.0 = the project's pixels at 1:1); default fits the whole image
 //   --frames  inclusive project frame range; default is the project's own frame range
 //   --step    project frames advanced per output frame (default 1)
+//   --repeat  render each frame N times and keep the last: the SAME frame repainted, i.e. a
+//             still view (the measurement behind the demand replay, and the interactive case)
 //   --offset  horizontal sub-pixel nudge of the camera centre, in pixels
 //   --supersample render at Nx the size, then box-average down to --size (1..16, default 1)
 //   --metrics one line per frame: FRAME <i> sharpness <float> mean <float>
@@ -125,6 +127,7 @@ const char* kUsage =
     "usage: render_probe --project <file.anie> --out <dir> [--size WxH] [--zoom <scale>]\n"
     "                    [--frames <a>..<b>] [--step <n>] [--offset <px>] [--supersample <n>]\n"
     "                    [--metrics] [--require-gpu] [--only-layer <text>] [--list-layers]\n"
+    "                    [--repeat <n>]\n"
     "\n"
     "Renders project frames offscreen through ctrl::Driver::renderGL and writes\n"
     "<out>/frame-<index>.png (RGBA8, exactly --size).\n"
@@ -133,6 +136,8 @@ const char* kUsage =
     "  --zoom        camera scale; default fits the whole project image\n"
     "  --frames      inclusive project frame range; default: the project's range\n"
     "  --step        project frames per output frame (default 1)\n"
+    "  --repeat      render each frame N times, keeping the last (default 1): the SAME frame\n"
+    "                repainted, which is what a still view does (a pointer move, a brush stroke)\n"
     "  --offset      horizontal sub-pixel nudge of the camera centre, in pixels\n"
     "  --supersample render at Nx the size and box-average down to --size, N in 1..16 (default 1)\n"
     "  --metrics     print FRAME <i> sharpness <float> mean <float> per frame\n"
@@ -235,6 +240,8 @@ struct Options {
     int frameBegin = 0;
     int frameEnd = 0;
     int step = 1;
+    // repaint each output frame N times: the still-view case (same time frame, same camera)
+    int repeat = 1;
     float offset = 0.0f;
     bool metrics = false;
     // refuse to run when the driver fell back to a software rasterizer (Xvfb's GLX is llvmpipe)
@@ -687,6 +694,11 @@ int runRender(ProbeGL& aProbe, const Options& aOptions) {
         driver.flushPendingBlend();
 
         std::vector<uint8_t> pixels = fixture.render(project, driver, aOptions, frame);
+        // THE STILL VIEW: the same frame, the same camera, repainted. Nothing about the scene
+        // changed, so the demand pass has nothing new to learn - which is exactly the case the
+        // paged renderer's signature replay exists for (see core::VirtualTexture::markDemand).
+        for (int i = 1; i < aOptions.repeat; ++i)
+            pixels = fixture.render(project, driver, aOptions, frame);
         if (ss > 1)
             pixels = boxDownsample(pixels, renderSize, aOptions.size, ss);
 
@@ -783,6 +795,15 @@ int main(int argc, char** argv) {
                 return fail(2, QStringLiteral("--step must be a positive integer, got '%1'").arg(text));
             }
             options.step = step;
+        } else if (arg == QLatin1String("--repeat")) {
+            QString text;
+            if (!value(text)) return 2;
+            bool ok = false;
+            const int repeat = text.toInt(&ok);
+            if (!ok || repeat < 1 || repeat > 64) {
+                return fail(2, QStringLiteral("--repeat must be 1..64, got '%1'").arg(text));
+            }
+            options.repeat = repeat;
         } else if (arg == QLatin1String("--offset")) {
             QString text;
             if (!value(text)) return 2;

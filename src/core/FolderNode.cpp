@@ -48,7 +48,16 @@ void markFolderMaskDemand(
     const QMatrix4x4 screenToLayer = toScreen.inverted(&invertible);
     if (!invertible)
         return;
-    paged->markScreenMaskDemand(screenToLayer, aMaskData.contentRect(), aTargetSize);
+    // The signature is the whole input: a fullscreen pass has no vertex data, so the mapping and
+    // the target size decide its pages. A repaint of the same frame replays them (the exporter's
+    // demand-only pass and its real pass are exactly such a repeat).
+    VirtualTexture::DemandSignature signature;
+    signature.targetSize = aTargetSize;
+    signature.screenToContent = screenToLayer;
+    const QRectF rect = aMaskData.contentRect();
+    signature.maskRect =
+        QVector4D(float(rect.x()), float(rect.y()), float(rect.width()), float(rect.height()));
+    paged->markScreenMaskDemand(signature);
 }
 
 } // namespace

@@ -3211,6 +3211,230 @@ void suiteFolderMask() {
             .arg(exportedDelta).arg((qint64)640 * 640).arg((qint64)maskVT->pyramidBytes())
             .arg(coarseBytes).arg(chainBytes)
     );
+
+}
+
+// DR1: THE DEMAND REPLAY. A still view repaints the same frame - a pointer moving over the
+// canvas, a matte stroke, a panel animating - and asks for exactly the pages it asked for last
+// time. The pass is skipped and the last page set is re-stamped instead. The trap the gate is
+// built around: a replay that did not move the kKeepFrames window would keep the pixels right
+// (the pages are still resident) while the wanted set silently decayed, and the first eviction
+// would then blur a frame nobody had touched. So the gate holds the same frame for LONGER than
+// that window and measures the wanted set, not the pixels.
+//
+// The camera case needs a resource with MORE THAN ONE pageable level: the demand walks every
+// triangle, so a camera move alone never changes the page set of a layer whose only paged level
+// is level 0. A 1200x1000 source has coarseLevel 2, so zooming out moves the foot against -1.35
+// from level 0 (20 pages) to level 1 (6), and a replay that ignored the view matrix would leave
+// the six level-1 pages unmarked - the frame would fall back to the coarse chain.
+void suiteDemandReplay() {
+    suiteHeader("DR1 the demand replay: a repeated frame walks no triangles");
+    if (!gl::PagePool::enabled()) {
+        std::printf("  [SKIP] AE_VIRTUAL_TEXTURE=0 is the control path\n");
+        return;
+    }
+    if (qgetenv("AE_VT_DEMAND") == "0") {
+        std::printf("  [SKIP] AE_VT_DEMAND=0 removes the demand pass itself\n");
+        return;
+    }
+
+    const QSize canvas(320, 320);
+    const uint8_t black[3] = {0, 0, 0};
+    const QSize source(1200, 1000);
+    const Img src = makeNoise(source.width(), source.height());
+
+    RenderFixture fx;
+    fx.init(canvas);
+
+    core::CameraInfo camera;
+    camera.reset(canvas, 1.0, canvas, QPoint(0, 0));
+
+    // ONE RESOURCE, two trees: the oracle's difference from the replayed tree is then the paged
+    // read's, never the source data's (see the slot-rounding note in the gate's report).
+    img::ResourceNode* srcRes = makeResource("dr1_src", src);
+    const auto buildTree = [&](std::unique_ptr<core::ObjectTree>& aTree) -> core::ImageKey* {
+        aTree.reset(new core::ObjectTree());
+        auto* root = new core::FolderNode("root");
+        aTree->grabTopNode(root);
+        core::LayerNode* layer = addScaledLayer(
+            *aTree, root, srcRes, "layer",
+            QVector2D(canvas.width() * 0.5f, canvas.height() * 0.5f), 0.3f, img::BlendMode_Normal
+        );
+        auto* imageKey =
+            dynamic_cast<core::ImageKey*>(layer->timeLine()->defaultKey(core::TimeKeyType_Image));
+        if (imageKey)
+            imageKey->setForceFullTexture(false);
+        return imageKey;
+    };
+
+    std::unique_ptr<core::ObjectTree> tree;
+    core::ImageKey* imageKey = buildTree(tree);
+    expect(imageKey != nullptr, "DR1 the layer must have an image key");
+    if (!imageKey)
+        return;
+
+    // FRAME 5, not 0: a still view is a frame that is already settled, and the skinning pass's own
+    // cache (which is what keeps the mesh revision still) is the other half of the signature.
+    // Three renders: the first MARKS, the second consumes that mark (the map is a frame behind),
+    // the third is the first true replay.
+    std::vector<uint8_t> frame;
+    bool firstMarked = false;
+    for (int i = 0; i < 3; ++i) {
+        frame = fx.render(*tree, camera, 5, black);
+        if (i == 0)
+            firstMarked =
+                core::VirtualTexture::demandMarks() >= 1 && core::VirtualTexture::demandReplays() == 0;
+    }
+    expect(firstMarked, "DR1 the first frame of a resource must MARK, not replay");
+
+    const core::VirtualTexture* vt = imageKey->cache().virtualTexture();
+    expect(vt != nullptr, "DR1 the 1200x1000 image must take the paged path");
+    if (!vt)
+        return;
+
+    const int fitGrid = vt->pageGridX(0) * vt->pageGridY(0);
+    const int landed = vt->wantedPageCount();
+    expect(
+        landed == fitGrid,
+        QString("DR1 the fit view must demand its whole level-0 grid (%1 of %2 pages)")
+            .arg(landed)
+            .arg(fitGrid)
+    );
+    expect(
+        vt->residentWantedCount() == landed,
+        QString("DR1 every demanded page must land (%1 of %2)")
+            .arg(vt->residentWantedCount())
+            .arg(landed)
+    );
+    const std::vector<uint8_t> landedFrame = frame;
+
+    // SIX MORE REPAINTS, twice the kKeepFrames window: a replay that did not re-stamp the pages
+    // would leave the wanted set empty by the fourth of them.
+    bool markedWhileStill = false;
+    for (int i = 0; i < 6; ++i) {
+        frame = fx.render(*tree, camera, 5, black);
+        markedWhileStill = markedWhileStill || core::VirtualTexture::demandMarks() > 0;
+    }
+    expect(!markedWhileStill, "DR1 a repeated frame must not walk the triangles again");
+    expect(
+        core::VirtualTexture::demandReplays() >= 1, "DR1 a repeated frame must replay its pages"
+    );
+    const int stillWanted = vt->wantedPageCount();
+    expect(
+        stillWanted == landed,
+        QString("DR1 the replay must keep every page wanted past kKeepFrames (%1 of %2)")
+            .arg(stillWanted)
+            .arg(landed)
+    );
+    expect(
+        vt->residentWantedCount() == stillWanted,
+        QString("DR1 the replayed pages must still be resident (%1 of %2)")
+            .arg(vt->residentWantedCount())
+            .arg(stillWanted)
+    );
+    expect(
+        frame == landedFrame,
+        "DR1 the replayed frame must be bit-identical to the one the mark produced"
+    );
+
+    // THE CAMERA MOVES, and this time the demanded LEVEL does too: at half scale the footprint is
+    // 0.15 texels per pixel, lod = log2(1/0.15) - 1.35 = 1.39, so the fragment shader reads level 1
+    // and the demand must name level 1's six pages instead of level 0's twenty.
+    core::CameraInfo zoomed = camera;
+    zoomed.setScale(0.5f);
+    std::vector<uint8_t> moved = fx.render(*tree, zoomed, 5, black);
+    expect(
+        core::VirtualTexture::demandMarks() >= 1 && core::VirtualTexture::demandReplays() == 0,
+        "DR1 a camera move must re-mark, not replay"
+    );
+    for (int i = 0; i < 5; ++i)
+        moved = fx.render(*tree, zoomed, 5, black);
+    const int levelOneGrid = vt->pageGridX(1) * vt->pageGridY(1);
+    const int movedWanted = vt->wantedPageCount();
+    expect(
+        movedWanted == levelOneGrid,
+        QString("DR1 the level-1 view must demand level 1's grid, not level 0's (%1 against %2; "
+                "level 0 was %3)")
+            .arg(movedWanted)
+            .arg(levelOneGrid)
+            .arg(fitGrid)
+    );
+    expect(
+        vt->residentWantedCount() == movedWanted,
+        QString("DR1 the level-1 view's pages must all be resident (%1 of %2)")
+            .arg(vt->residentWantedCount())
+            .arg(movedWanted)
+    );
+
+    // THE ORACLE: a fresh tree that never replayed anything, at the same camera. Its page set and
+    // its pixels must equal the replayed tree's - the control differs in exactly the history.
+    std::unique_ptr<core::ObjectTree> oracleTree;
+    core::ImageKey* oracleKey = buildTree(oracleTree);
+    expect(oracleKey != nullptr, "DR1 the oracle layer must have an image key");
+    if (!oracleKey)
+        return;
+    std::vector<uint8_t> oracleFrame;
+    for (int i = 0; i < 8; ++i)
+        oracleFrame = fx.render(*oracleTree, zoomed, 5, black);
+    const core::VirtualTexture* oracleVT = oracleKey->cache().virtualTexture();
+    expect(oracleVT != nullptr, "DR1 the oracle image must take the paged path");
+    if (!oracleVT)
+        return;
+    expect(
+        oracleVT->wantedPageCount() == movedWanted,
+        QString("DR1 a replay history must not change the page set (%1 against %2)")
+            .arg(oracleVT->wantedPageCount())
+            .arg(movedWanted)
+    );
+    int maxDelta = 0;
+    int differing = 0;
+    int maxX = 0, maxY = 0;
+    for (int y = 0; y < canvas.height(); ++y) {
+        for (int x = 0; x < canvas.width(); ++x) {
+            const size_t i = ((size_t)y * canvas.width() + x) * 4;
+            for (int ch = 0; ch < 4; ++ch) {
+                const int d = std::abs((int)moved[i + ch] - (int)oracleFrame[i + ch]);
+                if (d > 0)
+                    ++differing;
+                if (d > maxDelta) {
+                    maxDelta = d;
+                    maxX = x;
+                    maxY = y;
+                }
+            }
+        }
+    }
+    // ±1 BETWEEN TWO INDEPENDENTLY BUILT PAGED RESOURCES is the atlas read's sub-texel rounding:
+    // each tree's pages land in different pool slots, and a bilinear tap's rounding follows the
+    // slot's position. Measured with TWO oracle trees that never replayed (133 samples of 409,600
+    // differ by 1), so the tolerance is that rounding and nothing else. The COUNT is asserted so a
+    // systematic difference cannot hide under the tolerance: a replay that ignored the camera
+    // leaves the six level-1 pages unmarked, the frame reads the coarse chain instead, and noise
+    // turns that into tens of units over a large area (measured with the mutation, see
+    // texture-residency.md).
+    expect(
+        maxDelta <= 1 && differing * 1000 <= canvas.width() * canvas.height() * 4,
+        QString("DR1 the re-marked frame must match a tree that never replayed (max %1 at "
+                "(%2,%3), %4 of %5 samples differ; see the slot-rounding note)")
+            .arg(maxDelta)
+            .arg(maxX)
+            .arg(maxY)
+            .arg(differing)
+            .arg(canvas.width() * canvas.height() * 4)
+    );
+    expect(
+        imageKey->cache().texture().id() == 0,
+        "DR1 the replayed tree must have no full texture (it stayed paged)"
+    );
+
+    caseReport(
+        "demand replay", gFails == 0,
+        QString("%1 level-0 pages wanted by the fit view, %2 level-1 after the zoom; 6 repaints "
+                "marked nothing; oracle max %3")
+            .arg(landed)
+            .arg(movedWanted)
+            .arg(maxDelta)
+    );
 }
 
 void suiteRender() {
@@ -3431,6 +3655,7 @@ int main(int argc, char** argv) {
     suiteMaskPyramidUpdate();
     suiteMaskPyramidMemory();
     suiteFolderMask();
+    suiteDemandReplay();
 
     std::printf("\n%d checks, %d failures\n", gChecks, gFails);
     std::fflush(stdout);

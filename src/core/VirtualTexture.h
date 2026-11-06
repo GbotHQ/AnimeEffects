@@ -138,14 +138,34 @@ public:
     /// download.
     void setMaskField(const QImage& aField) { mMaskField = aField; }
 
+    /// THE DEMAND'S INPUTS, as one value. The pass is a pure function of them - every uniform it
+    /// reads is in this struct - so a repeat of the same inputs cannot demand a different page
+    /// set, and the result can be replayed instead of re-walking the triangles (see markDemand).
+    /// `positions` is the caller's stamp for the deformed vertices: a monotonic value a node bumps
+    /// whenever its skinning pass writes a new result, because the buffer it writes into is stable
+    /// while the values behind it change (TimeKeyExpans::revision does the same job one level up).
+    /// A fullscreen pass has no vertex data, so its stamp stays 0 and its matrices are the whole
+    /// signature.
+    struct DemandSignature {
+        quint64 positions = 0;
+        // device pixels for a mesh walk; the pass's own target for a fullscreen mark
+        QSize targetSize;
+        QMatrix4x4 viewMatrix;
+        // a MASK's uv mapping, read by the shader's uUvFromScreen branch (mesh and fullscreen)
+        QMatrix4x4 screenToContent;
+        QVector2D texCoordOffset;
+        QVector4D maskRect;
+        float bias = 0.0f;
+        // which entry point produced it; filled in by the entry point, not the caller
+        int kind = 0;
+        bool operator==(const DemandSignature& aRhs) const;
+    };
+
     /// The mask's demand: the same triangles, but the uv is the mask's own mapping - the
     /// screen->content affine the fragment shader uses, then the mask rect and texel grid. It is
     /// affine, so the per-vertex values are exact for the demand pass's Jacobian.
     void markMaskDemand(
-        const QMatrix4x4& aViewMatrix,
-        const QMatrix4x4& aScreenToContent,
-        const QRectF& aMaskRect,
-        const QSize& aDeviceScreenSize,
+        const DemandSignature& aSignature,
         const gl::BufferObject& aPositions,
         int aVtxCount,
         const gl::BufferObject& aIndexBuffer,
@@ -154,19 +174,22 @@ public:
 
     /// THE FULLSCREEN PASS'S DEMAND: a folder's matte is applied over its whole isolated
     /// composite, so its uv is the screen->content affine at every pixel of the target - there
-    /// is no mesh to walk. `aTargetSize` is the FilterFrame's size (the pass's own coord space),
-    /// not the device size. Marked with the demand pass's quad, so the level is computed by the
-    /// same Jacobian code the layer and layer-mask demands use.
-    void markScreenMaskDemand(
-        const QMatrix4x4& aScreenToContent, const QRectF& aMaskRect, const QSize& aTargetSize
-    );
+    /// is no mesh to walk. `aSignature.targetSize` is the FilterFrame's size (the pass's own
+    /// coord space), not the device size. Marked with the demand pass's quad, so the level is
+    /// computed by the same Jacobian code the layer and layer-mask demands use.
+    void markScreenMaskDemand(const DemandSignature& aSignature);
 
     /// Marks the pages this layer's triangles sample this frame. `aPositions` is the skinned
     /// position buffer the layer is drawn from; `aTexCoords` its mesh uv (content pixels).
+    ///
+    /// A REPEATED SIGNATURE replays the pages the last mark produced instead of drawing: a still
+    /// view repaints the same frame (a pointer moving over the canvas, a dock animating, a brush
+    /// stroke on one frame), and its 130 layer walks would demand exactly the same pages. The
+    /// replay re-stamps those pages as wanted THIS frame, which is what keeps them resident -
+    /// skipping the mark outright would let them age out of the kKeepFrames window while still
+    /// being sampled, i.e. a blur pop on a frame that did not change.
     void markDemand(
-        const QMatrix4x4& aViewMatrix,
-        const QSize& aDeviceScreenSize,
-        const QVector2D& aTexCoordOffset,
+        const DemandSignature& aSignature,
         const gl::BufferObject& aPositions,
         const gl::Vector2* aTexCoords,
         int aVtxCount,
@@ -185,6 +208,13 @@ public:
     int wantedPageCount() const { return (int)mActivePages.size(); }
     int residentWantedCount() const;
 
+    /// Diagnostics, for the frame being built: how many demand MARKS drew a layer's triangles and
+    /// how many were REPLAYED from a repeated signature. A frame that replays everything draws no
+    /// demand geometry at all, which is the measurement behind the replay (see markDemand).
+    /// Session-wide counters, reset in beginFrame.
+    static int demandMarks();
+    static int demandReplays();
+
 private:
     // gl::PagePool::Listener
     void pageEvicted(const gl::PagePool::PageId& aPage) override;
@@ -198,6 +228,10 @@ private:
     void resolveDemand();
     void flushTable();
     void consumeDemand();
+    /// Re-stamps the pages the last consumed copy marked as wanted this frame (see markDemand).
+    void replayDemand();
+    /// Stores `aSignature` and reports whether it repeats the last mark's (and so can be replayed).
+    bool demandSignatureRepeats(const DemandSignature& aSignature) const;
     void rebuildTable();
     int pageIndex(int aLevel, int aPageX, int aPageY) const;
     gl::PagePool::PageId pageId(int aLevel, int aPageX, int aPageY) const;
@@ -238,6 +272,15 @@ private:
     // the mapped frame this resource's layer was last parsed in
     quint64 mDemandParsedFrame = 0;
     quint64 mPoolGeneration = 0;
+
+    // WHAT THE LAST MARK WAS, and the pages it marked: a repeat of the signature replays them.
+    // mLastMarked is what the last CONSUMED copy contained, not what the last call marked - the
+    // map is a frame behind, so the pages a replay wants are the ones the GPU has already
+    // confirmed. It is left alone when a copy marks nothing, because a replayed frame writes no
+    // marks at all.
+    DemandSignature mDemandSignature;
+    bool mDemandSignatureValid = false;
+    std::vector<quint32> mLastMarked;
 
     // one page's upload scratch, kept between uploads (one resource is resolved at a time)
     std::vector<uint8> mPageBuffer;

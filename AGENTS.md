@@ -264,7 +264,16 @@ hand it over. Its one question is `Sampling`:
   well. Filter-lane masks (`core::FilterMask`) are the known residual. All of these share the
   sampler in `assets/shaders/LayerSampling.glsl` (`#include`d by the layer, clipper, overlay and
   folder-matte shaders; `gl::ExtendShader` expands includes before the variation pass);
-  CL1/MA1/MX3/FM1 in `verify_mipmap` are the clipper and mask gates. See the doc's open list.
+  CL1/MA1/MX3/FM1/DR1 in `verify_mipmap` are the clipper, mask and demand-replay gates. See the
+  doc's open list.
+  **A repeated demand signature replays instead of drawing**: `markDemand` (and both matte forms)
+  take a `DemandSignature` whose `positions` field is `LayerNode::mMeshRevision` - the skinning
+  pass's own stamp, because the position buffer's id is stable while its values change. A still
+  view's repaint (a pointer move, a matte stroke, a panel redraw) therefore walks no triangles and
+  re-stamps the pages it last marked, which is what keeps them inside `kKeepFrames`; a camera pan
+  or a playback frame still marks (the view matrix or the revision moved). `AE_VT_STATS` prints
+  `marks=`/`replays=`, and `AE_VT_DEMAND=nodraw` measures the pass's setup against its geometry
+  (measured: the geometry).
   Two sampling rules, each found as a whole-frame residual first: **the always-resident coarse tier
   takes the same two-tap reconstruction as the full path** (one bilinear tap there cost 816 px over
   8/255 on nene), and **the `lod <= 0` branch reads `textureLod(..., 0)` on BOTH paths, never
