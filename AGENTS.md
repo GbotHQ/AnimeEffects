@@ -311,10 +311,15 @@ hand it over. Its one question is `Sampling`:
   max 68). For that draw the uv (`AE_VT_DEBUG_UV=1`) and the level (`AE_VT_DEBUG_LEVEL=1`) are
   BIT-IDENTICAL between the paged and control programs, `AE_VT_HASH=all` + `AE_VT_HASH_COARSE`
   match the coarse chain against 9 of 9 chain levels byte for byte, and `AE_TRACE_DEST=1` reports
-  `blend=0 clippee=0 mask=0 maskPaged=0` - so the read is the same read, and the remaining
-  difference is in a pass `--only-layer` does not disable: a FOLDER MATTE. The image's coarse copy
-  is byte-exact at every level; a mask's (`MaskPyramid` -> `buildMaskCoarse`) has never been
-  compared that way, and that comparison is the next instrument.
+  `blend=0 clippee=0 mask=0 maskPaged=0` - so the read is the same read, and a folder matte is out
+  too (nene registers zero mask resources). What is left is the COVERAGE, i.e. the vertex
+  positions: a sub-pixel difference there is an edge-only difference on a thin stroke, and a hash
+  of the positions buffer each draw binds is the one input not yet measured.
+  A real defect WAS found and fixed there: `DestinationTexturizer::update`/`updateAll` drew their
+  copy with the caller's `GL_BLEND` still enabled, so the copy is `scene over the previous
+  texturizer content` in every semi-transparent pixel and the residue compounds through the folder
+  tree; they now save/disable/restore blend and scissor (behaviour-neutral on nene, whose folders
+  draw no present pass).
   Two sampling rules, each found as a whole-frame residual first: **the always-resident coarse tier
   takes the same two-tap reconstruction as the full path** (one bilinear tap there cost 816 px over
   8/255 on nene), and **the `lod <= 0` branch reads `textureLod(..., 0)` on BOTH paths, never
