@@ -297,6 +297,12 @@ hand it over. Its one question is `Sampling`:
   mechanism by inspection, not yet proven: `DestinationTexturizer::update` copies the scene
   through the layer's mesh with the PREVIOUS draw's `GL_BLEND` still enabled, and only for
   `blendMode != Normal`, although `blendColor` reads the destination for every layer.
+  **The GPU mip chain itself is not byte-reproducible**: `AE_VT_HASH=<level>` hashes every chain
+  right after `gl::Texture::create` builds it, and 240 of 241 chains print the same hash on two
+  runs while `384x1715 level=2` does not - `AE_VT_DUMP_CHAIN=<W>x<H>` + `AE_VT_DUMP_CHAIN_DIR`
+  writes that level to a PNG, and the difference is 758 of 41,088 texels in the near-transparent
+  fringe (`(24,14,26,126)` against `(24,14,26,3)`). Treat a chain as reproducible only where a
+  hash says so; a paged path that copies one inherits what the copy took.
   Two sampling rules, each found as a whole-frame residual first: **the always-resident coarse tier
   takes the same two-tap reconstruction as the full path** (one bilinear tap there cost 816 px over
   8/255 on nene), and **the `lod <= 0` branch reads `textureLod(..., 0)` on BOTH paths, never

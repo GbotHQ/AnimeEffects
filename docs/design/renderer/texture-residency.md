@@ -1124,6 +1124,9 @@ filter lane's field. For a paged matte that is field + levels; for a forced-full
 | `AE_VT_MISS_MAGENTA=1` | diagnostic: the paged read's coarse fallback returns MAGENTA (no table entry) or CYAN (an entry that names nothing usable) instead of the coarse chain - "which pixels did not find their page" as a picture, with no readback and no stall |
 | `AE_VT_ATLAS_SENTINEL=1` | diagnostic: every new atlas is filled with MAGENTA, so a read of a texel no page upload wrote is unmistakable (`glTexImage2D` from a sentinel buffer, one upload per atlas) |
 | `AE_VT_PAGE_HASH=1` | diagnostic: hashes each level-0+ page's fill against the pyramid's own bytes (the source side of the upload) |
+| `AE_VT_HASH=<level>` | diagnostic, at load: hashes one level of EVERY GPU chain just after it is built (`VTHASH <W>x<H> level= chain=`). Two runs of one command are supposed to print the same lines - and did for 240 of 241 chains (see Measured) |
+| `AE_VT_DUMP_CHAIN=<W>x<H>` (+ `AE_VT_DUMP_CHAIN_DIR`) | with `AE_VT_HASH`: writes that resource's level to a PNG, so two runs can be diffed TEXEL BY TEXEL |
+| `AE_VT_HASH_COARSE=1` | diagnostic, after the last frame: the GPU coarse chain of every resource against the pyramid's own bytes (`VTCOARSE ... cpu= gpu=`) |
 
 `AE_FRAME_STATS`'s line gains `vt_pages`, `vt_bytes`, `vt_up`, `vt_evict`.
 
@@ -1317,6 +1320,20 @@ filter lane's field. For a paged matte that is field + levels; for a forced-full
     frame is max 1 from the control - the nondeterminism follows the PIXELS, not the tier.
   - **not Layer 6**: `--only-layer '=Layer 6'` (the layer the coarse-tier measurement used) is
     **bit-identical** to its control, so the strip needs the rest of the composite.
+
+  **ONE REAL NONDETERMINISM WAS FOUND UPSTREAM OF EVERY VERIFIER HERE, AND IT IS NOT THE STRIP.**
+  `AE_VT_HASH=2` (the GPU chain's level 2, hashed right after the chain is built) prints **241 lines;
+  240 are identical across two runs and one is not**: `384x1715 level=2` (the layer named "Layer 19
+  Copy"). `AE_VT_DUMP_CHAIN=384x1715` shows what differs - **758 of 41,088 texels, all in the
+  near-transparent fringe**: `(24,14,26,126)` against `(24,14,26,3)`, `(16,6,12,14)` against
+  `(16,6,12,6)`, `(220,219,186,1)` against `(220,219,154,2)`. So the **GPU mip-chain build** (the
+  area-weighted tail pass in `gl/Texture.cpp`) is nondeterministic in the sub-unit-alpha fringe of
+  one chain, which means the *input* every paged path copies is not always the same bytes. This is a
+  real defect and it deserves its own fix - but it is **not** the strip: that resource is 384x1715
+  and out of view at this camera (it has no pages and does not appear in `VTPAGECHECK`), and the
+  `VTCOARSE` hashes of all 108 coarse chains are identical across runs **except** that one resource.
+  It does mean the chain build cannot be assumed byte-reproducible, and a paged path that copies a
+  chain inherits whatever the copy took.
 
   Two of the earlier claims were wrong and are struck out here: a fully coarse frame is **not**
   "max 73 from the control" at this camera (that number was measured at the default centre; at

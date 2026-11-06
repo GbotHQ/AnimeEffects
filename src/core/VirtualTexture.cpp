@@ -1395,6 +1395,41 @@ void VirtualTexture::debugVerifyPages() {
 }
 
 void VirtualTexture::debugVerifyAfterRun() {
+    // AE_VT_HASH_COARSE: the CPU side of every coarse chain (the pyramid's own bytes) and the GPU
+    // side (the uploaded texture, read back). Two runs of one command are supposed to print the
+    // same numbers. They are the ONE paged-path input no other verifier here covers, they are read
+    // by BOTH tiers (a page fills from the pyramid and the coarse chain was uploaded from it), and
+    // the full-resolution control reads neither - which is the shape of the panned-camera defect
+    // (see the design doc): the control is bit-identical across runs while both VT modes are not.
+    if (qEnvironmentVariableIsSet("AE_VT_HASH_COARSE")) {
+        auto& ggl = gl::Global::functions();
+        const auto hashOf = [](const uint8* aData, size_t aCount) {
+            quint64 h = 1469598103934665603ull;
+            for (size_t i = 0; i < aCount; ++i) {
+                h ^= aData[i];
+                h *= 1099511628211ull;
+            }
+            return h;
+        };
+        for (VirtualTexture* resource : registry()) {
+            if (resource->mCoarse.id() == 0 || !resource->mSize.isValid())
+                continue;
+            const quint64 cpu = resource->mPyramid.hashLevel(resource->mCoarseLevel);
+            const QSize size = resource->mPyramid.levelSize(resource->mCoarseLevel);
+            std::vector<uint8> gpuBytes((size_t)size.width() * size.height() * 4, 0);
+            ggl.glBindTexture(GL_TEXTURE_2D, resource->mCoarse.id());
+            ggl.glPixelStorei(GL_PACK_ALIGNMENT, 1);
+            ggl.glGetTexImage(GL_TEXTURE_2D, 0, GL_RGBA, GL_UNSIGNED_BYTE, gpuBytes.data());
+            ggl.glBindTexture(GL_TEXTURE_2D, 0);
+            const quint64 gpu = hashOf(gpuBytes.data(), gpuBytes.size());
+            qWarning(
+                "VTCOARSE owner=%p res=%dx%d mask=%d coarse=%d size=%dx%d cpu=%016llx gpu=%016llx",
+                (void*)resource, resource->mSize.width(), resource->mSize.height(),
+                resource->isMask() ? 1 : 0, resource->mCoarseLevel, size.width(), size.height(),
+                (unsigned long long)cpu, (unsigned long long)gpu
+            );
+        }
+    }
     if (verifyMode() != "end")
         return;
     sVerifyAfterRun = true;

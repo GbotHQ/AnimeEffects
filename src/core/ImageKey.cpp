@@ -170,6 +170,20 @@ void ImageKey::resetTextureCache() {
             }
             qWarning("VTHASH %dx%d level=%d chain=%016llx", pixelSize.width(), pixelSize.height(),
                      level, (unsigned long long)hash);
+            // AE_VT_DUMP_CHAIN=<W>x<H>: write this level to <AE_VT_DUMP_CHAIN_DIR or /tmp>/chain-<W>x<H>-l<level>.png.
+            // Two runs of one command can then be diffed TEXEL BY TEXEL: the level's hash was measured
+            // to differ between runs for one resource, and this is how the differing texels are seen
+            // rather than counted.
+            const QByteArray dumpSpec = qgetenv("AE_VT_DUMP_CHAIN");
+            if (dumpSpec == QStringLiteral("%1x%2").arg(pixelSize.width()).arg(pixelSize.height()).toLatin1()) {
+                const QByteArray dir = qgetenv("AE_VT_DUMP_CHAIN_DIR");
+                const QString path = QString::fromLocal8Bit(dir.isEmpty() ? "/tmp" : dir.constData())
+                    + QStringLiteral("/chain-%1x%2-l%3.png").arg(pixelSize.width()).arg(pixelSize.height()).arg(level);
+                const QImage image(
+                    data.data(), levelSize.width(), levelSize.height(), QImage::Format_RGBA8888
+                );
+                qWarning("VTCHAIND The dump of %s: %s", qPrintable(path), image.save(path, "PNG") ? "written" : "FAILED");
+            }
         }
         if (paged) {
             // the chain was only the source: every sharp level is now in RAM and the pool,
