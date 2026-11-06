@@ -576,10 +576,10 @@ when every gate is green on every project and the counter shows no regression, t
   residual is the image's paging) with all 12 wanted pages resident, and a stroke painted into a
   live paged matte (`MX3`) is identical to the full chain rebuilt from the same field (max 0).
   The real PSD `000145.psd` (24 masks, 6 of them pageable) matches the control at max 1/255 after
-  the pages land. Residuals: folder masks stay full (see the not-paged list), and the CPU pyramid
-  stores level 0 as well as the field - one redundant copy of the largest level (16 MiB of a 4096²
-  mask's 21.3 MiB of levels), which the image pyramid avoids by filling level 0 from the
-  resource's own pixels; that is the next memory refinement.
+  the pages land. The pyramid stores levels 1 and deeper only: level 0 IS the field, the same rule
+  the image pyramid follows, so a 4096² mask's CPU levels are 5.33 MiB (against 21.33 for a full
+  copy) and the GPU's resident floor is the 0.33 MiB coarse chain; `MX4` pins the split. Residual:
+  folder masks stay full (see the not-paged list).
 - **What to skip**: a per-layer level manager as a shipping state. It is throwaway once pages land,
   and Stage 3's coarse fallback gives the same behaviour at the right granularity. The one useful
   checkpoint is Stage 2 + "upload the whole needed level" as a *debug path* to validate upload and
@@ -1046,6 +1046,10 @@ tool paints a paged matte end to end - for a pageable layer mask there is no ful
   the tool's RUBYLITH (`FilterFrame::maskOverlayTexture` with a `MaskInput::paged`): the overlay
   must tint the hidden band and not the revealed part, and the paged rubylith must match the
   full-mask one within 3 units.
+- **MX4 mask pyramid memory**: a production 4096² paged mask (`MaskKey::Data::virtualTexture`)
+  asserts the CPU pyramid holds EXACTLY the chain's levels above 0 (5.33 MiB, not 21.33), that it
+  is smaller than the level-0 field it no longer copies, and that the resident coarse chain is
+  the 512² tier.
 - **P1/P2 page pool**: slot 0 at the gutter origin, slot 1 one pitch over, slot 15 the first of
   the second row, a slot's texels read back exactly; the per-frame upload cap; eviction order and
   the owner callback; cancel returning a slot and refunding its bytes; purge changing the
@@ -1167,9 +1171,9 @@ tool paints a paged matte end to end - for a pageable layer mask there is no ful
   identical to the full chain rebuilt from the same field (max 0, mean 0) after the re-blend, which
   exercises `MaskPyramid::updateBox`, the coarse chain's box uploads and the resident pages'
   re-fills. The rubylith overlay pages through the same stack and matches the full-mask overlay
-  within 3 units. The full chain a 4096² mask would have held is 21.3 MiB; the paged form holds
-  its coarse levels (0.33 MiB) and pages on demand, at the price of the CPU pyramid (21.3 MiB,
-  level 0 included - see the Stage 4 residual).
+  within 3 units. `MX4`: for a 4096² mask the full chain would have been 21.33 MiB; the paged
+  form's resident floor is the coarse chain (0.33 MiB), its CPU pyramid holds only levels 1..10
+  (5.33 MiB - level 0 is the 16 MiB field, not a copy), and its pages land on demand.
 - **A real masked PSD** (`~/Downloads/kemono_psd_1/000145.psd`, imported through the app's
   `ctrl::ImageFileLoader`, 640x640, frames 0..9): 24 masked layers, 6 of them pageable; the paged
   and full-resolution frames are **max 1/255, mean 0.00005, 0 px over 8** once the pages land
@@ -1188,10 +1192,11 @@ tool paints a paged matte end to end - for a pageable layer mask there is no ful
    `AE_FRAME_STATS`. Beside it, the pool's landing rate: 8 MB/frame still costs 10-20 ms while it
    fills, and a large import's synchronous capture is a visible pause; an asynchronous/deferred
    capture and a page upload batched per atlas row are the two obvious next reductions.
-2. Mask residuals: folder masks still hold a full chain (above); the CPU pyramid duplicates level
-   0, which is the field itself (the image pyramid fills level 0 from the resource instead) - at a
-   4096² mask that is 16 MiB of RAM per mask; and `AE_FRAME_STATS`'s `mask_bytes` reads 0 because
-   no one feeds the setter, so the mask RAM is not yet visible in the frame line.
+2. Mask residuals: folder masks still hold a full chain (above); an ANIMATED mask (two keys)
+   blends a new field every frame, so its resource is rebuilt per frame - the blend path predates
+   paging and already rebuilt the full chain, but the paged form adds a readback to that build
+   and a per-frame pool registration; and `AE_FRAME_STATS`'s `mask_bytes` reads 0 because no one
+   feeds the setter, so the mask RAM is not yet visible in the frame line.
 3. Per-resource pyramids for duplicated layers.
 4. The first-atlas floor (61 MB) for projects whose whole texture set is smaller than it: a
    demand-aware first allocation is the measured-shaped answer (see the pool's header comment).

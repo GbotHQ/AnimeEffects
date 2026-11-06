@@ -63,6 +63,8 @@ VirtualTexture* MaskKey::Data::virtualTexture() const {
             mTexture->dirtyBox = QRect();
             mTexture->dirtyBoxValid = false;
         }
+        // the page fill reads level 0 from the field; the QImage copy is a refcount
+        mTexture->paged->setMaskField(mField);
         return mTexture->paged.get();
     }
 
@@ -96,6 +98,7 @@ VirtualTexture* MaskKey::Data::virtualTexture() const {
         return nullptr;
     }
     mTexture->paged = std::move(paged);
+    mTexture->paged->setMaskField(mField);
     mTexture->key = fieldKey;
     // the pyramid is the authority from here: the full chain is not what a page fill reads, and
     // keeping it would double the field's GPU cost for nothing

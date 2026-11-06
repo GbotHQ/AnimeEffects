@@ -41,6 +41,13 @@ const std::vector<uint8>& MaskPyramid::levelBytes(int aLevel) const {
     return mLevels[(size_t)aLevel];
 }
 
+qint64 MaskPyramid::bytes() const {
+    qint64 total = 0;
+    for (const std::vector<uint8>& level : mLevels)
+        total += (qint64)level.size();
+    return total;
+}
+
 bool MaskPyramid::capture(const gl::Texture& aChain) {
     clear();
     if (aChain.id() == 0 || aChain.size().isEmpty())
@@ -51,12 +58,17 @@ bool MaskPyramid::capture(const gl::Texture& aChain) {
     auto& ggl = gl::Global::functions();
     ggl.glBindTexture(GL_TEXTURE_2D, aChain.id());
     ggl.glPixelStorei(GL_PACK_ALIGNMENT, 1);
+    // LEVEL 0 IS THE FIELD, not a copy: the caller keeps it, and the page fill reads it there.
+    mSizes.reserve(levels);
+    mLevels.resize((size_t)levels);
     for (int l = 0; l < levels; ++l) {
         const QSize size = levelSizeOf(base, l);
+        mSizes.push_back(size);
+        if (l == 0)
+            continue;
         std::vector<uint8> bytes((size_t)size.width() * size.height(), 0);
         ggl.glGetTexImage(GL_TEXTURE_2D, l, GL_RED, GL_UNSIGNED_BYTE, bytes.data());
-        mSizes.push_back(size);
-        mLevels.push_back(std::move(bytes));
+        mLevels[(size_t)l] = std::move(bytes);
     }
     ggl.glBindTexture(GL_TEXTURE_2D, 0);
     return true;
@@ -89,10 +101,10 @@ QRect MaskPyramid::coveredBox(const QRect& aSrcBox, const QSize& aSrcSize, const
 // pass averages those halves and rounds once into R8. Reproducing the half store is what keeps
 // the CPU within 1-2 LSB of the GPU chain instead of the 3 a single 2D average gives.
 void MaskPyramid::resampleBox(
-    const std::vector<uint8>& aSrc, const QSize& aSrcSize, std::vector<uint8>& aDst,
+    const uint8* aSrc, int aSrcStride, const QSize& aSrcSize, std::vector<uint8>& aDst,
     const QSize& aDstSize, const QRect& aDestBox
 ) const {
-    if (aDestBox.isEmpty() || aSrc.empty() || aDst.empty())
+    if (aDestBox.isEmpty() || !aSrc || aSrcStride <= 0 || aDst.empty())
         return;
     const QRect srcBox = coveredBox(aDestBox, aDstSize, aSrcSize);
     if (srcBox.isEmpty())
@@ -118,7 +130,7 @@ void MaskPyramid::resampleBox(
                 const float w = std::min(float(k + 1), hi) - std::max(float(k), lo);
                 if (w <= 0.0f)
                     continue;
-                acc += (aSrc[(size_t)row * aSrcSize.width() + k] / 255.0f) * w;
+                acc += (aSrc[(size_t)row * aSrcStride + k] / 255.0f) * w;
                 wsum += w;
             }
             xpass[(size_t)sy * xw + i] = wsum > 0.0f ? float(qfloat16(acc / wsum)) : 0.0f;
@@ -160,35 +172,49 @@ void MaskPyramid::updateBox(const QImage& aField, const QRect& aTexelBox) {
     if (box.isEmpty())
         return;
 
-    // level 0: the field's own box
-    std::vector<uint8>& base = mLevels[0];
-    for (int y = box.top(); y <= box.bottom(); ++y)
-        std::memcpy(
-            base.data() + (size_t)y * mSizes[0].width() + box.left(), aField.constScanLine(y) + box.left(),
-            (size_t)box.width()
-        );
-
+    // LEVEL 0 IS THE FIELD. Level 1 reads it in place (the QImage's own row stride, so an
+    // aligned Grayscale8 field costs no copy); each level above reads the one just rebuilt.
     QRect prevBox = box;
     QSize prevSize = mSizes[0];
+    const uint8* prevData = aField.constBits();
+    int prevStride = aField.bytesPerLine();
     for (int l = 1; l < (int)mLevels.size(); ++l) {
         const QSize size = mSizes[(size_t)l];
         const QRect destBox = coveredBox(prevBox, prevSize, size);
         if (destBox.isEmpty())
             break;
-        resampleBox(mLevels[(size_t)l - 1], prevSize, mLevels[(size_t)l], size, destBox);
+        resampleBox(prevData, prevStride, prevSize, mLevels[(size_t)l], size, destBox);
         prevBox = destBox;
         prevSize = size;
+        prevData = mLevels[(size_t)l].data();
+        prevStride = size.width();
     }
 }
 
-void MaskPyramid::fillPage(int aLevel, int aPageX, int aPageY, uint8* aDst) const {
+void MaskPyramid::fillPage(int aLevel, int aPageX, int aPageY, const QImage& aField, uint8* aDst) const {
     XC_PTR_ASSERT(aDst);
     if (aLevel < 0 || aLevel >= (int)mLevels.size())
         return;
     const int pitch = gl::PagePool::kPitch;
     const int gutter = gl::PagePool::kGutter;
     const QSize size = mSizes[(size_t)aLevel];
-    const std::vector<uint8>& level = mLevels[(size_t)aLevel];
+    const uint8* level = nullptr;
+    int stride = 0;
+    if (aLevel == 0) {
+        // the field itself; no copy of it is kept (see the class note). A field that is not the
+        // captured grid cannot be filled from, and an empty page is a hole but not garbage: zero
+        // it so a caller's mistake is a transparent matte rather than the previous page's texels.
+        if (aField.isNull() || aField.format() != QImage::Format_Grayscale8
+            || aField.size() != size) {
+            std::memset(aDst, 0, (size_t)pitch * pitch);
+            return;
+        }
+        level = aField.constBits();
+        stride = aField.bytesPerLine();
+    } else {
+        level = mLevels[(size_t)aLevel].data();
+        stride = size.width();
+    }
     const int originX = aPageX * (int)gl::PagePool::kPageSize - gutter;
     const int originY = aPageY * (int)gl::PagePool::kPageSize - gutter;
 
@@ -196,7 +222,7 @@ void MaskPyramid::fillPage(int aLevel, int aPageX, int aPageY, uint8* aDst) cons
         // GL_CLAMP_TO_EDGE: outside the level, the nearest edge texel - see the header. The level
         // itself is copied, so a page's interior is exact and only the border repeats.
         const int gy = std::min(std::max(originY + y, 0), size.height() - 1);
-        const uint8* src = level.data() + (size_t)gy * size.width();
+        const uint8* src = level + (size_t)gy * stride;
         uint8* row = aDst + (size_t)y * pitch;
         const int x0 = std::max(0, -originX);
         const int x1 = std::min(pitch, size.width() - originX);
@@ -211,7 +237,10 @@ void MaskPyramid::fillPage(int aLevel, int aPageX, int aPageY, uint8* aDst) cons
 
 void MaskPyramid::copyLevel(int aLevel, uint8* aDst) const {
     XC_PTR_ASSERT(aDst);
-    if (aLevel < 0 || aLevel >= (int)mLevels.size())
+    // level 0 is the field, not stored (the coarse chain starts at a level >= 1, so no caller
+    // needs it here)
+    XC_ASSERT(aLevel >= 1);
+    if (aLevel < 1 || aLevel >= (int)mLevels.size())
         return;
     const std::vector<uint8>& level = mLevels[(size_t)aLevel];
     std::memcpy(aDst, level.data(), level.size());

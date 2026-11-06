@@ -2603,9 +2603,11 @@ void suiteMaskPyramidUpdate() {
                 .arg(chain->mipmapLevels())
         );
 
-        // the capture is the chain, byte for byte
+        // the capture is the chain, byte for byte ABOVE LEVEL 0: level 0 is the field, not a
+        // copy (the whole point of the MX4 memory gate)
         int captureMismatch = 0;
-        for (int l = 0; l < pyr.levelCount(); ++l) {
+        expect(pyr.levelBytes(0).empty(), "MX2 level 0 must not be copied into the pyramid");
+        for (int l = 1; l < pyr.levelCount(); ++l) {
             const QSize levelSize = pyr.levelSize(l);
             std::vector<uint8_t> gpu((size_t)levelSize.width() * levelSize.height(), 0);
             gl::Global::Functions& ggl = gl::Global::functions();
@@ -2632,16 +2634,23 @@ void suiteMaskPyramidUpdate() {
         const std::vector<uint8_t> level2Before = pyr.levelBytes(std::min(2, pyr.levelCount() - 1));
         pyr.updateBox(field, box);
 
-        // level 0's box is the field; a level-2 texel far from the box is untouched
-        bool baseMatches = true;
-        const std::vector<uint8_t>& base = pyr.levelBytes(0);
-        for (int y = box.top(); y <= box.bottom() && baseMatches; ++y)
-            for (int x = box.left(); x <= box.right(); ++x)
-                if (base[(size_t)y * size.width() + x] != field.constScanLine(y)[x]) {
+        // level 0's box is the FIELD itself, read by the page fill, not a stored copy
+        std::vector<uint8_t> basePage((size_t)gl::PagePool::kPitch * gl::PagePool::kPitch, 0);
+        pyr.fillPage(0, 0, 0, field, basePage.data());
+        // only page (0,0)'s CONTENT region: a box that crosses 256 lives in the next page,
+        // which this one-page fill does not cover (the per-page fill reads the same field)
+        const int boxRight = std::min(box.right(), gl::PagePool::kPageSize - 1);
+        const int boxBottom = std::min(box.bottom(), gl::PagePool::kPageSize - 1);
+        bool baseMatches = boxRight >= box.left() && boxBottom >= box.top();
+        for (int y = box.top(); y <= boxBottom && baseMatches; ++y)
+            for (int x = box.left(); x <= boxRight; ++x)
+                if (basePage[(size_t)(y + gl::PagePool::kGutter) * gl::PagePool::kPitch + x
+                             + gl::PagePool::kGutter]
+                    != field.constScanLine(y)[x]) {
                     baseMatches = false;
                     break;
                 }
-        expect(baseMatches, "MX2 level 0's box must be the field");
+        expect(baseMatches, "MX2 level 0's page fill must be the field");
         const int far = std::min(2, pyr.levelCount() - 1);
         const std::vector<uint8_t>& after = pyr.levelBytes(far);
         expect(
@@ -2658,7 +2667,7 @@ void suiteMaskPyramidUpdate() {
         if (!rebuilt)
             continue;
         int mismatches = 0, maxDelta = 0, total = 0;
-        for (int l = 0; l < pyr.levelCount(); ++l) {
+        for (int l = 1; l < pyr.levelCount(); ++l) {
             const QSize levelSize = pyr.levelSize(l);
             std::vector<uint8_t> gpu((size_t)levelSize.width() * levelSize.height(), 0);
             gl::Global::Functions& ggl = gl::Global::functions();
@@ -2681,15 +2690,14 @@ void suiteMaskPyramidUpdate() {
             QString("MX2 a stroke's boxes must equal a rebuild within 2 LSB (max %1)").arg(maxDelta)
         );
 
-        // the page fill: content is the level's texels, the gutter is the neighbour (or zero)
+        // the page fill: content is the field's (level 0) texels, the gutter is the neighbour
         std::vector<uint8_t> page((size_t)gl::PagePool::kPitch * gl::PagePool::kPitch, 0);
-        pyr.fillPage(0, 0, 0, page.data());
-        const std::vector<uint8_t>& level0 = pyr.levelBytes(0);
+        pyr.fillPage(0, 0, 0, field, page.data());
+        const auto fieldAt = [&](int aX, int aY) { return (int)field.constScanLine(aY)[aX]; };
         bool pageOk = true;
         for (int y = 0; y < 64 && pageOk; ++y)
             for (int x = 0; x < 64; ++x)
-                if (page[((size_t)(y + 2)) * gl::PagePool::kPitch + x + 2]
-                    != level0[(size_t)y * size.width() + x]) {
+                if (page[((size_t)(y + 2)) * gl::PagePool::kPitch + x + 2] != fieldAt(x, y)) {
                     pageOk = false;
                     break;
                 }
@@ -2697,16 +2705,16 @@ void suiteMaskPyramidUpdate() {
         // GL_CLAMP_TO_EDGE: outside the level the gutter repeats the nearest edge texel, so a
         // bilinear read at the matte's border matches the full chain's (see MaskPyramid.h)
         expect(
-            page[0] == level0[0] && page[1] == level0[0],
+            page[0] == fieldAt(0, 0) && page[1] == fieldAt(0, 0),
             "MX2 the page's outside gutter must repeat the level's edge texel"
         );
         expect(
-            page[(size_t)2 * gl::PagePool::kPitch + 258] == level0[256],
+            page[(size_t)2 * gl::PagePool::kPitch + 258] == fieldAt(256, 0),
             "MX2 the first page's right gutter must be the level's next texel"
         );
         expect(
             page[(size_t)2 * gl::PagePool::kPitch + 259]
-                == level0[std::min(257, size.width() - 1)],
+                == fieldAt(std::min(257, size.width() - 1), 0),
             "MX2 the gutter's second texel must be the level's next one or its edge"
         );
 
@@ -2717,6 +2725,76 @@ void suiteMaskPyramidUpdate() {
                 .arg(maxDelta).arg(mismatches).arg(total)
         );
     }
+}
+
+// MX4: THE PYRAMID KEEPS NO LEVEL-0 COPY. Level 0 is the largest level - 16 MiB of a 4096^2
+// mask - and it is exactly the field the mask's Data already owns; the image pyramid has always
+// left level 0 to the resource, and the mask now does the same. This gate builds the production
+// path for a 4096^2 painted mask (`MaskKey::Data::virtualTexture`, which builds a transient chain,
+// captures it and drops it) and checks the pyramid holds ONLY the levels above the field, and
+// that the resident floor is the coarse chain.
+void suiteMaskPyramidMemory() {
+    suiteHeader("MX4 a 4096^2 mask pyramid: no level-0 copy");
+    const QSize size(4096, 4096);
+    const qint64 baseBytes = (qint64)size.width() * size.height();
+
+    QImage field(size, QImage::Format_Grayscale8);
+    for (int y = 0; y < size.height(); ++y) {
+        uchar* row = field.scanLine(y);
+        for (int x = 0; x < size.width(); ++x)
+            row[x] = uchar((x ^ y) >> 4);
+    }
+    core::MaskKey::Data data;
+    data.alloc(size, QRectF(0, 0, size.width(), size.height()), 0);
+    data.field() = field;
+
+    core::VirtualTexture* vt = data.virtualTexture();
+    expect(vt != nullptr, "MX4 a 4096^2 painted mask must page");
+    if (!vt)
+        return;
+
+    // the chain the paged form replaced, level by level
+    qint64 chainBytes = 0;
+    QSize level = size;
+    while (true) {
+        chainBytes += (qint64)level.width() * level.height();
+        if (level.width() == 1 && level.height() == 1)
+            break;
+        level = QSize(std::max(1, level.width() / 2), std::max(1, level.height() / 2));
+    }
+    qint64 coarseBytes = 0;
+    level = QSize(512, 512);
+    while (true) {
+        coarseBytes += (qint64)level.width() * level.height();
+        if (level.width() == 1 && level.height() == 1)
+            break;
+        level = QSize(std::max(1, level.width() / 2), std::max(1, level.height() / 2));
+    }
+
+    expect(
+        vt->pyramidBytes() == chainBytes - baseBytes,
+        QString("MX4 the pyramid must hold levels 1.. only (%1 B, chain %2 B, field %3 B)")
+            .arg((qint64)vt->pyramidBytes()).arg(chainBytes).arg(baseBytes)
+    );
+    expect(
+        vt->pyramidBytes() < baseBytes,
+        QString("MX4 the pyramid must be smaller than the level-0 copy it avoids (%1 of %2 B)")
+            .arg((qint64)vt->pyramidBytes()).arg(baseBytes)
+    );
+    expect(
+        vt->coarseTexture().size() == QSize(512, 512),
+        QString("MX4 the resident floor must be the coarse chain (%1x%2)")
+            .arg(vt->coarseTexture().size().width()).arg(vt->coarseTexture().size().height())
+    );
+
+    caseReport(
+        "4096^2 mask", gFails == 0,
+        QString("field %1 MiB, pyramid %2 MiB (chain was %3 MiB), coarse %4 MiB")
+            .arg(baseBytes / 1048576.0, 0, 'f', 2)
+            .arg(vt->pyramidBytes() / 1048576.0, 0, 'f', 2)
+            .arg(chainBytes / 1048576.0, 0, 'f', 2)
+            .arg(coarseBytes / 1048576.0, 0, 'f', 2)
+    );
 }
 
 void suiteRender() {
@@ -2935,6 +3013,7 @@ int main(int argc, char** argv) {
     suiteMaskPagedUpdate();
     suiteMaskPyramid();
     suiteMaskPyramidUpdate();
+    suiteMaskPyramidMemory();
 
     std::printf("\n%d checks, %d failures\n", gChecks, gFails);
     std::fflush(stdout);

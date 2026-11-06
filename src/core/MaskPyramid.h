@@ -14,10 +14,13 @@ namespace core {
 /// THE MASK'S LEVELS, ON THE CPU.
 ///
 /// A paged mask uploads its coarse chain and its pages from here: the GPU holds only what is
-/// resident, and the level data lives where the authoring field does. The pyramid is CAPTURED
-/// from the mask's GPU chain at build (the chain knows the resample rule, and a capture is exact
-/// - see MaskMipChain), and after that a stroke's dirty box is rebuilt on the CPU: level 0 from
-/// the field, one box per level above it, halved and rounded outwards. The rebuild uses the WHOLE
+/// resident, and the level data lives where the authoring field does. LEVEL 0 IS NOT STORED: it
+/// is the field itself (the QImage the mask's data owns), exactly as core::ImagePyramid leaves
+/// level 0 to the resource's own pixels - a copy of the largest level would be the pyramid's
+/// single biggest allocation for nothing. The pyramid is CAPTURED from the mask's GPU chain at
+/// build (the chain knows the resample rule, and a capture is exact - see MaskMipChain), and
+/// after that a stroke's dirty box is rebuilt on the CPU: level 1 from the field, one box per
+/// level above it, halved and rounded outwards. The rebuild uses the WHOLE
 /// build's rule (each level from the one directly above), so a stroke's result is what a rebuild
 /// would have produced up to the CPU's area arithmetic - measured at <=2 LSB against the GPU
 /// chain (MX1); the chain's own box path uses the deepest exact level as its source instead,
@@ -31,7 +34,8 @@ class MaskPyramid: private util::NonCopyable {
 public:
     MaskPyramid();
 
-    /// Reads every level of aChain (R8) into the CPU. False on an empty chain.
+    /// Reads levels 1 and deeper of aChain (R8) into the CPU; level 0 is the field itself.
+    /// False on an empty chain.
     bool capture(const gl::Texture& aChain);
     void clear();
 
@@ -39,16 +43,20 @@ public:
     QSize size() const { return mSizes.empty() ? QSize() : mSizes.front(); }
     int levelCount() const { return (int)mSizes.size(); }
     QSize levelSize(int aLevel) const;
+    /// The stored bytes of one level; level 0 is EMPTY by design (pass the field instead).
     const std::vector<uint8>& levelBytes(int aLevel) const;
+    /// The bytes the stored levels hold (level 0 excluded), for the residency accounting.
+    qint64 bytes() const;
 
     /// The page fill: the page's content plus the 2-texel gutter, kPitch rows of R8. The gutter is
     /// the level's neighbouring texels; outside the LEVEL it is the nearest edge texel, not zero,
     /// because the mask's full texture is sampled GL_CLAMP_TO_EDGE (see MaskMipChain::create) -
     /// a zero gutter would darken the matte's outermost texels against the control's read.
-    void fillPage(int aLevel, int aPageX, int aPageY, uint8* aDst) const;
+    /// Level 0 is filled from `aField`; levels 1 and deeper from the captured bytes.
+    void fillPage(int aLevel, int aPageX, int aPageY, const QImage& aField, uint8* aDst) const;
 
-    /// One whole level, tightly packed. Used to build the always-resident coarse chain from the
-    /// same bytes the pages read.
+    /// One whole level, tightly packed, for a level >= 1. Used to build the always-resident
+    /// coarse chain from the same bytes the pages read.
     void copyLevel(int aLevel, uint8* aDst) const;
 
     /// The box one level is rebuilt over for a level-0 damage box: the same integer rule
@@ -56,16 +64,16 @@ public:
     /// touched. Rounded outwards and clamped into the level.
     QRect boxAtLevel(int aLevel, const QRect& aBaseBox) const;
 
-    /// Rebuilds the levels over the damage a stroke reports: level 0's box from the field and one
-    /// box per level above it, halved and rounded outwards. The field must be Grayscale8 and the
-    /// same size the pyramid was captured at.
+    /// Rebuilds the stored levels over the damage a stroke reports: level 1's box reads the field,
+    /// each level above it reads the one above, halved and rounded outwards. The field must be
+    /// Grayscale8 and the same size the pyramid was captured at.
     void updateBox(const QImage& aField, const QRect& aTexelBox);
 
 private:
     static QSize levelSizeOf(const QSize& aBase, int aLevel);
     static QRect coveredBox(const QRect& aSrcBox, const QSize& aSrcSize, const QSize& aDstSize);
     void resampleBox(
-        const std::vector<uint8>& aSrc, const QSize& aSrcSize, std::vector<uint8>& aDst,
+        const uint8* aSrc, int aSrcStride, const QSize& aSrcSize, std::vector<uint8>& aDst,
         const QSize& aDstSize, const QRect& aDestBox
     ) const;
 

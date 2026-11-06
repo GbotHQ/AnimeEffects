@@ -111,7 +111,7 @@ public:
     const QSize& size() const { return mSize; }
     int maxLevel() const { return mMaxLevel; }
     int coarseLevel() const { return mCoarseLevel; }
-    qint64 pyramidBytes() const { return mPyramid.bytes(); }
+    qint64 pyramidBytes() const;
 
     const gl::Texture& coarseTexture() const { return mCoarse; }
     const gl::Texture& pageTable() const { return mTable; }
@@ -131,6 +131,12 @@ public:
     /// coarse chain's levels and every RESIDENT page the box touches. A page that is not
     /// resident needs nothing: its next fill comes from the pyramid, which is now current.
     void updateMaskBox(const QImage& aField, const QRect& aTexelBox);
+
+    /// The mask's level-0 field. The pyramid does not store level 0 (it is the field), so a page
+    /// fill reads it here; the mask holder refreshes this on every accessor call, and
+    /// updateMaskBox replaces it. A QImage copy shares the pixels, so this is a refcount, not a
+    /// download.
+    void setMaskField(const QImage& aField) { mMaskField = aField; }
 
     /// The mask's demand: the same triangles, but the uv is the mask's own mapping - the
     /// screen->content affine the fragment shader uses, then the mask rect and texel grid. It is
@@ -196,6 +202,8 @@ private:
     gl::PagePool::Format mFormat = gl::PagePool::Format_RGBA8;
     // the mask's levels, owned by the mask holder (null for an image)
     MaskPyramid* mMaskPyramid = nullptr;
+    // the mask's level-0 field (see setMaskField)
+    QImage mMaskField;
     ImagePyramid mPyramid;
     gl::Texture mCoarse;
     gl::Texture mTable;

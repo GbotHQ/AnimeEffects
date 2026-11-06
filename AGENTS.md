@@ -257,8 +257,9 @@ hand it over. Its one question is `Sampling`:
   uv from the screen->content matrix), and its own `MASK_VIRTUAL_TEXTURE` shader variation, only
   ever set with `VIRTUAL_TEXTURE`. A pageable mask's levels live in `core::MaskPyramid` (captured
   once from the GPU chain, then patched by a stroke's box); `MaskKey::Data::virtualTexture()` is
-  the pool resource, and the rubylith overlay pages with it (`MaskOverlayFrag.glsl`). Folder masks
-  and the CPU pyramid's level 0 copy are the known residuals. All of these share the sampler in
+  the pool resource, and the rubylith overlay pages with it (`MaskOverlayFrag.glsl`). The pyramid
+  stores only levels 1 and deeper; level 0 IS the field (MX4). Folder masks are the known
+  residual. All of these share the sampler in
   `assets/shaders/LayerSampling.glsl` (`#include`d by the layer, clipper and overlay shaders;
   `gl::ExtendShader` expands includes before the variation pass); CL1/MA1/MX3 in `verify_mipmap`
   are the clipper and mask gates. See the doc's open list.
@@ -308,7 +309,9 @@ hand it over. Its one question is `Sampling`:
   the gutter and `sampleMask` clamps each tap's texel position. A zero gutter would darken the
   field's outermost texels against the full chain's clamp. The mask copies its field's *content*
   pixels, so its levels and the layer image's are separate pyramids (`MaskPyramid`, span-1 CPU
-  boxes) even when their sizes match.
+  boxes) even when their sizes match. The pyramid does not copy level 0 - that is the field the
+  mask's Data owns, and the page fill reads it in place (a 4096² mask's levels are 5.33 MiB, the
+  full copy it used to keep was 21.33).
 - A layer mask's overlay is a flat rubylith **over** the composite (`Kind_MaskOverlay`), not a tint; the
   thumbnail and tree chip show the matte itself in grayscale.
 - The brush is one model (`ctrl/Brush.h`): `BrushStroke` walks spacing between samples and carries the

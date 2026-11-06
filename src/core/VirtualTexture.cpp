@@ -1030,6 +1030,7 @@ void VirtualTexture::destroy() {
     }
     mPyramid.clear();
     mMaskPyramid = nullptr;
+    mMaskField = QImage();
     mResource.reset();
     mSize = QSize();
     mMaxLevel = 0;
@@ -1194,10 +1195,14 @@ bool VirtualTexture::uploadPage(int aLevel, int aPageX, int aPageY, const gl::Pa
     return true;
 }
 
+qint64 VirtualTexture::pyramidBytes() const {
+    return isMask() && mMaskPyramid ? mMaskPyramid->bytes() : mPyramid.bytes();
+}
+
 void VirtualTexture::fillPageBuffer(int aLevel, int aPageX, int aPageY) {
     if (isMask()) {
         XC_PTR_ASSERT(mMaskPyramid);
-        mMaskPyramid->fillPage(aLevel, aPageX, aPageY, mPageBuffer.data());
+        mMaskPyramid->fillPage(aLevel, aPageX, aPageY, mMaskField, mPageBuffer.data());
         return;
     }
     const uint8* base = nullptr;
@@ -1216,9 +1221,11 @@ void VirtualTexture::updateMaskBox(const QImage& aField, const QRect& aTexelBox)
     if (box.isEmpty())
         return;
 
-    // THE PYRAMID IS THE AUTHORITY; what is RESIDENT is brought in step. A level the box misses
-    // does not change; a page that is not resident needs nothing - its next fill reads the
-    // pyramid, which now holds the stroke.
+    // THE PYRAMID IS THE AUTHORITY FOR LEVELS 1+; the field is level 0 and is kept here for the
+    // page fills. What is RESIDENT is brought in step: a level the box misses does not change,
+    // and a page that is not resident needs nothing - its next fill reads the current field and
+    // pyramid.
+    mMaskField = aField;
     mMaskPyramid->updateBox(aField, box);
 
     auto& ggl = gl::Global::functions();
