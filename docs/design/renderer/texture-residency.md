@@ -1464,13 +1464,16 @@ filter lane's field. For a paged matte that is field + levels; for a forced-full
   The first marks **107** resources and costs 165 ms (it also lands the first 8 MB of pages); the
   seven after it **replay 107 of 107** and never mark. With all 114 pages resident the last three
   repaints cost **9.2-9.8 ms**, against **15.2-16.0 ms** with the replay disabled (the same
-  mutation) - the demand pass's geometry is **36-41 %** of that still frame. Playback is untouched by design: a
+  mutation) - the demand pass's geometry is **36-41 %** of that still frame. SUPERSEDED by the
+  affine demand path (Measured): a still frame now marks 107 QUADS rather than 1.75 M triangles,
+  so this figure is the record of what the geometry cost, not what it costs now. Playback is untouched by design: a
   new time frame re-skins every layer, so the revision moves and every frame marks.
 - **The pass's cost is the geometry, not its setup**: `AE_VT_DEMAND=nodraw` - state changes,
   uniforms and per-layer buffer uploads kept, only `glDrawElements` skipped - costs
   **91.2-92.4 ms** a frame on nene's playback, the same as **91.1-91.8 ms** with the whole demand
   machinery off, against **96.8-102.3 ms** with it. Hoisting or batching the pass's setup would
-  buy nothing; the only win is not walking the triangles.
+  buy nothing; the only win is not walking the triangles - which the affine demand path now does
+  for every layer without deformation (99.5-114.7 ms against 90.3-97.5 ms a playback frame).
 - **V1 parity**: 900x700 source, 320x320 canvas, coarse level 1, 12 level-0 pages wanted and all
   resident. The source is deterministic per-texel **noise**, not the old smooth curve: a ramp
   hides a filtering difference in 1/255 rounding, noise turns the same difference into tens. At
