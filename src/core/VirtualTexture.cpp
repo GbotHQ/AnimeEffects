@@ -17,8 +17,9 @@ namespace core {
 
 namespace {
 
-    // the two AE_VT_DEMAND diagnostics, defined with the other helpers at the end of this block
+    // the AE_VT_DEMAND diagnostics, defined with the other helpers at the end of this block
     bool demandDrawEnabled();
+    float demandCullMargin();
 
     //------------------------------------------------------------------------------
     // THE DEMAND PASS
@@ -78,6 +79,12 @@ uniform float uMinUvArea;
 uniform float uPageTexels;
 uniform vec2 uTexCoordOffset;
 uniform int uDemandLayer;
+// the DRAW's target, in device pixels: the triangles outside it contribute no fragment, so they
+// must not demand a page (see main)
+uniform vec2 uScreenSize;
+// a triangle this far outside the target is still marked; a value beyond any screen disables the
+// cull (AE_VT_DEMAND_NOCULL, the measurement's control)
+uniform float uCullMargin;
 
 void emitPageRect(ivec2 aMin, ivec2 aMax, int aRow) {
     // the shared demand array: this resource's page grid is one layer of it
@@ -129,6 +136,23 @@ void main() {
     // no visible surface to own a page, and its ratios are float noise
     if (uvArea < uMinUvArea)
         return;
+
+    // THE SCREEN-BOUNDS CULL. A triangle whose screen bounding box misses the target produces no
+    // fragment, so it can demand nothing. Without this the walk's union is the LAYER - every
+    // triangle marks its own uv box whatever the camera sees - which is harmless at a fit view
+    // (the whole layer is visible) and ruinous at a magnified one: on nene at --zoom 2 the walk
+    // demanded 5,834 pages of which the pool could land 217, so most of the view fell back to the
+    // coarse chain (92,701 samples, max 90 from the full-resolution control). The affine path
+    // clipped its quad to the screen for the same reason; a deformed layer has no quad, so the
+    // walk culls per triangle. A margin keeps a triangle that straddles the border - the only one
+    // that can produce a fragment on it - in the set.
+    {
+        vec2 lo = min(min(vScreen[0], vScreen[1]), vScreen[2]);
+        vec2 hi = max(max(vScreen[0], vScreen[1]), vScreen[2]);
+        if (hi.x < -uCullMargin || hi.y < -uCullMargin || lo.x > uScreenSize.x + uCullMargin
+            || lo.y > uScreenSize.y + uCullMargin)
+            return;
+    }
 
     vec2 e1 = vScreen[1] - vScreen[0];
     vec2 e2 = vScreen[2] - vScreen[0];
@@ -345,6 +369,7 @@ void main() { oDemand = 1.0; }
             mProgram->setUniformValue("uPageTexels", (float)gl::PagePool::kPageSize);
             mProgram->setUniformValue("uTexCoordOffset", aTexCoordOffset);
             mProgram->setUniformValue("uDemandLayer", aLayer);
+            mProgram->setUniformValue("uCullMargin", demandCullMargin());
             mProgram->setUniformValue("uUvFromScreen", aParams.uvFromScreen ? 1 : 0);
             mProgram->setUniformValue("uScreenToContent", aParams.screenToContent);
             mProgram->setUniformValue("uMaskRect", aParams.maskRect);
@@ -694,6 +719,14 @@ bool demandEnabled() {
 bool demandDrawEnabled() {
     static const QByteArray mode = qgetenv("AE_VT_DEMAND");
     return mode != "nodraw";
+}
+
+/// The screen-bounds cull's margin, read once. AE_VT_DEMAND_NOCULL=1 puts it beyond any screen, so
+/// every triangle marks its uv box whatever the camera sees - the measurement's control for "how
+/// much of the walk's demand was off-screen" (see the cull in the geometry shader).
+float demandCullMargin() {
+    static const bool noCull = qEnvironmentVariableIsSet("AE_VT_DEMAND_NOCULL");
+    return noCull ? 1.0e9f : 1.0f;
 }
 
 /// WHICH ENTRY POINT A SIGNATURE CAME FROM (see DemandSignature::kind). A resource is normally

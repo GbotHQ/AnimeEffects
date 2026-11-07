@@ -929,6 +929,65 @@ attached as a layered color target (GL 3.2); the per-layer grid is a sub-rect of
 rest stays cleared. Reallocation (a new resource with a larger grid) recreates the array empty -
 the map is cleared every frame anyway, so there is nothing to copy.
 
+#### A deformed layer has no quad: the warp, the predicate, and the screen cull (2026-11-07)
+
+The affine fast path is only for layers the transform can see. A layer with no deformation has one
+Jacobian over its whole surface, so its uv is an affine function of the screen position and the
+quad is exact. A layer deformed by an FFD, a mesh key, a bone binding or a wave is not: the
+fragment's uv comes from the WARPED mesh, while the quad's `screenToContent` is the node's SRT,
+which maps the REST grid. Measuring that case for the first time found two defects - and the second
+was hidden by the first.
+
+**The FFD test was dead.** The predicate claimed to count "an FFD key" and tested
+`ffdMeshParent()->type() == TimeKeyType_FFD`. `ffdMeshParent()` names the ImageKey (or MeshKey)
+whose grid mesh the FFD keys displace - it can never BE an FFD key - so the test was false by
+construction and every FFD-warped layer took the quad. (The alternative that was originally
+guarded against - testing `ffd()`, which the blender fills with the rest grid when there is no
+key - is still the right thing to avoid.) The predicate now asks whether the timeline holds any
+FFD key: an FFD key whose value happens to be the rest grid costs the walk and nothing else, while
+comparing `ffd()` against the area mesh every frame would be a per-vertex CPU pass to save a
+geometry pass.
+
+**The bone test was on the wrong population.** The same reading found the predicate's other half:
+it excluded `bone().isAffectedByBinding()` - the layers RIGIDLY BOUND to a bone, whose draw is one
+matrix (`MeshTransformer::callGL` takes the outer matrix, inner identity) and whose quad would
+therefore be exact - and accepted the layers that ARE skinned per vertex. A layer under an active
+BoneKey is an influence target: the blender gives every such descendant an influence cache, so
+`bone().targetMesh()` is its own mesh and `callGL` takes the `useInfluence` branch, applying the
+pose palette per vertex. `AE_VT_DEMAND_SPLIT`'s new `infl=` field prints that population: on
+`dinner lab` at frame 0, **nine layers report `infl=1` and seven of them were taking the quad**. The
+predicate now excludes `bone().targetMesh() != nullptr` too - a conservative correction, since it
+can only move layers from the quad to the walk - and that project's frames are unchanged (max 1,
+the slot rounding, at frames 1-8) because the bone displacement there stays inside a page at that
+camera; the case that would make it visible (a pageable part pulled more than a page by a pose)
+still wants a bone fixture the harness does not have (see the open list).
+
+**The walk demanded the whole layer.** With no screen test, every triangle marks its own uv box
+whatever the camera sees, so the union is the layer's page grid - harmless at a fit view, where the
+whole layer is visible, and ruinous at a magnified one. The geometry shader now culls a triangle
+whose screen bounding box misses the target (a one-pixel margin keeps the straddler, the only one
+that can produce a border fragment). Measured on ballerina at a 640x640 zoom-1 view, frames 8-13:
+**482 pages wanted without the cull against 250 with it** - and the frames are **bit-identical**,
+so the extra 232 were pure over-demand. The old quad path wanted 250 on the same view, so the
+correct demand costs the same pages the approximation did; the fix is about which pages, not how
+many.
+
+No project in the local dataset provides that case, so `DF1` constructs it: a 2048x2048 noise layer
+on a 320x320 canvas at **zoom 4**, with an FFD key that translates every grid vertex by **768
+content px - three level-0 pages** - so the view samples a content region three pages away from
+where the SRT says it is. Measured: **4 wanted pages of the layer's 64-page level-0 grid, all
+resident**, and paged vs the full-resolution control **max 0, mean 0.000 of 255**; the warp moves
+the frame by **217** at the centre, so the parity is not two rest-grid frames agreeing. The two
+mutations have power: with the affine path forced (the old predicate) the same fixture measures
+**max 138, mean 28.4**; with the cull off it wants **all 64 pages** and the frame is unchanged.
+
+The walk's cost is proportional to the deformed layers' TRIANGLES, and the cull does not reduce it
+(the geometry shader still runs per vertex) - it bounds the page set, which is what the pool sees.
+On ballerina, whose ten FFD-keyed layers now walk, the frame time is inside the project's own
+frame-to-frame variance (55-94 ms over frames 8-13 with the walk, 53-99 with the quad), so the
+cost of correctness is not measurable there; it would be on a 15000^2 layer carrying bone motion,
+which is still unmeasured (see the open list).
+
 #### The replay: a frame whose page set did not change does not re-walk the triangles
 
 A repaint of the same frame - a pointer moving over the canvas (the brush ring follows it), a matte
@@ -1125,7 +1184,8 @@ filter lane's field. For a paged matte that is field + levels; for a forced-full
 | `AE_VT_ATLAS_SENTINEL=1` | diagnostic: every new atlas is filled with MAGENTA, so a read of a texel no page upload wrote is unmistakable (`glTexImage2D` from a sentinel buffer, one upload per atlas) |
 | `AE_VT_PAGE_HASH=1` | diagnostic: hashes each level-0+ page's fill against the pyramid's own bytes (the source side of the upload) |
 | `AE_VT_AFFINE_DEMAND=0` | control: walk the mesh for a layer with no deformation instead of marking its quad (measured: 99.5-114.7 ms a playback frame against 90.3-97.5, and 5,834 pages demanded at 2x against 18) |
-| `AE_VT_DEMAND_SPLIT=1` | diagnostic: per paged layer, its demand triangles and whether the affine predicate accepted it (`VTDSPLIT layer= tris= affine= fast=`) |
+| `AE_VT_DEMAND_SPLIT=1` | diagnostic: per paged layer, its demand triangles, whether the affine predicate accepted it, and whether it is a bone INFLUENCE target (`VTDSPLIT layer= tris= affine= fast= infl=`); `infl=1 affine=1` is a skinned layer on the quad |
+| `AE_VT_DEMAND_NOCULL=1` | control: disable the demand walk's screen-bounds cull, so every triangle marks its uv box whatever the camera sees. Measured on ballerina at a 640x640 zoom-1 view: 482 pages wanted against 250, with **bit-identical** frames - the control for "how much of the walk's demand was off-screen" |
 | `AE_NO_MIP_TAIL=1` | diagnostic: skip the GPU area-weighted mip tail and keep `glGenerateMipmap`'s levels (the chain becomes reproducible and visibly coarser: 20,036 samples / max 52 from the control on nene) - the switch that confirmed the tail build as the nondeterminism's source |
 | `AE_MIP_TAIL_OLD_PATH=1` | diagnostic: the MUTATION CONTROL for the fix - build the tail by rendering into the chain, the read-while-write the fix removes. Two runs of one command then differ (325/305 samples from the control, 109 apart, max 223 in the strip) |
 | `AE_VT_HASH=<level>\|all` | diagnostic, at load: hashes one level (or every level) of EVERY GPU chain just after it is built (`VTHASH <W>x<H> level= chain=`). Two runs of one command are supposed to print the same lines - and did for 240 of 241 chains (see Measured) |
@@ -1221,6 +1281,16 @@ filter lane's field. For a paged matte that is field + levels; for a forced-full
   sub-texel rounding follows the slot (two oracle trees that never replayed differ by 1 at 133
   samples too). Mutating the signature to compare only the vertex stamp fails five checks, the
   pixel one at **max 28 over 75,904 samples**.
+- **DF1 a deformed layer's demand** (the case the affine path cannot answer, and the one no project
+  in the dataset provides): a 2048x2048 noise source on a 320 canvas at **zoom 4**, with an FFD key
+  that translates every grid vertex by **768 content px**. It asserts, in this order: the FFD key
+  moved what is drawn (the frame differs from an identical tree with no FFD key by **> 64** at the
+  centre - without it the parity check would compare two rest-grid frames and pass whatever the
+  demand did); the paged frame matches the full-resolution control (**max 0, mean 0.000**); the
+  demand is the visible **2x2** page set and not the layer (**4 wanted of the 64-page level-0
+  grid**, all resident), which is the cull; and the tree stayed paged (no full texture). Both
+  mutations fail it: the affine path forced measures **max 138, mean 28.4**, and the cull off wants
+  **all 64 pages**.
 - `media_exporter_e2e` runs the export path with the demand preparse.
 
 ### Measured
@@ -1316,6 +1386,35 @@ filter lane's field. For a paged matte that is field + levels; for a forced-full
   pan still re-marks, but the page SET may follow the view, and the gate now pins the level
   (never level 0's grid), residency, and the oracle's set equality instead of the old
   whole-grid count, which was an artefact of the walk. `V1` gained a **2.0 (magnified)** case.
+- **A deformed layer's demand: the FFD predicate and the screen cull** (2026-11-07, the residual
+  the affine path left open). The affine path's FFD test was dead code - it asked the type of the
+  key `ffdMeshParent()` returns, which is the ImageKey or MeshKey the FFD keys displace, never an
+  FFD key itself - so every FFD-warped layer took the quad, whose mapping is the rest grid.
+  `DF1` is the fixture that shows what that costs: a 2048^2 layer at zoom 4 under an FFD
+  translation of three level-0 pages measures **max 138 / mean 28.4** against the full-resolution
+  control with the quad, and **max 0 / mean 0.000** with the predicate fixed (4 wanted pages of
+  the 64-page level-0 grid, all resident, and the warp moves the frame by 217 at the centre).
+  The walk then over-demanded, because its union is the LAYER whatever the camera sees, so the
+  geometry shader now culls a triangle whose screen bounding box misses the target
+  (`AE_VT_DEMAND_NOCULL=1` is the control): on ballerina at a 640x640 zoom-1 view, frames 8-13,
+  the same walk wants **482 pages without the cull against 250 with it**, and the frames are
+  **bit-identical** - the extra 232 were off-screen triangles of the FFD layers, pure
+  over-demand. The old quad path wanted 250 on that view too, and its frames are also identical
+  to the walk's, so on that project the fix changed no pixel and no page count; the warp there is
+  small enough to stay inside the quad's extent, which is why DF1, not a project, is the gate.
+  The walk's frame-time cost on ballerina is inside the project's own variance (55-94 ms with the
+  walk against 53-99 with the quad over the same six frames); the cull does not reduce it, because
+  the geometry shader still runs per vertex - it reduces the page set the pool is asked for.
+  `verify_mipmap` is 351 checks, 0 failures; both mutations above were run and fail the gate.
+  The same reading found the predicate's BONE half, and measured its population: `infl=` on
+  `dinner lab` at frame 0 reports **nine influence-skinned layers, seven of them on the quad**
+  (every descendant of an active BoneKey is skinned per vertex by `callGL`'s `useInfluence` path,
+  while `isAffectedByBinding` only names the rigidly bound ones - whose draw is a matrix and whose
+  quad would be exact). Adding `bone().targetMesh() != nullptr` moves all nine to the walk;
+  **wanted 7 -> 5 pages**, and the project's frames are unchanged (max 1 at 7-18 samples, the slot
+  rounding, frames 1-8) - so no project in the dataset makes that half visible in pixels at these
+  cameras, and it rests on the draw path plus the population count, not on a failing pixel gate
+  (a bone fixture is the open work).
 - **The mip tail's read-while-write is what the panned camera exposed** (found while testing
   whether a pan could replay; **fixed**). `buildMipTailOnGpu` built each level of a chain with the
   chain attached as its own render target and the source level fetched from the same texture. The
@@ -1588,14 +1687,36 @@ filter lane's field. For a paged matte that is field + levels; for a forced-full
 2. ~~**The demand pass on the frames that still re-mark**~~ - **DONE for the geometry**: the affine
    fast path above turns the whole pass into one quad per layer (100 % of nene's 1,746,491 demand
    triangles), ~9 ms a playback frame, and it also fixes the over-demand that made 2x views fall
-   back to the coarse chain. What remains of the item is the *residual*: a DEFORMED layer (a mesh
-   key, an FFD key, a bone binding or a wave) still walks its grid, and none of nene's frame-6
-   layers were deformed - so the fallback path is now the unmeasured one. Measuring it needs a
-   project (or a fixture) whose layers carry bone/FFD motion.
+   back to the coarse chain. ~~The residual - a DEFORMED layer still walks its grid, unmeasured -
+   needs a project or a fixture with bone/FFD motion.~~ **DONE 2026-11-07**: `DF1` is that
+   fixture, and measuring it found the affine path's FFD test was dead (every FFD-warped layer
+   took the quad) and that the walk demanded the whole layer whatever the camera saw. Both are
+   fixed - the timeline-key predicate and the screen-bounds cull - with DF1 as the gate and
+   `AE_VT_DEMAND_NOCULL` as the cull's control (see Demand and Measured). What remains of the
+   item: (a) a layer MASK's demand still walks on a deformed layer even though the mask's uv is
+   the screen->content affine, so a quad over the deformed mesh's SCREEN coverage would replace
+   its triangle walk exactly - the same shape of reduction, and it would also cut the mask walk's
+   cost on every undeformed layer; (b) the walk's geometry cost on a 15000^2 bone-animated layer
+   is still unmeasured (ballerina's FFD layers are small enough to hide in the frame variance);
+   (c) **a bone-influence fixture.** The predicate now excludes the influence targets
+   (`bone().targetMesh() != nullptr`) and the population is measured - `dinner lab` frame 0 has
+   nine, seven of which were on the quad - but no gate builds one: a `BoneKey` computes its
+   influence map from a `Project` (`resetCaches`) and the harness has no Project, so a fixture
+   would have to build the bones, the caches and a `PoseKey` before it could pull a pageable layer
+   by more than a page. Until then that half rests on the draw path (`callGL`'s `useInfluence`
+   branch) plus the count, and no project in the dataset shows it in pixels at the cameras tried.
 3. The pool's landing rate: 8 MB/frame still costs 10-20 ms while it fills, and a large import's
    synchronous capture is a visible pause (1.47 s across 136 keys on nene, worst 130 ms). An
    asynchronous/deferred capture and a page upload batched per atlas row are the two obvious next
-   reductions.
+   reductions. Measured on ballerina at a 640x640 zoom-1 view (frames 8-13): the view wants **250
+   pages** (65 MB) and the 8 MB cap lands **31 a frame**, so it is still filling after six frames
+   (resident 31/62/93/124/155) and those frames cost 55-94 ms against 16-25 ms with the whole
+   demand + upload machinery off (`AE_VT_DEMAND=nodraw` - an A/B that also changes the residency
+   and the sampling, so it bounds the cost rather than isolating the upload). There is no
+   zero-upload control yet: `AE_VT_UPLOAD_MB=0` does NOT mean "no uploads" - `PagePool`'s `envInt`
+   maps a non-positive value to the default 8, so the run lands pages exactly like the default (a
+   trap that cost one A/B). Isolating the upload is therefore the first move on this item, and the
+   cheapest form is to time the resolve phase itself (one `vt_upload_ms` in `FrameStats`).
 4. An ANIMATED mask (two keys) blends a new field every frame, so its resource is rebuilt per
    frame - the blend path predates paging and already rebuilt the full chain, but the paged form
    adds a readback to that build and a per-frame pool registration. The property that makes this

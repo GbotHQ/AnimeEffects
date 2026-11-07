@@ -75,6 +75,7 @@
 #include "core/CameraInfo.h"
 #include "core/ClippingFrame.h"
 #include "core/DestinationTexturizer.h"
+#include "core/FFDKey.h"
 #include "core/FilterFrame.h"
 #include "core/FolderNode.h"
 #include "core/Frame.h"
@@ -3570,6 +3571,223 @@ void suiteDemandReplay() {
     );
 }
 
+// A DEFORMED LAYER IS THE ONE CASE THE AFFINE QUAD CANNOT ANSWER, and until this gate there was
+// no fixture for it: every paged case in this file builds a layer whose uv is one affine function
+// of the screen, which is exactly the condition the fast demand path tests. The `AE_VT_DEMAND_SPLIT`
+// measurement on nene could not see it either - none of that project's layers were deformed.
+//
+// The fixture warps the layer with an FFD key that TRANSLATES every grid vertex by three level-0
+// pages. That is the smallest deformation with the property this gate needs: it is a per-triangle
+// affine (so the fragment's uv is exact and a correct demand is exact too), it is invisible to the
+// node's SRT - which is what the affine quad reads - and it moves the sampled texel by more than a
+// page, so a quad's page extent cannot contain the pages the warp pulls in.
+//
+// TWO FAILURES THIS PINS, with their mutations recorded in texture-residency.md:
+//   - the PREDICATE: an FFD-deformed layer must take the walk. It did not before 2026-11-07 - the
+//     test looked for a TimeKeyType_FFD parent, and `ffdMeshParent()` names the ImageKey/MeshKey
+//     the FFD keys deform, so the test was false by construction. With the quad in use the paged
+//     frame sampled the rest grid's three-pages-away content - the coarse chain, since those pages
+//     were never demanded;
+//   - the CULL: the walk must mark what the camera sees, not the whole layer. Without the
+//     screen-bounds cull the walk wanted the layer's entire level-0 grid (8x8 = 64 pages) from a
+//     view that can sample a 2x2 corner of it, which at a magnified camera is the pool flood that
+//     made zoomed views unpaged before the affine path (see the demand section).
+void suiteDeformedDemand() {
+    suiteHeader("DF1 an FFD-warped layer: demand follows the warp, and only what is on screen");
+    if (!gl::PagePool::enabled()) {
+        std::printf("  [SKIP] AE_VIRTUAL_TEXTURE=0 is the control path\n");
+        return;
+    }
+    if (qgetenv("AE_VT_DEMAND") == "0") {
+        std::printf("  [SKIP] AE_VT_DEMAND=0 removes the demand pass itself\n");
+        return;
+    }
+
+    const QSize canvas(320, 320);
+    const QSize source(2048, 2048);
+    const Img src = makeNoise(source.width(), source.height());
+    const uint8_t black[3] = {0, 0, 0};
+
+    RenderFixture fx;
+    fx.init(canvas);
+
+    // 4x: the view shows 80x80 content pixels of a 2048^2 layer, so the demand is LEVEL 0 (the
+    // magnified branch) and one page is 256 content px. Three pages of displacement is then far
+    // outside the quad's own extent; at a fit view the whole layer would be visible and the error
+    // would hide inside a page set that is a superset by luck.
+    core::CameraInfo camera;
+    camera.reset(canvas, 1.0, canvas, QPoint(0, 0));
+    camera.setScale(4.0f);
+
+    img::ResourceNode* res = makeResource("df1_src", src);
+
+    struct Tree {
+        std::unique_ptr<core::ObjectTree> tree;
+        core::ImageKey* imageKey = nullptr;
+        core::LayerNode* layer = nullptr;
+    };
+    // The same layer twice: the warp is proven against the second tree, which has no FFD key. A
+    // parity check against its OWN full-texture control would pass whatever the warp did - the
+    // demand only decides which pages are fetched, not whether the mesh is deformed - so the rest
+    // tree is what makes "the warp is real" an assertion instead of an assumption.
+    const auto buildTree = [&]() {
+        Tree t;
+        t.tree.reset(new core::ObjectTree());
+        auto* root = new core::FolderNode("root");
+        t.tree->grabTopNode(root);
+        t.layer = addScaledLayer(
+            *t.tree, root, res, "layer",
+            QVector2D(canvas.width() * 0.5f, canvas.height() * 0.5f), 1.0f, img::BlendMode_Normal
+        );
+        t.imageKey =
+            dynamic_cast<core::ImageKey*>(t.layer->timeLine()->defaultKey(core::TimeKeyType_Image));
+        if (t.imageKey)
+            t.imageKey->setForceFullTexture(false);
+        return t;
+    };
+
+    Tree warped = buildTree();
+    Tree rest = buildTree();
+    expect(
+        warped.imageKey != nullptr && rest.imageKey != nullptr,
+        "DF1 both layers must have an image key"
+    );
+    if (!warped.imageKey || !rest.imageKey)
+        return;
+
+    // the warp: every grid vertex moved by -768 content px (three level-0 pages)
+    const core::LayerMesh& grid = warped.imageKey->data().gridMesh();
+    const int vtxCount = grid.vertexCount();
+    expect(vtxCount > 0, "DF1 the image key must have built its grid mesh");
+    if (vtxCount <= 0)
+        return;
+    const float kShift = -768.0f;
+    std::vector<gl::Vector3> displaced(grid.positions(), grid.positions() + vtxCount);
+    for (gl::Vector3& p : displaced)
+        p.x += kShift;
+    core::FFDKey* ffd = new core::FFDKey();
+    ffd->data().allocAndWrite(displaced.data(), vtxCount);
+    ffd->data().easing(0) = util::Easing::defaultParam();
+    warped.imageKey->children().pushBack(ffd);
+    expect(
+        warped.layer->timeLine()->adoptKey(core::TimeKeyType_FFD, 0, ffd),
+        "DF1 the FFD key must install into the timeline's FFD map"
+    );
+
+    // the rest tree first: it fills its own pages, and its frame is the warp's proof
+    std::vector<uint8_t> restFrame;
+    for (int i = 0; i < 4; ++i)
+        restFrame = fx.render(*rest.tree, camera, 0, black);
+
+    std::vector<uint8_t> paged;
+    for (int i = 0; i < 8; ++i)
+        paged = fx.render(*warped.tree, camera, 0, black);
+
+    // THE WARP IS REAL: the centre of the frame is 64x64 of layer content, and the rest tree's
+    // centre is three pages of noise away from the warped tree's.
+    int centreDelta = 0;
+    for (int y = canvas.height() / 2 - 32; y < canvas.height() / 2 + 32; ++y) {
+        for (int x = canvas.width() / 2 - 32; x < canvas.width() / 2 + 32; ++x) {
+            const size_t i = ((size_t)y * canvas.width() + x) * 4;
+            for (int ch = 0; ch < 4; ++ch)
+                centreDelta = std::max(centreDelta, std::abs((int)paged[i + ch] - (int)restFrame[i + ch]));
+        }
+    }
+    expect(
+        centreDelta > 64,
+        QString("DF1 the FFD key must move what is drawn (centre max %1 from the rest tree)").arg(centreDelta)
+    );
+
+    const core::VirtualTexture* vt = warped.imageKey->cache().virtualTexture();
+    expect(vt != nullptr, "DF1 the 2048^2 image must take the paged path");
+    if (!vt)
+        return;
+
+    const int wanted = vt->wantedPageCount();
+    const int gridPages = vt->pageGridX(0) * vt->pageGridY(0);
+    const bool stayedPaged = warped.imageKey->cache().texture().id() == 0;
+    expect(
+        vt->residentWantedCount() == wanted,
+        QString("DF1 every wanted page must be resident (%1 of %2)")
+            .arg(vt->residentWantedCount())
+            .arg(wanted)
+    );
+    expect(
+        gridPages == 64,
+        QString("DF1 a 2048^2 level 0 must be an 8x8 page grid (got %1)").arg(gridPages)
+    );
+    // THE CULL. A view that shows an 80x80 corner can sample only its 2x2 level-0 pages (the
+    // rectangle plus the triangles that straddle its edges); the whole grid is 64. The bound has
+    // slack for the layer's border triangles, not for an off-screen triangle - there are none:
+    // the layer covers the whole canvas.
+    expect(
+        wanted >= 1 && wanted <= 8,
+        QString("DF1 the magnified view must demand the pages it can sample, not the layer "
+                "(%1 of at most 8; the whole level-0 grid is %2)")
+            .arg(wanted)
+            .arg(gridPages)
+    );
+    expect(
+        wanted < gridPages,
+        QString("DF1 the demand must not be the whole layer (%1 of 64)").arg(wanted)
+    );
+
+    // THE CONTROL: the same warped tree from a full texture. The pages the warp pulls in are
+    // level 0, three pages away from where the SRT says the view is.
+    warped.imageKey->setForceFullTexture(true);
+    const std::vector<uint8_t> control = fx.render(*warped.tree, camera, 0, black);
+    warped.imageKey->setForceFullTexture(false);
+
+    int maxDelta = 0;
+    int maxX = 0, maxY = 0, maxC = 0;
+    double meanDelta = 0.0;
+    int n = 0;
+    for (int y = 0; y < canvas.height(); ++y) {
+        for (int x = 0; x < canvas.width(); ++x) {
+            const size_t i = ((size_t)y * canvas.width() + x) * 4;
+            for (int ch = 0; ch < 4; ++ch) {
+                const int d = std::abs((int)paged[i + ch] - (int)control[i + ch]);
+                if (d > maxDelta) {
+                    maxDelta = d;
+                    maxX = x;
+                    maxY = y;
+                    maxC = ch;
+                }
+                meanDelta += d;
+                ++n;
+            }
+        }
+    }
+    meanDelta = n ? meanDelta / n : 0.0;
+    expect(
+        maxDelta <= 1,
+        QString("DF1 paged warped layer vs the full-resolution control: max %1 at (%2,%3) ch %4")
+            .arg(maxDelta)
+            .arg(maxX)
+            .arg(maxY)
+            .arg(maxC)
+    );
+    expect(
+        meanDelta < 0.5,
+        QString("DF1 mean delta %1 below 0.5 of 255").arg(meanDelta, 0, 'f', 3)
+    );
+    expect(
+        stayedPaged,
+        "DF1 the warped tree must have no full texture (it stayed paged)"
+    );
+
+    caseReport(
+        "FFD-warped demand", gFails == 0,
+        QString("%1 pages wanted of the layer's %2-page level-0 grid, all resident; the warp "
+                "moves the frame by %3 (centre); paged vs control max %4, mean %5 of 255")
+            .arg(wanted)
+            .arg(gridPages)
+            .arg(centreDelta)
+            .arg(maxDelta)
+            .arg(meanDelta, 0, 'f', 3)
+    );
+}
+
 void suiteRender() {
     suiteHeader("M3 production render: minified layer, no halo");
     const QSize canvas(64, 64);
@@ -3790,6 +4008,7 @@ int main(int argc, char** argv) {
     suiteMaskPyramidMemory();
     suiteFolderMask();
     suiteDemandReplay();
+    suiteDeformedDemand();
 
     std::printf("\n%d checks, %d failures\n", gChecks, gFails);
     std::fflush(stdout);

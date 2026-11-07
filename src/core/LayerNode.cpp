@@ -297,9 +297,30 @@ void LayerNode::render(const RenderInfo& aInfo, const TimeCacheAccessor& aAccess
             // position storage: `ffd()` is what the blender always fills, grid positions
             // included), a bone binding or a non-identity wave each count as deformation - and a
             // degenerate screen->content mapping falls back to the walk rather than trusting it.
-            const TimeKey* meshSource = expans.ffdMeshParent();
-            const bool ffdWarp = meshSource != nullptr && meshSource->type() == TimeKeyType_FFD;
-            const bool undeformed = expans.areaMeshKey() == nullptr && !ffdWarp
+            //
+            // THE FFD TEST IS THE KEY'S PRESENCE, not the type of the key it deforms:
+            // `ffdMeshParent()` names the ImageKey (or MeshKey) whose grid mesh the FFD keys
+            // displace - a key can never BE an FFD key, so a `type() == TimeKeyType_FFD` test
+            // there is false by construction and every FFD-warped layer took the quad. A quad
+            // cannot see a warp: a fragment's uv is the WARPED mesh's, while `screenToContent` is
+            // the node's SRT, which maps the REST grid - so the pages a warp pulls in are not the
+            // quad's pages, and a miss is a coarse fallback wherever the warp exceeds a page.
+            // (An FFD key whose value happens to be the rest grid costs the walk and nothing
+            // else; the alternative - comparing `ffd()` against the area mesh every frame - is a
+            // per-vertex CPU pass to save a geometry pass.)
+            const bool ffdWarp = !mTimeLine.map(TimeKeyType_FFD).isEmpty();
+            // THE TWO BONE POPULATIONS, which `isAffectedByBinding()` alone conflates. A layer
+            // RIGIDLY BOUND to a bone is drawn with one matrix (`MeshTransformer::callGL` takes the
+            // outer matrix, inner identity) and `contentMappingFor` reads the same matrix, so its
+            // quad is exact - it is still excluded, conservatively. A layer under an active
+            // BoneKey is an INFLUENCE TARGET: the blender gives every such descendant a cache, so
+            // `bone().targetMesh()` is its own mesh, and `callGL` takes the `useInfluence` branch
+            // and skins it per vertex with the pose palette. That is a genuine deformation the
+            // transform cannot see, so it must walk. `AE_VT_DEMAND_SPLIT`'s `infl=` prints the
+            // population - dinner lab frame 0 has nine such layers, seven of them on the quad
+            // before this test.
+            const bool skinned = expans.bone().targetMesh() != nullptr;
+            const bool undeformed = expans.areaMeshKey() == nullptr && !ffdWarp && !skinned
                 && !expans.bone().isAffectedByBinding() && expans.wave().isIdentity();
             const QSize contentSize = expans.areaTextureSize();
             QMatrix4x4 screenToContent;
@@ -316,9 +337,14 @@ void LayerNode::render(const RenderInfo& aInfo, const TimeCacheAccessor& aAccess
                 affine = QVector3D::crossProduct(u, v).length() > 1e-6f;
             }
             if (qEnvironmentVariableIsSet("AE_VT_DEMAND_SPLIT")) {
+                // `infl=` is the bone INFLUENCE target (every descendant of an active BoneKey),
+                // which `MeshTransformer::callGL` skins per vertex - the second population the
+                // predicate excludes (see the class comment above). Before that test, a layer
+                // reporting infl=1 affine=1 was on the quad although its draw was deformed.
                 qWarning(
-                    "VTDSPLIT layer=%s tris=%d affine=%d fast=%d", qPrintable(name()),
-                    mCurrentMesh->indexCount() / 3, undeformed ? 1 : 0, affine ? 1 : 0
+                    "VTDSPLIT layer=%s tris=%d affine=%d fast=%d infl=%d", qPrintable(name()),
+                    mCurrentMesh->indexCount() / 3, undeformed ? 1 : 0, affine ? 1 : 0,
+                    expans.bone().targetMesh() ? 1 : 0
                 );
             }
             if (affine) {

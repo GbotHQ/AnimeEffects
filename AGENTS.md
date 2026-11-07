@@ -291,10 +291,31 @@ hand it over. Its one question is `Sampling`:
   90.3-97.5 ms, and at `--zoom 2` the walk's over-demand (5,834 pages wanted, 217 ever resident)
   was making most of the view fall back to the coarse chain - 92,701 samples from the control -
   while the quad demands 18, all resident, and matches within 1. The predicate is conservative
-  (mesh key, FFD KEY - not `ffd()`, which is the position storage the blender always fills - bone
-  binding, non-identity wave) and a degenerate screen->content mapping falls back to the walk;
+  (mesh key, FFD KEY - not `ffd()`, which is the position storage the blender always fills - a bone
+  binding OR a bone-influence target, non-identity wave) and a degenerate screen->content mapping
+  falls back to the walk;
   `AE_VT_AFFINE_DEMAND=0` is the control. DR1 now pins the level, residency and the oracle's set
   equality rather than the whole-grid count the walk used to produce, and V1 has a 2.0 case.
+  **THE FFD TEST WAS DEAD, SO EVERY FFD-WARPED LAYER TOOK THE QUAD (fixed 2026-11-07).** It asked
+  the type of the key `ffdMeshParent()` returns, which is the ImageKey/MeshKey the FFD keys
+  displace - never an FFD key - so it was false by construction; the predicate now asks whether the
+  timeline holds an FFD key. A quad cannot see a warp: a fragment's uv is the warped mesh's while
+  `screenToContent` maps the REST grid. `DF1` is the fixture (2048^2 layer, zoom 4, an FFD
+  translation of three level-0 pages): with the quad **max 138 / mean 28.4** against the
+  full-resolution control, with the walk **max 0**, 4 wanted pages of the 64-page level-0 grid.
+  **AND THE WALK DEMANDED THE WHOLE LAYER**, so the demand geometry shader now CULLS a triangle
+  whose screen bbox misses the target (`AE_VT_DEMAND_NOCULL=1` is the control): ballerina at a
+  640x640 zoom-1 view, frames 8-13, wants **482 pages without the cull against 250 with it**, the
+  frames **bit-identical** - pure off-screen over-demand. The walk's cost is still per triangle
+  (the cull bounds the page set, not the geometry); `DF1` is in `verify_mipmap`.
+  **THE BONE TEST WAS ON THE WRONG POPULATION TOO** (same session, reasoned + counted, no pixel
+  gate yet). `isAffectedByBinding()` names the RIGIDLY BOUND layers, whose draw is one matrix
+  (`callGL` takes the outer matrix, inner identity) so their quad would be exact; the layers that
+  are SKINNED per vertex are the INFLUENCE TARGETS - every descendant of an active `BoneKey`, where
+  `bone().targetMesh()` is its own mesh and `callGL` takes the `useInfluence` path. `AE_VT_DEMAND_SPLIT`
+  gained `infl=` to print them; `dinner lab` frame 0 has nine, seven on the quad. The predicate now
+  excludes `bone().targetMesh() != nullptr` (conservative: only ever adds walking). It needs a bone
+  fixture to become a measured gate (a `BoneKey` computes its maps from a `Project`).
   **THE PAN-CAMERA DEFECT WAS THE MIP TAIL'S READ-WHILE-WRITE, AND IS FIXED.**
   `buildMipTailOnGpu` rendered each level of a chain into that chain while fetching a level of the
   same texture. Legal per IMAGE by the spec, but this driver resolves a whole-texture
