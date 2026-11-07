@@ -284,15 +284,66 @@ void LayerNode::render(const RenderInfo& aInfo, const TimeCacheAccessor& aAccess
         // it change, so the revision - not the buffer's identity - is what says "same vertices".
         // A camera-only pan keeps the revision and changes the view matrix, which re-marks.
         if (VirtualTexture* virtualTexture = expans.areaVirtualTexture()) {
-            VirtualTexture::DemandSignature signature;
-            signature.positions = mMeshRevision;
-            signature.targetSize = aInfo.camera.deviceScreenSize();
-            signature.viewMatrix = aInfo.camera.viewMatrix();
-            signature.texCoordOffset = mCurrentMesh->originOffset() - expans.imageOffset();
-            virtualTexture->markDemand(
-                signature, mMeshTransformer.positions(), mCurrentMesh->texCoords(),
-                mCurrentMesh->vertexCount(), mCurrentMesh->getIndexBuffer(), mCurrentMesh->indexCount()
-            );
+            // THE AFFINE FAST PATH. A layer with no deformation has one Jacobian over its whole
+            // surface, so the LAYER SHADER's uv is a single affine function of the screen
+            // position and the pages its fragments can reach are the quad's page extent - the
+            // same union the mesh walk computes (every triangle of a grid shares that Jacobian),
+            // at four vertices instead of the grid's triangles. Measured on nene at frame 6: ALL
+            // 107 paged layers qualify and they own ALL 1,746,491 triangles the pass walks
+            // (`AE_VT_DEMAND_SPLIT=1` prints the split); `AE_VT_AFFINE_DEMAND=0` walks the mesh
+            // anyway, which is the control.
+            //
+            // The predicate is deliberately conservative - a mesh key, an FFD KEY (not the
+            // position storage: `ffd()` is what the blender always fills, grid positions
+            // included), a bone binding or a non-identity wave each count as deformation - and a
+            // degenerate screen->content mapping falls back to the walk rather than trusting it.
+            const TimeKey* meshSource = expans.ffdMeshParent();
+            const bool ffdWarp = meshSource != nullptr && meshSource->type() == TimeKeyType_FFD;
+            const bool undeformed = expans.areaMeshKey() == nullptr && !ffdWarp
+                && !expans.bone().isAffectedByBinding() && expans.wave().isIdentity();
+            const QSize contentSize = expans.areaTextureSize();
+            QMatrix4x4 screenToContent;
+            bool affine = undeformed && contentSize.width() > 0 && contentSize.height() > 0
+                && qgetenv("AE_VT_AFFINE_DEMAND") != "0";
+            if (affine) {
+                screenToContent =
+                    contentMappingFor(aInfo, aAccessor, aInfo.camera.deviceScreenSize());
+                // a collapsed mapping would mark nothing (or everything): the mesh walk is the
+                // safe answer, and it is what the draw uses anyway
+                const QVector3D o = screenToContent.map(QVector3D(0.0f, 0.0f, 0.0f));
+                const QVector3D u = screenToContent.map(QVector3D(1.0f, 0.0f, 0.0f)) - o;
+                const QVector3D v = screenToContent.map(QVector3D(0.0f, 1.0f, 0.0f)) - o;
+                affine = QVector3D::crossProduct(u, v).length() > 1e-6f;
+            }
+            if (qEnvironmentVariableIsSet("AE_VT_DEMAND_SPLIT")) {
+                qWarning(
+                    "VTDSPLIT layer=%s tris=%d affine=%d fast=%d", qPrintable(name()),
+                    mCurrentMesh->indexCount() / 3, undeformed ? 1 : 0, affine ? 1 : 0
+                );
+            }
+            if (affine) {
+                VirtualTexture::DemandSignature signature;
+                signature.targetSize = aInfo.camera.deviceScreenSize();
+                signature.viewMatrix = aInfo.camera.viewMatrix();
+                signature.screenToContent = screenToContent;
+                // the DRAW's texel offset, so the quad names the same texels the mesh walk would
+                signature.texCoordOffset = mCurrentMesh->originOffset() - expans.imageOffset();
+                signature.maskRect = QVector4D(
+                    0.0f, 0.0f, (float)contentSize.width(), (float)contentSize.height()
+                );
+                virtualTexture->markScreenDemand(signature);
+            } else {
+                VirtualTexture::DemandSignature signature;
+                signature.positions = mMeshRevision;
+                signature.targetSize = aInfo.camera.deviceScreenSize();
+                signature.viewMatrix = aInfo.camera.viewMatrix();
+                signature.texCoordOffset = mCurrentMesh->originOffset() - expans.imageOffset();
+                virtualTexture->markDemand(
+                    signature, mMeshTransformer.positions(), mCurrentMesh->texCoords(),
+                    mCurrentMesh->vertexCount(), mCurrentMesh->getIndexBuffer(),
+                    mCurrentMesh->indexCount()
+                );
+            }
         }
         // THE MATTE'S OWN PAGES. The mask is paged by its own stack (its grid is the field's,
         // not the image's: replacing an image leaves an authored mask at its old resolution), and

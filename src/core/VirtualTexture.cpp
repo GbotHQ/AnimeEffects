@@ -400,14 +400,19 @@ void main() { oDemand = 1.0; }
         /// position from it - the SAME formula (and the same Jacobian) a layer's demand uses,
         /// rather than a second CPU implementation that could drift from the shader.
         bool markFullscreen(
-            int aLayer, const QSize& aGrid, const Params& aParams, const QSize& aTargetSize
+            int aLayer, const QSize& aGrid, const Params& aParams, const QSize& aTargetSize,
+            const QVector2D& aTexCoordOffset = QVector2D(0.0f, 0.0f)
         ) {
             if (!aParams.uvFromScreen || aTargetSize.isEmpty() || aGrid.isEmpty())
                 return false;
             if (!ensureBuilt() || !ensureQuad())
                 return false;
+            // `aTexCoordOffset` is the DRAW's own texel offset (a layer's mesh origin and image
+            // offset): the quad's uv comes from the screen mapping, which is in content pixels,
+            // and the draw shifts that by the same amount - without it a layer whose image is
+            // offset marks a page rect shifted by exactly that offset.
             return mark(
-                aLayer, aGrid, aParams, QMatrix4x4(), aTargetSize, QVector2D(0.0f, 0.0f),
+                aLayer, aGrid, aParams, QMatrix4x4(), aTargetSize, aTexCoordOffset,
                 mQuadPositions, nullptr, 4, mQuadIndices, 6
             );
         }
@@ -699,6 +704,9 @@ enum DemandKind {
     DemandKind_Layer = 0,
     DemandKind_MaskMesh = 1,
     DemandKind_MaskScreen = 2,
+    // an IMAGE whose layer has no deformation: its uv is one affine function of the screen, so
+    // its demand is a QUAD through the demand map rather than a walk over its grid (AE_VT_AFFINE_DEMAND)
+    DemandKind_LayerScreen = 3,
 };
 
 /// AE_VT_VERIFY_PAGES' mode, read once: "table" checks the GPU page table against its CPU mirror,
@@ -1780,6 +1788,47 @@ void VirtualTexture::markScreenMaskDemand(const DemandSignature& aInputSignature
 
     const bool marked = DemandMap::instance().markFullscreen(
         mDemandLayer, QSize(mTableWidth, mTableRows), params, signature.targetSize
+    );
+    if (marked) {
+        mDemandSignature = signature;
+        mDemandSignatureValid = true;
+        ++sDemandMarks;
+    }
+}
+
+void VirtualTexture::markScreenDemand(const DemandSignature& aInputSignature) {
+    if (isMask() || mDemandLayer < 0 || !demandEnabled() || mSize.isEmpty()
+        || aInputSignature.targetSize.isEmpty())
+        return;
+
+    DemandSignature signature = aInputSignature;
+    signature.kind = DemandKind_LayerScreen;
+    signature.bias = ImageKey::layerLodBias();
+    if (demandSignatureRepeats(signature)) {
+        replayDemand();
+        return;
+    }
+
+    DemandMap::Params params;
+    params.layerSize = mSize;
+    params.coarseLevel = mCoarseLevel;
+    params.maxLevel = mMaxLevel;
+    params.bias = signature.bias;
+    for (int i = 0; i < kMaxPageLevels; ++i)
+        params.levelRow[i] = mLevelRow[i];
+    // THE SAME BRANCH THE FOLDER MATTE USES. The vertex shader derives each quad corner's texel
+    // position from the screen->content affine the fragment shader applies, so the page rect is
+    // the quad's own extent - for a plain layer that IS the union of its triangles' rects, because
+    // every triangle of a grid shares one Jacobian. The quad also clips against the screen, which
+    // a mesh walk cannot do without walking.
+    params.uvFromScreen = true;
+    params.screenToContent = signature.screenToContent;
+    params.maskRect = signature.maskRect;    // (0, 0, W, H): the content rect
+    params.maskTexelSize = QVector2D((float)mSize.width(), (float)mSize.height());
+
+    const bool marked = DemandMap::instance().markFullscreen(
+        mDemandLayer, QSize(mTableWidth, mTableRows), params, signature.targetSize,
+        signature.texCoordOffset
     );
     if (marked) {
         mDemandSignature = signature;

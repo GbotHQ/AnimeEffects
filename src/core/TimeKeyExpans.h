@@ -104,6 +104,7 @@ public:
     LayerMesh* ffdMesh() { return mFFDMesh; }
     void setFFDMeshParent(TimeKey* aKey) { mFFDMeshParent = aKey; }
     TimeKey* ffdMeshParent() { return mFFDMeshParent; }
+    const TimeKey* ffdMeshParent() const { return mFFDMeshParent; }
 
     void setAreaImageKey(ImageKey* aKey) { mAreaImageKey = aKey; }
     ImageKey* areaImageKey() { return mAreaImageKey; }

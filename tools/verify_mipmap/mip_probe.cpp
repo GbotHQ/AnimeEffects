@@ -1885,13 +1885,20 @@ void suiteVirtualTexture() {
     //   0.6 - a 1.67-texel footprint: lod = log2(minor) - 1.35 <= 0 enters the magnified branch
     //     while the unbiased footprint is still minifying, so the control's read must be level 0
     //     explicitly (an implicit texture() measured a mean of 0.149 of 255 on the old fixture).
+    //   2.0 - MAGNIFIED, where the demand's affine fast path (AE_VT_AFFINE_DEMAND, the default)
+    //     marks the quad's page extent instead of walking the grid. On nene this case is the one
+    //     that exposed the mesh walk's over-demand: at 2x the walk demanded 5,834 pages of which
+    //     the pool could land 217, so most of the view fell back to the coarse chain (92,701
+    //     samples from the control) while the quad demanded 18 and matched it within 1. The
+    //     fixture here is too small to exhaust the pool, so it pins the quad's correctness at
+    //     magnification rather than that failure.
     // A 1-unit tolerance is headroom for driver sub-texel rounding, not for a wrong read; each
     // bug class above measures far more than it on this source. 0.3 carries 2: its outermost
     // content row is a half-texel border blend, and the same rounding lands 2 units there on
     // noise.
     const Case cases[] = {
         {0.25f, 0.25f, 1, 0}, {0.0625f, 0.25f, 1, 0}, {0.5f, 0.5f, 1, 1}, {1.0f, 1.0f, 1, 1},
-        {0.3f, 0.3f, 2, 12}, {0.6f, 0.6f, 1, 1}
+        {0.3f, 0.3f, 2, 12}, {0.6f, 0.6f, 1, 1}, {2.0f, 2.0f, 1, 1}
     };
 
     for (const Case& c : cases) {
@@ -3433,10 +3440,17 @@ void suiteDemandReplay() {
         moved = fx.render(*tree, zoomed, 5, black);
     const int levelOneGrid = vt->pageGridX(1) * vt->pageGridY(1);
     const int movedWanted = vt->wantedPageCount();
+    // A RANGE, not the whole grid. Before the affine demand path (AE_VT_AFFINE_DEMAND) the walk
+    // marked every page of the layer at the level the triangles computed, whatever the camera saw,
+    // so the count was exactly level 1's grid. The quad marks the VISIBLE page extent - the same
+    // union, clipped by the screen - so a view that shows part of the layer wants part of the
+    // grid. What must still hold is the level: the whole level-0 grid is `fitGrid` pages, so a set
+    // bigger than level 1's grid means the zoom did not take, and the page equality with the
+    // oracle below is what pins the rest.
     expect(
-        movedWanted == levelOneGrid,
-        QString("DR1 the level-1 view must demand level 1's grid, not level 0's (%1 against %2; "
-                "level 0 was %3)")
+        movedWanted >= 1 && movedWanted <= levelOneGrid,
+        QString("DR1 the level-1 view must demand level 1's pages, not level 0's (%1, of at most "
+                "%2; level 0 was %3)")
             .arg(movedWanted)
             .arg(levelOneGrid)
             .arg(fitGrid)
@@ -3464,17 +3478,23 @@ void suiteDemandReplay() {
     );
     for (int i = 0; i < 4; ++i)
         pannedFrame = fx.render(*tree, panned, 5, black);
+    // THE SET MAY CHANGE WITH THE VIEW, and under the affine path it legitimately does: the quad
+    // marks what the camera sees, so a pan slides the marked extent along the layer. What must
+    // hold is that everything the panned frame samples is resident (the frame comparison below is
+    // the real check) and that the fresh tree demands exactly the same set - a replay history must
+    // not change the page set, only re-stamp it.
+    const int pannedWanted = vt->wantedPageCount();
     expect(
-        vt->wantedPageCount() == movedWanted,
-        QString("DR1 the pan must want the same pages (%1 against %2)")
-            .arg(vt->wantedPageCount())
-            .arg(movedWanted)
+        pannedWanted >= 1 && pannedWanted <= levelOneGrid,
+        QString("DR1 the panned view must demand level 1's pages (%1, of at most %2)")
+            .arg(pannedWanted)
+            .arg(levelOneGrid)
     );
     expect(
-        vt->residentWantedCount() == movedWanted,
+        vt->residentWantedCount() == pannedWanted,
         QString("DR1 the panned frame's pages must all be resident (%1 of %2)")
             .arg(vt->residentWantedCount())
-            .arg(movedWanted)
+            .arg(pannedWanted)
     );
 
     // THE ORACLE: a fresh tree that never replayed anything, at the panned camera. Its page set
@@ -3492,10 +3512,10 @@ void suiteDemandReplay() {
     if (!oracleVT)
         return;
     expect(
-        oracleVT->wantedPageCount() == movedWanted,
+        oracleVT->wantedPageCount() == pannedWanted,
         QString("DR1 a replay history must not change the page set (%1 against %2)")
             .arg(oracleVT->wantedPageCount())
-            .arg(movedWanted)
+            .arg(pannedWanted)
     );
     int maxDelta = 0;
     int differing = 0;
@@ -3540,10 +3560,12 @@ void suiteDemandReplay() {
 
     caseReport(
         "demand replay", gFails == 0,
-        QString("%1 level-0 pages wanted by the fit view, %2 level-1 after the zoom, unchanged by "
-                "a 120 px pan (which re-marks); 6 repaints marked nothing; oracle max %3")
+        QString("%1 level-0 pages wanted by the fit view, %2 level-1 after the zoom, %3 after a "
+                "120 px pan (which re-marks; the affine path lets the set follow the view); 6 "
+                "repaints marked nothing; oracle max %4")
             .arg(landed)
             .arg(movedWanted)
+            .arg(pannedWanted)
             .arg(maxDelta)
     );
 }

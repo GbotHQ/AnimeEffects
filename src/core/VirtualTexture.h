@@ -183,6 +183,13 @@ public:
     /// coord space), not the device size. Marked with the demand pass's quad, so the level is
     /// computed by the same Jacobian code the layer and layer-mask demands use.
     void markScreenMaskDemand(const DemandSignature& aSignature);
+    /// The AFFINE fast path for an IMAGE: the layer has no deformation, so its uv is one affine
+    /// function of the screen position and the pages it can sample are the quad's page extent -
+    /// the same union a mesh walk computes, at four vertices instead of the grid's triangles
+    /// (measured on nene: 100 % of the demand pass's 1.74 M triangles belong to such layers).
+    /// `aSignature.maskRect` is the content rect (0, 0, W, H) and `screenToContent` the layer's
+    /// own mapping; a degenerate one must not be passed.
+    void markScreenDemand(const DemandSignature& aSignature);
 
     /// Marks the pages this layer's triangles sample this frame. `aPositions` is the skinned
     /// position buffer the layer is drawn from; `aTexCoords` its mesh uv (content pixels).

@@ -1124,6 +1124,8 @@ filter lane's field. For a paged matte that is field + levels; for a forced-full
 | `AE_VT_MISS_MAGENTA=1` | diagnostic: the paged read's coarse fallback returns MAGENTA (no table entry) or CYAN (an entry that names nothing usable) instead of the coarse chain - "which pixels did not find their page" as a picture, with no readback and no stall |
 | `AE_VT_ATLAS_SENTINEL=1` | diagnostic: every new atlas is filled with MAGENTA, so a read of a texel no page upload wrote is unmistakable (`glTexImage2D` from a sentinel buffer, one upload per atlas) |
 | `AE_VT_PAGE_HASH=1` | diagnostic: hashes each level-0+ page's fill against the pyramid's own bytes (the source side of the upload) |
+| `AE_VT_AFFINE_DEMAND=0` | control: walk the mesh for a layer with no deformation instead of marking its quad (measured: 99.5-114.7 ms a playback frame against 90.3-97.5, and 5,834 pages demanded at 2x against 18) |
+| `AE_VT_DEMAND_SPLIT=1` | diagnostic: per paged layer, its demand triangles and whether the affine predicate accepted it (`VTDSPLIT layer= tris= affine= fast=`) |
 | `AE_NO_MIP_TAIL=1` | diagnostic: skip the GPU area-weighted mip tail and keep `glGenerateMipmap`'s levels (the chain becomes reproducible and visibly coarser: 20,036 samples / max 52 from the control on nene) - the switch that confirmed the tail build as the nondeterminism's source |
 | `AE_MIP_TAIL_OLD_PATH=1` | diagnostic: the MUTATION CONTROL for the fix - build the tail by rendering into the chain, the read-while-write the fix removes. Two runs of one command then differ (325/305 samples from the control, 109 apart, max 223 in the strip) |
 | `AE_VT_HASH=<level>\|all` | diagnostic, at load: hashes one level (or every level) of EVERY GPU chain just after it is built (`VTHASH <W>x<H> level= chain=`). Two runs of one command are supposed to print the same lines - and did for 240 of 241 chains (see Measured) |
@@ -1285,6 +1287,35 @@ filter lane's field. For a paged matte that is field + levels; for a forced-full
   level-1 view wants **20 pages instead of 6** and the frame differs by **max 28 over 75,904 of
   409,600 samples**.
 
+- **The affine demand path: a quad instead of 1.74 M triangles** (2026-11-07). A layer with no
+  deformation has ONE Jacobian over its whole surface, so the layer shader's uv is an affine
+  function of the screen position and the pages its fragments can sample are the **quad's page
+  extent** - the same union the mesh walk computes, because every triangle of a grid shares that
+  Jacobian - at four vertices instead of the grid's triangles. `AE_VT_DEMAND_SPLIT=1` measures the
+  split on nene at frame 6: **all 107 paged layers qualify, and they own all 1,746,491 triangles**
+  the pass walked every frame (the predicate is deliberately conservative - a mesh key, an FFD
+  *key* (not `ffd()`'s position storage, which the blender always fills), a bone binding or a
+  non-identity wave each count as deformation - and a degenerate screen->content mapping falls back
+  to the walk). `markScreenDemand` reuses the folder matte's fullscreen quad path, so the demand
+  takes the SAME screen->content affine the fragment shader applies (plus the draw's own texel
+  offset, without which an offset image marks a shifted rect - measured at 2x, where it cost
+  92,701 samples).
+  - **Cost**: a playback frame (nene, `--frames 5..12`, `AE_FRAME_STATS`) went from
+    **99.5-114.7 ms** with the walk to **90.3-97.5 ms** with the quad - the pass's 5.7-11.1 ms is
+    gone, and it is the demand's whole geometry, not a fraction of it;
+  - **it also fixes paging at magnified cameras**: at `--zoom 2` the walk demanded **5,834 pages**
+    of which the pool could ever land **217**, so most of the view fell back to the coarse chain -
+    **92,701 samples, max 90** from the full-resolution control - while the quad demanded **18**
+    (all resident) and matched the control within **max 1**. The walk marked every page of a layer
+    at the level its triangles computed whatever the camera saw; the quad marks what the camera
+    sees;
+  - at the fit view the quad still matches the control (**max 1**, 153 samples of 1) and wants
+    **123** pages against the walk's 114 - the difference is the per-layer bbox being a superset of
+    the triangles' union at the edges, which is safe by construction.
+  `AE_VT_AFFINE_DEMAND=0` walks the mesh instead and is the control. `DR1` was updated with it: a
+  pan still re-marks, but the page SET may follow the view, and the gate now pins the level
+  (never level 0's grid), residency, and the oracle's set equality instead of the old
+  whole-grid count, which was an artefact of the walk. `V1` gained a **2.0 (magnified)** case.
 - **The mip tail's read-while-write is what the panned camera exposed** (found while testing
   whether a pan could replay; **fixed**). `buildMipTailOnGpu` built each level of a chain with the
   chain attached as its own render target and the source level fetched from the same texture. The
@@ -1551,17 +1582,13 @@ filter lane's field. For a paged matte that is field + levels; for a forced-full
    two-run comparison on nene went from **max 223 in an 18x69 strip with the two runs 109 samples
    apart** to **bit-identical runs, max 1 from the control, 0 samples in the strip**, and the
    mutation control (`AE_MIP_TAIL_OLD_PATH=1`) brings the defect back on demand.
-2. The demand pass on the frames that still re-mark: after the replay, any **camera move** and
-   **playback** (a new time frame re-skins, so the revision moves) walk all 107 resources on nene.
-   That is **5.7-11.1 ms** a frame across the steady frames of two runs - 6-11 % of the 97-102 ms
-   playback frame and 36-41 % of a still one - and it is the geometry, not its setup (`nodraw`
-   measured the same as off), so sharing the density meter's vertex work would only help a
-   `AE_FRAME_STATS` run, which is a diagnostic. Two candidate reductions, neither built: an
-   **affine fast path** (a layer with no deformation has one footprint for its whole surface, so
-   its demand is the quad's page box and not the grid's - inference: the per-triangle boxes' union
-   is what the quad's box covers, but the tap reach is per triangle and would need a gate), and
-   **culling** (the pass walks triangles the camera cannot see at all; the engine has no bounds
-   test yet).
+2. ~~**The demand pass on the frames that still re-mark**~~ - **DONE for the geometry**: the affine
+   fast path above turns the whole pass into one quad per layer (100 % of nene's 1,746,491 demand
+   triangles), ~9 ms a playback frame, and it also fixes the over-demand that made 2x views fall
+   back to the coarse chain. What remains of the item is the *residual*: a DEFORMED layer (a mesh
+   key, an FFD key, a bone binding or a wave) still walks its grid, and none of nene's frame-6
+   layers were deformed - so the fallback path is now the unmeasured one. Measuring it needs a
+   project (or a fixture) whose layers carry bone/FFD motion.
 3. The pool's landing rate: 8 MB/frame still costs 10-20 ms while it fills, and a large import's
    synchronous capture is a visible pause (1.47 s across 136 keys on nene, worst 130 ms). An
    asynchronous/deferred capture and a page upload batched per atlas row are the two obvious next

@@ -283,6 +283,18 @@ hand it over. Its one question is `Sampling`:
   camera-navigation instrument (each repaint's PNG is written as `frame-<f>-r<i>.png`), and it is
   how the **timing-sensitive wrong read** at a panned camera was found - see the doc's first open
   item, and note what that item now measures: the defect is a **composite** one, not a page one.
+  **THE DEMAND PASS'S GEOMETRY IS GONE: the affine fast path.** A layer with no deformation has one
+  Jacobian over its whole surface, so its uv is an affine function of the screen and the pages it
+  can sample are the QUAD's page extent - the same union a mesh walk computes, at four vertices.
+  `AE_VT_DEMAND_SPLIT=1` measured it on nene at frame 6: all 107 paged layers qualify and they own
+  all 1,746,491 triangles the pass walked. A playback frame went from 99.5-114.7 ms to
+  90.3-97.5 ms, and at `--zoom 2` the walk's over-demand (5,834 pages wanted, 217 ever resident)
+  was making most of the view fall back to the coarse chain - 92,701 samples from the control -
+  while the quad demands 18, all resident, and matches within 1. The predicate is conservative
+  (mesh key, FFD KEY - not `ffd()`, which is the position storage the blender always fills - bone
+  binding, non-identity wave) and a degenerate screen->content mapping falls back to the walk;
+  `AE_VT_AFFINE_DEMAND=0` is the control. DR1 now pins the level, residency and the oracle's set
+  equality rather than the whole-grid count the walk used to produce, and V1 has a 2.0 case.
   **THE PAN-CAMERA DEFECT WAS THE MIP TAIL'S READ-WHILE-WRITE, AND IS FIXED.**
   `buildMipTailOnGpu` rendered each level of a chain into that chain while fetching a level of the
   same texture. Legal per IMAGE by the spec, but this driver resolves a whole-texture
