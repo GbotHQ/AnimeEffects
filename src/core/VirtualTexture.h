@@ -41,7 +41,8 @@ class MaskPyramid;
 ///     resident set whenever that set changes, in one upload - the set is a few KB, and an
 ///     incremental table is a second source of truth that can disagree with the pool.
 ///   - the DEMAND MAP is one R8 texel per page of the same grid, marked by a geometry pass that
-///     walks the layer's own triangles with their deformed positions (see markDemand). It is one
+///     walks the layer's own triangles with their deformed positions (see markDemand), or by one
+///     quad when the mapping is affine (markScreenDemand, markScreenMaskDemand). It is one
 ///     LAYER of a shared GL_TEXTURE_2D_ARRAY owned by the demand map (DemandMap in the .cpp), so
 ///     the whole scene is read back with one copy and one fence however many resources there are;
 ///     the pages stay wanted for kKeepFrames so a one-frame occlusion or a boundary jitter cannot
@@ -58,9 +59,11 @@ class MaskPyramid;
 ///
 /// A MASK (buildMask) is the same three tiers over an R8 field: its pages are filled from
 /// core::MaskPyramid (the CPU authority an edit patches), they live in the pool's R8 stack, and
-/// its demand pass computes the uv from the screen->content affine rather than the mesh's own
-/// texture coordinates (markMaskDemand). Its coarse chain samples GL_CLAMP_TO_EDGE, the mask
-/// chain's policy, and the page gutter repeats the level's edge texel to match.
+/// its demand is a QUAD over the screen rather than a mesh walk - a matte's uv is the
+/// screen->content affine at every fragment, so it has one Jacobian and one level
+/// (markScreenMaskDemand, shared with a folder's composite matte). Its coarse chain samples
+/// GL_CLAMP_TO_EDGE, the mask chain's policy, and the page gutter repeats the level's edge texel to
+/// match.
 class VirtualTexture: public gl::PagePool::Listener, private util::NonCopyable {
 public:
     enum {
@@ -166,22 +169,14 @@ public:
         bool operator==(const DemandSignature& aRhs) const;
     };
 
-    /// The mask's demand: the same triangles, but the uv is the mask's own mapping - the
-    /// screen->content affine the fragment shader uses, then the mask rect and texel grid. It is
-    /// affine, so the per-vertex values are exact for the demand pass's Jacobian.
-    void markMaskDemand(
-        const DemandSignature& aSignature,
-        const gl::BufferObject& aPositions,
-        int aVtxCount,
-        const gl::BufferObject& aIndexBuffer,
-        int aIndexCount
-    );
-
-    /// THE FULLSCREEN PASS'S DEMAND: a folder's matte is applied over its whole isolated
-    /// composite, so its uv is the screen->content affine at every pixel of the target - there
-    /// is no mesh to walk. `aSignature.targetSize` is the FilterFrame's size (the pass's own
-    /// coord space), not the device size. Marked with the demand pass's quad, so the level is
-    /// computed by the same Jacobian code the layer and layer-mask demands use.
+    /// A MATTE'S DEMAND, when its uv is the screen->content affine at every fragment: a layer
+    /// mask and a folder's composite matte both read `(uScreenToLayer * vDestCoord - rect) / rect`,
+    /// so there is no mesh to walk and no per-vertex uv - one Jacobian and one level over the whole
+    /// target. `aSignature.targetSize` is the pass's own coord space (the device screen for a layer,
+    /// the FilterFrame's size for a folder), and `maskRect` the field's content rect. The page
+    /// extent is the affine image of the target rect, which CONTAINS every fragment the draw can
+    /// produce - so the quad is conservative over the geometry, and the signature carries no mesh
+    /// revision: a deformation moves the fragments, never the matte's pages.
     void markScreenMaskDemand(const DemandSignature& aSignature);
     /// The AFFINE fast path for an IMAGE: the layer has no deformation, so its uv is one affine
     /// function of the screen position and the pages it can sample are the quad's page extent -

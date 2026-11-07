@@ -382,10 +382,18 @@ void LayerNode::render(const RenderInfo& aInfo, const TimeCacheAccessor& aAccess
         // control, which forces the image full, is a control for the mask too).
         if (expans.areaVirtualTexture() && mask.isValid() && mask.isPainted()) {
             if (VirtualTexture* pagedMask = mask.virtualTexture()) {
-                // the matte walks the SAME vertices: same revision, and its uv mapping is the
-                // screen->content matrix the fragment shader applies (not the mesh's texcoords)
+                // THE MATTE'S UV IS ONE AFFINE OVER THE WHOLE SCREEN, so its demand is a QUAD, not
+                // a walk of the layer's triangles. The fragment shader reads
+                // `(uScreenToLayer * vDestCoord - rect.xy) / rect.zw` (LayerDrawingFrag.glsl) - the
+                // node's SRT, not the mesh's texcoords and not the deformation - so every fragment
+                // has the SAME Jacobian and the same level, and the pages a fragment can sample
+                // are the affine image of the target rect. That image contains every fragment the
+                // layer can draw wherever the deformation puts it, which is why the signature
+                // carries no mesh revision: a moving FFD or pose cannot change the matte's pages,
+                // only which of them are sampled, and the quad's set is a superset. This is the
+                // same entry point a folder's matte uses (markScreenMaskDemand) - one demand
+                // implementation for both mattes, and no triangle walk anywhere for a mask.
                 VirtualTexture::DemandSignature signature;
-                signature.positions = mMeshRevision;
                 signature.targetSize = aInfo.camera.deviceScreenSize();
                 signature.viewMatrix = aInfo.camera.viewMatrix();
                 signature.screenToContent =
@@ -394,10 +402,7 @@ void LayerNode::render(const RenderInfo& aInfo, const TimeCacheAccessor& aAccess
                 signature.maskRect = QVector4D(
                     float(rect.x()), float(rect.y()), float(rect.width()), float(rect.height())
                 );
-                pagedMask->markMaskDemand(
-                    signature, mMeshTransformer.positions(), mCurrentMesh->vertexCount(),
-                    mCurrentMesh->getIndexBuffer(), mCurrentMesh->indexCount()
-                );
+                pagedMask->markScreenMaskDemand(signature);
             }
         }
     };

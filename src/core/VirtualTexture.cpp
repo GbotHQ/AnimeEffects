@@ -418,8 +418,8 @@ void main() { oDemand = 1.0; }
             return true;
         }
 
-        /// THE FULLSCREEN PASS'S DEMAND (a folder's matte). There is no mesh to walk and no
-        /// per-vertex uv: the pass covers its whole target, and its uv is the screen->content
+        /// THE AFFINE DEMAND (a layer's mask and a folder's matte). There is no mesh to walk and
+        /// no per-vertex uv: the pass covers its whole target, and its uv is the screen->content
         /// affine the fragment shader applies to the same coord. So the quad is the target rect
         /// in NDC and the vertex shader's uUvFromScreen branch derives every vertex's texel
         /// position from it - the SAME formula (and the same Jacobian) a layer's demand uses,
@@ -729,13 +729,12 @@ float demandCullMargin() {
     return noCull ? 1.0e9f : 1.0f;
 }
 
-/// WHICH ENTRY POINT A SIGNATURE CAME FROM (see DemandSignature::kind). A resource is normally
-/// marked by one of them - an image by the layer walk, a layer's matte by the mask walk, a
-/// folder's matte by the fullscreen quad - and the kind is compared so one form can never replay
-/// another's page set.
+/// WHICH ENTRY POINT A SIGNATURE CAME FROM (see DemandSignature::kind). A resource is marked by
+/// one of them - an image by the layer walk or by its affine quad, a matte (layer mask or folder)
+/// by the fullscreen quad - and the kind is compared so one form can never replay another's page
+/// set.
 enum DemandKind {
     DemandKind_Layer = 0,
-    DemandKind_MaskMesh = 1,
     DemandKind_MaskScreen = 2,
     // an IMAGE whose layer has no deformation: its uv is one affine function of the screen, so
     // its demand is a QUAD through the demand map rather than a walk over its grid (AE_VT_AFFINE_DEMAND)
@@ -1740,50 +1739,6 @@ void VirtualTexture::markDemand(
     const bool marked = DemandMap::instance().mark(
         mDemandLayer, QSize(mTableWidth, mTableRows), params, signature.viewMatrix,
         signature.targetSize, signature.texCoordOffset, aPositions.id(), aTexCoords, aVtxCount,
-        aIndexBuffer.id(), aIndexCount
-    );
-    if (marked) {
-        mDemandSignature = signature;
-        mDemandSignatureValid = true;
-        ++sDemandMarks;
-    }
-}
-
-void VirtualTexture::markMaskDemand(
-    const DemandSignature& aInputSignature,
-    const gl::BufferObject& aPositions,
-    int aVtxCount,
-    const gl::BufferObject& aIndexBuffer,
-    int aIndexCount
-) {
-    if (!isMask() || mDemandLayer < 0 || aIndexCount < 3 || aVtxCount <= 0
-        || !demandEnabled() || aInputSignature.maskRect.z() <= 0.0f
-        || aInputSignature.maskRect.w() <= 0.0f)
-        return;
-
-    DemandSignature signature = aInputSignature;
-    signature.kind = DemandKind_MaskMesh;
-    signature.bias = ImageKey::layerLodBias();
-    if (demandSignatureRepeats(signature)) {
-        replayDemand();
-        return;
-    }
-
-    DemandMap::Params params;
-    params.layerSize = mSize;
-    params.coarseLevel = mCoarseLevel;
-    params.maxLevel = mMaxLevel;
-    params.bias = signature.bias;
-    for (int i = 0; i < kMaxPageLevels; ++i)
-        params.levelRow[i] = mLevelRow[i];
-    params.uvFromScreen = true;
-    params.screenToContent = signature.screenToContent;
-    params.maskRect = signature.maskRect;
-    params.maskTexelSize = QVector2D((float)mSize.width(), (float)mSize.height());
-
-    const bool marked = DemandMap::instance().mark(
-        mDemandLayer, QSize(mTableWidth, mTableRows), params, signature.viewMatrix,
-        signature.targetSize, QVector2D(0.0f, 0.0f), aPositions.id(), nullptr, aVtxCount,
         aIndexBuffer.id(), aIndexCount
     );
     if (marked) {

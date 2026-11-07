@@ -1085,9 +1085,17 @@ screen->content affine, not the mesh's) and the mask's own size. Two consequence
 
 The paged mask has its own R8 coarse chain, `R16UI` table and R8 atlases (units 10..15; the pool's
 R8 stack is atlases 4..7, and the table stores the FORMAT-RELATIVE atlas index so one shader
-branch serves both stacks), and its own demand pass: the same skinned triangles, with the uv
-computed per vertex from the fragment shader's screen->content matrix (`uUvFromScreen` in the
-demand program). The `MASK_VIRTUAL_TEXTURE` variation is only ever set together with
+branch serves both stacks), and its own demand: a **quad over the screen**, not a walk of the
+layer's triangles (2026-11-07). A matte's uv is `(uScreenToLayer * vDestCoord - rect) / rect` at
+every fragment - the node's SRT, never the mesh's texcoords and never the deformation - so every
+fragment has the SAME Jacobian and the same level, and the pages one can sample are the affine
+image of the target rect. That image contains every fragment the draw can produce wherever a
+deformation puts it, and `DF1` pins both halves: the masked frame of a warped layer matches its
+full-resolution control (max 0), and a deformation-only change re-marks the image while the matte
+**replays** (its signature carries no mesh revision), which a triangle walk keyed on the revision
+would not. A layer mask therefore uses the same entry point as a folder's matte
+(`markScreenMaskDemand`); the mesh form (`markMaskDemand`) is gone.
+The `MASK_VIRTUAL_TEXTURE` variation is only ever set together with
 `VIRTUAL_TEXTURE`: a pageable mask on an unpaged image stays a full chain, which keeps the A/B
 control a control for the mask as well (and a layer's two textures are always paged together).
 The rubylith overlay is compiled from `MaskOverlayFrag.glsl` with the same variation, so the mask
@@ -1282,15 +1290,23 @@ filter lane's field. For a paged matte that is field + levels; for a forced-full
   samples too). Mutating the signature to compare only the vertex stamp fails five checks, the
   pixel one at **max 28 over 75,904 samples**.
 - **DF1 a deformed layer's demand** (the case the affine path cannot answer, and the one no project
-  in the dataset provides): a 2048x2048 noise source on a 320 canvas at **zoom 4**, with an FFD key
-  that translates every grid vertex by **768 content px**. It asserts, in this order: the FFD key
-  moved what is drawn (the frame differs from an identical tree with no FFD key by **> 64** at the
-  centre - without it the parity check would compare two rest-grid frames and pass whatever the
-  demand did); the paged frame matches the full-resolution control (**max 0, mean 0.000**); the
-  demand is the visible **2x2** page set and not the layer (**4 wanted of the 64-page level-0
-  grid**, all resident), which is the cull; and the tree stayed paged (no full texture). Both
-  mutations fail it: the affine path forced measures **max 138, mean 28.4**, and the cull off wants
-  **all 64 pages**.
+  in the dataset provides): a 2048x2048 noise source on a 320 canvas at **zoom 4**, a paged matte on
+  its left half, and **two** FFD keys - frame 0 translates every grid vertex by **768 content px**,
+  frame 10 by **+640**, so the second phase is a deformation change with nothing else moving. It
+  asserts, in this order: the FFD key moved what is drawn (the frame differs from an identical tree
+  with no FFD key by **> 64** in a band the matte leaves visible - without it the parity check would
+  compare two rest-grid frames and pass whatever the demand did); the paged frame matches the
+  full-resolution control (**max 0, mean 0.000**), which covers the matte too because forcing the
+  image full also drops the draw's mask variation to its full chain; the image's demand is the
+  visible **2x2** page set and not the layer (**4 wanted of the 64-page level-0 grid**, all
+  resident), which is the cull; the matte's demand is the screen's affine extent (**4 pages**, all
+  resident); and the tree stayed paged (no full texture). Then the **frame-10 phase**, the property
+  no pixel test can see: a deformation-only change must **mark the image and replay the matte**
+  (`marks=1, replays=1`) - a matte's pages are a function of the screen->content affine, which a
+  deformation cannot change - and the second warp's image + matte must match its full control
+  (**max 0, mean 0.000**). The mutations fail it: the affine path forced measures **max 138, mean
+  28.4**; the cull off wants **all 64 pages**; and keying the matte's signature on the skinning
+  revision (a stand-in for the mesh walk it replaced) measures **marks 2, replays 0**.
 - `media_exporter_e2e` runs the export path with the demand preparse.
 
 ### Measured
@@ -1415,6 +1431,20 @@ filter lane's field. For a paged matte that is field + levels; for a forced-full
   rounding, frames 1-8) - so no project in the dataset makes that half visible in pixels at these
   cameras, and it rests on the draw path plus the population count, not on a failing pixel gate
   (a bone fixture is the open work).
+- **A matte's demand is a quad, not a mesh walk** (2026-11-07). The mask's uv is
+  `(uScreenToLayer * vDestCoord - rect) / rect` at every fragment - the node's SRT, not the mesh's
+  texcoords and not the deformation - so it has ONE Jacobian and ONE level, and the pages a
+  fragment can sample are the affine image of the target rect. `markMaskDemand` (the per-triangle
+  walk) is deleted; a layer mask and a folder matte now share `markScreenMaskDemand`, which is also
+  why the matte's signature carries no mesh revision: a deformation-only change re-marks the image
+  and **replays** the matte (`DF1` asserts `marks=1, replays=1`; keying the matte's signature on
+  the revision measures `marks 2, replays 0`). The quad marks a superset of the walk's set - the
+  whole target's affine extent - which is bounded by the screen's own page footprint (a 640px
+  view is 2-3 level-0 pages per axis whatever the mask's size), so the over-demand is a handful of
+  pages, and `MA1`/`MX3`/`FM1` keep their measured parity (MX3's 900x700 matte still wants the
+  same **9 pages**). The real masked PSD (`000145.psd`, 24 masks, 6 pageable) re-measures
+  **max 1/255, 0 px over 8, 75 samples of 1** once the pages land (frame 4 on; frames 0-3 are the
+  landing transient), the same slot-rounding class as before the change.
 - **The mip tail's read-while-write is what the panned camera exposed** (found while testing
   whether a pan could replay; **fixed**). `buildMipTailOnGpu` built each level of a chain with the
   chain attached as its own render target and the source level fetched from the same texture. The
@@ -1693,10 +1723,14 @@ filter lane's field. For a paged matte that is field + levels; for a forced-full
    took the quad) and that the walk demanded the whole layer whatever the camera saw. Both are
    fixed - the timeline-key predicate and the screen-bounds cull - with DF1 as the gate and
    `AE_VT_DEMAND_NOCULL` as the cull's control (see Demand and Measured). What remains of the
-   item: (a) a layer MASK's demand still walks on a deformed layer even though the mask's uv is
+   item: (a) ~~a layer MASK's demand still walks on a deformed layer even though the mask's uv is
    the screen->content affine, so a quad over the deformed mesh's SCREEN coverage would replace
-   its triangle walk exactly - the same shape of reduction, and it would also cut the mask walk's
-   cost on every undeformed layer; (b) the walk's geometry cost on a 15000^2 bone-animated layer
+   its triangle walk exactly.~~ **DONE 2026-11-07**: the matte's demand is now a quad over the
+   TARGET (`markScreenMaskDemand`, the folder matte's entry point) - the affine image of the target
+   rect contains every fragment the draw can produce, so it is conservative over the geometry, and
+   `DF1` pins both the masked parity under a warp and the replay across a deformation-only change.
+   The mesh form (`markMaskDemand`) is deleted: no path walks triangles for a mask any more;
+   (b) the walk's geometry cost on a 15000^2 bone-animated layer
    is still unmeasured (ballerina's FFD layers are small enough to hide in the frame variance);
    (c) **a bone-influence fixture.** The predicate now excludes the influence targets
    (`bone().targetMesh() != nullptr`) and the population is measured - `dinner lab` frame 0 has

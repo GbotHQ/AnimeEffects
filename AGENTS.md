@@ -253,21 +253,24 @@ hand it over. Its one question is `Sampling`:
   the `VIRTUAL_TEXTURE` shader variation): `AE_VIRTUAL_TEXTURE=0` is the full-resolution control,
   `AE_VT_STATS=1` prints the pool each frame, and the V1/P1/P2 suites in `verify_mipmap` are the
   gates. Clipper layers and **masks are paged too** (Stage 4): a mask has its own R8
-  coarse chain, table and atlases (units 10..15), its own demand pass (`uUvFromScreen` computes the
-  uv from the screen->content matrix), and its own `MASK_VIRTUAL_TEXTURE` shader variation, only
+  coarse chain, table and atlases (units 10..15), its own demand (a QUAD over the target - a matte's
+  uv is the screen->content affine at every fragment, so it has one Jacobian and one level, and the
+  per-triangle walk `markMaskDemand` was deleted 2026-11-07), and its own `MASK_VIRTUAL_TEXTURE`
+  shader variation, only
   ever set with `VIRTUAL_TEXTURE`. A pageable mask's levels live in `core::MaskPyramid` (captured
   once from the GPU chain, then patched by a stroke's box); `MaskKey::Data::virtualTexture()` is
   the pool resource, and the rubylith overlay pages with it (`MaskOverlayFrag.glsl`). The pyramid
-  stores only levels 1 and deeper; level 0 IS the field (MX4). **A folder's matte pages too**: its
-  pass is fullscreen, so its demand is a quad through the demand map rather than a mesh walk
+  stores only levels 1 and deeper; level 0 IS the field (MX4). **A folder's matte is the same
+  quad**: its pass is fullscreen, so it uses the same entry point
   (`VirtualTexture::markScreenMaskDemand`), and it runs in the exporter's demand-only pass as
   well. Filter-lane masks (`core::FilterMask`) are the known residual. All of these share the
   sampler in `assets/shaders/LayerSampling.glsl` (`#include`d by the layer, clipper, overlay and
   folder-matte shaders; `gl::ExtendShader` expands includes before the variation pass);
   CL1/MA1/MX3/FM1/DR1 in `verify_mipmap` are the clipper, mask and demand-replay gates. See the
   doc's open list.
-  **A repeated demand signature replays instead of drawing**: `markDemand` (and both matte forms)
-  take a `DemandSignature` whose `positions` field is `LayerNode::mMeshRevision` - the skinning
+  **A repeated demand signature replays instead of drawing**: `markDemand` (the image walk - the
+  matte quads carry NO mesh revision, so a deformation-only change replays them) takes a
+  `DemandSignature` whose `positions` field is `LayerNode::mMeshRevision` - the skinning
   pass's own stamp, because the position buffer's id is stable while its values change. A still
   view's repaint (a pointer move, a matte stroke, a panel redraw) therefore walks no triangles and
   re-stamps the pages it last marked, which is what keeps them inside `kKeepFrames`. **A camera

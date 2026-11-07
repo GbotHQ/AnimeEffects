@@ -3674,6 +3674,40 @@ void suiteDeformedDemand() {
         "DF1 the FFD key must install into the timeline's FFD map"
     );
 
+    // A SECOND WARP AT FRAME 10, in the opposite direction. The frame-10 phase needs a
+    // deformation change with NOTHING else moving - same camera, same SRT - which is what tells a
+    // demand that follows the GEOMETRY (the image's walk, keyed on the skinning revision) from one
+    // that follows the MAPPING (the matte's quad).
+    {
+        std::vector<gl::Vector3> back(grid.positions(), grid.positions() + vtxCount);
+        for (gl::Vector3& p : back)
+            p.x += 640.0f;
+        core::FFDKey* ffd10 = new core::FFDKey();
+        ffd10->data().allocAndWrite(back.data(), vtxCount);
+        ffd10->data().easing(0) = util::Easing::defaultParam();
+        warped.imageKey->children().pushBack(ffd10);
+        expect(
+            warped.layer->timeLine()->adoptKey(core::TimeKeyType_FFD, 10, ffd10),
+            "DF1 the frame-10 FFD key must install"
+        );
+    }
+
+    // THE MATTE, painted on its left half: the mask's uv is the node's SRT, so the canvas's left
+    // half is hidden (content x < 1024) whatever the warp does. It is paged (2048^2 is pageable)
+    // and its demand must be the screen's affine extent, not a walk of the warped triangles.
+    auto* maskKey = new core::MaskKey();
+    warped.layer->timeLine()->grabDefaultKey(core::TimeKeyType_Mask, maskKey);
+    maskKey->data().alloc(
+        source, QRectF(0, 0, source.width(), source.height()), core::MaskKey::kNeutral
+    );
+    {
+        QImage& field = maskKey->data().field();
+        for (int y = 0; y < field.height(); ++y)
+            std::memset(field.scanLine(y), 0, field.width() / 2);
+        maskKey->data().markDirty(QRect(0, 0, field.width() / 2, field.height()));
+    }
+    expect(maskKey->data().isPainted(), "DF1 the matte must be painted");
+
     // the rest tree first: it fills its own pages, and its frame is the warp's proof
     std::vector<uint8_t> restFrame;
     for (int i = 0; i < 4; ++i)
@@ -3683,11 +3717,11 @@ void suiteDeformedDemand() {
     for (int i = 0; i < 8; ++i)
         paged = fx.render(*warped.tree, camera, 0, black);
 
-    // THE WARP IS REAL: the centre of the frame is 64x64 of layer content, and the rest tree's
-    // centre is three pages of noise away from the warped tree's.
+    // THE WARP IS REAL: compare a centre band the matte leaves VISIBLE (content x >= 1024, i.e.
+    // device x >= 160) - the matte's own edge must not stand in for the warp's proof.
     int centreDelta = 0;
     for (int y = canvas.height() / 2 - 32; y < canvas.height() / 2 + 32; ++y) {
-        for (int x = canvas.width() / 2 - 32; x < canvas.width() / 2 + 32; ++x) {
+        for (int x = canvas.width() / 2 + 8; x < canvas.width() / 2 + 72; ++x) {
             const size_t i = ((size_t)y * canvas.width() + x) * 4;
             for (int ch = 0; ch < 4; ++ch)
                 centreDelta = std::max(centreDelta, std::abs((int)paged[i + ch] - (int)restFrame[i + ch]));
@@ -3732,33 +3766,65 @@ void suiteDeformedDemand() {
         QString("DF1 the demand must not be the whole layer (%1 of 64)").arg(wanted)
     );
 
-    // THE CONTROL: the same warped tree from a full texture. The pages the warp pulls in are
-    // level 0, three pages away from where the SRT says the view is.
+    // THE MATTE'S DEMAND IS THE SCREEN'S AFFINE EXTENT: at this camera the screen maps to 80x80
+    // content px around (1024, 1024), so its level-0 pages are a 2x2 set that crosses the 1024
+    // boundary - the whole 8x8 grid is 64, and a walk of the warped mesh would mark the warped
+    // triangle boxes instead (the same 8x8 in the worst case, but changing with the warp).
+    core::VirtualTexture* maskVT = maskKey->data().virtualTexture();
+    expect(maskVT != nullptr, "DF1 the matte must take the paged path");
+    int maskWanted = 0;
+    if (maskVT) {
+        expect(maskVT->isMask(), "DF1 the matte's resource must be an R8 mask");
+        maskWanted = maskVT->wantedPageCount();
+        expect(
+            maskWanted >= 1 && maskWanted <= 8,
+            QString("DF1 the matte's demand is the screen's affine extent (%1 pages, at most 8)")
+                .arg(maskWanted)
+        );
+        expect(
+            maskVT->residentWantedCount() == maskWanted,
+            QString("DF1 every wanted matte page must be resident (%1 of %2)")
+                .arg(maskVT->residentWantedCount())
+                .arg(maskWanted)
+        );
+    }
+
+    const auto frameDelta = [&](const std::vector<uint8_t>& aPaged,
+                                const std::vector<uint8_t>& aControl, int* aMaxX, int* aMaxY,
+                                int* aMaxC, double* aMean) {
+        int maxDelta = 0;
+        double sum = 0.0;
+        int count = 0;
+        for (int y = 0; y < canvas.height(); ++y) {
+            for (int x = 0; x < canvas.width(); ++x) {
+                const size_t i = ((size_t)y * canvas.width() + x) * 4;
+                for (int ch = 0; ch < 4; ++ch) {
+                    const int d = std::abs((int)aPaged[i + ch] - (int)aControl[i + ch]);
+                    if (d > maxDelta) {
+                        maxDelta = d;
+                        *aMaxX = x;
+                        *aMaxY = y;
+                        *aMaxC = ch;
+                    }
+                    sum += d;
+                    ++count;
+                }
+            }
+        }
+        *aMean = count ? sum / count : 0.0;
+        return maxDelta;
+    };
+
+    // THE CONTROL AT FRAME 0: the same warped tree from full textures. Forcing the IMAGE full also
+    // drops the draw's MASK_VIRTUAL_TEXTURE variation (it is only ever set WITH VIRTUAL_TEXTURE), so
+    // the control's matte is its full chain too: this comparison covers BOTH resources.
     warped.imageKey->setForceFullTexture(true);
     const std::vector<uint8_t> control = fx.render(*warped.tree, camera, 0, black);
     warped.imageKey->setForceFullTexture(false);
 
-    int maxDelta = 0;
-    int maxX = 0, maxY = 0, maxC = 0;
-    double meanDelta = 0.0;
-    int n = 0;
-    for (int y = 0; y < canvas.height(); ++y) {
-        for (int x = 0; x < canvas.width(); ++x) {
-            const size_t i = ((size_t)y * canvas.width() + x) * 4;
-            for (int ch = 0; ch < 4; ++ch) {
-                const int d = std::abs((int)paged[i + ch] - (int)control[i + ch]);
-                if (d > maxDelta) {
-                    maxDelta = d;
-                    maxX = x;
-                    maxY = y;
-                    maxC = ch;
-                }
-                meanDelta += d;
-                ++n;
-            }
-        }
-    }
-    meanDelta = n ? meanDelta / n : 0.0;
+    int maxX = 0, maxY = 0, maxC = 0, max10X = 0, max10Y = 0, max10C = 0;
+    double meanDelta = 0.0, mean10 = 0.0;
+    int maxDelta = frameDelta(paged, control, &maxX, &maxY, &maxC, &meanDelta);
     expect(
         maxDelta <= 1,
         QString("DF1 paged warped layer vs the full-resolution control: max %1 at (%2,%3) ch %4")
@@ -3776,15 +3842,71 @@ void suiteDeformedDemand() {
         "DF1 the warped tree must have no full texture (it stayed paged)"
     );
 
+    // THE SECOND WARP, SAME CAMERA. Only the geometry moves: the image's walk must re-mark (its
+    // signature carries the skinning revision) and the matte's quad must REPLAY - a matte's pages
+    // are a function of the screen->content affine, which a deformation cannot change. This is the
+    // assertion that tells the quad from a mesh walk: a walk keyed on the revision would mark both.
+    for (int i = 0; i < 8; ++i)
+        fx.render(*warped.tree, camera, 0, black);   // rebuild the paged image after the control
+    std::vector<uint8_t> frame10 = fx.render(*warped.tree, camera, 10, black);
+    expect(
+        core::VirtualTexture::demandMarks() == 1 && core::VirtualTexture::demandReplays() == 1,
+        QString("DF1 a deformation-only change must re-mark the image and replay the matte "
+                "(marks %1, replays %2)")
+            .arg(core::VirtualTexture::demandMarks())
+            .arg(core::VirtualTexture::demandReplays())
+    );
+    for (int i = 0; i < 8; ++i)
+        frame10 = fx.render(*warped.tree, camera, 10, black);   // land the second warp's pages
+
+    const int maskWanted10 = maskVT ? maskVT->wantedPageCount() : 0;
+    if (maskVT) {
+        expect(
+            maskWanted10 == maskWanted,
+            QString("DF1 the matte's page set must not move with the warp (%1 against %2)")
+                .arg(maskWanted10)
+                .arg(maskWanted)
+        );
+        expect(
+            maskVT->residentWantedCount() == maskWanted10,
+            QString("DF1 the second warp's matte pages must all be resident (%1 of %2)")
+                .arg(maskVT->residentWantedCount())
+                .arg(maskWanted10)
+        );
+    }
+
+    warped.imageKey->setForceFullTexture(true);
+    const std::vector<uint8_t> control10 = fx.render(*warped.tree, camera, 10, black);
+    warped.imageKey->setForceFullTexture(false);
+    const int max10 = frameDelta(frame10, control10, &max10X, &max10Y, &max10C, &mean10);
+    expect(
+        max10 <= 1,
+        QString("DF1 the second warp, image + matte, vs the full-resolution control: max %1 at "
+                "(%2,%3) ch %4")
+            .arg(max10)
+            .arg(max10X)
+            .arg(max10Y)
+            .arg(max10C)
+    );
+    expect(
+        mean10 < 0.5,
+        QString("DF1 the second warp's mean delta %1 below 0.5 of 255").arg(mean10, 0, 'f', 3)
+    );
+
     caseReport(
         "FFD-warped demand", gFails == 0,
-        QString("%1 pages wanted of the layer's %2-page level-0 grid, all resident; the warp "
-                "moves the frame by %3 (centre); paged vs control max %4, mean %5 of 255")
+        QString("%1 pages wanted of the layer's %2-page level-0 grid, all resident; %3 matte "
+                "pages; the warp moves the frame by %4 (centre); paged vs control max %5, mean "
+                "%6 of 255; second warp max %7, mean %8; a deformation-only change marked the "
+                "image and replayed the matte")
             .arg(wanted)
             .arg(gridPages)
+            .arg(maskWanted)
             .arg(centreDelta)
             .arg(maxDelta)
             .arg(meanDelta, 0, 'f', 3)
+            .arg(max10)
+            .arg(mean10, 0, 'f', 3)
     );
 }
 
