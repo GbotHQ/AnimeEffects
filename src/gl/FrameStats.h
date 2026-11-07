@@ -63,6 +63,11 @@ namespace gl {
 //     end of the frame, and the bytes those pages hold. `vt_up` is the bytes uploaded into the
 //     pool this frame and `vt_evict` the pages evicted to make room. Zero when virtual texturing
 //     is off (AE_VIRTUAL_TEXTURE=0), which is the A/B control.
+//   * vt_frame_ms - the time VirtualTexture::beginFrame spent this frame: the previous frame's
+//     demand copy is parsed, every missing wanted page is filled from the pyramid and uploaded,
+//     and the tables are published. This is the LANDING cost of the paged machinery, and `ms`
+//     includes it; it is the number the landing-rate question has to divide (vt_up bytes per
+//     frame against this) before any upload strategy can be judged.
 //
 // Output: one line per frame appended to the path in AE_FRAME_STATS, plus a final summary line.
 class FrameStats {
@@ -122,6 +127,13 @@ public:
         mVtEvictions = aEvictions;
     }
 
+    /// The time the paged textures' frame boundary took this frame (see the header comment).
+    void virtualTextureFrameTime(double aMs) {
+        if (!mEnabled)
+            return;
+        mVtFrameMs = aMs;
+    }
+
     // One frame's measured distribution, replacing whatever the previous readback left.
     // `aBins` holds kDensityBins uv-area sums in bin order (bin b covers
     // [kDensityBinBase + b * kDensityBinStep, kDensityBinBase + (b + 1) * kDensityBinStep)
@@ -172,6 +184,8 @@ private:
     qint64 mVtBytes = 0;
     qint64 mVtUploadBytes = 0;
     int mVtEvictions = 0;
+    // the landing cost of this frame's VirtualTexture::beginFrame, in ms (see the header comment)
+    double mVtFrameMs = 0.0;
 };
 
 } // namespace gl

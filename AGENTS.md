@@ -282,7 +282,12 @@ hand it over. Its one question is `Sampling`:
   max 223). The signature
   compares the whole matrix; only an exact repeat (same frame, same camera) replays. `AE_VT_STATS`
   prints `marks=`/`replays=`, and `AE_VT_DEMAND=nodraw` measures the pass's setup against its
-  geometry (measured: the geometry). `render_probe --repeat <n> --pan <px>` is the still-view and
+  geometry (measured: the geometry). `AE_FRAME_STATS`'s line carries `vt_frame_ms`, the LANDING cost
+  (`VirtualTexture::beginFrame`: demand parse + page fills + uploads + table publishes) - measured
+  in Release at **~0.55 ms a page** (8 MB/31 pages: 14-22 ms a frame, steady 0.2-1.4 ms), of which
+  about half is `ImagePyramid::fillPage`'s level-0 PREMULTIPLY and half the upload. `AE_VT_UPLOAD_MB=0`
+  is NOT "no uploads": `PagePool`'s `envInt` maps a non-positive value to the default 8.
+  `render_probe --repeat <n> --pan <px>` is the still-view and
   camera-navigation instrument (each repaint's PNG is written as `frame-<f>-r<i>.png`), and it is
   how the **timing-sensitive wrong read** at a panned camera was found - see the doc's first open
   item, and note what that item now measures: the defect is a **composite** one, not a page one.

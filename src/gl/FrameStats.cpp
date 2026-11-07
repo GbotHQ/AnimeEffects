@@ -133,7 +133,7 @@ void FrameStats::endFrame(int aViewWidth, int aViewHeight) {
     const QString line = QStringLiteral(
         "frame=%1 ms=%2 view=%3x%4 layers=%5/%6/%7 mesh=%8 fill_px=%9 tex_live=%10 tex_peak=%11 mask_bytes=%12 "
         "dens=[%13] dens_max=%14 dens_smax=[%15] smax_max=%16 aniso=[%17] aniso_max=%18 "
-        "vt_pages=%19 vt_bytes=%20 vt_up=%21 vt_evict=%22\n"
+        "vt_pages=%19 vt_bytes=%20 vt_up=%21 vt_evict=%22 vt_frame_ms=%23\n"
     ).arg(mFrame)
          .arg(mFrameTimer.isValid() ? mFrameTimer.nsecsElapsed() / 1000000.0 : 0.0, 0, 'f', 2)
          .arg(aViewWidth)
@@ -155,7 +155,8 @@ void FrameStats::endFrame(int aViewWidth, int aViewHeight) {
          .arg(mVtPages)
          .arg(mVtBytes)
          .arg(mVtUploadBytes)
-         .arg(mVtEvictions);
+         .arg(mVtEvictions)
+         .arg(mVtFrameMs, 0, 'f', 2);
     file.write(line.toUtf8());
     ++mFramesWritten;
 }

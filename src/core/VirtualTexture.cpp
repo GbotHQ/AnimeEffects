@@ -1,3 +1,4 @@
+#include <QElapsedTimer>
 #include <QOpenGLContext>
 #include <QOpenGLShaderProgram>
 #include <QVector2D>
@@ -10,6 +11,7 @@
 #include "core/MaskPyramid.h"
 #include "core/VirtualTexture.h"
 #include "gl/EasyShaderProgram.h"
+#include "gl/FrameStats.h"
 #include "gl/Global.h"
 #include "gl/VertexArrayObject.h"
 
@@ -795,6 +797,13 @@ VirtualTexture::~VirtualTexture() { destroy(); }
 void VirtualTexture::beginFrame() {
     if (!gl::PagePool::enabled())
         return;
+    // THE LANDING COST, measured only while the counter is on (one enabled() branch otherwise):
+    // the demand parse, the page fills and their uploads, and the table publishes. `ms` includes
+    // it; vt_frame_ms is what a landing strategy has to divide the bytes by (see FrameStats.h).
+    gl::FrameStats& frameStats = gl::FrameStats::instance();
+    QElapsedTimer timer;
+    if (frameStats.enabled())
+        timer.start();
     // First the previous frame's demand copy (it updates what each page last wanted), then the
     // clear that starts this frame's map, then the uploads: a page about to be sampled goes in
     // before the frame's draws.
@@ -815,6 +824,8 @@ void VirtualTexture::beginFrame() {
     // a second pass means no table in the frame names a slot some other resource has taken.
     for (VirtualTexture* resource : registry())
         resource->flushTable();
+    if (frameStats.enabled())
+        frameStats.virtualTextureFrameTime(timer.nsecsElapsed() / 1000000.0);
 }
 
 void VirtualTexture::endFrame() {

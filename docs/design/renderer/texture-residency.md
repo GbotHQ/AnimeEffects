@@ -1204,7 +1204,10 @@ filter lane's field. For a paged matte that is field + levels; for a forced-full
 | `AE_VT_DEBUG_LEVEL=1` | diagnostic: each fragment outputs `(level/16, lod/16)` instead of the read, on BOTH paths - the two programs' level fields can be compared pixel for pixel |
 | `AE_VT_DEBUG_UV=1` | diagnostic: each fragment outputs the uv it samples, on BOTH paths - compares the read's GEOMETRY rather than its result |
 
-`AE_FRAME_STATS`'s line gains `vt_pages`, `vt_bytes`, `vt_up`, `vt_evict`.
+`AE_FRAME_STATS`'s line gains `vt_pages`, `vt_bytes`, `vt_up`, `vt_evict`, and `vt_frame_ms` - the
+time `VirtualTexture::beginFrame` spends this frame parsing the demand copy, filling and uploading
+the pages the frame will sample, and publishing the tables. That is the LANDING cost; `ms` includes
+it, and the shader cost is what remains.
 
 ### Gates (all in `tools/verify_mipmap`; a pixel gate runs under `scripts/gui/gpu_headless.sh`)
 
@@ -1739,18 +1742,30 @@ filter lane's field. For a paged matte that is field + levels; for a forced-full
    would have to build the bones, the caches and a `PoseKey` before it could pull a pageable layer
    by more than a page. Until then that half rests on the draw path (`callGL`'s `useInfluence`
    branch) plus the count, and no project in the dataset shows it in pixels at the cameras tried.
-3. The pool's landing rate: 8 MB/frame still costs 10-20 ms while it fills, and a large import's
-   synchronous capture is a visible pause (1.47 s across 136 keys on nene, worst 130 ms). An
-   asynchronous/deferred capture and a page upload batched per atlas row are the two obvious next
-   reductions. Measured on ballerina at a 640x640 zoom-1 view (frames 8-13): the view wants **250
-   pages** (65 MB) and the 8 MB cap lands **31 a frame**, so it is still filling after six frames
-   (resident 31/62/93/124/155) and those frames cost 55-94 ms against 16-25 ms with the whole
-   demand + upload machinery off (`AE_VT_DEMAND=nodraw` - an A/B that also changes the residency
-   and the sampling, so it bounds the cost rather than isolating the upload). There is no
-   zero-upload control yet: `AE_VT_UPLOAD_MB=0` does NOT mean "no uploads" - `PagePool`'s `envInt`
-   maps a non-positive value to the default 8, so the run lands pages exactly like the default (a
-   trap that cost one A/B). Isolating the upload is therefore the first move on this item, and the
-   cheapest form is to time the resolve phase itself (one `vt_upload_ms` in `FrameStats`).
+3. The pool's landing rate. `FrameStats` now records **`vt_frame_ms`** - the time
+   `VirtualTexture::beginFrame` spends parsing the demand copy, filling and uploading the pages the
+   frame will sample, and publishing the tables - so the cost is dated and separated from the
+   shader. Measured on ballerina at a 640x640 zoom-1 view (project frames 8-14, `AE_FRAME_STATS`):
+   - **Release**, the default 8 MB cap: **14.4-22.3 ms** a frame while filling (31 pages), steady
+     **0.2-1.4 ms** once the 250 pages have landed; at a 16 MB cap (62 pages) **27.4-43.3 ms**. The
+     cost is LINEAR in pages: **~0.55 ms a page**.
+   - **Debug**, the same two runs: 49-83 ms and 113-159 ms - the same law at 2-4x, which is why the
+     earlier "10-20 ms" (a Debug frame on nene) under-read it.
+   - **The fill is half of it.** A measurement-only mutation that replaces `ImagePyramid::fillPage`'s
+     level-0 per-texel PREMULTIPLY with a straight row copy takes Release's 62-page frame from
+     27.4-43.3 ms to 9.5-25.1 ms (Debug 113-159 -> 11-20), so ~0.3 ms/page is converting level 0's
+     straight bytes to the premultiplied ones the chain stores, and ~0.3 ms/page is the upload and
+     the table publish.
+   Two levers with different ceilings: (a) the level-0 FILL - premultiply on the GPU (upload the
+   straight rows to a scratch texture and blit the product into the slot) or a vectorised/LUT CPU
+   conversion, worth up to half the landing cost; (b) the UPLOAD+batching, worth the other half (the
+   pages sit in scattered slots, so "batched per atlas row" needs the allocator to hand them out in
+   runs). A third, with no code: a lower or ADAPTIVE per-frame cap trades the wait for a smoother
+   frame (250 pages land in 8 frames at 8 MB and 16 at 4 MB), which may be the right default for
+   interaction. A large import's synchronous capture is a separate visible pause (1.47 s across 136
+   keys on nene, worst 130 ms), and an asynchronous/deferred capture is still the obvious reduction
+   there. There is no zero-upload control: `AE_VT_UPLOAD_MB=0` does NOT mean "no uploads" -
+   `PagePool`'s `envInt` maps a non-positive value to the default 8 (a trap that cost one A/B).
 4. An ANIMATED mask (two keys) blends a new field every frame, so its resource is rebuilt per
    frame - the blend path predates paging and already rebuilt the full chain, but the paged form
    adds a readback to that build and a per-frame pool registration. The property that makes this
