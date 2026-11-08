@@ -2847,6 +2847,275 @@ void suiteMaskPagedUpdate() {
     );
 }
 
+// AM1: AN ANIMATED MASK. Two mask keys on one grid (left-hidden at frame 0, right-hidden at 24), so
+// every frame between them is the per-texel blend of the two fields. The paged form must not build a
+// new field, chain and pool resource per frame: the blend is a VIEW over the two keys' own pyramids
+// (MaskPyramid::setBlend), one resource across frames, and its content follows one integer weight.
+// The gate asks: that the matte is applied at all (a blended expansion that does not report itself
+// painted is invisible - the regression this started from); that the blend keeps ONE resource and
+// materializes no field; that the drawn frame equals the materialized full-chain control (the
+// materializing blend is the control path and the fallback, so it is a true A/B of the view); and
+// that a stroke on one key reaches the view. The timings are REPORTED, not asserted, and compare
+// the view with the materialized path and with a frame drawn again.
+void suiteAnimatedMask() {
+    suiteHeader("AM1 animated mask: a blended matte every frame");
+    if (!gl::PagePool::enabled()) {
+        std::printf("  [SKIP] AE_VIRTUAL_TEXTURE=0 is the control path\n");
+        return;
+    }
+
+    const QSize canvas(320, 320);
+    const uint8_t black[3] = {0, 0, 0};
+    // THE FIELD'S SIZE IS THE MASK'S, and it can be overridden for the scaling measurement: the
+    // blended matte's per-frame cost is a function of the FIELD on the materialized path and of
+    // the VISIBLE PAGES plus the coarse chain on the view's, so the crossover is a measurement,
+    // not a claim. AE_AM1_FIELD=4096 is the large-matte run (Release; see the design doc).
+    const int fieldSide = qEnvironmentVariableIntValue("AE_AM1_FIELD");
+    const QSize fieldSize = fieldSide > 0 ? QSize(fieldSide, fieldSide) : QSize(900, 700);
+    const QRectF fieldRect(0, 0, fieldSize.width(), fieldSize.height());
+    const Img layerSrc = makeNoise(fieldSize.width(), fieldSize.height());
+
+    auto& fixtures = renderFixtures();
+    const QString fixtureKey = QString("%1x%2").arg(canvas.width()).arg(canvas.height());
+    auto it = fixtures.find(fixtureKey);
+    if (it == fixtures.end()) {
+        std::unique_ptr<RenderFixture> fx(new RenderFixture());
+        fx->init(canvas);
+        it = fixtures.emplace(fixtureKey, std::move(fx)).first;
+    }
+    RenderFixture& fx = *it->second;
+
+    core::CameraInfo camera;
+    camera.reset(canvas, 1.0, canvas, QPoint(0, 0));
+
+    core::ObjectTree tree;
+    auto* root = new core::FolderNode("root");
+    tree.grabTopNode(root);
+    auto* res = makeResource("am_src", layerSrc);
+    core::LayerNode* layer = addScaledLayer(
+        tree, root, res, "layer", QVector2D(canvas.width() * 0.5f, canvas.height() * 0.5f), 0.6f,
+        img::BlendMode_Normal
+    );
+
+    // THE TWO KEYS, on one grid as the authoring path keeps it: the matte is left-hidden at frame 0
+    // and right-hidden at frame 24, so the frames between them are new fields with a hard vertical
+    // edge at content x = 450 - and frame 12 is a uniform 127. A hard edge in a SMOOTH field is what
+    // tells a coarse read from a level-0 page; a moving blob would look the same at both.
+    const auto makeKey = [&](int aFrame, bool aLeftHidden) {
+        auto* key = new core::MaskKey();
+        key->data().alloc(fieldSize, fieldRect, core::MaskKey::kNeutral);
+        QImage& field = key->data().field();
+        for (int y = 0; y < field.height(); ++y) {
+            uchar* row = field.scanLine(y);
+            if (aLeftHidden)
+                std::memset(row, 0, field.width() / 2);
+            else
+                std::memset(row + field.width() / 2, 0, field.width() - field.width() / 2);
+        }
+        key->data().markDirty(QRect(0, 0, fieldSize.width(), fieldSize.height()));
+        const bool adopted = layer->timeLine()->adoptKey(core::TimeKeyType_Mask, aFrame, key);
+        expect(adopted, QString("AM1 the mask key at frame %1 must adopt").arg(aFrame));
+        if (!adopted)
+            delete key;
+        return key;
+    };
+    core::MaskKey* key0 = makeKey(0, true);
+    core::MaskKey* key1 = makeKey(24, false);
+
+    // frames 0..24: each is a distinct blend, so the weight moves every frame
+    std::vector<double> animated;
+    std::vector<uint8_t> atSix;
+    bool blendedFieldAtSix = false;
+    bool paintedAtSix = false;
+    core::VirtualTexture* viewAtSix = nullptr;
+    core::VirtualTexture* viewAtSeven = nullptr;
+    QElapsedTimer timer;
+    for (int frame = 0; frame <= 24; ++frame) {
+        timer.start();
+        std::vector<uint8_t> pixels = fx.render(tree, camera, frame, black);
+        const double ms = timer.nsecsElapsed() / 1000000.0;
+        if (frame > 0)
+            animated.push_back(ms);   // frame 0 also pays the layer's own first upload
+        if (frame == 6 || frame == 7) {
+            const core::MaskKey::Data& matte = layer->timeLine()->current().mask();
+            core::VirtualTexture* pagedMatte = matte.virtualTexture();
+            if (frame == 6) {
+                atSix = std::move(pixels);
+                blendedFieldAtSix = !matte.field().isNull();
+                paintedAtSix = matte.isPainted();
+                viewAtSix = pagedMatte;
+            } else {
+                viewAtSeven = pagedMatte;
+            }
+        }
+    }
+
+    // ONE RESOURCE ACROSS FRAMES is the whole point of the view: a matte rebuilt per frame hands
+    // out a different resource (and has no resident page), and the per-frame build is what the
+    // animation pays for. The second assertion is the property that makes it possible - no field
+    // is materialized while the paged path draws the blend.
+    expect(viewAtSix != nullptr && viewAtSix == viewAtSeven,
+        "AM1 the animated matte must keep ONE pool resource across frames");
+    expect(!blendedFieldAtSix,
+        "AM1 the paged blend must not materialize a field (the view is its level 0)");
+    expect(paintedAtSix, "AM1 the blended matte must report itself painted");
+
+    // THE MATTE MUST BE THERE AT ALL. The same tree without a mask key is the control: if the
+    // blended expansion does not report itself painted, the draw and the demand pass BOTH skip it
+    // and the layer is drawn unmasked between its keys - which is exactly what a flag that only
+    // alloc/write/markDirty set on the blend path used to do.
+    {
+        core::ObjectTree plainTree;
+        auto* plainRoot = new core::FolderNode("plain");
+        plainTree.grabTopNode(plainRoot);
+        auto* plainRes = makeResource("am_plain_src", layerSrc);
+        addScaledLayer(
+            plainTree, plainRoot, plainRes, "layer",
+            QVector2D(canvas.width() * 0.5f, canvas.height() * 0.5f), 0.6f, img::BlendMode_Normal
+        );
+        const std::vector<uint8_t> unmasked = fx.render(plainTree, camera, 6, black);
+        int matteMax = 0;
+        double matteMean = 0.0;
+        int m = 0;
+        for (int y = 8; y < canvas.height() - 8; ++y) {
+            for (int x = 8; x < canvas.width() - 8; ++x) {
+                const size_t i = ((size_t)y * canvas.width() + x) * 4;
+                const int d = std::abs((int)atSix[i] - (int)unmasked[i]);
+                matteMax = std::max(matteMax, d);
+                matteMean += d;
+                ++m;
+            }
+        }
+        matteMean = m ? matteMean / m : 0.0;
+        expect(
+            matteMax > 32 && matteMean > 8.0,
+            QString("AM1 the animated matte must be APPLIED (frame 6 against the same tree "
+                    "without a matte: max %1, mean %2)")
+                .arg(matteMax).arg(matteMean, 0, 'f', 2)
+        );
+    }
+
+    // THE PIXELS: frame 6 against the materialized control. The matte's hard edge is the only
+    // place a wrong level or a stale page can show, and at this scale the fragment reads level 0 -
+    // the same integer lerp the view fills a page with - so the two must be identical.
+    for (core::MaskKey* key : {key0, key1})
+        key->data().setForceFullTexture(true);
+    fx.render(tree, camera, 5, black);   // uncached, so the expansion takes the forced value
+    const std::vector<uint8_t> control = fx.render(tree, camera, 6, black);
+    int maxDelta = 0, maxX = 0, maxY = 0;
+    double meanDelta = 0.0;
+    int n = 0;
+    for (int y = 8; y < canvas.height() - 8; ++y) {
+        for (int x = 8; x < canvas.width() - 8; ++x) {
+            const size_t i = ((size_t)y * canvas.width() + x) * 4;
+            for (int ch = 0; ch < 4; ++ch) {
+                const int d = std::abs((int)atSix[i + ch] - (int)control[i + ch]);
+                if (d > maxDelta) {
+                    maxDelta = d;
+                    maxX = x;
+                    maxY = y;
+                }
+                meanDelta += d;
+                ++n;
+            }
+        }
+    }
+    meanDelta = n ? meanDelta / n : 0.0;
+    expect(
+        maxDelta <= 1,
+        QString("AM1 the animated matte at full resolution vs the control: max delta %1 at (%2,%3)")
+            .arg(maxDelta).arg(maxX).arg(maxY)
+    );
+
+    // A STROKE ON AN ANIMATED KEY must reach the view. The paint detaches the key's field, which
+    // moves its stamp; the next blend rebuilds the key's pyramid (the damaged holder is not the
+    // paged one, so there is no box to patch) and re-points the view. The paged frame must then
+    // equal the materialized one again - a view left on the pre-stroke field would differ by the
+    // whole patch.
+    {
+        for (core::MaskKey* key : {key0, key1})
+            key->data().setForceFullTexture(false);
+        QImage& field = key0->data().field();
+        const int halfW = field.width() / 2;
+        const int blockW = std::max(1, field.width() / 8);
+        const int blockH = std::max(1, field.height() / 8);
+        const QRect block(halfW + blockW, field.height() / 3, blockW, blockH);
+        for (int y = block.top(); y <= block.bottom(); ++y)
+            std::memset(field.scanLine(y) + block.left(), 0, (size_t)block.width());
+        key0->data().markDirty(block);
+        fx.render(tree, camera, 5, black);   // uncached: the blend re-reads both keys
+        const std::vector<uint8_t> paintedPaged = fx.render(tree, camera, 6, black);
+        for (core::MaskKey* key : {key0, key1})
+            key->data().setForceFullTexture(true);
+        fx.render(tree, camera, 5, black);
+        const std::vector<uint8_t> paintedControl = fx.render(tree, camera, 6, black);
+        int strokeDelta = 0;
+        for (int y = 8; y < canvas.height() - 8; ++y)
+            for (int x = 8; x < canvas.width() - 8; ++x) {
+                const size_t i = ((size_t)y * canvas.width() + x) * 4;
+                strokeDelta = std::max(strokeDelta, std::abs((int)paintedPaged[i] - (int)paintedControl[i]));
+            }
+        expect(
+            strokeDelta <= 1,
+            QString("AM1 a stroke on an animated key must reach the view (max delta %1)")
+                .arg(strokeDelta)
+        );
+        for (core::MaskKey* key : {key0, key1})
+            key->data().setForceFullTexture(false);
+        fx.render(tree, camera, 4, black);   // back to the view, uncached
+    }
+
+    // ---- the timing report, three forms of the same animation:
+    //   view        - the paged blend of the two keys (the shipped path);
+    //   cached      - the SAME frame drawn again: the blender's cache holds the expansion, so
+    //                 nothing is re-derived (the static cost of a matte);
+    //   materialized- the full-resolution control: a blended field and its full chain per frame,
+    //                 which is what an animated matte costs with the pool off (AE_VIRTUAL_TEXTURE=0)
+    //                 and therefore the "before" this path is measured against. Not asserted - a
+    //                 wall-clock gate is machine-dependent - but it is the number that decides.
+    for (core::MaskKey* key : {key0, key1})
+        key->data().setForceFullTexture(false);
+    fx.render(tree, camera, 24, black);   // uncached: the expansion takes the unforced value
+    fx.render(tree, camera, 12, black);   // builds the frame-12 matte once, lands its pages
+    std::vector<double> cached;
+    for (int i = 0; i < 8; ++i) {
+        timer.start();
+        fx.render(tree, camera, 12, black);
+        cached.push_back(timer.nsecsElapsed() / 1000000.0);
+    }
+    for (core::MaskKey* key : {key0, key1})
+        key->data().setForceFullTexture(true);
+    std::vector<double> materialized;
+    for (int frame = 0; frame <= 24; ++frame) {
+        timer.start();
+        fx.render(tree, camera, frame, black);
+        if (frame > 0)
+            materialized.push_back(timer.nsecsElapsed() / 1000000.0);
+    }
+    for (core::MaskKey* key : {key0, key1})
+        key->data().setForceFullTexture(false);
+    const auto stats = [](std::vector<double> aValues) {
+        std::sort(aValues.begin(), aValues.end());
+        return QString("%1 / %2 / %3")
+            .arg(aValues.front(), 0, 'f', 2)
+            .arg(aValues[aValues.size() / 2], 0, 'f', 2)
+            .arg(aValues.back(), 0, 'f', 2);
+    };
+    std::printf(
+        "  AM1 frame ms (min/median/max): view 0..24 = %s, cached frame 12 = %s, "
+        "materialized 0..24 = %s\n",
+        stats(animated).toUtf8().constData(), stats(cached).toUtf8().constData(),
+        stats(materialized).toUtf8().constData()
+    );
+
+    caseReport(
+        "animated mask", maxDelta <= 1,
+        QString("frame 6 max %1 mean %2 of 255; frame ms view %3, cached %4, materialized %5")
+            .arg(maxDelta).arg(meanDelta, 0, 'f', 3).arg(stats(animated)).arg(stats(cached))
+            .arg(stats(materialized))
+    );
+}
+
 // MX1: THE MASK CHAIN'S RULE ON THE CPU. MaskMipChain builds a mask's levels on the GPU (two area
 // passes through an R16F scratch); a paged mask needs those levels from a source that is not the
 // full texture, and the obvious source is the CPU field. This gate compares a CPU area-average
@@ -4398,6 +4667,7 @@ int main(int argc, char** argv) {
     suiteClipper();
     suiteMaskPaged();
     suiteMaskPagedUpdate();
+    suiteAnimatedMask();
     suiteMaskPyramid();
     suiteMaskPyramidUpdate();
     suiteMaskPyramidMemory();

@@ -1190,6 +1190,7 @@ filter lane's field. For a paged matte that is field + levels; for a forced-full
 | `AE_VT_LANDING_SPLIT=1` | `VTLANDING` per landing frame: the landing time split into pool, read (the demand map's fence interaction), parse, clear, acquire, fill, upload and table, with the page count and how many of them the stage carried (see Instruments) |
 | `AE_VT_STAGE=0` | control: fill pages into a private buffer and upload them with `glTexSubImage2D` from client memory instead of through the staging buffer. Measured: upload 3.1-4.3 ms a frame against 0.10-0.15 with the stage, same pixels |
 | `AE_VT_COARSE` | longest side of the always-resident chain, default 512 |
+| `AE_AM1_FIELD=<n>` | gate measurement, not a control: the AM1 animated matte's field is n x n (default 900x700). Release: view 2.76 ms against materialized 2.39 at 900x700, 4.38 against 7.60 at 2048², 6.56 against 31.33 at 4096² (see Measured) |
 | `AE_VT_STATS=1` | one line per frame: resources, wanted, resident, pool pages/bytes |
 | `AE_VT_DEMAND=0` | diagnostic: skip the demand pass and its readback (every paged layer samples the coarse chain through the VT shader) - the control for "is the cost the shader or the demand machinery" |
 | `AE_VT_DEMAND=nodraw` | diagnostic: keep the pass's state changes, uniforms and per-layer buffer uploads and skip only the draw - the control for "is the cost the setup or the geometry" (measured: the geometry) |
@@ -1271,6 +1272,18 @@ it, and the shader cost is what remains.
   asserts the CPU pyramid holds EXACTLY the chain's levels above 0 (5.33 MiB, not 21.33), that it
   is smaller than the level-0 field it no longer copies, and that the resident coarse chain is
   the 512² tier.
+- **AM1 an animated mask** (2026-11-08): two mask keys on one grid (left-hidden at frame 0,
+  right-hidden at 24), so every frame between them is the per-texel blend. Asserts the matte is
+  **applied at all** against the same tree without a matte - the flag this pins was a regression
+  that made an animated matte invisible - that the paged form keeps **one pool resource across
+  frames** and materializes **no field**, that frame 6 equals the materialized full-chain control
+  **pixel for pixel (max 0)**, and that a **stroke** on one key reaches the view (the next blend
+  rebuilds that key's pyramid and re-points the view; the painted frame must still equal the
+  control). It also reports the frame time of the view, of the same frame drawn again (the cached
+  static cost) and of the materialized path - reported, not asserted, because a wall-clock gate is
+  machine-dependent. `AE_AM1_FIELD=<n>` makes the field n x n for the scaling measurement; the
+  shipped fixture is 900x700 (Debug sees ~5.7-5.9 against ~3.9-4.1 ms there, the view losing to
+  the materialized path on a matte that is smaller than the view - see Measured).
 - **P1/P2 page pool**: slot 0 at the gutter origin, slot 1 one pitch over, slot 15 the first of
   the second row, a slot's texels read back exactly; the per-frame upload cap; eviction order and
   the owner callback; cancel returning a slot and refunding its bytes; purge changing the
@@ -1826,6 +1839,46 @@ it, and the shader cost is what remains.
   sampler and the pool - rather than measured on existing content. The target case is the one the
   design named: a folder matte covers the CANVAS, so a 15000² project's folder matte would have
   held a ~300 MB chain and now holds its coarse tier (0.33 MiB) plus the pages it samples.
+- **An animated matte** (`AM1`, 2026-11-08): the two keys' fields are the animated value, and every
+  frame between them used to be a NEW field - a fresh chain build on the GPU, a readback of every
+  level (`MaskPyramid::capture`), a fresh pool resource and table. It was worse than that: the
+  blended expansion never set the "painted" flag that "a neutral matte costs nothing" introduced
+  (`MaskKey::Data::mPainted`), so an animated matte was drawn **unmasked** - and therefore never
+  paged. No `.anie` in the local dataset has a mask key at all (a byte scan for the `Mask` timeline
+  token finds only object NAMES containing the word), so no gate could have caught it. The fix has
+  two halves: the flag (`TimeKeyBlender::blendMaskKey` sets it from the two keys - a texel either
+  key hides is still hidden in a lerp), and the **blend view**: every level is a linear filter, so
+  `level(lerp(A, B, t))` is `lerp(level(A), level(B), t)` at the same integer weight, and the matte
+  is drawn as the blend of the two KEYS' own pyramids (`MaskPyramid::setBlend`) instead of a
+  materialized field. Each key's pyramid is built once (the static matte's one-time cost); the
+  view's pool resource keeps its pages across frames; per frame only the always-resident coarse
+  chain and the RESIDENT pages are re-read from the two sources at that frame's weight
+  (`VirtualTexture::refreshMaskView`), and only when an INPUT changed (the weight, either field's
+  stamp, or the pair) - a paused or repeated frame refreshes nothing (0.61-0.78 ms against the
+  2.5-6.5 ms of an animated one).
+  Release, `AM1`, 320x320 canvas, layer at 0.6, medians of frames 1..24:
+
+  | field | view | same frame again | materialized |
+  |---|---|---|---|
+  | 900x700 | **2.76** | 0.54 | 2.39 |
+  | 2048² | **4.38** | 0.63 | 7.60 |
+  | 4096² | **6.56** | 0.84 | 31.33 |
+
+  The view's cost is nearly flat (the visible pages plus the coarse tier) where the materialized
+  path scales with the field: 4.8x apart at 4096², and the view *losing* at 900x700, where the
+  matte is smaller than the screen and the materialized path is one blend and one chain. At 4096²
+  the refresh measured 3.9-4.8 ms: coarse 0.7, fill 1.5 (16 pages, two source fills and a lerp) and
+  direct page uploads 1.6 - the last is the one term the landing's stage does not carry (see the
+  open list). The pixels are **max 0** against the materialized control at every size and after a
+  stroke on one key: level 0 is the same integer lerp, and the levels above it are the lerp of the
+  two source chains, whose half-float rounding could differ by the 1-2 LSB the CPU pyramid shows
+  (`MX1`) - this view reads level 0 only, so it did not.
+  Entering the interval costs both keys' pyramid builds and draws the **coarse tier for one
+  frame** (the paging latency every paged resource has); the first animated frame measured up to
+  **~22 ms at 4096²**. Each key's pyramid is 5.33 MiB there - **10.7 MiB for a two-key matte**, on
+  top of the keys' own 16 MiB fields - and the view adds a 67 KiB page scratch plus the resource's
+  coarse chain. Debug measures the same fixture at 5.66-5.85 against 3.87-4.07: the view's two
+  source fills and client uploads are CPU work, the materialized path's is GPU-side.
 - **Export**: `media_exporter_e2e` passes with the demand preparse; the first exported frame is
   the one that exercises it.
 
@@ -1905,15 +1958,32 @@ it, and the shader cost is what remains.
      136 keys on nene, worst 130 ms); an asynchronous capture is still the obvious reduction there.
      And there is no zero-upload control: `AE_VT_UPLOAD_MB=0` does NOT mean "no uploads" -
      `PagePool`'s `envInt` maps a non-positive value to the default 8 (a trap that cost one A/B).
-4. An ANIMATED mask (two keys) blends a new field every frame, so its resource is rebuilt per
-   frame - the blend path predates paging and already rebuilt the full chain, but the paged form
-   adds a readback to that build and a per-frame pool registration. The property that makes this
-   fixable is linearity: every level is a linear filter of the field, so `level(lerp(A, B, t))`
-   equals `lerp(level(A), level(B), t)` for the SAME t - a per-key pyramid plus a blended view
-   would remove the per-frame build rather than make it cheaper. (Inference, not measured: it
-   follows from the box average being linear, but the easing quantisation and the box updates a
-   stroke applies are what a gate would have to pin.) Folder mattes and `mask_bytes` are done;
-   filter-lane masks are the remaining full-chain textures (above).
+4. ~~**An animated mask**~~ - **DONE (2026-11-08), and it was not the item this was.** The item
+   assumed the per-frame rebuild was the problem. It was, but the blended expansion also never set
+   the "painted" flag that "a neutral matte costs nothing" introduced, so an animated matte was not
+   drawn AT ALL - and therefore never paged. Both are fixed: the flag is set from the two keys
+   (`blendMaskKey`), and the linearity property above is the shipped design - a per-key pyramid plus
+   a `MaskPyramid` blend VIEW, so no field is materialized and the pool resource survives the
+   frame. See Measured, "an animated matte", for the numbers and `AM1` for the gate. What remains:
+   - the refresh's PAGE uploads are direct client uploads (1.6 ms of the 3.9 ms refresh at 4096²,
+     16 pages). The landing's staging ring cannot carry a mid-frame phase: its two slots are a
+     frame apart, and a second `endStaging` per frame would reuse a slot whose fence is one frame
+     old, so `mapStaging` would sometimes refuse and push the LANDING back to direct uploads. A
+     small stage of the refresh's own is the reduction worth measuring next.
+   - the first frame of the interval pays two pyramid builds and draws the coarse tier for one
+     frame (measured up to 21.2 ms at 4096²). An async or pre-emptive build would hide the pause -
+     the same shape as the import's capture.
+   - the FOLDER matte shares the whole path (`FolderNode`'s paged matte) but has no animated
+     fixture; `AM1` covers the mechanism and `FM1` the folder wiring, and no dataset project has a
+     folder matte at all.
+   - the rubylith PREVIEW while painting at a blended frame reads the key being painted (the
+     editor's own field), not the blended view. That is deliberate - the artist paints a key - but
+     it is not gated.
+   - two pyramids per animated matte (10.7 MiB at 4096²) is the view's memory price. A key drawn
+     statically and used as a blend source shares ONE holder and pyramid, so the cost is per KEY,
+     not per use.
+   Folder mattes and `mask_bytes` are done; filter-lane masks are the remaining full-chain
+   textures (above).
 5. Per-resource pyramids for duplicated layers.
 6. The first-atlas floor (61 MB) for projects whose whole texture set is smaller than it: a
    demand-aware first allocation is the measured-shaped answer (see the pool's header comment).

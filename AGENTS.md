@@ -421,6 +421,19 @@ hand it over. Its one question is `Sampling`:
   boxes) even when their sizes match. The pyramid does not copy level 0 - that is the field the
   mask's Data owns, and the page fill reads it in place (a 4096² mask's levels are 5.33 MiB, the
   full copy it used to keep was 21.33).
+- **An ANIMATED mask is a paged VIEW, not a field per frame.** `TimeKeyBlender::blendMaskKey`
+  installs `MaskPyramid::setBlend` over the two keys' own pyramids: level 0 is the same integer lerp
+  a materialized field would hold, levels above are the lerp of the two chains, and the expansion
+  keeps ONE pool resource across frames, refreshing its coarse chain and resident pages only when
+  the weight, either field's stamp, or the key pair changed (`VirtualTexture::refreshMaskView`).
+  **The blended expansion must report `isPainted`** (set from the keys): while it did not, an
+  animated matte was not drawn AT ALL - no `.anie` in the dataset has a mask key, so `AM1` is the
+  only coverage. Measured (Release, 900x700 / 2048² / 4096² medians, frames 1-24): view
+  **2.76 / 4.38 / 6.56 ms** against materialized (the `AE_VIRTUAL_TEXTURE=0` control)
+  **2.39 / 7.60 / 31.33**; the first frame of the interval pays both keys' pyramid builds and is
+  coarse for one frame. `AE_AM1_FIELD=<n>` sizes the gate's fixture. The refresh's page uploads are
+  still direct client uploads: the landing's staging ring is two phases per frame and a third would
+  reuse a slot a frame sooner than its fence assumes.
 - A layer mask's overlay is a flat rubylith **over** the composite (`Kind_MaskOverlay`), not a tint; the
   thumbnail and tree chip show the matte itself in grayscale.
 - The brush is one model (`ctrl/Brush.h`): `BrushStroke` walks spacing between samples and carries the

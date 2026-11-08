@@ -39,7 +39,8 @@ public:
     bool capture(const gl::Texture& aChain);
     void clear();
 
-    bool isValid() const { return !mLevels.empty(); }
+    // true for a captured pyramid AND for a blend view (which stores sizes but no level bytes)
+    bool isValid() const { return !mSizes.empty(); }
     QSize size() const { return mSizes.empty() ? QSize() : mSizes.front(); }
     int levelCount() const { return (int)mSizes.size(); }
     QSize levelSize(int aLevel) const;
@@ -69,6 +70,36 @@ public:
     /// Grayscale8 and the same size the pyramid was captured at.
     void updateBox(const QImage& aField, const QRect& aTexelBox);
 
+    // ---- THE BLEND VIEW ----------------------------------------------------------------
+    // An ANIMATED matte has two keys and, in the interval between them, a field that is the
+    // per-texel lerp of the two. Every level is a LINEAR filter of the field, so the blended
+    // pyramid is the lerp of the two keys' pyramids at the same weight: this object then stores
+    // no level bytes of its own and answers level 0 from the two fields and levels 1+ by lerping
+    // the sources. It stays a MaskPyramid because that is exactly what the pager reads (size,
+    // level count/size, page fill, coarse copy) - the alternative was a second source type at
+    // every call site.
+    //
+    // The two fields must be one grid (the authoring path keeps it; TimeKeyBlender refuses any
+    // other pair), and the SOURCES must outlive this view: they are the keys' own pyramids,
+    // owned by their Data, while the view lives in the frame expansion's Data and is rebuilt
+    // whenever the pair or a field changes. Level 0 is the lerp of the two fields with the same
+    // integer weights the materializing blend uses, so a page filled from the view and a page
+    // filled from the blended field agree byte for byte; levels 1+ differ from a chain built
+    // from the blended field only by the half-float rounding of the two source chains.
+    bool setBlend(
+        const MaskPyramid* aA, const QImage& aFieldA, const MaskPyramid* aB, const QImage& aFieldB,
+        int aWeight
+    );
+    void setBlendWeight(int aWeight);
+    bool isBlend() const { return mBlendA != nullptr && mBlendB != nullptr; }
+    /// The blend's level-0 field, MATERIALIZED at the current weight - the only form a caller
+    /// outside the pager can read (a UI thumbnail). Null for a plain pyramid, whose level 0 is
+    /// the caller's own field. Expensive by design (a whole-field lerp): callers cache it.
+    QImage displayField() const;
+    const MaskPyramid* blendA() const { return mBlendA; }
+    const MaskPyramid* blendB() const { return mBlendB; }
+    int blendWeight() const { return mBlendWeight; }
+
 private:
     static QSize levelSizeOf(const QSize& aBase, int aLevel);
     static QRect coveredBox(const QRect& aSrcBox, const QSize& aSrcSize, const QSize& aDstSize);
@@ -76,9 +107,19 @@ private:
         const uint8* aSrc, int aSrcStride, const QSize& aSrcSize, std::vector<uint8>& aDst,
         const QSize& aDstSize, const QRect& aDestBox
     ) const;
+    // aDst = (aDst * (256 - weight) + aOther * weight) >> 8, the materializing blend's rule
+    void lerpInto(uint8* aDst, const uint8* aOther, size_t aCount) const;
 
     std::vector<QSize> mSizes;
     std::vector<std::vector<uint8>> mLevels;
+
+    // the blend view (see setBlend): sources borrowed, fields shared, nothing materialized
+    const MaskPyramid* mBlendA = nullptr;
+    const MaskPyramid* mBlendB = nullptr;
+    QImage mBlendFieldA;
+    QImage mBlendFieldB;
+    int mBlendWeight = 0;
+    mutable std::vector<uint8> mBlendScratch;
 };
 
 } // namespace core

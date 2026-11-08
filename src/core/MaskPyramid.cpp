@@ -24,6 +24,12 @@ MaskPyramid::MaskPyramid(): mSizes(), mLevels() {}
 void MaskPyramid::clear() {
     mSizes.clear();
     mLevels.clear();
+    mBlendA = nullptr;
+    mBlendB = nullptr;
+    mBlendFieldA = QImage();
+    mBlendFieldB = QImage();
+    mBlendWeight = 0;
+    mBlendScratch.clear();
 }
 
 QSize MaskPyramid::levelSizeOf(const QSize& aBase, int aLevel) {
@@ -42,10 +48,60 @@ const std::vector<uint8>& MaskPyramid::levelBytes(int aLevel) const {
 }
 
 qint64 MaskPyramid::bytes() const {
-    qint64 total = 0;
+    qint64 total = (qint64)mBlendScratch.size();
     for (const std::vector<uint8>& level : mLevels)
         total += (qint64)level.size();
     return total;
+}
+
+void MaskPyramid::lerpInto(uint8* aDst, const uint8* aOther, size_t aCount) const {
+    const int w = std::max(0, std::min(256, mBlendWeight));
+    const int inv = 256 - w;
+    for (size_t i = 0; i < aCount; ++i)
+        aDst[i] = uint8((int(aDst[i]) * inv + int(aOther[i]) * w) >> 8);
+}
+
+bool MaskPyramid::setBlend(
+    const MaskPyramid* aA, const QImage& aFieldA, const MaskPyramid* aB, const QImage& aFieldB,
+    int aWeight
+) {
+    clear();
+    if (!aA || !aB || aA == aB || aA->isBlend() || aB->isBlend())
+        return false;
+    if (!aA->isValid() || !aB->isValid() || aA->size() != aB->size()
+        || aA->levelCount() != aB->levelCount())
+        return false;
+    if (aFieldA.isNull() || aFieldB.isNull() || aFieldA.size() != aA->size()
+        || aFieldB.size() != aB->size())
+        return false;
+    mSizes = aA->mSizes;
+    mBlendA = aA;
+    mBlendB = aB;
+    mBlendFieldA = aFieldA;
+    mBlendFieldB = aFieldB;
+    mBlendWeight = std::max(0, std::min(256, aWeight));
+    return true;
+}
+
+void MaskPyramid::setBlendWeight(int aWeight) {
+    if (isBlend())
+        mBlendWeight = std::max(0, std::min(256, aWeight));
+}
+
+QImage MaskPyramid::displayField() const {
+    if (!isBlend() || mBlendFieldA.isNull() || mBlendFieldB.isNull()
+        || mBlendFieldA.size() != mBlendFieldB.size())
+        return QImage();
+    QImage out(mBlendFieldA.size(), QImage::Format_Grayscale8);
+    const int w = out.width();
+    for (int y = 0; y < out.height(); ++y) {
+        const uint8* a = mBlendFieldA.constScanLine(y);
+        const uint8* b = mBlendFieldB.constScanLine(y);
+        uint8* dst = out.scanLine(y);
+        std::memcpy(dst, a, (size_t)w);
+        lerpInto(dst, b, (size_t)w);
+    }
+    return out;
 }
 
 bool MaskPyramid::capture(const gl::Texture& aChain) {
@@ -164,7 +220,7 @@ void MaskPyramid::resampleBox(
 }
 
 void MaskPyramid::updateBox(const QImage& aField, const QRect& aTexelBox) {
-    if (!isValid() || aField.isNull() || aField.format() != QImage::Format_Grayscale8)
+    if (isBlend() || !isValid() || aField.isNull() || aField.format() != QImage::Format_Grayscale8)
         return;
     if (aField.size() != size())
         return;
@@ -193,6 +249,17 @@ void MaskPyramid::updateBox(const QImage& aField, const QRect& aTexelBox) {
 
 void MaskPyramid::fillPage(int aLevel, int aPageX, int aPageY, const QImage& aField, uint8* aDst) const {
     XC_PTR_ASSERT(aDst);
+    // THE VIEW: fill both sources and lerp the pages. The lerp commutes with the fill's
+    // edge-clamp (which selects texels by INDEX, not by value), so this is exactly the page of
+    // the blended field.
+    if (isBlend()) {
+        const int pitch = gl::PagePool::kPitch;
+        mBlendA->fillPage(aLevel, aPageX, aPageY, mBlendFieldA, aDst);
+        mBlendScratch.resize((size_t)pitch * pitch);
+        mBlendB->fillPage(aLevel, aPageX, aPageY, mBlendFieldB, mBlendScratch.data());
+        lerpInto(aDst, mBlendScratch.data(), (size_t)pitch * pitch);
+        return;
+    }
     if (aLevel < 0 || aLevel >= (int)mLevels.size())
         return;
     const int pitch = gl::PagePool::kPitch;
@@ -243,6 +310,17 @@ void MaskPyramid::copyLevel(int aLevel, uint8* aDst) const {
     // level 0 is the field, not stored (the coarse chain starts at a level >= 1, so no caller
     // needs it here)
     XC_ASSERT(aLevel >= 1);
+    if (isBlend()) {
+        const QSize levelSize = this->levelSize(aLevel);
+        if (levelSize.isEmpty())
+            return;
+        mBlendA->copyLevel(aLevel, aDst);
+        const size_t count = (size_t)levelSize.width() * levelSize.height();
+        mBlendScratch.resize(count);
+        mBlendB->copyLevel(aLevel, mBlendScratch.data());
+        lerpInto(aDst, mBlendScratch.data(), count);
+        return;
+    }
     if (aLevel < 1 || aLevel >= (int)mLevels.size())
         return;
     const std::vector<uint8>& level = mLevels[(size_t)aLevel];

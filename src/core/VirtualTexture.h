@@ -135,6 +135,14 @@ public:
     /// resident needs nothing: its next fill comes from the pyramid, which is now current.
     void updateMaskBox(const QImage& aField, const QRect& aTexelBox);
 
+    /// THE BLEND VIEW'S FRAME. An animated matte's pyramid is a view over two keys (see
+    /// MaskPyramid::setBlend): its content moves with ONE integer weight, not with a damage box,
+    /// and the weight changes every frame. Re-copies the whole always-resident coarse chain and
+    /// re-fills EVERY resident page - not only the demanded set, because a page outside it can
+    /// still be sampled this frame and would otherwise read the previous frame's weight. Called
+    /// once per frame by the Data that owns the view, on the first accessor call of the frame.
+    void refreshMaskView();
+
     /// The mask's level-0 field. The pyramid does not store level 0 (it is the field), so a page
     /// fill reads it here; the mask holder refreshes this on every accessor call, and
     /// updateMaskBox replaces it. A QImage copy shares the pixels, so this is a refcount, not a

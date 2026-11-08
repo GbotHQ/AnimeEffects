@@ -1836,6 +1836,58 @@ void VirtualTexture::updateMaskBox(const QImage& aField, const QRect& aTexelBox)
     ggl.glPixelStorei(GL_UNPACK_ALIGNMENT, 4);
 }
 
+void VirtualTexture::refreshMaskView() {
+    if (!isMask() || !mMaskPyramid || !mMaskPyramid->isBlend())
+        return;
+    auto& ggl = gl::Global::functions();
+    auto& pool = gl::PagePool::instance();
+    ggl.glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
+
+    // THE COARSE CHAIN, whole. It is always resident and every level of it moves with the weight,
+    // so there is no box to narrow this to; the view copies both sources per level and lerps.
+    if (mCoarse.id() != 0) {
+        std::vector<uint8> levelBytes;
+        ggl.glBindTexture(GL_TEXTURE_2D, mCoarse.id());
+        for (int rel = 0; rel <= mMaxLevel - mCoarseLevel; ++rel) {
+            const int level = mCoarseLevel + rel;
+            const QSize levelSize = mMaskPyramid->levelSize(level);
+            if (levelSize.isEmpty())
+                break;
+            levelBytes.resize((size_t)levelSize.width() * levelSize.height());
+            mMaskPyramid->copyLevel(level, levelBytes.data());
+            ggl.glTexSubImage2D(
+                GL_TEXTURE_2D, rel, 0, 0, levelSize.width(), levelSize.height(), GL_RED,
+                GL_UNSIGNED_BYTE, levelBytes.data()
+            );
+        }
+        ggl.glBindTexture(GL_TEXTURE_2D, 0);
+    }
+    // EVERY RESIDENT PAGE, through the table entry that names its slot: a page outside the
+    // demanded set can still be sampled this frame (its mark and its residency are a frame
+    // apart), and on a view that page would otherwise hold the last frame's weight.
+    for (int index = 0; index < pageCount(); ++index) {
+        if (mEntries[(size_t)index] == 0)
+            continue;
+        int px = 0, py = 0;
+        const int level = levelOfIndex(index, &px, &py);
+        gl::PagePool::Slot slot;
+        if (!pool.find(pageId(level, px, py), &slot))
+            continue;
+        const GLuint atlas = pool.atlasTextureId(slot.atlas);
+        if (atlas == 0)
+            continue;
+        fillPageBuffer(level, px, py);
+        ggl.glBindTexture(GL_TEXTURE_2D, atlas);
+        ggl.glTexSubImage2D(
+            GL_TEXTURE_2D, 0, slot.x - gl::PagePool::kGutter, slot.y - gl::PagePool::kGutter,
+            gl::PagePool::kPitch, gl::PagePool::kPitch, GL_RED, GL_UNSIGNED_BYTE,
+            mPageBuffer.data()
+        );
+        ggl.glBindTexture(GL_TEXTURE_2D, 0);
+    }
+    ggl.glPixelStorei(GL_UNPACK_ALIGNMENT, 4);
+}
+
 void VirtualTexture::rebuildTable() {
     if (mTable.id() == 0)
         return;

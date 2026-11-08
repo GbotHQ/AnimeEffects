@@ -11,13 +11,30 @@ namespace core {
 
 MaskKey::Data::Data(): mEasings(), mField(), mContentRect() {}
 
+bool MaskKey::Data::isValid() const {
+    return !mField.isNull() || (mTexture && mTexture->pyramid && mTexture->pyramid->isBlend());
+}
+
+QImage MaskKey::Data::fieldForDisplay() const {
+    if (!mField.isNull())
+        return mField;
+    if (mTexture && mTexture->pyramid && mTexture->pyramid->isBlend())
+        return mTexture->pyramid->displayField();
+    return QImage();
+}
+
 MaskKey::Data::TextureHolder::~TextureHolder() = default;
 
 const gl::Texture* MaskKey::Data::textureId() const {
+    // A VIEW HAS NO FIELD TO UPLOAD. The full chain is built from the materialized field, and the
+    // blender installs a view only when the paged path may draw it (see setBlend); a caller that
+    // forces the full resolution gets the materialized blend instead.
     if (mField.isNull())
         return nullptr;
     if (!mTexture)
         mTexture = std::make_shared<TextureHolder>();
+    if (mTexture->pyramid && mTexture->pyramid->isBlend())
+        return nullptr;
 
     // A holder that does not describe THIS image is dropped rather than patched: it can be shared
     // with another Data (a blend result, an undo state) that still points at the image it was
@@ -43,30 +60,20 @@ const gl::Texture* MaskKey::Data::textureId() const {
     return &mTexture->texture;
 }
 
-VirtualTexture* MaskKey::Data::virtualTexture() const {
-    if (mField.isNull() || !mPainted || mForceFullTexture)
-        return nullptr;
-    if (!VirtualTexture::pageable(mField.size()))
+const MaskPyramid* MaskKey::Data::ensurePyramid() const {
+    if (mField.isNull())
         return nullptr;
     if (!mTexture)
         mTexture = std::make_shared<TextureHolder>();
+    else if (mTexture->pyramid && mTexture->pyramid->isBlend())
+        return nullptr;   // a view consumes sources; it is not one
     const quint64 fieldKey = mField.cacheKey();
-    if (mTexture->built() && mTexture->key != fieldKey)
+    // THE HOLDER DESCRIBES ONE FIELD, and a stroke's damage box is the only thing that can move it
+    // on without a rebuild (markDirty, and only for a PAGED holder). A pyramid built here for a
+    // BLEND SOURCE has no paged resource, so a stroke that rewrites the field leaves the holder
+    // behind its image and it must be rebuilt rather than read.
+    if ((mTexture->built() || mTexture->pyramid) && mTexture->key != fieldKey)
         mTexture = std::make_shared<TextureHolder>();
-
-    // THE DAMAGE IS APPLIED HERE, not in markDirty: the brush paints outside any guaranteed GL
-    // context, and this accessor is called from the render path (LayerNode's demand pass), which
-    // is exactly the point where an upload is safe.
-    if (mTexture->paged) {
-        if (mTexture->dirtyBoxValid) {
-            mTexture->paged->updateMaskBox(mField, mTexture->dirtyBox);
-            mTexture->dirtyBox = QRect();
-            mTexture->dirtyBoxValid = false;
-        }
-        // the page fill reads level 0 from the field; the QImage copy is a refcount
-        mTexture->paged->setMaskField(mField);
-        return mTexture->paged.get();
-    }
 
     if (!mTexture->pyramid) {
         // THE ONE GPU BUILD. The chain owns the resample rule (MaskMipChain), so the pyramid is
@@ -90,6 +97,46 @@ VirtualTexture* MaskKey::Data::virtualTexture() const {
         if (!ok)
             return nullptr;
         mTexture->pyramid = std::move(pyramid);
+        mTexture->key = fieldKey;
+    }
+    return mTexture->pyramid.get();
+}
+
+VirtualTexture* MaskKey::Data::virtualTexture() const {
+    if (mForceFullTexture || !mPainted)
+        return nullptr;
+    // THE VIEW FIRST. A blended matte has no field of its own and its content moves with the
+    // weight every frame, so the coarse chain (always resident) and the resident pages are
+    // brought to THIS frame's weight here - once, the first time the frame asks for the matte -
+    // and not in the landing, which still carries the previous frame's weight.
+    if (mTexture && mTexture->pyramid && mTexture->pyramid->isBlend()) {
+        if (!mTexture->paged)
+            return nullptr;
+        if (mTexture->viewDirty) {
+            mTexture->paged->refreshMaskView();
+            mTexture->viewDirty = false;
+        }
+        return mTexture->paged.get();
+    }
+    if (mField.isNull())
+        return nullptr;
+    if (!VirtualTexture::pageable(mField.size()))
+        return nullptr;
+    if (!ensurePyramid())
+        return nullptr;
+
+    // THE DAMAGE IS APPLIED HERE, not in markDirty: the brush paints outside any guaranteed GL
+    // context, and this accessor is called from the render path (LayerNode's demand pass), which
+    // is exactly the point where an upload is safe.
+    if (mTexture->paged) {
+        if (mTexture->dirtyBoxValid) {
+            mTexture->paged->updateMaskBox(mField, mTexture->dirtyBox);
+            mTexture->dirtyBox = QRect();
+            mTexture->dirtyBoxValid = false;
+        }
+        // the page fill reads level 0 from the field; the QImage copy is a refcount
+        mTexture->paged->setMaskField(mField);
+        return mTexture->paged.get();
     }
 
     auto paged = std::make_unique<VirtualTexture>();
@@ -99,7 +146,7 @@ VirtualTexture* MaskKey::Data::virtualTexture() const {
     }
     mTexture->paged = std::move(paged);
     mTexture->paged->setMaskField(mField);
-    mTexture->key = fieldKey;
+    mTexture->key = mField.cacheKey();
     // the pyramid is the authority from here: the full chain is not what a page fill reads, and
     // keeping it would double the field's GPU cost for nothing
     if (mTexture->uploaded) {
@@ -107,6 +154,64 @@ VirtualTexture* MaskKey::Data::virtualTexture() const {
         mTexture->uploaded = false;
     }
     return mTexture->paged.get();
+}
+
+bool MaskKey::Data::setBlend(const Data& aA, const Data& aB, int aWeight) {
+    // THE TWO SOURCES. Each key builds its own pyramid ONCE (the GPU chain + capture, exactly as
+    // a static matte does); the view borrows them and never copies their levels.
+    const MaskPyramid* pa = aA.ensurePyramid();
+    const MaskPyramid* pb = aB.ensurePyramid();
+    if (!pa || !pb || pa == pb || pa->size() != pb->size())
+        return false;
+    if (!VirtualTexture::pageable(pa->size()))
+        return false;
+
+    const bool samePair = mTexture && mTexture->pyramid && mTexture->pyramid->isBlend()
+        && mTexture->pyramid->blendA() == pa && mTexture->pyramid->blendB() == pb;
+    const quint64 stampA = aA.field().cacheKey();
+    const quint64 stampB = aB.field().cacheKey();
+    // THE SAME INPUTS PUT THE SAME PIXELS ON SCREEN, so a frame the blender re-derives with an
+    // unchanged weight, pair and pair of fields (a repaint, or two frames at one weight) has
+    // nothing to refresh. The fields' cacheKeys see a stroke: a paint detaches the shared image.
+    if (samePair && mTexture->blendStampA == stampA && mTexture->blendStampB == stampB
+        && mTexture->pyramid->blendWeight() == aWeight) {
+        return true;
+    }
+    if (!samePair) {
+        // a new pair (or a new grid): the resource names the view's size and levels, so it is
+        // rebuilt; the old one releases its pool pages through destroy()
+        mTexture = std::make_shared<TextureHolder>();
+        mTexture->pyramid = std::make_unique<MaskPyramid>();
+    }
+    if (!mTexture->pyramid->setBlend(pa, aA.field(), pb, aB.field(), aWeight))
+        return false;
+
+    mField = QImage();   // the view answers level 0 from the two fields
+    mContentRect = aA.contentRect();
+    mEasings = aA.mEasings;
+    mPainted = aA.isPainted() || aB.isPainted();
+    mForceFullTexture = false;
+
+    mTexture->blendStampA = stampA;
+    mTexture->blendStampB = stampB;
+    if (!samePair) {
+        mTexture->paged.reset();
+        auto paged = std::make_unique<VirtualTexture>();
+        if (!paged->buildMask(*mTexture->pyramid)) {
+            mTexture.reset();
+            return false;
+        }
+        mTexture->paged = std::move(paged);
+        // buildMask uploaded the coarse chain from the view at THIS weight and no page is
+        // resident yet, so the new resource is already current: the next frame is the one that
+        // needs a refresh.
+        mTexture->viewDirty = false;
+        return true;
+    }
+    // THE SAME RESOURCE, MOVED: its coarse chain and every resident page still hold the previous
+    // weight (or the previous fields), and the draw is this frame.
+    mTexture->viewDirty = true;
+    return true;
 }
 
 qint64 MaskKey::Data::ramBytes() const {
@@ -132,7 +237,9 @@ void MaskKey::Data::markDirty(const QRect& aTexels) {
     // reports. So those are patched there - one box per level - and the holder is moved on to the
     // detached image. A copy taken before the stamp keeps the old key, so undo rebuilds.
     bool patched = false;
-    if (mTexture->paged && mTexture->pyramid && mTexture->pyramid->size() == mField.size()) {
+    // a VIEW holder's pyramid describes two keys, not this field's grid: it is never patched here
+    if (mTexture->paged && mTexture->pyramid && !mTexture->pyramid->isBlend()
+        && mTexture->pyramid->size() == mField.size()) {
         // GPU work is DEFERRED to virtualTexture() (the brush has no guaranteed context); the box
         // is a union, so a fast drag's stamps cost one update per frame, not one per stamp
         mTexture->dirtyBox = mTexture->dirtyBoxValid
@@ -206,8 +313,12 @@ void MaskKey::Data::assign(const Data& aRhs) {
     // image is dropped rather than patched, exactly as textureId()/markDirty require, because a
     // copy taken before a stamp must rebuild rather than show pixels its own image does not have.
     const quint64 fieldKey = mField.cacheKey();
+    // A VIEW HOLDER IS NEVER SHARED WITH A KEY: it is the expansion's animated resource, not a
+    // description of this image's pixels, so it can neither receive this field's texture nor be
+    // the holder the key renders from.
     const auto builtForField = [fieldKey](const std::shared_ptr<TextureHolder>& aHolder) {
-        return aHolder && aHolder->built() && aHolder->key == fieldKey;
+        return aHolder && aHolder->built() && aHolder->key == fieldKey
+            && !(aHolder->pyramid && aHolder->pyramid->isBlend());
     };
     if (builtForField(mTexture)) {
         // ours is live: let the source render from it too
