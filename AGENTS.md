@@ -284,23 +284,33 @@ hand it over. Its one question is `Sampling`:
   prints `marks=`/`replays=`, and `AE_VT_DEMAND=nodraw` measures the pass's setup against its
   geometry (measured: the geometry). `AE_FRAME_STATS`'s line carries `vt_frame_ms`, the LANDING cost
   (`VirtualTexture::beginFrame`: demand parse + page fills + uploads + table publishes).
-  `AE_VT_LANDING_SPLIT=1` divides it (`VTLANDING frame= pages= pool= read= parse= clear= acquire=
-  fill= upload= table= other= total=`), which is how a landing change is measured against the parts
-  it is not. Measured in Release on ballerina at a 640x640 zoom-1 view, 31 LEVEL-0 pages a landing
-  frame at the default 8 MB cap: **fill 2.2-3.1 ms, upload 3.1-4.3 ms, parse+clear+pool+acquire+
-  table+other < 0.7 ms, total 7.0-16.1 ms** (Debug 12.7-21.3 / 21.9-28.4), against 13.0-25.9 before
-  2026-11-08. The fill is now one conversion, `img/premultiply.h` (SSE2; the scalar form is the
-  fallback AND the reference), at **0.087 ms a page median against 0.239** - the branchful loop it
-  replaced was NOT slower in situ, the vector width was the whole win; its gate is `P0` in
-  `verify_mipmap`, which grades every (channel, alpha) pair and six whole pages against an
-  independent reference, with a canary on the destination buffer (an outside page found `fillPage`
-  writing outside its buffer). A page is 270,400 bytes and the upload runs at 2-2.7 GB/s, so the
-  upload is the per-page ceiling now. **`read=` in that line is NOT addable**: it is the demand
-  map's fence interaction (the PBO map is 0.02 ms and the parse 0.02-0.05), where this driver
-  surfaces the previous frame's command buffer - removing the sync entirely leaves the frame's `ms`
-  unchanged (measured, four alternating runs), so a one-frame demand lag buys nothing.
-  `AE_VT_UPLOAD_MB=0` is NOT "no uploads": `PagePool`'s `envInt` maps a non-positive value to the
-  default 8.
+  `AE_VT_LANDING_SPLIT=1` divides it (`VTLANDING frame= pages= staged= pool= read= parse= clear=
+  acquire= fill= upload= table= other= total=`), which is how a landing change is measured against
+  the parts it is not. Measured in Release on ballerina at a 640x640 zoom-1 view, 31 LEVEL-0 pages
+  a landing frame at the default 8 MB cap: **fill 2.8-3.2 ms, upload 0.10-0.15 ms, everything else
+  < 0.7 ms, vt_frame_ms 4.2-13.3** (Debug landing 21.9-28.4 before the stage), against 13.0-25.9
+  before 2026-11-08. Both CPU terms are gone and both have a shape worth keeping:
+  - the FILL is one conversion, `img/premultiply.h` (SSE2; the scalar form is the fallback AND the
+    reference), at **0.087 ms a page median against 0.239**. The branchful loop it replaced was NOT
+    slower in situ - the vector width was the whole win. Gate `P0` in `verify_mipmap`: every
+    (channel, alpha) pair and six whole pages against an independent reference, with a canary on
+    the destination buffer (an outside page found `fillPage` writing outside its buffer).
+  - the UPLOAD goes through the pool's **staging ring** (`PagePool::beginStaging`/`endStaging`):
+    the fill writes into a MAPPED buffer and the GPU copies it to the atlas, which is one CPU copy
+    fewer than `glTexSubImage2D` from client memory. That copy WAS the whole upload cost - measured
+    on the pool's own atlas shape: 31 direct calls 2.8 ms CPU (4.0 with the finish), 31 calls from
+    a buffer object **0.00 ms CPU** (1.1 with the finish); filling into the map is as cheap as into
+    cached memory (0.88 against 0.91 ms for 8.4 MB). Batching a row of 15 slots into one call only
+    reached 0.059 ms a page, and sampling the atlas before the uploads changed nothing (2.84 against
+    2.81), so neither batching nor an atlas ping-pong is worth building. `AE_VT_STAGE=0` is the
+    direct-upload control; `staged=` in `VTLANDING` shows how many pages took the stage (fewer than
+    `pages=` means it was skipped or full). Gate `P4` (both formats, the full-stage refusal, the
+    counters); a 16-byte shift of every copy fails it and the pixel gates.
+  **`read=` in that line is NOT addable**: it is the demand map's fence interaction (the PBO map is
+  0.02 ms and the parse 0.02-0.05), where this driver surfaces the previous frame's command buffer -
+  removing the sync entirely leaves the frame's `ms` unchanged (measured, four alternating runs), so
+  a one-frame demand lag buys nothing. `AE_VT_UPLOAD_MB=0` is NOT "no uploads": `PagePool`'s
+  `envInt` maps a non-positive value to the default 8.
   `render_probe --repeat <n> --pan <px>` is the still-view and
   camera-navigation instrument (each repaint's PNG is written as `frame-<f>-r<i>.png`), and it is
   how the **timing-sensitive wrong read** at a panned camera was found - see the doc's first open

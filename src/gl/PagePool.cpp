@@ -38,6 +38,14 @@ bool PagePool::enabled() {
     return on;
 }
 
+bool PagePool::stagingEnabled() {
+    // `AE_VT_STAGE=0` is the CONTROL for the staging path: the same pages uploaded through
+    // glTexSubImage2D from client memory instead of from the frame's staging buffer. Read once -
+    // it is a measurement control, not a per-frame decision.
+    static const bool on = envSwitchOn("AE_VT_STAGE", true);
+    return on;
+}
+
 int PagePool::coarseSize() {
     static const int size = std::max(64, envInt("AE_VT_COARSE", 512));
     return size;
@@ -99,6 +107,21 @@ void PagePool::resetState() {
     mFrameUploads = 0;
     mFrameEvictions = 0;
     mFrameFailures = 0;
+    // THE STAGING RING BELONGS TO THE CONTEXT THAT IS GOING AWAY: forget its objects, do not
+    // delete them (their ids are not valid in the new context). A frame that was mid-stage loses
+    // its mapping with the context; beginStaging() re-creates the buffers.
+    for (int i = 0; i < kStagingRing; ++i) {
+        mStaging[i] = 0;
+        mStagingFence[i] = nullptr;
+        mStagingBytes[i] = 0;
+    }
+    mStagingOpen = false;
+    mStagingWrite = 0;
+    mStagingActive = -1;
+    mStagingMap = nullptr;
+    mStagingUsed = 0;
+    mStagingPages = 0;
+    mStagingCopies.clear();
 }
 
 void PagePool::beginFrame() {
@@ -109,6 +132,7 @@ void PagePool::beginFrame() {
     mFrameUploads = 0;
     mFrameEvictions = 0;
     mFrameFailures = 0;
+    mStagingPages = 0;
 }
 
 void PagePool::endFrame() {
@@ -363,6 +387,137 @@ void PagePool::cancel(const Slot& aSlot) {
             return;
         }
     }
+}
+
+bool PagePool::beginStaging() {
+    if (mStagingActive >= 0)
+        return true; // already open
+    if (!stagingEnabled())
+        return false;
+    // MAP LAZILY, ON THE FIRST PAGE: a frame that lands nothing (the steady state) must not map
+    // and unmap the stage every frame.
+    mStagingOpen = true;
+    return true;
+}
+
+bool PagePool::mapStaging() {
+    if (!ensureContext())
+        return false;
+    const qint64 cap = std::min<qint64>(mUploadCapBytes, (qint64)kStagingMaxBytes);
+    if (cap < pageBytes(Format_RGBA8))
+        return false;
+    const int slot = mStagingWrite;
+    auto& ggl = Global::functions();
+    if (mStaging[slot] == 0 || mStagingBytes[slot] != cap) {
+        if (mStaging[slot] != 0)
+            ggl.glDeleteBuffers(1, &mStaging[slot]);
+        ggl.glGenBuffers(1, &mStaging[slot]);
+        if (mStaging[slot] == 0)
+            return false;
+        ggl.glBindBuffer(GL_PIXEL_UNPACK_BUFFER, mStaging[slot]);
+        ggl.glBufferData(GL_PIXEL_UNPACK_BUFFER, (GLsizeiptr)cap, nullptr, GL_STREAM_DRAW);
+        ggl.glBindBuffer(GL_PIXEL_UNPACK_BUFFER, 0);
+        mStagingBytes[slot] = cap;
+    }
+    // THE GPU MUST BE DONE COPYING FROM THIS SLOT before the CPU overwrites it. It is two frames
+    // old, so this is normally already signaled; when it is not, the frame takes the direct path
+    // instead of waiting - a landing that blocks the CPU to use a staging buffer has lost.
+    if (mStagingFence[slot]) {
+        const GLenum status = ggl.glClientWaitSync(mStagingFence[slot], 0, 0);
+        if (status != GL_ALREADY_SIGNALED && status != GL_CONDITION_SATISFIED)
+            return false;
+        ggl.glDeleteSync(mStagingFence[slot]);
+        mStagingFence[slot] = nullptr;
+    }
+    ggl.glBindBuffer(GL_PIXEL_UNPACK_BUFFER, mStaging[slot]);
+    // UNSYNCHRONIZED because the fence above already said the GPU is done with this slot: asking
+    // the driver to synchronise again would make it throw the buffer's pages away each frame.
+    uint8* map = (uint8*)ggl.glMapBufferRange(
+        GL_PIXEL_UNPACK_BUFFER, 0, (GLsizeiptr)mStagingBytes[slot],
+        GL_MAP_WRITE_BIT | GL_MAP_UNSYNCHRONIZED_BIT
+    );
+    ggl.glBindBuffer(GL_PIXEL_UNPACK_BUFFER, 0);
+    if (!map)
+        return false;
+    mStagingMap = map;
+    mStagingUsed = 0;
+    mStagingCopies.clear();
+    mStagingActive = slot;
+    return true;
+}
+
+qint64 PagePool::reservePage(Format aFormat) {
+    if (!mStagingOpen)
+        return -1;
+    if (mStagingActive < 0 && !mapStaging()) {
+        mStagingOpen = false; // the stage is unavailable: this frame's pages go direct
+        return -1;
+    }
+    if (!mStagingMap)
+        return -1;
+    const qint64 bytes = pageBytes(aFormat);
+    if (mStagingUsed + bytes > mStagingBytes[mStagingActive])
+        return -1;
+    const qint64 offset = mStagingUsed;
+    mStagingUsed += bytes;
+    return offset;
+}
+
+uint8* PagePool::stagedPage(qint64 aOffset) const {
+    if (mStagingActive < 0 || !mStagingMap || aOffset < 0)
+        return nullptr;
+    return mStagingMap + aOffset;
+}
+
+void PagePool::stageCopy(const Slot& aSlot, Format aFormat, qint64 aOffset) {
+    if (mStagingActive < 0 || aOffset < 0)
+        return;
+    StagedCopy copy;
+    copy.slot = aSlot;
+    copy.format = aFormat;
+    copy.offset = aOffset;
+    mStagingCopies.push_back(copy);
+    ++mStagingPages;
+    ++mStagedPagesTotal;
+}
+
+void PagePool::endStaging() {
+    mStagingOpen = false;
+    if (mStagingActive < 0)
+        return;
+    const int slot = mStagingActive;
+    mStagingActive = -1;
+    auto& ggl = Global::functions();
+    ggl.glBindBuffer(GL_PIXEL_UNPACK_BUFFER, mStaging[slot]);
+    // the unmap is what makes the CPU's fill visible to the copies below; a mapped buffer may not
+    // be read by GL, which is why the frame has these two phases at all
+    ggl.glUnmapBuffer(GL_PIXEL_UNPACK_BUFFER);
+    ggl.glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
+    GLuint boundAtlas = 0;
+    for (const StagedCopy& copy : mStagingCopies) {
+        const GLuint atlas = atlasTextureId(copy.slot.atlas);
+        if (atlas == 0 || !copy.slot.isValid())
+            continue;
+        if (atlas != boundAtlas) {
+            ggl.glBindTexture(GL_TEXTURE_2D, atlas);
+            boundAtlas = atlas;
+        }
+        ggl.glTexSubImage2D(
+            GL_TEXTURE_2D, 0, copy.slot.x - kGutter, copy.slot.y - kGutter, kPitch, kPitch,
+            copy.format == Format_R8 ? GL_RED : GL_RGBA, GL_UNSIGNED_BYTE,
+            (const void*)(intptr_t)copy.offset
+        );
+    }
+    if (boundAtlas != 0)
+        ggl.glBindTexture(GL_TEXTURE_2D, 0);
+    ggl.glBindBuffer(GL_PIXEL_UNPACK_BUFFER, 0);
+    mStagingCopies.clear();
+    mStagingMap = nullptr;
+    mStagingUsed = 0;
+    if (mStagingFence[slot])
+        ggl.glDeleteSync(mStagingFence[slot]);
+    mStagingFence[slot] = ggl.glFenceSync(GL_SYNC_GPU_COMMANDS_COMPLETE, 0);
+    mStagingWrite = (slot + 1) % kStagingRing;
 }
 
 void PagePool::touch(const PageId& aPage) {

@@ -128,6 +128,8 @@ public:
     /// The switch. On by default; `AE_VIRTUAL_TEXTURE=0` selects the full-resolution control
     /// path for A/B measurements and for the gates that compare the two.
     static bool enabled();
+    /// The upload-stage switch (`AE_VT_STAGE=0` is the direct-upload control). On by default.
+    static bool stagingEnabled();
     /// The longest side of a resource that stays a plain mipmapped texture, and the size the
     /// always-resident coarse chain starts at (`AE_VT_COARSE`, default 512).
     static int coarseSize();
@@ -168,6 +170,52 @@ public:
     /// Reads a slot back to the caller's buffer (kPitch x kPitch in the slot's format), for the
     /// gate. Binds the atlas, which is otherwise never left bound by the pool.
     bool readSlot(const Slot& aSlot, uint8* aDst) const;
+
+    //----------------------------------------------------------------------------------------------
+    // THE UPLOAD STAGE: the bytes of a landing frame's pages, on their way into the atlas
+    //----------------------------------------------------------------------------------------------
+    //
+    /// A landing frame's pages are FILLED INTO MAPPED BUFFER MEMORY and copied to the atlas by the
+    /// GPU, instead of being filled into a private buffer that glTexSubImage2D then copies through
+    /// the driver's staging on the way in. Both halves are measured (texture-residency.md, item 3):
+    /// filling into mapped memory costs the same as filling into a cached buffer (0.88 ms against
+    /// 0.91 for 8.4 MB of 4-byte stores), while the same 31 pages cost **2.8 ms of CPU as 31
+    /// glTexSubImage2D calls from client memory and 0.00 ms from a buffer object** - the driver's
+    /// staging copy is what the direct path pays for.
+    ///
+    /// A mapped buffer may not be read by GL, so a staged frame is TWO PHASES: the caller fills
+    /// into stagedPage() and records the copy with stageCopy(), and endStaging() unmaps and issues
+    /// every copy. A page is therefore not in the atlas until endStaging(); while staging is on,
+    /// nothing may sample it before then (nothing does - the copies precede the frame's draws).
+    ///
+    /// The stage is a RING OF TWO buffers a frame apart, so the CPU never writes into bytes the GPU
+    /// may still be copying. A frame whose ring slot the GPU has not released does NOT wait:
+    /// beginStaging() returns false and that frame's pages take the direct path, the same pixels
+    /// by a slower route. `reservePage` can also refuse when the frame's stage is full (the lander
+    /// may exceed it at a raised AE_VT_UPLOAD_MB); that page and the rest go direct.
+    ///
+    /// NO OTHER GL UPLOAD MAY RUN BETWEEN THE TWO PHASES while the buffer is bound as
+    /// GL_PIXEL_UNPACK_BUFFER with a client pointer: that pointer would be read as an offset into
+    /// the stage. endStaging() binds it only around its own copies, which is why the page table's
+    /// publish (flushTable) comes after it and the sentinel atlas is created outside it.
+    ///
+    /// The stage's size is the upload cap, clamped to kStagingMaxBytes so a debug cap of "999 MB"
+    /// does not allocate that much.
+    bool beginStaging();
+    /// Room for one page of `aFormat`, or -1 when the stage is off/full and the page must go
+    /// direct.
+    qint64 reservePage(Format aFormat);
+    /// The mapped bytes at a reserved offset. Only valid between beginStaging() and endStaging().
+    uint8* stagedPage(qint64 aOffset) const;
+    /// Records the atlas copy that will read the page at `aOffset` (issued by endStaging()).
+    void stageCopy(const Slot& aSlot, Format aFormat, qint64 aOffset);
+    /// Unmaps the stage and issues every recorded copy, then fences the buffer for the ring.
+    void endStaging();
+    /// Pages the stage carried in the frame just ended (0 when the stage was skipped or full).
+    int stagedPages() const { return mStagingPages; }
+    /// Pages the stage has ever carried - a regression guard for the gates: a paged render that
+    /// silently fell back to direct uploads must not pass as "the stage works".
+    qint64 stagedPageTotal() const { return mStagedPagesTotal; }
 
     /// Every resident page with the slot it holds, for a diagnostic that must ask whether TWO
     /// owners agree about who lives in a slot (see VirtualTexture::debugVerifyPages).
@@ -222,6 +270,25 @@ private:
     int mFrameFailures = 0;
     quint64 mGeneration = 1;
     QOpenGLContext* mContext = nullptr;
+
+    enum { kStagingRing = 2, kStagingMaxBytes = 32 * 1024 * 1024 };
+    struct StagedCopy {
+        Slot slot;
+        Format format = Format_RGBA8;
+        qint64 offset = 0;
+    };
+    GLuint mStaging[kStagingRing] = {};
+    GLsync mStagingFence[kStagingRing] = {};
+    qint64 mStagingBytes[kStagingRing] = {};
+    bool mapStaging();
+    bool mStagingOpen = false; // the landing wants the stage; the map is lazy
+    int mStagingWrite = 0;     // the ring slot the next staged frame maps
+    int mStagingActive = -1;   // the ring slot being filled now, -1 when nothing is mapped
+    int mStagingPages = 0;
+    qint64 mStagedPagesTotal = 0;
+    uint8* mStagingMap = nullptr;
+    qint64 mStagingUsed = 0;
+    std::vector<StagedCopy> mStagingCopies;
 };
 
 } // namespace gl

@@ -2017,6 +2017,97 @@ void suitePagePool() {
         );
     }
     pool.purge();
+
+    // P4: THE UPLOAD STAGE. The bytes a landing frame fills into the mapped stage must be the
+    // bytes its slot holds after endStaging(), for BOTH formats and at each format's own page
+    // size; a full stage must refuse the page (the caller then uploads direct) instead of writing
+    // past its buffer; and the counters the gates read must count exactly what was copied.
+    if (!gl::PagePool::stagingEnabled()) {
+        std::printf("  [SKIP] AE_VT_STAGE=0 is the direct-upload control\n");
+    } else {
+        // both stacks: the R8 page needs its own atlas, and a budget of one RGBA atlas refuses it
+        pool.setBudgetBytes(
+            (qint64)gl::PagePool::kAtlasBytes + gl::PagePool::atlasBytes(gl::PagePool::Format_R8)
+        );
+        pool.beginFrame();
+        expect(pool.beginStaging(), "P4 the stage must open");
+        const qint64 stagedBefore = pool.stagedPageTotal();
+
+        // RGBA8: a position-dependent pattern, so a wrong offset or pitch cannot pass
+        std::vector<uint8_t> rgba((size_t)gl::PagePool::kPitch * gl::PagePool::kPitch * 4, 0);
+        for (int y = 0; y < gl::PagePool::kPitch; ++y)
+            for (int x = 0; x < gl::PagePool::kPitch; ++x) {
+                uint8_t* p = rgba.data() + ((size_t)y * gl::PagePool::kPitch + x) * 4;
+                p[0] = (uint8_t)((x * 3 + y) & 255);
+                p[1] = (uint8_t)((x + y * 7) & 255);
+                p[2] = 91;
+                p[3] = 255;
+            }
+        gl::PagePool::Slot rgbaSlot;
+        expect(pool.acquire(pageId(10, 0, 0, 0), &log, &rgbaSlot), "P4 acquire the staged RGBA page");
+        const qint64 rgbaOffset = pool.reservePage(gl::PagePool::Format_RGBA8);
+        expect(rgbaOffset >= 0, "P4 the stage must reserve an RGBA page");
+        uint8_t* staged = pool.stagedPage(rgbaOffset);
+        expect(staged != nullptr, "P4 the reserved page must be mapped");
+        if (staged) {
+            std::memcpy(staged, rgba.data(), rgba.size());
+            pool.stageCopy(rgbaSlot, gl::PagePool::Format_RGBA8, rgbaOffset);
+        }
+
+        // R8: the other format, at its own page size, in the same stage
+        std::vector<uint8_t> red((size_t)gl::PagePool::kPitch * gl::PagePool::kPitch, 0);
+        for (size_t i = 0; i < red.size(); ++i)
+            red[i] = (uint8_t)((i * 13) & 255);
+        gl::PagePool::Slot r8Slot;
+        expect(
+            pool.acquire(pageId(11, 0, 0, 0), &log, &r8Slot, gl::PagePool::Format_R8),
+            "P4 acquire the staged R8 page"
+        );
+        const qint64 r8Offset = pool.reservePage(gl::PagePool::Format_R8);
+        expect(
+            r8Offset == rgbaOffset + gl::PagePool::pageBytes(gl::PagePool::Format_RGBA8),
+            "P4 the second page must follow the first at its own page size"
+        );
+        uint8_t* stagedRed = pool.stagedPage(r8Offset);
+        expect(stagedRed != nullptr, "P4 the reserved R8 page must be mapped");
+        if (stagedRed) {
+            std::memcpy(stagedRed, red.data(), red.size());
+            pool.stageCopy(r8Slot, gl::PagePool::Format_R8, r8Offset);
+        }
+
+        pool.endStaging();
+        expect(pool.stagedPageTotal() == stagedBefore + 2, "P4 the stage must count both pages");
+        expect(pool.stagedPages() == 2, "P4 this frame's staged count must be 2");
+        expect(pool.stagedPage(rgbaOffset) == nullptr, "P4 the stage must be unmapped after endStaging");
+
+        std::vector<uint8_t> back(rgba.size(), 0);
+        expect(
+            pool.readSlot(rgbaSlot, back.data()) && back == rgba,
+            "P4 the staged RGBA bytes must be the slot's bytes"
+        );
+        std::vector<uint8_t> backRed(red.size(), 0);
+        expect(
+            pool.readSlot(r8Slot, backRed.data()) && backRed == red,
+            "P4 the staged R8 bytes must be the slot's bytes"
+        );
+
+        // the stage's end: it fills, then refuses, and the refusal is stable (no wraparound)
+        pool.beginFrame();
+        expect(pool.beginStaging(), "P4 the stage must reopen for a second frame");
+        int reserved = 0;
+        while (reserved < 1000 && pool.reservePage(gl::PagePool::Format_RGBA8) >= 0)
+            ++reserved;
+        expect(
+            reserved > 0 && reserved < 1000,
+            QString("P4 the stage must fill and then refuse (%1 pages of the %2 MB cap)")
+                .arg(reserved)
+                .arg(gl::PagePool::defaultUploadCapBytes() / (1024 * 1024))
+        );
+        expect(pool.reservePage(gl::PagePool::Format_RGBA8) < 0, "P4 a full stage must keep refusing");
+        pool.endStaging();
+        pool.purge();
+    }
+
     pool.setBudgetBytes(gl::PagePool::defaultBudgetBytes());
 }
 

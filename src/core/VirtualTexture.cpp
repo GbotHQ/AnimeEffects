@@ -877,8 +877,26 @@ void VirtualTexture::beginFrame() {
     demandMap.beginFrame(gl::PagePool::instance().frame());
     if (split)
         sLanding.clearNs += phase.nsecsElapsed();
+    // THE STAGE IS OPEN FOR THE WHOLE LANDING, ACROSS RESOURCES: every page any resource uploads
+    // this frame is filled into the same mapped buffer, and closed once, after the last one.
+    {
+        QElapsedTimer stagingTimer;
+        if (split)
+            stagingTimer.start();
+        gl::PagePool::instance().beginStaging();
+        if (split)
+            sLanding.uploadNs += stagingTimer.nsecsElapsed();
+    }
     for (VirtualTexture* resource : registry())
         resource->resolveDemand();
+    {
+        QElapsedTimer stagingTimer;
+        if (split)
+            stagingTimer.start();
+        gl::PagePool::instance().endStaging();
+        if (split)
+            sLanding.uploadNs += stagingTimer.nsecsElapsed();
+    }
     // TABLES GO OUT AFTER EVERY UPLOAD, not at the end of each resource: an upload for resource
     // B can evict a page of resource A, and A's table was already rebuilt by then. Publishing in
     // a second pass means no table in the frame names a slot some other resource has taken.
@@ -893,9 +911,10 @@ void VirtualTexture::beginFrame() {
                                + sLanding.uploadNs + sLanding.tableNs)
             / 1000000.0;
         qWarning(
-            "VTLANDING frame=%llu pages=%d pool=%.2f read=%.2f parse=%.2f clear=%.2f acquire=%.2f "
-            "fill=%.2f upload=%.2f table=%.2f other=%.2f total=%.2f",
+            "VTLANDING frame=%llu pages=%d staged=%d pool=%.2f read=%.2f parse=%.2f clear=%.2f "
+            "acquire=%.2f fill=%.2f upload=%.2f table=%.2f other=%.2f total=%.2f",
             (unsigned long long)gl::PagePool::instance().frame(), sLanding.pages,
+            gl::PagePool::instance().stagedPages(),
             sLanding.poolNs / 1000000.0, sLanding.readNs / 1000000.0,
             sLanding.parseNs / 1000000.0, sLanding.clearNs / 1000000.0,
             sLanding.acquireNs / 1000000.0, sLanding.fillNs / 1000000.0,
@@ -945,8 +964,10 @@ void VirtualTexture::synchronize() {
             resource->consumeDemand();
         demandMap.endConsume();
     }
+    gl::PagePool::instance().beginStaging();
     for (VirtualTexture* resource : registry())
         resource->resolveDemand();
+    gl::PagePool::instance().endStaging();
     for (VirtualTexture* resource : registry())
         resource->flushTable();
 }
@@ -1648,10 +1669,19 @@ void VirtualTexture::flushTable() {
 }
 
 bool VirtualTexture::uploadPage(int aLevel, int aPageX, int aPageY, const gl::PagePool::Slot& aSlot) {
+    auto& pool = gl::PagePool::instance();
     QElapsedTimer phaseTimer;
     if (landingSplitEnabled())
         phaseTimer.start();
-    fillPageBuffer(aLevel, aPageX, aPageY);
+    // THE STAGE, WHEN IT IS ON: the fill writes straight into mapped buffer memory and
+    // PagePool::endStaging copies it to the atlas, so the driver's staging copy never happens -
+    // measured as the whole CPU cost of the direct path (see PagePool's staging comment). A full
+    // or unavailable stage is not an error: this page goes direct.
+    const qint64 staged = pool.reservePage(mFormat);
+    uint8* dst = staged >= 0 ? pool.stagedPage(staged) : mPageBuffer.data();
+    if (!dst)
+        return false;
+    fillPageBuffer(aLevel, aPageX, aPageY, dst);
     if (landingSplitEnabled())
         sLanding.fillNs += phaseTimer.nsecsElapsed();
     if (!isMask() && aLevel > 0 && qEnvironmentVariableIsSet("AE_VT_PAGE_HASH")) {
@@ -1660,7 +1690,7 @@ bool VirtualTexture::uploadPage(int aLevel, int aPageX, int aPageY, const gl::Pa
         const int h = std::min((int)gl::PagePool::kPageSize, levelSize.height() - aPageY * (int)gl::PagePool::kPageSize);
         quint64 bufferHash = 1469598103934665603ull;
         for (int y = 0; y < h; ++y) {
-            const uint8* row = mPageBuffer.data()
+            const uint8* row = dst
                 + ((size_t)(y + gl::PagePool::kGutter) * gl::PagePool::kPitch + gl::PagePool::kGutter) * 4;
             for (int i = 0; i < w * 4; ++i) {
                 bufferHash ^= row[i];
@@ -1674,28 +1704,34 @@ bool VirtualTexture::uploadPage(int aLevel, int aPageX, int aPageY, const gl::Pa
                      aPageY, w, h, (unsigned long long)bufferHash, (unsigned long long)levelHash);
         }
     }
-    auto& ggl = gl::Global::functions();
-    const GLuint atlas = gl::PagePool::instance().atlasTextureId(aSlot.atlas);
-    if (atlas == 0)
-        return false;
-    if (landingSplitEnabled())
-        phaseTimer.restart();
-    ggl.glBindTexture(GL_TEXTURE_2D, atlas);
-    ggl.glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
-    ggl.glTexSubImage2D(
-        GL_TEXTURE_2D,
-        0,
-        aSlot.x - gl::PagePool::kGutter,
-        aSlot.y - gl::PagePool::kGutter,
-        gl::PagePool::kPitch,
-        gl::PagePool::kPitch,
-        isMask() ? GL_RED : GL_RGBA,
-        GL_UNSIGNED_BYTE,
-        mPageBuffer.data()
-    );
-    ggl.glBindTexture(GL_TEXTURE_2D, 0);
-    if (landingSplitEnabled())
-        sLanding.uploadNs += phaseTimer.nsecsElapsed();
+    if (staged >= 0) {
+        // the copy is recorded, not issued: the stage is still mapped, and a mapped buffer may not
+        // be read by GL (PagePool::endStaging unmaps and issues them, before the frame's draws)
+        pool.stageCopy(aSlot, mFormat, staged);
+    } else {
+        auto& ggl = gl::Global::functions();
+        const GLuint atlas = pool.atlasTextureId(aSlot.atlas);
+        if (atlas == 0)
+            return false;
+        if (landingSplitEnabled())
+            phaseTimer.restart();
+        ggl.glBindTexture(GL_TEXTURE_2D, atlas);
+        ggl.glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
+        ggl.glTexSubImage2D(
+            GL_TEXTURE_2D,
+            0,
+            aSlot.x - gl::PagePool::kGutter,
+            aSlot.y - gl::PagePool::kGutter,
+            gl::PagePool::kPitch,
+            gl::PagePool::kPitch,
+            isMask() ? GL_RED : GL_RGBA,
+            GL_UNSIGNED_BYTE,
+            dst
+        );
+        ggl.glBindTexture(GL_TEXTURE_2D, 0);
+        if (landingSplitEnabled())
+            sLanding.uploadNs += phaseTimer.nsecsElapsed();
+    }
 
     const int index = pageIndex(aLevel, aPageX, aPageY);
     // the shader's atlas branch is PER STACK: the entry names 0..3 inside the resource's own
@@ -1711,9 +1747,13 @@ qint64 VirtualTexture::pyramidBytes() const {
 }
 
 void VirtualTexture::fillPageBuffer(int aLevel, int aPageX, int aPageY) {
+    fillPageBuffer(aLevel, aPageX, aPageY, mPageBuffer.data());
+}
+
+void VirtualTexture::fillPageBuffer(int aLevel, int aPageX, int aPageY, uint8* aDst) {
     if (isMask()) {
         XC_PTR_ASSERT(mMaskPyramid);
-        mMaskPyramid->fillPage(aLevel, aPageX, aPageY, mMaskField, mPageBuffer.data());
+        mMaskPyramid->fillPage(aLevel, aPageX, aPageY, mMaskField, aDst);
         return;
     }
     const uint8* base = nullptr;
@@ -1722,7 +1762,7 @@ void VirtualTexture::fillPageBuffer(int aLevel, int aPageX, int aPageY) {
         base = mResource->image().data();
         baseSize = mResource->image().pixelSize();
     }
-    mPyramid.fillPage(aLevel, aPageX, aPageY, base, baseSize, mPageBuffer.data());
+    mPyramid.fillPage(aLevel, aPageX, aPageY, base, baseSize, aDst);
 }
 
 void VirtualTexture::updateMaskBox(const QImage& aField, const QRect& aTexelBox) {

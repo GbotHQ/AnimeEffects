@@ -236,7 +236,10 @@ private:
     bool buildMaskCoarse();
     bool createTargets();
     bool uploadCoarseMaskBox(int aRelLevel, const QRect& aBox);
+    /// Writes one page's bytes (fillPage) into `aDst`, or into mPageBuffer when no destination is
+    /// given. A landing frame passes the page's slot in the upload stage (PagePool::stagedPage).
     void fillPageBuffer(int aLevel, int aPageX, int aPageY);
+    void fillPageBuffer(int aLevel, int aPageX, int aPageY, uint8* aDst);
     bool uploadPage(int aLevel, int aPageX, int aPageY, const gl::PagePool::Slot& aSlot);
     void resolveDemand();
     void flushTable();
