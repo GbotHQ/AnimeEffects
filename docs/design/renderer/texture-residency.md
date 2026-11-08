@@ -874,8 +874,8 @@ at load; nothing reads a texture back during a frame.
 | page | 256x256 content texels |
 | gutter | 2 texels on every side (one filtered read reaches one texel past its centre) |
 | pitch | 260 |
-| atlas | 260-pitch slots in a square texture: 4096x4096 is 15x15 = 225 slots (3900 of 4096 texels used), 60.8 MB RGBA8; the FIRST atlas is sized from the first landing's demand |
-| atlases | up to 4 (the shader's four-way branch), 243 MB at the full size |
+| atlas | 4096x4096, 15x15 = 225 slots (3900 of 4096 texels used), 60.8 MB RGBA8 |
+| atlases | up to 4 (the shader's four-way branch), 243 MB |
 | budget | `AE_VT_BUDGET_MB`, default 256 MB, clamped to 4 atlases |
 | upload cap | `AE_VT_UPLOAD_MB`, default 8 MB/frame (29 pages); 32 MB was measured to cost 60-140 ms on the frame that spent it |
 | eviction | least recently touched page; every requested page is touched before any upload |
@@ -883,18 +883,19 @@ at load; nothing reads a texture back during a frame.
 The gutter is 2, not the design's 4, and the slots are 15x15, not 16x16: 16 slots of 260 pitch do
 not fit 4096. A slot that cannot have a gutter is not a slot.
 
-**The first atlas is sized from the demand.** A page is a fixed 260-texel pitch, so an atlas's
-capacity is `(side/260)^2`: 49 slots at 2048 (15.2 MB RGBA8), 121 at 3072 (37.7 MB), 225 at 4096
-(60.8 MB). By the time the first slot is asked for, `VirtualTexture::beginFrame` has parsed the
-frame's demand (the sum of every resource's wanted pages), and the pool picks the smallest rung
-that holds them IN ONE ATLAS - a project whose first landing wants 49 pages or fewer pays a quarter
-of the old 61 MB floor. The choice is pool-wide (both stacks read one atlas-size uniform) and is
-made once; `AE_VT_ATLAS_SIZE=<px>` forces it (the A/B control, `=4096` is the old floor). A later
-demand that no longer fits the pool's capacity (four atlases of the chosen size) EMPTIES the pool
-and re-decides at the full size: the pages re-land over the following frames through the coarse
-fallback, so a session that started on a small project is not capped for the rest of the session.
-Measured on the current `test.anie` (see Measured): `tex_live` 22.0 MB against 72.3 MB with the
-full atlas, the same 20 pages.
+**The first atlas is a fixed 4096^2 (60.8 MB), and that was re-examined and kept on 2026-11-08.**
+A demand-sized first atlas (2048/3072/4096 by the first landing's wanted pages, with a purge and
+re-land when a bigger demand outgrew the choice) was built, gated and measured: it saves 50.3 MB
+on projects whose full chains are ~10-70 MB (`test.anie` 22.0 MB against 72.3 MB) and nothing on a
+project whose chains dwarf the atlas. It was reverted by decision - the floor is not a VRAM
+problem (61 MB is ~6 % of a 1 GB card and nothing on an integrated GPU), paging pays where the
+chains are far larger than one atlas (`dinner lab` 307.6 MB, `ballerina` 401.3 MB against
+88.9/83.8 paged), and the smallest project is still not made whole by it (`test.anie`'s whole
+chain is 9.6 MB, below even the 15.2 MB small atlas). The alternative's variable geometry and its
+purge-and-re-land on growth were judged more machinery than the saved bytes were worth. See
+Measured, "the first-atlas floor was examined and kept", and open item 7 for the policy that would
+actually fix the smallest projects. A fixed 2048 first atlas is worse: 57 pages then needed a
+second 4096 atlas for 8, 77 MB against 61.
 
 Growth is another atlas when the budget allows; an allocation that fails drops the budget to what
 is already allocated and the frame falls back to the coarse chain. An atlas with no resident page
@@ -1208,9 +1209,8 @@ filter lane's field. For a paged matte that is field + levels; for a forced-full
 | `AE_VT_LANDING_SPLIT=1` | `VTLANDING` per landing frame: the landing time split into pool, read (the demand map's fence interaction), parse, clear, acquire, fill, upload and table, with the page count and how many of them the stage carried (see Instruments) |
 | `AE_VT_STAGE=0` | control: fill pages into a private buffer and upload them with `glTexSubImage2D` from client memory instead of through the staging buffer. Measured: upload 3.1-4.3 ms a frame against 0.10-0.15 with the stage, same pixels |
 | `AE_VT_COARSE` | longest side of the always-resident chain, default 512 |
-| `AE_VT_ATLAS_SIZE=<px>` | control: force the first atlas's size instead of taking it from the first landing's demand (260-pitch slots; `=2048` is 49 slots / 15.2 MB, `=4096` is the old fixed floor). Measured on `test.anie`: `tex_live` 22.0 MB by demand against 72.3 MB forced - see Measured |
 | `AE_AM1_FIELD=<n>` | gate measurement, not a control: the AM1 animated matte's field is n x n (default 900x700). Release: view 2.76 ms against materialized 2.39 at 900x700, 4.38 against 7.60 at 2048², 6.56 against 31.33 at 4096² (see Measured) |
-| `AE_VT_STATS=1` | one line per frame: resources, wanted, resident, pool pages/bytes, and `atlas=` (the first atlas's chosen size, 0 before the decision) |
+| `AE_VT_STATS=1` | one line per frame: resources, wanted, resident, pool pages/bytes |
 | `AE_VT_DEMAND=0` | diagnostic: skip the demand pass and its readback (every paged layer samples the coarse chain through the VT shader) - the control for "is the cost the shader or the demand machinery" |
 | `AE_VT_DEMAND=nodraw` | diagnostic: keep the pass's state changes, uniforms and per-layer buffer uploads and skip only the draw - the control for "is the cost the setup or the geometry" (measured: the geometry) |
 | `AE_VT_STATS=1` also prints `marks=` and `replays=` | how the frame got its demand: a mark is one layer's triangles walked, a replay is a signature repeat that walked nothing |
@@ -1264,21 +1264,6 @@ it, and the shader cost is what remains.
   direct fallback's path; and the counters the gates read must count exactly the copies. Mutation:
   shifting every staged copy by 16 bytes fails P4's two byte checks and the pixel gates
   (max 230-255). `AE_VT_STAGE=0` runs the suite green on the direct path with P4 skipped.
-- **P5 the demand-sized first atlas** (2026-11-08): the first atlas's ladder hangs off one number -
-  the pages the first landing wants across every resource. Asserts no hint keeps the full 4096
-  geometry (direct callers and the other pool gates), 20 pages choose 2048 with 7 slots per axis
-  and a 7x7 slot origin at the gutter, 60 pages choose 3072, 400 keep 4096, the allocation's
-  BYTES are the chosen size's, and a demand of 400 on a 2048 pool EMPTIES it, re-decides at 4096
-  and drops its old pages. The whole pixel suite also runs green with `AE_VT_ATLAS_SIZE=2048`, which
-  is what proves the shader's `uPageAtlasSize`/`uPageSlotsPerAxis` plumbing at a size that is not
-  the compile-time one (the slot's row/column addressing is the part a wrong uniform moves).
-- **P6 the pool grows mid-landing** (2026-11-08): a real tree of 26 paged layers, three visible
-  first (their ~27 pages choose the 2048 rung), then all 26 (their demand no longer fits four 2048
-  atlases). The landing must empty the pool and re-decide at 4096 in that frame, the following
-  frames must re-land the pages, and the frame must then equal the full-resolution control (max 0).
-  Mutation: with the growth condition disabled the 2048 atlas stays and the structural check fails;
-  the table-clearing contract the growth relies on is `V1`/`FM1`'s (dropping the generation check
-  leaves stale entries and fails FM1's no-page-resident cases).
 - **M1b chain determinism**: builds one source's chain twice with a full readback of the first in
   between and requires the two chains to be bit-identical (9 levels here). It is a STRUCTURAL
   guard, not this defect's gate: measured, the old tail construction passes it too (worst channel
@@ -1799,18 +1784,26 @@ it, and the shader cost is what remains.
   blended mip levels (with anisotropy) where the page path read level 0. The control now takes
   `textureLod(..., 0)` - the same read as the page path, and the same read as `texture()` under
   true magnification - so the band is gone rather than excused.
-  **The first-atlas floor is gone where it mattered (2026-11-08).** `tex_live` on this small
-  project used to go UP, 33.0 MB -> 87.4 MB, because the pool's first atlas was a fixed 61 MB; a
-  fixed 2048 first atlas was built and measured and was not the answer (57 pages then needed a
-  second 4096 atlas for 8 pages, 77 MB against 61). The first atlas is now sized from the first
-  landing's demand IN ONE atlas - 2048/49 slots, 3072/121, 4096/225 (see The pool). On the current
-  file (one 1102x792 layer, 640x640 fit view, frames 0..3, the same binary, `AE_VT_ATLAS_SIZE=4096`
-  as the control): the first landing wants 20 pages, the pool picks 2048, `tex_live` is **22.0 MB
-  against 72.3 MB** - exactly the 50.3 MB the two atlas sizes' texels differ by - all 20 pages are
-  resident, and the paged pixels are unchanged: the whole `verify_mipmap` suite passes at
-  `AE_VT_ATLAS_SIZE=2048` as well as at 4096. `dinner lab` (5 pages) and `EmiliHappyIdle` (47
-  pages) drop the same 50.3 MB; `ballerina`'s first landing wants 354 pages, keeps the 4096 atlas
-  and its 83.8 MB is unchanged.
+  **The first-atlas floor was examined and KEPT (2026-11-08).** A demand-sized first atlas
+  (2048/3072/4096 by the first landing's wanted pages, plus the purge-and-re-land a size change
+  needs) was built, gated (`P5`/`P6`, reverted with the feature) and measured, then reverted by
+  decision. `tex_live`, Release, 640x640 fit view, frames 0..3, the same binary:
+
+  | project | full chains (control) | paged, fixed 4096 | paged, demand-sized |
+  |---|---|---|---|
+  | test.anie (one 1102x792 layer) | 9.6 MB | 72.3 MB | 22.0 MB |
+  | dinner lab | 307.6 MB | 88.9 MB | 38.6 MB |
+  | ballerina | 401.3 MB | 83.8 MB | 83.8 MB |
+
+  The alternative saved exactly the atlas-size difference (50.3 MB) on every project on the small
+  rung (`test.anie`, `dinner lab`, `EmiliHappyIdle`) and nothing on a full-rung one (`ballerina`).
+  It did not make paging a win for the smallest project: `test.anie`'s whole chain is 9.6 MB, less
+  than the 15.2 MB small atlas alone, so even 22.0 MB is 2.3x its chains - the right answer there
+  is a policy that does not page such a project at all (open item 7). The growth transient was
+  measured too (Release, 234 wanted pages): the growth frame 10.0 ms and the re-land frames
+  7.0-9.3 against a 4.0 ms steady state, fully resident after 8 frames at 31 pages a frame, the
+  coarse tier covering the wait. The floor is not a VRAM problem (61 MB is ~6 % of a 1 GB card and
+  nothing on an integrated GPU), so the fixed 4096 is the simpler choice and stays.
   RE-CONFIRMED 2026-11-06 after the folder-matte change, with `render_probe` on the same project
   (640x640 fit view, frames 0..5, `AE_VIRTUAL_TEXTURE=0` as the control): frames 2-5 are
   **bit-identical** (0 px differ), frame 1 is max 1 / mean 0.0025, and frame 0 is max 176 / mean
@@ -2034,19 +2027,23 @@ it, and the shader cost is what remains.
    with many duplicated large layers appears, the measurement starts from `--list-layers`' `res=`,
    and the pyramid is the easy half - the paged RESOURCE (coarse chain + pages) is the larger prize
    and a harder lifetime question.
-6. ~~**The first-atlas floor**~~ - **DONE (2026-11-08)**: the first atlas is sized from the first
-   landing's demand (2048/3072/4096, one atlas holding what the view wants), and a demand that
-   outgrows the chosen capacity empties the pool and re-decides at 4096. Measured: 22.0 MB against
-   72.3 MB on a 20-page project, 50.3 MB for every project on the small rung, unchanged for one on
-   the full rung; see Measured and `P5`. What remains:
-   - a session that starts on a sparse project and later needs more than four small atlases pays
-     ONE empty-and-re-land (a one-frame coarse transient, then normal landing) - the price of not
-     betting 61 MB on the first frame. If that transient ever matters, the alternative is to
-     allocate the larger atlas once the *hint* is stable, which is the same bet in a bigger box.
-   - the size is pool-wide BY CONSTRUCTION (both stacks read one `uPageAtlasSize` uniform), chosen
-     from the SUM of the image and mask demand. A project whose mask pages dominate sizes the image
-     stack up with them; per-stack uniforms would lift that, at the cost of two more uniforms and a
-     second branch in both samplers.
+6. ~~**The first-atlas floor (61 MB)**~~ - **MEASURED AND THE FLOOR KEPT (2026-11-08).** A
+   demand-sized first atlas was built, gated (`P5`/`P6`) and measured: 50.3 MB less texture memory
+   on every project on the small rung (`test.anie` 22.0 against 72.3 MB), nothing on a full-rung one
+   (`ballerina` 83.8 both ways), and a purge-and-re-land when a session's demand outgrows the
+   choice (measured: growth frame 10.0 ms, re-land frames 7.0-9.3 against 4.0 steady, 8 frames to
+   fully resident, the coarse tier covering the wait). It was reverted by decision: the floor is
+   not a VRAM problem, the projects that page have chains far larger than one atlas, and the
+   variable geometry plus the growth event are more machinery than 50 MB is worth. Whoever wants
+   that 50 MB has the measured shape in the feature's own commit (`c3ab0971`); the smallest
+   projects need item 7, not a smaller atlas.
+7. **Paging is a memory loss for the smallest projects** (found 2026-11-08): `test.anie`'s full
+   chain is 9.6 MB and the paged path is 72.3 MB at the fixed floor - 22.0 MB even at the smallest
+   atlas the alternative could choose, because the atlas alone is 15.2 MB plus its pages. The right
+   shape is a POLICY that leaves a project whose whole pageable set is smaller than the pool on
+   full chains (the item's original sentence, now with numbers), not a smaller atlas. It needs the
+   set's chain bytes (a tree walk at project load) and a hook so the pixel gates can force paging
+   for their fixtures (`AE_VIRTUAL_TEXTURE=0` is the opposite control). Not implemented.
 
 The parity gaps are closed - the nene residual (the coarse tier's single tap) and the test.anie
 band (the control's implicit-LOD read in the biased magnified branch) - and the clipper layers are

@@ -824,19 +824,6 @@ bool VirtualTexture::pageable(const QSize& aSize) {
 }
 
 int VirtualTexture::instanceCount() { return (int)registry().size(); }
-
-void VirtualTexture::pageResidency(int* aWanted, int* aResident) {
-    int wanted = 0;
-    int resident = 0;
-    for (VirtualTexture* resource : registry()) {
-        wanted += resource->wantedPageCount();
-        resident += resource->residentWantedCount();
-    }
-    if (aWanted)
-        *aWanted = wanted;
-    if (aResident)
-        *aResident = resident;
-}
 int VirtualTexture::demandMarks() { return sDemandMarks; }
 int VirtualTexture::demandReplays() { return sDemandReplays; }
 
@@ -882,15 +869,6 @@ void VirtualTexture::beginFrame() {
         for (VirtualTexture* resource : registry())
             resource->consumeDemand();
         demandMap.endConsume();
-    }
-    // THE POOL'S FIRST ATLAS IS SIZED FROM THIS DEMAND (PagePool::setPageDemand): every resource's
-    // wanted set is current after the parse, and no slot has been acquired yet this frame, so the
-    // count is what the view will actually ask for - not a guess from the texture set.
-    {
-        int wantedPages = 0;
-        for (VirtualTexture* resource : registry())
-            wantedPages += resource->wantedPageCount();
-        gl::PagePool::instance().setPageDemand(wantedPages);
     }
     if (split)
         sLanding.parseNs += phase.nsecsElapsed();
@@ -963,7 +941,7 @@ void VirtualTexture::endFrame() {
         }
         qWarning(
             "VT frame %llu resources=%d wanted=%d resident=%d marks=%d replays=%d poolPages=%d "
-            "poolBytes=%lld atlas=%d",
+            "poolBytes=%lld",
             (unsigned long long)gl::PagePool::instance().frame(),
             (int)registry().size(),
             wanted,
@@ -971,8 +949,7 @@ void VirtualTexture::endFrame() {
             sDemandMarks,
             sDemandReplays,
             gl::PagePool::instance().residentPages(),
-            (long long)gl::PagePool::instance().residentBytes(),
-            gl::PagePool::instance().atlasSize()
+            (long long)gl::PagePool::instance().residentBytes()
         );
     }
 }
@@ -2097,7 +2074,6 @@ void VirtualTexture::replayDemand() {
 
 void VirtualTexture::bind(gl::EasyShaderProgram& aShader) const {
     auto& ggl = gl::Global::functions();
-    auto& pool = gl::PagePool::instance();
     // A HOLE in the atlas list is bound to the coarse texture, never left incomplete: a slot
     // that names a released atlas is a bug, but an incomplete sampler is a driver-dependent
     // colour. The count the shader checks is the NUMBER OF ADDRESSABLE ATLAS SLOTS, not the
@@ -2124,8 +2100,8 @@ void VirtualTexture::bind(gl::EasyShaderProgram& aShader) const {
     aShader.setUniformValue("uCoarseTexture", 4);
     aShader.setUniformValue("uPageTable", 5);
     aShader.setUniformValueArray("uPageLevelRow", rows, kMaxPageLevels);
-    aShader.setUniformValue("uPageAtlasSize", (float)pool.atlasSize());
-    aShader.setUniformValue("uPageSlotsPerAxis", pool.slotsPerAxis());
+    aShader.setUniformValue("uPageAtlasSize", (float)gl::PagePool::kAtlasSize);
+    aShader.setUniformValue("uPageSlotsPerAxis", gl::PagePool::kSlotsPerAxis);
     aShader.setUniformValue("uPagePitch", (float)gl::PagePool::kPitch);
     aShader.setUniformValue("uPageGutter", (float)gl::PagePool::kGutter);
     aShader.setUniformValue("uPageTexels", (float)gl::PagePool::kPageSize);
@@ -2143,7 +2119,6 @@ void VirtualTexture::bind(gl::EasyShaderProgram& aShader) const {
 
 void VirtualTexture::bindMask(gl::EasyShaderProgram& aShader) const {
     auto& ggl = gl::Global::functions();
-    auto& pool = gl::PagePool::instance();
     // a hole in the atlas list is bound to the coarse chain, never left incomplete (the same
     // rule as bind)
     for (int i = 0; i < gl::PagePool::kMaxAtlasCount; ++i) {
@@ -2175,8 +2150,8 @@ void VirtualTexture::bindMask(gl::EasyShaderProgram& aShader) const {
 
     // the page geometry both stacks share; a draw that pages only the mask (the rubylith
     // overlay) has no image VT to set them
-    aShader.setUniformValue("uPageAtlasSize", (float)pool.atlasSize());
-    aShader.setUniformValue("uPageSlotsPerAxis", pool.slotsPerAxis());
+    aShader.setUniformValue("uPageAtlasSize", (float)gl::PagePool::kAtlasSize);
+    aShader.setUniformValue("uPageSlotsPerAxis", gl::PagePool::kSlotsPerAxis);
     aShader.setUniformValue("uPagePitch", (float)gl::PagePool::kPitch);
     aShader.setUniformValue("uPageGutter", (float)gl::PagePool::kGutter);
     aShader.setUniformValue("uPageTexels", (float)gl::PagePool::kPageSize);

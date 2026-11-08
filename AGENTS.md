@@ -380,16 +380,16 @@ hand it over. Its one question is `Sampling`:
   page stack cannot reproduce (measured on test.anie as 6873 px, mean 0.076, max 43, until both
   paths read level 0 explicitly).
 
-- **The first atlas is sized from the first landing's demand** (`PagePool::setPageDemand`): a page
-  is a fixed 260-texel pitch, so an atlas holds `(side/260)^2` slots - 49 at 2048 (15.2 MB), 121 at
-  3072, 225 at 4096 (60.8 MB). The landing sums every resource's wanted pages after the demand
-  parse and picks the smallest rung that holds them in ONE atlas; `AE_VT_ATLAS_SIZE=<px>` forces it
-  (`4096` is the old fixed floor). Measured on `test.anie` (20 pages): `tex_live` **22.0 MB against
-  72.3 MB** forced, same pixels - the whole `verify_mipmap` suite passes at 2048 too. A later demand
-  beyond four atlases' capacity empties the pool and re-decides at 4096 (`P5` pins the ladder,
-  `P6` a real 26-layer render that grows mid-landing and then matches the control). The size is
-  pool-wide BY CONSTRUCTION: both stacks read one `uPageAtlasSize` / `uPageSlotsPerAxis`, so the
-  masks' demand sizes the image stack with it.
+- **The first page-pool atlas is a FIXED 4096^2 (60.8 MB) - examined, measured and kept
+  (2026-11-08).** A demand-sized first atlas (2048/3072/4096 by the first landing's wanted pages,
+  with a purge-and-re-land when a bigger demand outgrew it) was built, gated (`P5`/`P6`) and
+  reverted by decision. It saved exactly the atlas-size difference (50.3 MB) on projects whose
+  full chains are ~10-70 MB (`test.anie` 22.0 MB of textures against 72.3 MB; `dinner lab` 307.6
+  chains / 88.9 paged; `ballerina` 401.3 / 83.8) and nothing where the chains dwarf the atlas. It
+  did not make paging a win for the smallest project: `test.anie`'s whole chain is 9.6 MB, less
+  than even the 15.2 MB smallest atlas; the right fix there is a policy that does not page such a
+  project at all (the doc's open item 7, not implemented). The 61 MB floor is not a VRAM problem
+  (~6 % of a 1 GB card, nothing on an iGPU), so the simpler fixed geometry stays.
 - The timeline surface, the ruler and the graph page are **Canvas Painter** hosts (`QCanvasPainterWidget`
   through `PanelHostBase`); Qt ≥ 6.12 is required. The scene models live in `ctrl/` (they read
   `ctrl::TimeLineRow`), the ink decisions in `gui/`.

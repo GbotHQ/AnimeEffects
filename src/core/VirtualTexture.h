@@ -90,10 +90,6 @@ public:
 
     /// How many live paged images there are (for a diagnostic or a gate).
     static int instanceCount();
-    /// THE DEMAND'S TOTALS ACROSS EVERY LIVE RESOURCE (what AE_VT_STATS prints): the pages wanted
-    /// this frame and how many of those are resident. A gate uses it to report a landing transient
-    /// frame by frame instead of only its endpoint.
-    static void pageResidency(int* aWanted, int* aResident);
 
     VirtualTexture();
     ~VirtualTexture() override;

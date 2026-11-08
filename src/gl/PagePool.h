@@ -38,17 +38,11 @@ namespace gl {
 /// that with a four-way branch instead of one sampler: at most kMaxAtlasCount atlases are
 /// addressable from the layer shader.
 ///
-/// THE FIRST ATLAS IS SIZED FROM THE FIRST LANDING'S DEMAND. A 4096^2 atlas is 225 slots and
-/// 60.8 MB, and an earlier fixed 2048^2 first atlas measured worse on test.anie (57 pages then
-/// needed a second 4096 atlas: 77 MB against 61) - but neither has to be a fixed bet, because by
-/// the time the first slot is asked for, `VirtualTexture::beginFrame` has already parsed the
-/// frame's demand and knows how many pages the view wants. `setPageDemand` picks the smallest
-/// rung that holds them in one atlas - 2048 (49 slots, 15.2 MB), 3072 (121, 37.7 MB) or 4096
-/// (225, 60.8 MB) - and the geometry is pool-wide because both stacks read one atlas-size
-/// uniform. A project whose first landing wants 49 pages or fewer therefore pays a quarter of
-/// the old floor; one that wants more pays what it did. `purge()` clears the choice, and a demand
-/// that no longer fits the pool's capacity clears it itself and re-decides at the full size, so a
-/// session that started on a small project is not capped for the rest of it.
+/// The first atlas is 4096^2 (225 slots, 61 MB), so even a small project pays a 61 MB floor for
+/// its pool. A 2048^2 first atlas was built and measured: 57 pages on test.anie then needed a
+/// second 4096 atlas for the remaining 8, i.e. 77 MB against 61 MB for one large atlas, and the
+/// demand that decides between them is not known until the frame that asks. The fixed large atlas
+/// is the simpler, smaller-worst-case choice until a demand-aware policy is measured.
 ///
 /// WHY THE ATLASES ARE CREATED EMPTY AND GROW ON DEMAND: the budget is one number in bytes and
 /// the hardware differs by an order of magnitude. Growth is bounded by the budget; an allocation
@@ -78,11 +72,6 @@ public:
         kBytesPerTexel = 4,              // the RGBA8 page, which most totals are quoted in
         kPageBytes = kPitch * kPitch * kBytesPerTexel, // 270400
         kAtlasBytes = kAtlasSize * kAtlasSize * kBytesPerTexel, // 60.8 MB
-        // THE DEMAND-SIZED FIRST ATLAS'S RUNGS (see setPageDemand): the slots each one holds.
-        kSmallAtlasSize = 2048,   // 7x7 = 49 slots, 15.2 MB of RGBA8
-        kMediumAtlasSize = 3072,  // 11x11 = 121 slots, 37.7 MB
-        kSmallAtlasSlots = (kSmallAtlasSize / kPitch) * (kSmallAtlasSize / kPitch),
-        kMediumAtlasSlots = (kMediumAtlasSize / kPitch) * (kMediumAtlasSize / kPitch),
     };
 
     static int bytesPerTexel(Format aFormat) { return aFormat == Format_R8 ? 1 : 4; }
@@ -168,25 +157,8 @@ public:
     /// Drops every resident page and every atlas. The owners' tables are stale afterwards, so
     /// the pool's generation changes and each VirtualTexture clears its table on its next
     /// resolve (see VirtualTexture::resolveDemand). Used by the export gate's "render from an
-    /// empty pool" case and by the budget/shrink tests. It also forgets the first atlas's size,
-    /// so the next landing's demand decides it (a new project starts from its own demand).
+    /// empty pool" case and by the budget/shrink tests.
     void purge();
-
-    /// THE FIRST ATLAS'S GEOMETRY, chosen ONCE from the demand of the landing that first needs a
-    /// slot (see the class note). `aPages` is the number of pages the frame wants across every
-    /// resource, which VirtualTexture::beginFrame knows before the first acquire. No hint means
-    /// the full 4096 - the gates and any caller that acquires directly. The choice is pool-wide:
-    /// the image and mask stacks share one atlas-size uniform, so both formats are created at
-    /// this size.
-    void setPageDemand(int aPages);
-    int atlasSize() const { return mAtlasSize > 0 ? mAtlasSize : kAtlasSize; }
-    int slotsPerAxis() const { return mAtlasSize > 0 ? mAtlasSlotsPerAxis : kSlotsPerAxis; }
-    int slotsPerAtlas() const { return mAtlasSize > 0 ? mAtlasSlotCount : kSlotsPerAtlas; }
-    /// The bytes ONE atlas of `aFormat` costs at the pool's chosen geometry.
-    qint64 atlasBytesAt(Format aFormat) const {
-        const qint64 side = atlasSize();
-        return side * side * bytesPerTexel(aFormat);
-    }
 
     /// Changes whenever the resident set was thrown away wholesale.
     quint64 generation() const { return mGeneration; }
@@ -285,14 +257,7 @@ private:
     std::vector<int> mAtlasUsed;
     std::vector<quint64> mAtlasLastUsed;
     int mAtlasCount = 0;
-    // THE FIRST ATLAS'S GEOMETRY (see setPageDemand): 0 until the demand decides it, and again
-    // after purge(). kSlotsPer* stay the compile-time 4096 geometry for the default and the gates.
-    int mAtlasSize = 0;
-    int mAtlasSlotsPerAxis = 0;
-    int mAtlasSlotCount = 0;
-    int mDemandPages = 0;
-    void ensureAtlasSize();
-    // free slots per atlas, a small stack each; the scan is bounded by slotsPerAtlas()
+    // free slots per atlas, a small stack each; the scan is bounded by kSlotsPerAtlas
     std::vector<std::vector<int>> mFree;
     std::unordered_map<PageId, Entry, PageIdHash> mPages;
     std::list<PageId> mLru; // front = most recently touched

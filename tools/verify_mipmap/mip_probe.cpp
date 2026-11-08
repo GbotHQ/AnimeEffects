@@ -1778,20 +1778,17 @@ void suitePagePool() {
     pool.beginFrame();
 
     // P1: the first slot sits at the atlas origin plus the gutter, and slots step by the pitch
-    // on the pool's OWN grid - read after the first acquire, because the first atlas's size is
-    // demand-sized (and may be forced with AE_VT_ATLAS_SIZE for the A/B). If the pool and the
-    // shader disagree about that geometry, every page is offset.
+    // on the 15-wide grid. If the pool and the shader disagree, every page is offset.
     EvictionLog log;
     gl::PagePool::Slot slot0, slot1, slotRow2;
     const bool got0 = pool.acquire(pageId(1, 0, 0, 0), &log, &slot0);
     const bool got1 = pool.acquire(pageId(1, 0, 1, 0), &log, &slot1);
-    const int perAxis = pool.slotsPerAxis();
     bool gotRow2 = got0 && got1;
-    // the first page of the SECOND row is slot perAxis
-    for (int i = 2; i <= perAxis && gotRow2; ++i) {
+    // the first page of the SECOND row is slot kSlotsPerAxis
+    for (int i = 2; i <= gl::PagePool::kSlotsPerAxis && gotRow2; ++i) {
         gl::PagePool::Slot s;
         gotRow2 = pool.acquire(pageId(1, 0, i, 0), &log, &s);
-        if (i == perAxis)
+        if (i == gl::PagePool::kSlotsPerAxis)
             slotRow2 = s;
     }
     expect(got0 && got1 && gotRow2, "P1 a row of pages must fit in a fresh atlas");
@@ -1871,22 +1868,14 @@ void suitePagePool() {
         expect(pool.acquire(pageId(1, 0, 1000, 0), &log, &s), "P2 a new frame must reopen the upload budget");
     }
 
-    // P2: eviction. ONE ATLAS OF THE POOL'S OWN SIZE, and the budget then equal to what that
-    // atlas cost, so a second one is refused and the next acquire must evict the least recently
-    // touched page and tell its owner. (The size is read after the first acquire: the first
-    // atlas is demand-sized.)
+    // P2: eviction. One atlas holds kSlotsPerAtlas pages; the next acquire must evict the least
+    // recently touched one and tell its owner.
     pool.purge();
-    pool.beginFrame();
+    pool.setBudgetBytes((qint64)gl::PagePool::kAtlasBytes);
     log.evicted.clear();
-    {
-        gl::PagePool::Slot first;
-        expect(pool.acquire(pageId(2, 0, 0, 0), &log, &first), "P2 the first page must acquire");
-    }
-    const int perAtlas = pool.slotsPerAtlas();
-    pool.setBudgetBytes(pool.allocatedBytes());
     // acquire exactly one atlas' worth, a frame's cap at a time
-    int acquired = 1;
-    for (int i = 1; i < perAtlas; ++i) {
+    int acquired = 0;
+    for (int i = 0; i < gl::PagePool::kSlotsPerAtlas; ++i) {
         // the default upload cap is 8 MB (29 pages), so a frame cannot fill the whole atlas
         if (i % 20 == 0)
             pool.beginFrame();
@@ -1895,11 +1884,13 @@ void suitePagePool() {
             ++acquired;
     }
     expect(
-        acquired == perAtlas,
-        QString("P2 one atlas must hold %1 pages (got %2)").arg(perAtlas).arg(acquired)
+        acquired == gl::PagePool::kSlotsPerAtlas,
+        QString("P2 one atlas must hold %1 pages (got %2)")
+            .arg(gl::PagePool::kSlotsPerAtlas)
+            .arg(acquired)
     );
     // touch all but page 0 so page 0 becomes the victim
-    for (int i = 1; i < perAtlas; ++i)
+    for (int i = 1; i < gl::PagePool::kSlotsPerAtlas; ++i)
         pool.touch(pageId(2, 0, i, 0));
     pool.beginFrame();
     {
@@ -1942,18 +1933,14 @@ void suitePagePool() {
     // and readback are one channel, and an R8 acquire must never evict an RGBA page: the victim
     // would not free a usable slot.
     pool.purge();
-    pool.setBudgetBytes(2 * (qint64)gl::PagePool::kAtlasBytes);
+    pool.setBudgetBytes(
+        (qint64)gl::PagePool::kAtlasBytes + gl::PagePool::atlasBytes(gl::PagePool::Format_R8)
+    );
     pool.beginFrame();
     {
         EvictionLog r8log;
         gl::PagePool::Slot rgbaSlot, r8Slot;
         expect(pool.acquire(pageId(8, 0, 0, 0), &r8log, &rgbaSlot), "P3 the RGBA page must fit");
-        // THE FIRST ATLAS'S SIZE IS DECIDED BY THAT ALLOCATION, so the R8 stack's allowance is
-        // expressed in it: exactly one more atlas, of the same size, and no second one - the R8
-        // fill below must evict, not grow, whatever the geometry.
-        pool.setBudgetBytes(
-            pool.allocatedBytes() + pool.atlasBytesAt(gl::PagePool::Format_R8)
-        );
         r8log.evicted.clear();
         pool.beginFrame();
         expect(
@@ -1974,8 +1961,7 @@ void suitePagePool() {
         );
         expect(
             pool.allocatedBytes()
-                == pool.atlasBytesAt(gl::PagePool::Format_RGBA8)
-                    + pool.atlasBytesAt(gl::PagePool::Format_R8),
+                == (qint64)gl::PagePool::kAtlasBytes + gl::PagePool::atlasBytes(gl::PagePool::Format_R8),
             "P3 both atlases' bytes must be booked"
         );
 
@@ -1998,8 +1984,7 @@ void suitePagePool() {
 
         // fill the R8 atlas a frame's cap at a time; the RGBA page must survive every eviction
         int acquired = 0;
-        const int perAtlas = pool.slotsPerAtlas();
-        for (int i = 1; i < perAtlas; ++i) {
+        for (int i = 1; i < gl::PagePool::kSlotsPerAtlas; ++i) {
             if (i % 20 == 0)
                 pool.beginFrame();
             gl::PagePool::Slot slot;
@@ -2007,8 +1992,10 @@ void suitePagePool() {
                 ++acquired;
         }
         expect(
-            acquired == perAtlas - 1,
-            QString("P3 the R8 atlas must hold %1 pages (got %2)").arg(perAtlas - 1).arg(acquired)
+            acquired == gl::PagePool::kSlotsPerAtlas - 1,
+            QString("P3 the R8 atlas must hold %1 pages (got %2)")
+                .arg(gl::PagePool::kSlotsPerAtlas - 1)
+                .arg(acquired)
         );
         pool.beginFrame();
         gl::PagePool::Slot extra;
@@ -2025,7 +2012,7 @@ void suitePagePool() {
         expect(
             pool.residentBytes()
                 == (qint64)gl::PagePool::kPageBytes
-                    + (qint64)perAtlas * gl::PagePool::pageBytes(gl::PagePool::Format_R8),
+                    + (qint64)gl::PagePool::kSlotsPerAtlas * gl::PagePool::pageBytes(gl::PagePool::Format_R8),
             "P3 residentBytes must sum each page's own format"
         );
     }
@@ -2122,248 +2109,6 @@ void suitePagePool() {
     }
 
     pool.setBudgetBytes(gl::PagePool::defaultBudgetBytes());
-}
-
-// P5: THE FIRST ATLAS IS SIZED FROM THE FIRST LANDING'S DEMAND. A 4096^2 first atlas is a 61 MB
-// floor on every project, but by the time a slot is first asked for the pool knows how many pages
-// the view wants. This gate pins the ladder (2048/3072/4096 by "one atlas holds the demand"), that
-// the chosen geometry is what the shader is handed (slots per axis, the second row), that the
-// allocation really is the chosen size, and that a demand outgrowing the pool's capacity GROWS it
-// (empty + full size) instead of silently capping the session.
-void suiteAtlasSizing() {
-    suiteHeader("P5 the first atlas is sized from the demand");
-    if (!gl::PagePool::enabled()) {
-        std::printf("  [SKIP] AE_VIRTUAL_TEXTURE=0 is the control path\n");
-        return;
-    }
-    if (qEnvironmentVariableIsSet("AE_VT_ATLAS_SIZE")) {
-        // the control forces the geometry, which is exactly what this gate is about
-        std::printf("  [SKIP] AE_VT_ATLAS_SIZE forces the first atlas's size\n");
-        return;
-    }
-    auto& pool = gl::PagePool::instance();
-    const auto resetWith = [&](int aPages) {
-        pool.purge();
-        pool.setBudgetBytes(4 * gl::PagePool::kAtlasBytes);
-        pool.beginFrame();
-        pool.setPageDemand(aPages);
-    };
-    const auto acquireN = [&](int aCount, int aOwner) {
-        std::vector<gl::PagePool::Slot> got;
-        for (int i = 0; i < aCount; ++i) {
-            gl::PagePool::Slot slot;
-            if (!pool.acquire(pageId((quint64)aOwner, 0, i, 0), nullptr, &slot))
-                break;
-            got.push_back(slot);
-        }
-        return got;
-    };
-
-    // NO HINT: the full geometry, which is what a direct caller and the other pool gates use
-    pool.purge();
-    pool.setBudgetBytes(4 * gl::PagePool::kAtlasBytes);
-    pool.beginFrame();
-    expect(
-        pool.atlasSize() == gl::PagePool::kAtlasSize
-            && pool.slotsPerAtlas() == gl::PagePool::kSlotsPerAtlas,
-        "P5 with no demand the first atlas keeps the full 4096 geometry"
-    );
-
-    // 20 PAGES: one 2048 atlas (49 slots) holds them
-    resetWith(20);
-    expect(pool.atlasSize() == 2048, "P5 a 20-page demand must choose the 2048 atlas");
-    expect(pool.slotsPerAxis() == 2048 / gl::PagePool::kPitch && pool.slotsPerAtlas() == 49,
-        "P5 a 2048 atlas must have 7 slots per axis");
-    {
-        const std::vector<gl::PagePool::Slot> got = acquireN(8, 501);
-        expect(got.size() == 8, "P5 eight pages must fit the 2048 atlas");
-        expect(
-            pool.allocatedBytes() == 2048LL * 2048LL * 4LL,
-            QString("P5 the allocation must be the 2048 atlas (%1 bytes)")
-                .arg(pool.allocatedBytes())
-        );
-        if (got.size() == 8) {
-            // slot 0 at the gutter origin, slot 7 the first of the second row
-            expect(got[0].x == gl::PagePool::kGutter && got[0].y == gl::PagePool::kGutter,
-                "P5 slot 0 must sit at the gutter origin");
-            expect(
-                got[7].x == gl::PagePool::kGutter
-                    && got[7].y == gl::PagePool::kPitch + gl::PagePool::kGutter,
-                QString("P5 slot 7 must open the second row (%1,%2)")
-                    .arg(got[7].x).arg(got[7].y)
-            );
-        }
-    }
-
-    // 60 PAGES: the 2048 atlas cannot hold them in one, the 3072 can
-    resetWith(60);
-    expect(pool.atlasSize() == 3072, "P5 a 60-page demand must choose the 3072 atlas");
-    {
-        const std::vector<gl::PagePool::Slot> got = acquireN(1, 502);
-        expect(got.size() == 1, "P5 the 3072 atlas must accept a page");
-        expect(pool.allocatedBytes() == 3072LL * 3072LL * 4LL,
-            QString("P5 the allocation must be the 3072 atlas (%1 bytes)").arg(pool.allocatedBytes()));
-    }
-
-    // 400 PAGES: beyond one atlas of any rung - the full size, as before
-    resetWith(400);
-    expect(pool.atlasSize() == 4096, "P5 a 400-page demand must keep the full 4096 atlas");
-
-    // GROWTH: a 20-page pool whose demand later exceeds four atlases (196 slots) empties and
-    // re-decides at the full size; the old pages are gone, which is why the caller re-lands them.
-    resetWith(20);
-    const std::vector<gl::PagePool::Slot> before = acquireN(4, 503);
-    expect(before.size() == 4 && pool.allocatedBytes() > 0, "P5 the small pool must hold pages");
-    pool.setPageDemand(400);
-    expect(pool.atlasSize() == 4096, "P5 an outgrown pool must grow to the full atlas");
-    expect(pool.allocatedBytes() == 0, "P5 growth must release the small atlases");
-    expect(!pool.find(pageId(503, 0, 0, 0), nullptr), "P5 growth must drop the old pages");
-
-    pool.setBudgetBytes(gl::PagePool::defaultBudgetBytes());
-}
-
-// P6: THE POOL GROWS MID-LANDING. A view whose demand fits a small first atlas, then a frame
-// whose demand no longer fits even four atlases of that size: the landing must empty the pool and
-// re-decide at the full size (the choice is made after the demand parse, before the resolves),
-// and the following frames must re-land the pages and draw what the full-resolution control does.
-// The report prints what that costs - the growth frame's time and the page-by-frame resident/wanted
-// curve of the re-land - because the pixel compare cannot see it: this fixture is drawn at 0.6, so
-// its fragments sample the COARSE tier, which is always resident. The pixels pin the tables and the
-// coarse chain; the transient is the curve.
-void suitePoolGrowth() {
-    suiteHeader("P6 the pool grows under a frame that outgrows it");
-    if (!gl::PagePool::enabled()) {
-        std::printf("  [SKIP] AE_VIRTUAL_TEXTURE=0 is the control path\n");
-        return;
-    }
-    if (qEnvironmentVariableIsSet("AE_VT_ATLAS_SIZE")) {
-        std::printf("  [SKIP] AE_VT_ATLAS_SIZE forces the first atlas's size\n");
-        return;
-    }
-
-    const QSize canvas(320, 320);
-    const uint8_t black[3] = {0, 0, 0};
-    const Img layerSrc = makeNoise(900, 700);
-    auto& fixtures = renderFixtures();
-    const QString fixtureKey = QString("%1x%2").arg(canvas.width()).arg(canvas.height());
-    auto it = fixtures.find(fixtureKey);
-    if (it == fixtures.end()) {
-        std::unique_ptr<RenderFixture> fx(new RenderFixture());
-        fx->init(canvas);
-        it = fixtures.emplace(fixtureKey, std::move(fx)).first;
-    }
-    RenderFixture& fx = *it->second;
-
-    core::CameraInfo camera;
-    camera.reset(canvas, 1.0, canvas, QPoint(0, 0));
-
-    core::ObjectTree tree;
-    auto* root = new core::FolderNode("root");
-    tree.grabTopNode(root);
-    auto* res = makeResource("p6_src", layerSrc);
-    // 26 layers of the same 900x700 image: ~9 pages each at this view, so three of them fit the
-    // 2048 rung (49 slots) and all of them need more than four 2048 atlases (196 slots).
-    std::vector<core::LayerNode*> layers;
-    enum { kLayerCount = 26, kVisibleFirst = 3 };
-    for (int i = 0; i < kLayerCount; ++i) {
-        core::LayerNode* layer = addScaledLayer(
-            tree, root, res, QString("l%1").arg(i),
-            QVector2D(canvas.width() * 0.5f, canvas.height() * 0.5f), 0.6f, img::BlendMode_Normal
-        );
-        layer->setVisibility(i < kVisibleFirst);
-        layers.push_back(layer);
-    }
-
-    auto& pool = gl::PagePool::instance();
-    pool.purge();
-    for (int frame = 0; frame < 3; ++frame)
-        fx.render(tree, camera, frame, black);
-    expect(
-        pool.atlasSize() == 2048,
-        QString("P6 three layers' demand must choose the 2048 rung (atlas %1)").arg(pool.atlasSize())
-    );
-    for (core::LayerNode* layer : layers)
-        layer->setVisibility(true);
-    fx.render(tree, camera, 3, black);   // the draw that marks the bigger demand
-    // FRAMES 4..14, TIMED AND KEPT: frame 4 is the landing that sees the bigger demand and grows
-    // the pool, and the frames after it are the re-land. Keeping them lets the report say what the
-    // growth COSTS - how long its frame takes and how many frames until the frame is sharp again -
-    // instead of asserting only the endpoint.
-    std::vector<double> growthMs;
-    std::vector<std::vector<uint8_t>> growthPixels;
-    std::vector<QString> growthResidency;
-    QElapsedTimer growthTimer;
-    for (int frame = 4; frame <= 14; ++frame) {
-        growthTimer.start();
-        std::vector<uint8_t> pixels = fx.render(tree, camera, frame, black);
-        growthMs.push_back(growthTimer.nsecsElapsed() / 1000000.0);
-        int wanted = 0;
-        int resident = 0;
-        core::VirtualTexture::pageResidency(&wanted, &resident);
-        growthResidency.push_back(QString("%1/%2").arg(resident).arg(wanted));
-        growthPixels.push_back(std::move(pixels));
-    }
-    expect(
-        pool.atlasSize() == 4096,
-        QString("P6 the bigger demand must grow the pool (atlas %1)").arg(pool.atlasSize())
-    );
-
-    for (core::LayerNode* layer : layers) {
-        if (auto* key = dynamic_cast<core::ImageKey*>(
-                layer->timeLine()->defaultKey(core::TimeKeyType_Image)))
-            key->setForceFullTexture(true);
-    }
-    fx.render(tree, camera, 13, black);   // uncached, so the expansions take the forced value
-    const std::vector<uint8_t> control = fx.render(tree, camera, 14, black);
-    int maxDelta = 0;
-    double meanDelta = 0.0;
-    int n = 0;
-    std::vector<int> growthDeltas;
-    for (const std::vector<uint8_t>& framePixels : growthPixels) {
-        int frameMax = 0;
-        for (int y = 8; y < canvas.height() - 8; ++y) {
-            for (int x = 8; x < canvas.width() - 8; ++x) {
-                const size_t i = ((size_t)y * canvas.width() + x) * 4;
-                for (int ch = 0; ch < 4; ++ch) {
-                    const int d = std::abs((int)framePixels[i + ch] - (int)control[i + ch]);
-                    frameMax = std::max(frameMax, d);
-                    meanDelta += d;
-                    ++n;
-                }
-            }
-        }
-        growthDeltas.push_back(frameMax);
-    }
-    maxDelta = growthDeltas.back();
-    meanDelta = n ? meanDelta / n : 0.0;
-    expect(
-        maxDelta <= 1,
-        QString("P6 after the growth the frame must equal the full-resolution control (max %1)")
-            .arg(maxDelta)
-    );
-    for (core::LayerNode* layer : layers) {
-        if (auto* key = dynamic_cast<core::ImageKey*>(
-                layer->timeLine()->defaultKey(core::TimeKeyType_Image)))
-            key->setForceFullTexture(false);
-    }
-    {
-        QString msLine, deltaLine, residencyLine;
-        for (size_t i = 0; i < growthMs.size(); ++i) {
-            msLine += QString("%1%2").arg(i ? " " : "").arg(growthMs[i], 0, 'f', 1);
-            deltaLine += QString("%1%2").arg(i ? " " : "").arg(growthDeltas[i]);
-            residencyLine += QString("%1%2").arg(i ? " " : "").arg(growthResidency[i]);
-        }
-        std::printf(
-            "  P6 frames 4..14 ms = %s; resident/wanted = %s; max delta per frame = %s\n",
-            msLine.toUtf8().constData(), residencyLine.toUtf8().constData(),
-            deltaLine.toUtf8().constData()
-        );
-    }
-    caseReport(
-        "pool growth", maxDelta <= 1,
-        QString("atlas 2048 -> 4096 under the demand; paged vs control max %1 mean %2 of 255")
-            .arg(maxDelta).arg(meanDelta / (double)growthPixels.size(), 0, 'f', 3)
-    );
 }
 
 void suiteVirtualTexture() {
@@ -4918,8 +4663,6 @@ int main(int argc, char** argv) {
     suiteChainExactness();
     suiteRender();
     suitePagePool();
-    suiteAtlasSizing();
-    suitePoolGrowth();
     suiteVirtualTexture();
     suiteClipper();
     suiteMaskPaged();
