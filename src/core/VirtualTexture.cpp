@@ -36,7 +36,9 @@ namespace {
     // `other` is the frame total minus the parts (the registry loops, the timers themselves).
     struct LandingSplit {
         qint64 poolNs = 0;     // PagePool::beginFrame: the frame stamp, atlas age-out
-        qint64 demandNs = 0;   // the demand map's consume + each resource's parse
+        qint64 readNs = 0;     // DemandMap::consume: the non-blocking fence check + the map
+        qint64 parseNs = 0;    // each resource's consumeDemand, over the mapped bytes
+        qint64 clearNs = 0;    // DemandMap::beginFrame: the state save, the clear, the restore
         qint64 acquireNs = 0;  // per page: the pool's bookkeeping
         qint64 fillNs = 0;     // per page: the CPU fill
         qint64 uploadNs = 0;   // per page: the texel upload
@@ -512,6 +514,13 @@ void main() { oDemand = 1.0; }
                                 break;
                         }
                     } else {
+                        // A zero timeout is a poll by the spec, and this driver's implementation
+                        // still surfaces the frame's submit here (measured 2.9-9.4 ms on the frames
+                        // that carry a copy) - but REMOVING the call entirely changes the frame's
+                        // ms by nothing (four alternating runs), so the time is the command buffer's
+                        // flush, paid at the swap otherwise, not a wait to fix. The landing split's
+                        // `read=` therefore reads larger than the landing actually costs; see the
+                        // design doc's item 3.
                         status = ggl.glClientWaitSync(slot.fence, 0, 0);
                     }
                 }
@@ -828,33 +837,46 @@ void VirtualTexture::beginFrame() {
     // the demand parse, the page fills and their uploads, and the table publishes. `ms` includes
     // it; vt_frame_ms is what a landing strategy has to divide the bytes by (see FrameStats.h).
     gl::FrameStats& frameStats = gl::FrameStats::instance();
-    const bool landingTimed = frameStats.enabled() || landingSplitEnabled();
-    QElapsedTimer timer;
-    if (landingTimed)
+    const bool split = landingSplitEnabled();
+    QElapsedTimer timer; // the whole landing: vt_frame_ms, and the split's own total
+    if (frameStats.enabled() || split)
         timer.start();
-    if (landingSplitEnabled())
+    // a SECOND timer, restarted per phase, so the phases never disturb the total they divide
+    QElapsedTimer phase;
+    if (split) {
+        phase.start();
         sLanding = LandingSplit();
+    }
     // First the previous frame's demand copy (it updates what each page last wanted), then the
     // clear that starts this frame's map, then the uploads: a page about to be sampled goes in
     // before the frame's draws.
-    if (landingSplitEnabled())
-        timer.restart(); // the landing's own time starts here, not at the instrument's start
+    if (split)
+        phase.restart(); // the landing's own time starts here, not at the instrument's start
     gl::PagePool::instance().beginFrame();
-    if (landingSplitEnabled())
-        sLanding.poolNs += timer.nsecsElapsed();
+    if (split)
+        sLanding.poolNs += phase.nsecsElapsed();
     sDemandMarks = 0;
     sDemandReplays = 0;
     DemandMap& demandMap = DemandMap::instance();
-    if (landingSplitEnabled())
-        timer.restart();
-    if (demandMap.consume(false)) {
+    if (split)
+        phase.restart();
+    const bool consumed = demandMap.consume(false);
+    if (split) {
+        sLanding.readNs += phase.nsecsElapsed();
+        phase.restart();
+    }
+    if (consumed) {
         for (VirtualTexture* resource : registry())
             resource->consumeDemand();
         demandMap.endConsume();
     }
+    if (split)
+        sLanding.parseNs += phase.nsecsElapsed();
+    if (split)
+        phase.restart();
     demandMap.beginFrame(gl::PagePool::instance().frame());
-    if (landingSplitEnabled())
-        sLanding.demandNs += timer.nsecsElapsed();
+    if (split)
+        sLanding.clearNs += phase.nsecsElapsed();
     for (VirtualTexture* resource : registry())
         resource->resolveDemand();
     // TABLES GO OUT AFTER EVERY UPLOAD, not at the end of each resource: an upload for resource
@@ -862,24 +884,24 @@ void VirtualTexture::beginFrame() {
     // a second pass means no table in the frame names a slot some other resource has taken.
     for (VirtualTexture* resource : registry())
         resource->flushTable();
-    if (landingTimed) {
-        const double totalMs = timer.nsecsElapsed() / 1000000.0;
-        if (frameStats.enabled())
-            frameStats.virtualTextureFrameTime(totalMs);
-        if (landingSplitEnabled() && sLanding.pages > 0) {
-            const double partMs = (sLanding.poolNs + sLanding.demandNs + sLanding.acquireNs
-                                   + sLanding.fillNs + sLanding.uploadNs + sLanding.tableNs)
-                / 1000000.0;
-            qWarning(
-                "VTLANDING frame=%llu pages=%d pool=%.2f demand=%.2f acquire=%.2f fill=%.2f "
-                "upload=%.2f table=%.2f other=%.2f total=%.2f",
-                (unsigned long long)gl::PagePool::instance().frame(), sLanding.pages,
-                sLanding.poolNs / 1000000.0, sLanding.demandNs / 1000000.0,
-                sLanding.acquireNs / 1000000.0, sLanding.fillNs / 1000000.0,
-                sLanding.uploadNs / 1000000.0, sLanding.tableNs / 1000000.0,
-                totalMs - partMs, totalMs
-            );
-        }
+    const double totalMs = timer.nsecsElapsed() / 1000000.0;
+    if (frameStats.enabled())
+        frameStats.virtualTextureFrameTime(totalMs);
+    if (split && sLanding.pages > 0) {
+        const double partMs = (sLanding.poolNs + sLanding.readNs + sLanding.parseNs
+                               + sLanding.clearNs + sLanding.acquireNs + sLanding.fillNs
+                               + sLanding.uploadNs + sLanding.tableNs)
+            / 1000000.0;
+        qWarning(
+            "VTLANDING frame=%llu pages=%d pool=%.2f read=%.2f parse=%.2f clear=%.2f acquire=%.2f "
+            "fill=%.2f upload=%.2f table=%.2f other=%.2f total=%.2f",
+            (unsigned long long)gl::PagePool::instance().frame(), sLanding.pages,
+            sLanding.poolNs / 1000000.0, sLanding.readNs / 1000000.0,
+            sLanding.parseNs / 1000000.0, sLanding.clearNs / 1000000.0,
+            sLanding.acquireNs / 1000000.0, sLanding.fillNs / 1000000.0,
+            sLanding.uploadNs / 1000000.0, sLanding.tableNs / 1000000.0,
+            totalMs - partMs, totalMs
+        );
     }
 }
 

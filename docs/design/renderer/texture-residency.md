@@ -652,7 +652,7 @@ equality against the current path, and the counter showing the pixels saved.
 |---|---|
 | `gl::FrameStats` (`AE_FRAME_STATS=<path>`) | per-frame `ms`, layers considered/drawn/culled, `mesh` passes, `fill_px`, live/peak texture bytes, mask bytes, density histogram and max |
 | `<path>.trace` (`AE_FRAME_STATS_DENSITY_TRACE=<n>`) | per layer: mesh source, uv vs rest vs mesh vs content areas, `det_wi`, sliver counts, the worst triangles |
-| `AE_VT_LANDING_SPLIT=1` | `VTLANDING` per landing frame: the frame's `vt_frame_ms` divided into `pool` (the pool's frame stamp), `demand` (the map's consume + every resource's parse), `acquire`, `fill`, `upload`, `table` and `other`, with the page count - how a landing change is measured against the parts it is not |
+| `AE_VT_LANDING_SPLIT=1` | `VTLANDING` per landing frame: the frame's `vt_frame_ms` divided into `pool` (the pool's frame stamp), `read` (the demand map's fence check + map), `parse` (every resource over the mapped bytes), `clear` (the array's clear), `acquire`, `fill`, `upload`, `table` and `other`, with the page count - how a landing change is measured against the parts it is not (and `read` is the frame's own submit surfacing, not addable; see Measured) |
 | `tests/density_meter.cpp` | the metric itself: 1x/2x/4x exact, and an animated case where placement changes every frame |
 | `scripts/gui/probe_camera_transform.sh` | a camera move skips the pass; a frame step re-runs it |
 | `tests/verify_mipmap` (branch) | chain correctness: premultiplied averages, halo, the level a footprint reads |
@@ -1180,7 +1180,7 @@ filter lane's field. For a paged matte that is field + levels; for a forced-full
 | `AE_VIRTUAL_TEXTURE=0` | the full-resolution control path (the gates' A/B) |
 | `AE_VT_BUDGET_MB` | pool budget, default 256, clamped to 4 atlases (243 MB) |
 | `AE_VT_UPLOAD_MB` | per-frame upload cap, default 8 |
-| `AE_VT_LANDING_SPLIT=1` | `VTLANDING` per landing frame: the landing time split into pool, demand, acquire, fill, upload and table (see Instruments) |
+| `AE_VT_LANDING_SPLIT=1` | `VTLANDING` per landing frame: the landing time split into pool, read (the demand map's fence interaction), parse, clear, acquire, fill, upload and table (see Instruments) |
 | `AE_VT_COARSE` | longest side of the always-resident chain, default 512 |
 | `AE_VT_STATS=1` | one line per frame: resources, wanted, resident, pool pages/bytes |
 | `AE_VT_DEMAND=0` | diagnostic: skip the demand pass and its readback (every paged layer samples the coarse chain through the VT shader) - the control for "is the cost the shader or the demand machinery" |
@@ -1418,17 +1418,29 @@ it, and the shader cost is what remains.
 - **The landing's fill was the premultiply, and it is now vectorised** (2026-11-08; the fix for
   the first lever of the open list's item 3). `vt_frame_ms` dated a landing but could not divide
   it, so `AE_VT_LANDING_SPLIT=1` prints the split the same way (`VTLANDING frame= pages= pool=
-  demand= acquire= fill= upload= table= other= total=`, ms). On ballerina at a 640x640 zoom-1 view,
-  frames 8-14 in Release, EVERY landing page is a level-0 page (31 a frame at the 8 MB cap), and a
-  landing frame divides like this:
+  read= parse= clear= acquire= fill= upload= table= other= total=`, ms). On ballerina at a 640x640
+  zoom-1 view, frames 8-14 in Release, EVERY landing page is a level-0 page (31 a frame at the 8 MB
+  cap), and a landing frame divides like this:
 
   | 31 pages a frame | before | after |
   |---|---|---|
   | fill | 6.4-13.6 ms | **2.2-3.1 ms** |
   | upload | 3.2-3.5 ms | 3.1-4.3 ms |
-  | demand (consume + parse) | 1-10 ms | 0.1-9.6 ms |
-  | pool / table / other | < 0.6 ms | < 0.6 ms |
+  | read (the demand map's fence interaction) | 1-10 ms | 0.1-9.6 ms, and NOT addable |
+  | parse / clear / pool / acquire / table / other | < 0.7 ms | < 0.7 ms |
   | `vt_frame_ms` | 13.0-25.9 ms | **7.0-16.1 ms** |
+
+  **The `read` row is not CPU work the landing costs.** Splitting it further put it in the SYNC
+  QUERY, not the copy or the parse: the PBO map is 0.02 ms and the per-resource parse 0.02-0.05 ms,
+  while `glClientWaitSync(fence, 0, 0)` - a zero timeout, i.e. a poll by the spec - measured
+  2.9-4.5 ms and returned `GL_CONDITION_SATISFIED`, and `glGetSynciv(GL_SYNC_STATUS)` measured
+  2.8-4.4 ms and returned `GL_SIGNALED`: the driver surfaces the previous frame's command buffer at
+  the first fence interaction. That it is a RELOCATION and not a cost was then measured directly:
+  removing the sync entirely and mapping regardless (a measurement-only control, never shipped)
+  leaves the frame's `ms` unchanged across four alternating runs - sync 51.7/33.8/26.5/26.7/31.7/
+  28.0/22.4 and skip 52.8/32.4/26.7/27.2/32.2/28.3/22.6, then sync 53.3/31.8/26.7/26.8/32.0/28.0/
+  22.2 and skip 52.6/31.2/27.5/26.7/32.9/28.6/23.3. So the landing's addable cost is fill + upload
+  + ~0.3 ms, and a one-frame demand lag would buy nothing.
 
   Debug, the same view and frames: fill 12.7-21.3 ms and a 21.9-28.4 ms landing, against the 49-83
   ms the item used to record. The fill column is the whole change. `ImagePyramid::fillPage`
@@ -1823,12 +1835,18 @@ it, and the shader cost is what remains.
      - **the write into a texture the last frame sampled**: every upload lands in an atlas the
        previous frame's draws read. A two-atlas ping-pong would let the fill write one while the
        frame samples the other, at the pool budget's cost.
-   - **The demand consume is now the largest single term of a landing frame** (0.1-9.6 ms; it is
-     per FRAME, not per page, so it is also paid on frames that land nothing - the steady frames
-     measured 1.6-4.1 ms of `vt_frame_ms`). It is the shared map's readback and the fence that waits
-     for the previous frame's demand pass, so its cost is the GPU's, not the CPU's: the fix, if one
-     is wanted, is to consume the map one frame later (a two-deep ring), which delays every landing
-     by a frame and needs its own measurement of what that does to a camera move's convergence.
+   - **The demand map's readback is measured and CLOSED: it is a relocation, not a cost.**
+     `VTLANDING` divides it into `read` (the fence check + the map), `parse` (every resource over the
+     mapped bytes) and `clear` (the array's clear). On the landing frames: **parse 0.02-0.05 ms,
+     clear 0.01-0.02 ms, read 0.1-9.6 ms** - and the read is the SYNC QUERY itself (the map is 0.02
+     ms): `glClientWaitSync(fence, 0, 0)` costs 2.9-4.5 ms and returns `CONDITION_SATISFIED`,
+     `glGetSynciv(GL_SYNC_STATUS)` costs 2.8-4.4 ms and returns `SIGNALED`. Both are the driver
+     flushing the previous frame's command buffer at the first fence interaction. The control that
+     settles it: REMOVING the sync and mapping regardless leaves the frame's `ms` unchanged over four
+     alternating runs (51.7/33.8/26.5/26.7/31.7/28.0/22.4 against 52.8/32.4/26.7/27.2/32.2/28.3/22.6,
+     then 53.3/31.8/26.7/26.8/32.0/28.0/22.2 against 52.6/31.2/27.5/26.7/32.9/28.6/23.3). A one-frame
+     demand lag would therefore buy nothing, and the readback is only worth revisiting if a future
+     driver stops paying the submit here.
    - **The cap is now a policy question with numbers.** Re-measured with the new fill at this view:
      62 pages a frame cost **15.4-23.8 ms** and 124 pages **30.6-30.8 ms** (the same caps cost
      27.4-43.3 and 60-140 ms before). 8 MB remains the default because the hitch it buys is the
