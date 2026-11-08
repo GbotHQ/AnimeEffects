@@ -283,10 +283,21 @@ hand it over. Its one question is `Sampling`:
   compares the whole matrix; only an exact repeat (same frame, same camera) replays. `AE_VT_STATS`
   prints `marks=`/`replays=`, and `AE_VT_DEMAND=nodraw` measures the pass's setup against its
   geometry (measured: the geometry). `AE_FRAME_STATS`'s line carries `vt_frame_ms`, the LANDING cost
-  (`VirtualTexture::beginFrame`: demand parse + page fills + uploads + table publishes) - measured
-  in Release at **~0.55 ms a page** (8 MB/31 pages: 14-22 ms a frame, steady 0.2-1.4 ms), of which
-  about half is `ImagePyramid::fillPage`'s level-0 PREMULTIPLY and half the upload. `AE_VT_UPLOAD_MB=0`
-  is NOT "no uploads": `PagePool`'s `envInt` maps a non-positive value to the default 8.
+  (`VirtualTexture::beginFrame`: demand parse + page fills + uploads + table publishes).
+  `AE_VT_LANDING_SPLIT=1` divides it (`VTLANDING frame= pages= pool= demand= acquire= fill= upload=
+  table= other= total=`), which is how a landing change is measured against the parts it is not.
+  Measured in Release on ballerina at a 640x640 zoom-1 view, 31 LEVEL-0 pages a landing frame at
+  the default 8 MB cap: **fill 2.2-3.1 ms, upload 3.1-4.3 ms, demand consume 0.1-9.6 ms, total
+  7.0-16.1 ms** (Debug 12.7-21.3 / 21.9-28.4), against 13.0-25.9 before 2026-11-08. The fill is now
+  one conversion, `img/premultiply.h` (SSE2; the scalar form is the fallback AND the reference), at
+  **0.087 ms a page median against 0.239** - the branchful loop it replaced was NOT slower in situ,
+  the vector width was the whole win; its gate is `P0` in `verify_mipmap`, which grades every
+  (channel, alpha) pair and five whole pages against an independent reference, with a canary on the
+  destination buffer (a page wholly left of the level found `fillPage` writing BEFORE its row).
+  A page is 270,400 bytes and the upload runs at 2-2.7 GB/s, so the upload is the per-page ceiling
+  now; the demand consume is the per-FRAME term (a readback + fence, paid even on frames that land
+  nothing). `AE_VT_UPLOAD_MB=0` is NOT "no uploads": `PagePool`'s `envInt` maps a non-positive value
+  to the default 8.
   `render_probe --repeat <n> --pan <px>` is the still-view and
   camera-navigation instrument (each repaint's PNG is written as `frame-<f>-r<i>.png`), and it is
   how the **timing-sensitive wrong read** at a panned camera was found - see the doc's first open

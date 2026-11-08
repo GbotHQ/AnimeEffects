@@ -80,6 +80,7 @@
 #include "core/FolderNode.h"
 #include "core/Frame.h"
 #include "core/ImageKey.h"
+#include "core/ImagePyramid.h"
 #include "core/LayerNode.h"
 #include "core/MaskKey.h"
 #include "core/MaskPyramid.h"
@@ -99,6 +100,7 @@
 #include "gl/VertexArrayObject.h"
 #include "gui/AudioPlaybackWidget.h"
 #include "img/BlendMode.h"
+#include "img/Premultiply.h"
 #include "img/ResourceData.h"
 #include "img/ResourceNode.h"
 #include "util/Range.h"
@@ -819,6 +821,185 @@ void suiteChainDeterminism() {
             .arg((int)levels)
             .arg(worstChannel)
             .arg(qEnvironmentVariableIsSet("AE_MIP_TAIL_OLD_PATH") ? "OLD PATH" : "scratch")
+    );
+}
+
+//-------------------------------------------------------------------------------------------------
+// P0: THE PAGE FILL'S PREMULTIPLY IS THE REFERENCE FORMULA, BYTE FOR BYTE.
+//
+// A paged image's level-0 page (core::ImagePyramid::fillPage) and the full-resolution chain's upload
+// (img::Util::makeTextureUpload) are the same conversion, and they share one implementation
+// (img::premultiply). That makes THIS case - not a pixel comparison - the only place the conversion
+// can be graded: both sides of every paged-versus-control frame go through it, so a wrong lane
+// order or a changed rounding moves both paths together and leaves their pixels equal.
+//
+// The reference is written out here independently (round to nearest, alpha untouched), and it is
+// applied over EVERY (channel, alpha) pair rather than a sample, then over six whole pages: an
+// interior page, a page at the image's right edge, one below it, one whose right gutter holds the
+// level's first two columns, and one wholly outside the level on each side (all zero). The
+// straight-copy discriminant asserts the fixture really carries transparency, or the comparison
+// would pass with the multiply missing.
+void suitePremultiply() {
+    suiteHeader("P0 the page fill's premultiply is the reference formula");
+    const QString prefix = "premultiply";
+    const int failsBefore = gFails;
+
+    auto reference = [](int aChannel, int aAlpha) { return (uint8_t)((aChannel * aAlpha + 127) / 255); };
+
+    // ---- every (channel, alpha) pair through both implementations
+    {
+        std::vector<uint8_t> src, want, dispatched, fallback;
+        src.reserve((size_t)256 * 256 * 4);
+        for (int c = 0; c < 256; ++c) {
+            for (int a = 0; a < 256; ++a) {
+                const uint8_t texel[4] = {
+                    (uint8_t)c, (uint8_t)(255 - c), (uint8_t)((c * 7 + a * 3) & 0xFF), (uint8_t)a
+                };
+                src.insert(src.end(), texel, texel + 4);
+                const uint8_t out[4] = {
+                    reference(texel[0], a), reference(texel[1], a), reference(texel[2], a), (uint8_t)a
+                };
+                want.insert(want.end(), out, out + 4);
+            }
+        }
+        dispatched.resize(src.size());
+        fallback.resize(src.size());
+        img::premultiply(src.data(), dispatched.data(), (int)src.size() / 4);
+        img::premultiplyScalar(src.data(), fallback.data(), (int)src.size() / 4);
+        int dispatchedBad = 0;
+        int fallbackBad = 0;
+        for (size_t i = 0; i < src.size(); i += 4) {
+            if (std::memcmp(&dispatched[i], &want[i], 4))
+                ++dispatchedBad;
+            if (std::memcmp(&fallback[i], &want[i], 4))
+                ++fallbackBad;
+        }
+        expect(dispatchedBad == 0,
+            QString("%1: the dispatched conversion must be (c*a+127)/255 with alpha unchanged on all "
+                    "65,536 (channel, alpha) pairs (%2 wrong)")
+                .arg(prefix).arg(dispatchedBad));
+        expect(fallbackBad == 0,
+            QString("%1: the scalar fallback too (%2 wrong) - it is the reference the vector path "
+                    "must equal").arg(prefix).arg(fallbackBad));
+    }
+
+    // ---- whole pages, built independently: gutter, edge, and a page outside the image
+    const int w = 300; // wider than a page, narrower than two: page 1 is an edge page
+    const int h = 260; // taller than a page by 4: page 1's last rows are outside
+    std::vector<uint8_t> image((size_t)w * h * 4);
+    int transparent = 0, partial = 0;
+    for (int y = 0; y < h; ++y) {
+        for (int x = 0; x < w; ++x) {
+            uint8_t* p = image.data() + ((size_t)y * w + x) * 4;
+            p[0] = (uint8_t)(x * 7);
+            p[1] = (uint8_t)(y * 5);
+            p[2] = (uint8_t)(x ^ y);
+            const int alpha = (x % 37 == 0 || y % 23 == 0) ? (x + y) % 256 : 255;
+            p[3] = (uint8_t)alpha;
+            if (alpha == 0)
+                ++transparent;
+            else if (alpha != 255)
+                ++partial;
+        }
+    }
+    expect(transparent > 0 && partial > 0,
+        QString("%1: the fixture must carry transparent and partly covered texels (got %2 / %3) - "
+                "an all-opaque image is identical under a straight copy, so the case would have no "
+                "power").arg(prefix).arg(transparent).arg(partial));
+
+    gl::Texture chain;
+    chain.create(
+        QSize(w, h), image.data(), GL_RGBA, GL_RGBA8, GL_UNSIGNED_BYTE, gl::Texture::GenerateMipmap
+    );
+    core::ImagePyramid pyramid;
+    expect(pyramid.capture(chain, 1) && pyramid.size() == QSize(w, h),
+        QString("%1: the pyramid must capture the image's size (%2x%3)").arg(prefix).arg(w).arg(h));
+
+    auto referencePage = [&](int aPageX, int aPageY) {
+        std::vector<uint8_t> page(
+            (size_t)gl::PagePool::kPitch * gl::PagePool::kPitch * 4, 0
+        );
+        for (int y = 0; y < gl::PagePool::kPitch; ++y) {
+            for (int x = 0; x < gl::PagePool::kPitch; ++x) {
+                // destination texel (x, y) is level texel (page*256 + x - gutter, ...)
+                const int gx = aPageX * gl::PagePool::kPageSize + x - gl::PagePool::kGutter;
+                const int gy = aPageY * gl::PagePool::kPageSize + y - gl::PagePool::kGutter;
+                if (gx < 0 || gy < 0 || gx >= w || gy >= h)
+                    continue; // outside the level: transparent, as clamp-to-border was
+                const uint8_t* s = image.data() + ((size_t)gy * w + gx) * 4;
+                uint8_t* d = page.data() + ((size_t)y * gl::PagePool::kPitch + x) * 4;
+                d[0] = reference(s[0], s[3]);
+                d[1] = reference(s[1], s[3]);
+                d[2] = reference(s[2], s[3]);
+                d[3] = s[3];
+            }
+        }
+        return page;
+    };
+
+    // the page is handed over with a CANARY on each side, so a fill that writes outside its
+    // 260x260 buffer FAILS a check instead of corrupting the heap - which is how the outside pages
+    // below were found doing exactly that (a negative x1 memsets from before the row).
+    const size_t pageBytes = (size_t)gl::PagePool::kPitch * gl::PagePool::kPitch * 4;
+    const size_t guard = 1024;
+    // the last three are the ones the pool never asks for: a page whose RIGHT gutter holds the
+    // level's first two columns, one wholly to the right of the level (x1 negative), one wholly to
+    // its left (x0 past the row)
+    const QPoint pages[] = {
+        QPoint(0, 0), QPoint(1, 0), QPoint(1, 1), QPoint(-1, 0), QPoint(2, 1), QPoint(-2, 0)
+    };
+    int worstDelta = 0;
+    for (const QPoint& at : pages) {
+        std::vector<uint8_t> guarded(pageBytes + guard * 2, 0x5A);
+        uint8_t* got = guarded.data() + guard;
+        pyramid.fillPage(0, at.x(), at.y(), image.data(), QSize(w, h), got);
+        bool canary = true;
+        for (size_t i = 0; i < guard; ++i)
+            canary = canary && guarded[i] == 0x5A && guarded[guard + pageBytes + i] == 0x5A;
+        expect(canary,
+            QString("%1: page (%2,%3) must write its own %4 bytes and nothing outside them")
+                .arg(prefix).arg(at.x()).arg(at.y()).arg(pageBytes));
+        const std::vector<uint8_t> want = referencePage(at.x(), at.y());
+        int bad = 0;
+        int delta = 0;
+        for (size_t i = 0; i < pageBytes; ++i) {
+            if (got[i] != want[i]) {
+                ++bad;
+                delta = std::max(delta, std::abs((int)got[i] - (int)want[i]));
+            }
+        }
+        worstDelta = std::max(worstDelta, delta);
+        expect(bad == 0,
+            QString("%1: page (%2,%3) must be the reference page byte for byte (%4 texels differ, "
+                    "worst channel %5) - the gutter, the edge and the outside are part of it")
+                .arg(prefix).arg(at.x()).arg(at.y()).arg(bad).arg(delta));
+    }
+
+    // ---- the discriminant: the same page straight-copied must differ, or the multiply is unmeasured
+    {
+        const std::vector<uint8_t> premultiplied = referencePage(1, 0);
+        int differing = 0;
+        for (int y = 0; y < gl::PagePool::kPitch; ++y) {
+            for (int x = 0; x < gl::PagePool::kPitch; ++x) {
+                const int gx = gl::PagePool::kPageSize + x - gl::PagePool::kGutter;
+                const int gy = y - gl::PagePool::kGutter;
+                if (gx < 0 || gy < 0 || gx >= w || gy >= h)
+                    continue;
+                const uint8_t* s = image.data() + ((size_t)gy * w + gx) * 4;
+                const uint8_t* p = premultiplied.data()
+                    + ((size_t)y * gl::PagePool::kPitch + x) * 4;
+                if (p[0] != s[0] || p[1] != s[1] || p[2] != s[2])
+                    ++differing;
+            }
+        }
+        expect(differing > 100,
+            QString("%1: the fixture must differ from a straight copy over a large run of texels "
+                    "(got %2) - otherwise a missing multiply would pass").arg(prefix).arg(differing));
+    }
+
+    caseReport(
+        prefix, gFails == failsBefore,
+        QString("all pairs + %1 pages, worst channel %2").arg((int)(sizeof(pages) / sizeof(pages[0]))).arg(worstDelta)
     );
 }
 
@@ -4115,6 +4296,7 @@ int main(int argc, char** argv) {
     }
     glWidget->makeCurrent();
 
+    suitePremultiply();
     suiteChain();
     suiteChainDeterminism();
     suiteImageKey();

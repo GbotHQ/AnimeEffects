@@ -652,6 +652,7 @@ equality against the current path, and the counter showing the pixels saved.
 |---|---|
 | `gl::FrameStats` (`AE_FRAME_STATS=<path>`) | per-frame `ms`, layers considered/drawn/culled, `mesh` passes, `fill_px`, live/peak texture bytes, mask bytes, density histogram and max |
 | `<path>.trace` (`AE_FRAME_STATS_DENSITY_TRACE=<n>`) | per layer: mesh source, uv vs rest vs mesh vs content areas, `det_wi`, sliver counts, the worst triangles |
+| `AE_VT_LANDING_SPLIT=1` | `VTLANDING` per landing frame: the frame's `vt_frame_ms` divided into `pool` (the pool's frame stamp), `demand` (the map's consume + every resource's parse), `acquire`, `fill`, `upload`, `table` and `other`, with the page count - how a landing change is measured against the parts it is not |
 | `tests/density_meter.cpp` | the metric itself: 1x/2x/4x exact, and an animated case where placement changes every frame |
 | `scripts/gui/probe_camera_transform.sh` | a camera move skips the pass; a frame step re-runs it |
 | `tests/verify_mipmap` (branch) | chain correctness: premultiplied averages, halo, the level a footprint reads |
@@ -1179,6 +1180,7 @@ filter lane's field. For a paged matte that is field + levels; for a forced-full
 | `AE_VIRTUAL_TEXTURE=0` | the full-resolution control path (the gates' A/B) |
 | `AE_VT_BUDGET_MB` | pool budget, default 256, clamped to 4 atlases (243 MB) |
 | `AE_VT_UPLOAD_MB` | per-frame upload cap, default 8 |
+| `AE_VT_LANDING_SPLIT=1` | `VTLANDING` per landing frame: the landing time split into pool, demand, acquire, fill, upload and table (see Instruments) |
 | `AE_VT_COARSE` | longest side of the always-resident chain, default 512 |
 | `AE_VT_STATS=1` | one line per frame: resources, wanted, resident, pool pages/bytes |
 | `AE_VT_DEMAND=0` | diagnostic: skip the demand pass and its readback (every paged layer samples the coarse chain through the VT shader) - the control for "is the cost the shader or the demand machinery" |
@@ -1220,6 +1222,14 @@ it, and the shader cost is what remains.
   chain. Tolerances are 1 unit (2 for the on-edge 0.3 case): the fixture measures 0 for the
   paged and magnified cases under `gpu_headless` and 1 on the Xvfb/xcb path's sub-texel rounding,
   while each bug class measures 23-53 on it (see Measured).
+- **P0 the page fill's premultiply** (2026-11-08): the conversion every texture upload and every
+  level-0 page goes through, against an independently written `(c*a + 127) / 255`, over all 65,536
+  (channel, alpha) pairs, then over six whole pages - interior, right edge, below the image, a page
+  whose right gutter holds the level's first two columns, and one wholly outside on each side -
+  each destination wrapped in a canary. It is the gate the pixel comparisons cannot be: both sides
+  of every paged/control frame share the conversion, so a wrong lane would move them together.
+  Mutations that fail it: the old memset order in `fillPage` (2 checks, the two outside pages, and
+  no crash) and a wrong alpha broadcast in the vector path (4 checks here, 19 across the suite).
 - **M1b chain determinism**: builds one source's chain twice with a full readback of the first in
   between and requires the two chains to be bit-identical (9 levels here). It is a STRUCTURAL
   guard, not this defect's gate: measured, the old tail construction passes it too (worst channel
@@ -1405,6 +1415,57 @@ it, and the shader cost is what remains.
   pan still re-marks, but the page SET may follow the view, and the gate now pins the level
   (never level 0's grid), residency, and the oracle's set equality instead of the old
   whole-grid count, which was an artefact of the walk. `V1` gained a **2.0 (magnified)** case.
+- **The landing's fill was the premultiply, and it is now vectorised** (2026-11-08; the fix for
+  the first lever of the open list's item 3). `vt_frame_ms` dated a landing but could not divide
+  it, so `AE_VT_LANDING_SPLIT=1` prints the split the same way (`VTLANDING frame= pages= pool=
+  demand= acquire= fill= upload= table= other= total=`, ms). On ballerina at a 640x640 zoom-1 view,
+  frames 8-14 in Release, EVERY landing page is a level-0 page (31 a frame at the 8 MB cap), and a
+  landing frame divides like this:
+
+  | 31 pages a frame | before | after |
+  |---|---|---|
+  | fill | 6.4-13.6 ms | **2.2-3.1 ms** |
+  | upload | 3.2-3.5 ms | 3.1-4.3 ms |
+  | demand (consume + parse) | 1-10 ms | 0.1-9.6 ms |
+  | pool / table / other | < 0.6 ms | < 0.6 ms |
+  | `vt_frame_ms` | 13.0-25.9 ms | **7.0-16.1 ms** |
+
+  Debug, the same view and frames: fill 12.7-21.3 ms and a 21.9-28.4 ms landing, against the 49-83
+  ms the item used to record. The fill column is the whole change. `ImagePyramid::fillPage`
+  premultiplied level 0 one byte at a time; the conversion is now `img::premultiply`, four texels a
+  vector (SSE2; the scalar form is the fallback and the byte-for-byte reference). Measured per page,
+  THREE-WAY A/B/A IN ONE BINARY so the session's load cancels:
+
+  | one level-0 page's fill | min | median | max |
+  |---|---|---|---|
+  | the branchful loop it replaced | 0.091 | 0.239 | 0.295 |
+  | the branchless scalar form | 0.090 | 0.239 | 0.305 |
+  | SSE2 | **0.052** | **0.087** | 0.160 |
+
+  Two readings worth keeping. **The `a == 255` branch was not the cost in situ**: the scalar form is
+  indistinguishable from the branchful loop - although on a hot 4096^2 image in a standalone
+  benchmark the branchful form measured 0.273 against 0.092, a gap that was mostly the per-texel
+  bounds assert it carried (0.167 with the assert hoisted) rather than the branch. **The vector path
+  wins because the source rows are cold**: a page reads 256 rows 1 KB wide out of a 77 MB layer, strided by the layer's own width,
+  and four texels a load hide a latency that one texel a load exposes. The fill is now at the price
+  of the level-1+ path's memcpy of the same 270,400 bytes (~0.09 ms a page in situ), so the
+  conversion has no headroom left on this lever.
+  `P0` in `verify_mipmap` is the gate, and it exists because the pixel gates cannot be: BOTH sides
+  of every paged-versus-control frame go through this one conversion, so a wrong lane or rounding
+  would move both paths together. It compares the dispatched form and the scalar fallback against
+  an independently written reference over **every (channel, alpha) pair** (65,536 texels), then
+  six whole pages - interior, the right edge, below the image, one whose right gutter holds the
+  level's first two columns, and one wholly outside on each side - against a reference page built in
+  the probe, with a CANARY on each side of the destination. The canary earned its keep immediately:
+  for a page wholly OUTSIDE the level the row's run is empty in a way that makes the memsets' own
+  lengths negative or over-long, and `fillPage` ran them BEFORE the empty-run check - a page to the
+  right (negative `x1`) wrote up to 840 bytes before the row, i.e. corrupted the heap, and one to
+  the left (`x0` past the row) wrote past it. The demand pass only ever marks in-grid pages, so the
+  pool never asks for either; the fill still must not overrun its buffer, and
+  `MaskPyramid::fillPage`'s edge-repeat loops got the same clamp. Mutations run: the old memset
+  order fails the canary check cleanly (2 failures, one per outside page, and no crash), and a wrong
+  alpha broadcast in the vector path fails the pair check (19 failures across the suite).
+  `verify_mipmap` is **379 checks, 0 failures** in Debug and Release.
 - **A deformed layer's demand: the FFD predicate and the screen cull** (2026-11-07, the residual
   the affine path left open). The affine path's FFD test was dead code - it asked the type of the
   key `ffdMeshParent()` returns, which is the ImageKey or MeshKey the FFD keys displace, never an
@@ -1742,30 +1803,43 @@ it, and the shader cost is what remains.
    would have to build the bones, the caches and a `PoseKey` before it could pull a pageable layer
    by more than a page. Until then that half rests on the draw path (`callGL`'s `useInfluence`
    branch) plus the count, and no project in the dataset shows it in pixels at the cameras tried.
-3. The pool's landing rate. `FrameStats` now records **`vt_frame_ms`** - the time
-   `VirtualTexture::beginFrame` spends parsing the demand copy, filling and uploading the pages the
-   frame will sample, and publishing the tables - so the cost is dated and separated from the
-   shader. Measured on ballerina at a 640x640 zoom-1 view (project frames 8-14, `AE_FRAME_STATS`):
-   - **Release**, the default 8 MB cap: **14.4-22.3 ms** a frame while filling (31 pages), steady
-     **0.2-1.4 ms** once the 250 pages have landed; at a 16 MB cap (62 pages) **27.4-43.3 ms**. The
-     cost is LINEAR in pages: **~0.55 ms a page**.
-   - **Debug**, the same two runs: 49-83 ms and 113-159 ms - the same law at 2-4x, which is why the
-     earlier "10-20 ms" (a Debug frame on nene) under-read it.
-   - **The fill is half of it.** A measurement-only mutation that replaces `ImagePyramid::fillPage`'s
-     level-0 per-texel PREMULTIPLY with a straight row copy takes Release's 62-page frame from
-     27.4-43.3 ms to 9.5-25.1 ms (Debug 113-159 -> 11-20), so ~0.3 ms/page is converting level 0's
-     straight bytes to the premultiplied ones the chain stores, and ~0.3 ms/page is the upload and
-     the table publish.
-   Two levers with different ceilings: (a) the level-0 FILL - premultiply on the GPU (upload the
-   straight rows to a scratch texture and blit the product into the slot) or a vectorised/LUT CPU
-   conversion, worth up to half the landing cost; (b) the UPLOAD+batching, worth the other half (the
-   pages sit in scattered slots, so "batched per atlas row" needs the allocator to hand them out in
-   runs). A third, with no code: a lower or ADAPTIVE per-frame cap trades the wait for a smoother
-   frame (250 pages land in 8 frames at 8 MB and 16 at 4 MB), which may be the right default for
-   interaction. A large import's synchronous capture is a separate visible pause (1.47 s across 136
-   keys on nene, worst 130 ms), and an asynchronous/deferred capture is still the obvious reduction
-   there. There is no zero-upload control: `AE_VT_UPLOAD_MB=0` does NOT mean "no uploads" -
-   `PagePool`'s `envInt` maps a non-positive value to the default 8 (a trap that cost one A/B).
+3. The pool's landing rate - **the fill is DONE (2026-11-08); the upload and the demand consume
+   are what is left.** `FrameStats` records **`vt_frame_ms`** and `AE_VT_LANDING_SPLIT=1` divides it
+   (`VTLANDING`), so this item is measured rather than reasoned. On ballerina at a 640x640 zoom-1
+   view, Release, 31 level-0 pages a landing frame at the default 8 MB cap:
+   - **fill 2.2-3.1 ms** (was 6.4-13.6), **upload 3.1-4.3 ms**, **demand consume 0.1-9.6 ms**,
+     pool + table + other < 0.6 ms, total **7.0-16.1 ms** (was 13.0-25.9). The fix is the vectorised
+     `img::premultiply` (see Measured: 0.239 -> 0.087 ms a page at the median) and its gate is `P0`.
+     The fill is now at the price of a bare memcpy of the same bytes, so lever (a) has no room left
+     on this machine without moving the conversion off the CPU entirely (the GPU-scratch form would
+     trade an upload and a blit for it, which the split says cannot pay).
+   - **The upload is now the per-page ceiling**: 0.10-0.14 ms for 270,400 bytes, 2-2.7 GB/s, against
+     25 GB/s for a hot memcpy of the same size. Two shapes to try, both needing a measurement first:
+     - **batching**: the pages sit in scattered slots, so one call per page is all the pool can do
+       today. The allocator hands out slots from a free stack, so a frame's pages are often
+       DESCENDING consecutive slots, i.e. an atlas row read backwards - a run of N slots along a row
+       is one `glTexSubImage2D` of 260N x 260 from a 260-pitch staging buffer. What has to change is
+       the allocator's order, not the shader.
+     - **the write into a texture the last frame sampled**: every upload lands in an atlas the
+       previous frame's draws read. A two-atlas ping-pong would let the fill write one while the
+       frame samples the other, at the pool budget's cost.
+   - **The demand consume is now the largest single term of a landing frame** (0.1-9.6 ms; it is
+     per FRAME, not per page, so it is also paid on frames that land nothing - the steady frames
+     measured 1.6-4.1 ms of `vt_frame_ms`). It is the shared map's readback and the fence that waits
+     for the previous frame's demand pass, so its cost is the GPU's, not the CPU's: the fix, if one
+     is wanted, is to consume the map one frame later (a two-deep ring), which delays every landing
+     by a frame and needs its own measurement of what that does to a camera move's convergence.
+   - **The cap is now a policy question with numbers.** Re-measured with the new fill at this view:
+     62 pages a frame cost **15.4-23.8 ms** and 124 pages **30.6-30.8 ms** (the same caps cost
+     27.4-43.3 and 60-140 ms before). 8 MB remains the default because the hitch it buys is the
+     smaller one; a 16 MB cap would land the same 250 pages in half the frames at roughly the hitch
+     the OLD 8 MB cap had. A TIME-budgeted cap is the principled form, but the gate-visible page
+     counts (V1/DR1 assert them) make a wall-clock budget machine-dependent, so bytes stay.
+   - **Debug**, the same view and frames: fill 12.7-21.3 ms, landing 21.9-28.4 ms (was 49-83).
+   - **Unchanged**: a large import's synchronous capture is a separate visible pause (1.47 s across
+     136 keys on nene, worst 130 ms); an asynchronous capture is still the obvious reduction there.
+     And there is no zero-upload control: `AE_VT_UPLOAD_MB=0` does NOT mean "no uploads" -
+     `PagePool`'s `envInt` maps a non-positive value to the default 8 (a trap that cost one A/B).
 4. An ANIMATED mask (two keys) blends a new field every frame, so its resource is rebuilt per
    frame - the blend path predates paging and already rebuilt the full chain, but the paged form
    adds a readback to that build and a per-frame pool registration. The property that makes this

@@ -24,6 +24,33 @@ namespace {
     float demandCullMargin();
 
     //------------------------------------------------------------------------------
+    // WHERE A LANDING'S TIME GOES (AE_VT_LANDING_SPLIT=1)
+    //------------------------------------------------------------------------------
+    //
+    // vt_frame_ms says how long a landing took; this says what spent it. A landing is three kinds
+    // of work - the pool's bookkeeping (acquire: the hash entry, the LRU, and a GL texture
+    // creation when the budget grows an atlas), the CPU FILL (premultiply + gutter, see
+    // img::premultiply), and the TEXEL UPLOAD (one glTexSubImage2D per page) - plus the table
+    // publish and the demand parse around them. A change to any one is only a landing-rate change
+    // if it is measured against the others, so the split is a switch rather than an inference:
+    // `other` is the frame total minus the parts (the registry loops, the timers themselves).
+    struct LandingSplit {
+        qint64 poolNs = 0;     // PagePool::beginFrame: the frame stamp, atlas age-out
+        qint64 demandNs = 0;   // the demand map's consume + each resource's parse
+        qint64 acquireNs = 0;  // per page: the pool's bookkeeping
+        qint64 fillNs = 0;     // per page: the CPU fill
+        qint64 uploadNs = 0;   // per page: the texel upload
+        qint64 tableNs = 0;    // the page-table publishes
+        int pages = 0;
+    };
+    LandingSplit sLanding;
+
+    bool landingSplitEnabled() {
+        static const bool enabled = qEnvironmentVariableIsSet("AE_VT_LANDING_SPLIT");
+        return enabled;
+    }
+
+    //------------------------------------------------------------------------------
     // THE DEMAND PASS
     //------------------------------------------------------------------------------
     //
@@ -801,22 +828,33 @@ void VirtualTexture::beginFrame() {
     // the demand parse, the page fills and their uploads, and the table publishes. `ms` includes
     // it; vt_frame_ms is what a landing strategy has to divide the bytes by (see FrameStats.h).
     gl::FrameStats& frameStats = gl::FrameStats::instance();
+    const bool landingTimed = frameStats.enabled() || landingSplitEnabled();
     QElapsedTimer timer;
-    if (frameStats.enabled())
+    if (landingTimed)
         timer.start();
+    if (landingSplitEnabled())
+        sLanding = LandingSplit();
     // First the previous frame's demand copy (it updates what each page last wanted), then the
     // clear that starts this frame's map, then the uploads: a page about to be sampled goes in
     // before the frame's draws.
+    if (landingSplitEnabled())
+        timer.restart(); // the landing's own time starts here, not at the instrument's start
     gl::PagePool::instance().beginFrame();
+    if (landingSplitEnabled())
+        sLanding.poolNs += timer.nsecsElapsed();
     sDemandMarks = 0;
     sDemandReplays = 0;
     DemandMap& demandMap = DemandMap::instance();
+    if (landingSplitEnabled())
+        timer.restart();
     if (demandMap.consume(false)) {
         for (VirtualTexture* resource : registry())
             resource->consumeDemand();
         demandMap.endConsume();
     }
     demandMap.beginFrame(gl::PagePool::instance().frame());
+    if (landingSplitEnabled())
+        sLanding.demandNs += timer.nsecsElapsed();
     for (VirtualTexture* resource : registry())
         resource->resolveDemand();
     // TABLES GO OUT AFTER EVERY UPLOAD, not at the end of each resource: an upload for resource
@@ -824,8 +862,25 @@ void VirtualTexture::beginFrame() {
     // a second pass means no table in the frame names a slot some other resource has taken.
     for (VirtualTexture* resource : registry())
         resource->flushTable();
-    if (frameStats.enabled())
-        frameStats.virtualTextureFrameTime(timer.nsecsElapsed() / 1000000.0);
+    if (landingTimed) {
+        const double totalMs = timer.nsecsElapsed() / 1000000.0;
+        if (frameStats.enabled())
+            frameStats.virtualTextureFrameTime(totalMs);
+        if (landingSplitEnabled() && sLanding.pages > 0) {
+            const double partMs = (sLanding.poolNs + sLanding.demandNs + sLanding.acquireNs
+                                   + sLanding.fillNs + sLanding.uploadNs + sLanding.tableNs)
+                / 1000000.0;
+            qWarning(
+                "VTLANDING frame=%llu pages=%d pool=%.2f demand=%.2f acquire=%.2f fill=%.2f "
+                "upload=%.2f table=%.2f other=%.2f total=%.2f",
+                (unsigned long long)gl::PagePool::instance().frame(), sLanding.pages,
+                sLanding.poolNs / 1000000.0, sLanding.demandNs / 1000000.0,
+                sLanding.acquireNs / 1000000.0, sLanding.fillNs / 1000000.0,
+                sLanding.uploadNs / 1000000.0, sLanding.tableNs / 1000000.0,
+                totalMs - partMs, totalMs
+            );
+        }
+    }
 }
 
 void VirtualTexture::endFrame() {
@@ -1549,12 +1604,19 @@ void VirtualTexture::resolveDemand() {
         gl::PagePool::Slot slot;
         if (pool.find(id, &slot))
             continue;
+        QElapsedTimer acquireTimer;
+        if (landingSplitEnabled())
+            acquireTimer.start();
         if (!pool.acquire(id, this, &slot, mFormat))
             break; // budget or upload cap: the rest waits, the coarse chain covers it
+        if (landingSplitEnabled())
+            sLanding.acquireNs += acquireTimer.nsecsElapsed();
         if (!uploadPage(level, px, py, slot)) {
             pool.cancel(slot);
             break;
         }
+        if (landingSplitEnabled())
+            ++sLanding.pages;
     }
 }
 
@@ -1564,7 +1626,12 @@ void VirtualTexture::flushTable() {
 }
 
 bool VirtualTexture::uploadPage(int aLevel, int aPageX, int aPageY, const gl::PagePool::Slot& aSlot) {
+    QElapsedTimer phaseTimer;
+    if (landingSplitEnabled())
+        phaseTimer.start();
     fillPageBuffer(aLevel, aPageX, aPageY);
+    if (landingSplitEnabled())
+        sLanding.fillNs += phaseTimer.nsecsElapsed();
     if (!isMask() && aLevel > 0 && qEnvironmentVariableIsSet("AE_VT_PAGE_HASH")) {
         const QSize levelSize = mPyramid.levelSize(aLevel);
         const int w = std::min((int)gl::PagePool::kPageSize, levelSize.width() - aPageX * (int)gl::PagePool::kPageSize);
@@ -1589,6 +1656,8 @@ bool VirtualTexture::uploadPage(int aLevel, int aPageX, int aPageY, const gl::Pa
     const GLuint atlas = gl::PagePool::instance().atlasTextureId(aSlot.atlas);
     if (atlas == 0)
         return false;
+    if (landingSplitEnabled())
+        phaseTimer.restart();
     ggl.glBindTexture(GL_TEXTURE_2D, atlas);
     ggl.glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
     ggl.glTexSubImage2D(
@@ -1603,6 +1672,8 @@ bool VirtualTexture::uploadPage(int aLevel, int aPageX, int aPageY, const gl::Pa
         mPageBuffer.data()
     );
     ggl.glBindTexture(GL_TEXTURE_2D, 0);
+    if (landingSplitEnabled())
+        sLanding.uploadNs += phaseTimer.nsecsElapsed();
 
     const int index = pageIndex(aLevel, aPageX, aPageY);
     // the shader's atlas branch is PER STACK: the entry names 0..3 inside the resource's own
@@ -1706,6 +1777,9 @@ void VirtualTexture::updateMaskBox(const QImage& aField, const QRect& aTexelBox)
 void VirtualTexture::rebuildTable() {
     if (mTable.id() == 0)
         return;
+    QElapsedTimer tableTimer;
+    if (landingSplitEnabled())
+        tableTimer.start();
     auto& ggl = gl::Global::functions();
     ggl.glBindTexture(GL_TEXTURE_2D, mTable.id());
     ggl.glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
@@ -1714,6 +1788,8 @@ void VirtualTexture::rebuildTable() {
     );
     ggl.glBindTexture(GL_TEXTURE_2D, 0);
     mTableDirty = false;
+    if (landingSplitEnabled())
+        sLanding.tableNs += tableTimer.nsecsElapsed();
 }
 
 void VirtualTexture::markDemand(

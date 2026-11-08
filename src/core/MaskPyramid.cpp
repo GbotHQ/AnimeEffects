@@ -224,7 +224,10 @@ void MaskPyramid::fillPage(int aLevel, int aPageX, int aPageY, const QImage& aFi
         const int gy = std::min(std::max(originY + y, 0), size.height() - 1);
         const uint8* src = level + (size_t)gy * stride;
         uint8* row = aDst + (size_t)y * pitch;
-        const int x0 = std::max(0, -originX);
+        // clamped to the page: a page wholly left of the level has no run, and the edge-repeat
+        // loops below are bounded by the page (a page outside the grid is never demanded, but the
+        // fill must not write outside its buffer - ImagePyramid::fillPage had exactly that bug)
+        const int x0 = std::min(pitch, std::max(0, -originX));
         const int x1 = std::min(pitch, size.width() - originX);
         for (int x = 0; x < x0; ++x)
             row[x] = src[0];

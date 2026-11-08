@@ -4,6 +4,7 @@
 #include "gl/Global.h"
 #include "gl/PagePool.h"
 #include "gl/Texture.h"
+#include "img/Premultiply.h"
 
 namespace core {
 
@@ -132,6 +133,11 @@ void ImagePyramid::fillPage(
     // have its pixels released) has no source: leave the page transparent. The shader's
     // clamp-to-border would have read the same thing, and the coarse chain still covers it.
     const bool haveBase = aLevel > 0 || aBase != nullptr;
+    // THE LEVEL-0 SOURCE IS THE LEVEL'S OWN SIZE: the resource image the pyramid captured from.
+    // A smaller base would be read past, so the invariant is asserted ONCE per page rather than
+    // once per texel (the conversion itself is img::premultiply, and P0 in verify_mipmap grades
+    // it against an independent reference).
+    XC_ASSERT(aLevel > 0 || !haveBase || aBaseSize == levelSize);
 
     // The page's content origin, in the level's own texels, minus the gutter: destination texel
     // (x, y) holds level texel (aPageX*256 + x - gutter, ...). One loop covers the gutter and the
@@ -148,42 +154,34 @@ void ImagePyramid::fillPage(
             std::memset(row, 0, (size_t)pitch * 4);
             continue;
         }
-        // The columns that have level texels: [x0, x1). The rest of the row is the page's
-        // gutter, transparent outside the level. ONE memcpy for the run, not one per texel:
-        // a page is 67k texels and the per-texel copy was the dominant cost of a 32 MB upload
-        // frame (measured on nene's first paged frames).
+        // The columns that hold level texels: [x0, x1), clamped to the page. A page that lies
+        // wholly to the RIGHT of the level has x1 NEGATIVE, and one wholly to its LEFT has x0 past
+        // the row - both have no run at all, and both must be answered with a full gutter row
+        // BEFORE the memsets, whose lengths are derived from x1. (The demand pass only ever marks
+        // in-grid pages, so the pool does not ask for these; the fill still must not write outside
+        // its buffer - P0 in verify_mipmap found it doing exactly that for a page beyond the level.)
         const int x0 = std::max(0, -originX);
         const int x1 = std::min(pitch, w - originX);
+        if (x1 <= x0) {
+            std::memset(row, 0, (size_t)pitch * 4);
+            continue;
+        }
         if (x0 > 0)
             std::memset(row, 0, (size_t)x0 * 4);
         if (x1 < pitch)
             std::memset(row + (size_t)x1 * 4, 0, (size_t)(pitch - x1) * 4);
-        if (x1 <= x0)
-            continue;
+        // ONE memcpy for the run, not one per texel: a page is 67k texels and the per-texel copy
+        // was the dominant cost of a 32 MB upload frame (measured on nene's first paged frames).
         if (level) {
             std::memcpy(
                 row + (size_t)x0 * 4, level + ((size_t)gy * w + (originX + x0)) * 4,
                 (size_t)(x1 - x0) * 4
             );
         } else if (haveBase) {
-            for (int x = x0; x < x1; ++x) {
-                const int gx = originX + x;
-                uint8* dst = row + (size_t)x * 4;
-                XC_ASSERT(gx < aBaseSize.width() && gy < aBaseSize.height());
-                const uint8* src = aBase + ((size_t)gy * aBaseSize.width() + gx) * 4;
-                const uint32 a = src[3];
-                if (a == 255) {
-                    dst[0] = src[0];
-                    dst[1] = src[1];
-                    dst[2] = src[2];
-                    dst[3] = 255;
-                } else {
-                    dst[0] = (uint8)((src[0] * a + 127) / 255);
-                    dst[1] = (uint8)((src[1] * a + 127) / 255);
-                    dst[2] = (uint8)((src[2] * a + 127) / 255);
-                    dst[3] = (uint8)a;
-                }
-            }
+            // ONE RUN, ONE ROUNDING: the same conversion the texture upload applies, so a page's
+            // texels are the chain's texels byte for byte (see img::premultiply)
+            const uint8* src = aBase + ((size_t)gy * aBaseSize.width() + originX + x0) * 4;
+            img::premultiply(src, row + (size_t)x0 * 4, x1 - x0);
         }
     }
 }
