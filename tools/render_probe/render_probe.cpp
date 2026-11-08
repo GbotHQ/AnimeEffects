@@ -71,6 +71,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <map>
 #include <memory>
 #include <utility>
 #include <vector>
@@ -100,6 +101,7 @@
 #include "core/FilterFrame.h"
 #include "core/FolderNode.h"
 #include "core/Frame.h"
+#include "core/ImageKey.h"
 #include "core/Project.h"
 #include "core/LayerNode.h"
 #include "core/RenderInfo.h"
@@ -148,7 +150,8 @@ const char* kUsage =
     "  --metrics     print FRAME <i> sharpness <float> mean <float> per frame\n"
     "  --only-layer  hide every layer whose name does not contain <text>;\n"
     "                <text> of the form =NAME keeps only the exact name\n"
-    "  --list-layers print each layer's name, size and filter/mask/deform markers, then exit\n"
+    "  --list-layers print each layer's name, size, shared-image id and filter/mask/deform\n"
+    "                  markers, then exit\n"
     "  --require-gpu exit 4 unless GL_RENDERER looks like hardware (rejects llvmpipe,\n"
     "                softpipe, swrast, software)\n";
 
@@ -583,6 +586,10 @@ int runRender(ProbeGL& aProbe, const Options& aOptions) {
     // A per-layer diagnostic: list what the project holds, or hide all but the named layers.
     if (aOptions.listLayers || !aOptions.onlyLayer.isEmpty()) {
         int shown = 0;
+        // WHICH LAYERS SHARE ONE IMAGE RESOURCE: duplicated layers keep separate keys and caches
+        // but point at the same resource, and that is the identity a memory question asks about.
+        // The id is assigned in walk order, so two lines with the same `res=` are one image.
+        std::map<const img::ResourceData*, int> resourceIds;
         core::ObjectNode::Iterator itr(project.objectTree().topNode());
         while (itr.hasNext()) {
             core::ObjectNode* node = itr.next();
@@ -639,9 +646,22 @@ int runRender(ProbeGL& aProbe, const Options& aOptions) {
                         || !line->map(core::TimeKeyType_Mesh).isEmpty())
                         flags += QStringLiteral("ffd ");
                 }
+                int resourceId = 0;
+                if (line) {
+                    if (auto* imageKey =
+                            dynamic_cast<core::ImageKey*>(line->defaultKey(core::TimeKeyType_Image))) {
+                        const img::ResourceData* resource = imageKey->data().resource().get();
+                        if (resource) {
+                            auto found = resourceIds.find(resource);
+                            if (found == resourceIds.end())
+                                found = resourceIds.emplace(resource, (int)resourceIds.size() + 1).first;
+                            resourceId = found->second;
+                        }
+                    }
+                }
                 std::printf(
-                    "layer \"%s\" %dx%d %s\n", layer->name().toUtf8().constData(), rect.width(),
-                    rect.height(), flags.toUtf8().constData()
+                    "layer \"%s\" %dx%d res=%d %s\n", layer->name().toUtf8().constData(),
+                    rect.width(), rect.height(), resourceId, flags.toUtf8().constData()
                 );
                 continue;
             }

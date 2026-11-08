@@ -874,14 +874,27 @@ at load; nothing reads a texture back during a frame.
 | page | 256x256 content texels |
 | gutter | 2 texels on every side (one filtered read reaches one texel past its centre) |
 | pitch | 260 |
-| atlas | 4096x4096, 15x15 = 225 slots (3900 of 4096 texels used), 60.8 MB RGBA8 |
-| atlases | up to 4 (the shader's four-way branch), 243 MB |
+| atlas | 260-pitch slots in a square texture: 4096x4096 is 15x15 = 225 slots (3900 of 4096 texels used), 60.8 MB RGBA8; the FIRST atlas is sized from the first landing's demand |
+| atlases | up to 4 (the shader's four-way branch), 243 MB at the full size |
 | budget | `AE_VT_BUDGET_MB`, default 256 MB, clamped to 4 atlases |
 | upload cap | `AE_VT_UPLOAD_MB`, default 8 MB/frame (29 pages); 32 MB was measured to cost 60-140 ms on the frame that spent it |
 | eviction | least recently touched page; every requested page is touched before any upload |
 
 The gutter is 2, not the design's 4, and the slots are 15x15, not 16x16: 16 slots of 260 pitch do
 not fit 4096. A slot that cannot have a gutter is not a slot.
+
+**The first atlas is sized from the demand.** A page is a fixed 260-texel pitch, so an atlas's
+capacity is `(side/260)^2`: 49 slots at 2048 (15.2 MB RGBA8), 121 at 3072 (37.7 MB), 225 at 4096
+(60.8 MB). By the time the first slot is asked for, `VirtualTexture::beginFrame` has parsed the
+frame's demand (the sum of every resource's wanted pages), and the pool picks the smallest rung
+that holds them IN ONE ATLAS - a project whose first landing wants 49 pages or fewer pays a quarter
+of the old 61 MB floor. The choice is pool-wide (both stacks read one atlas-size uniform) and is
+made once; `AE_VT_ATLAS_SIZE=<px>` forces it (the A/B control, `=4096` is the old floor). A later
+demand that no longer fits the pool's capacity (four atlases of the chosen size) EMPTIES the pool
+and re-decides at the full size: the pages re-land over the following frames through the coarse
+fallback, so a session that started on a small project is not capped for the rest of the session.
+Measured on the current `test.anie` (see Measured): `tex_live` 22.0 MB against 72.3 MB with the
+full atlas, the same 20 pages.
 
 Growth is another atlas when the budget allows; an allocation that fails drops the budget to what
 is already allocated and the frame falls back to the coarse chain. An atlas with no resident page
@@ -1174,7 +1187,12 @@ filter lane's field. For a paged matte that is field + levels; for a forced-full
   rule. Not worth it now; stated so the number is not a surprise.
 - **The pyramid is per ImageKey, not per resource.** Duplicated layers that share an image still
   build two pyramids. Sharing is a RAM optimisation with a lifetime question (the resource may be
-  reloaded under both keys); it is not needed for correctness and is not done.
+  reloaded under both keys); it is not needed for correctness. **MEASURED 2026-11-08 and left
+  undone**: `render_probe --list-layers` now prints the shared-image id (`res=N`), and the corpus
+  has almost no duplicates - nene has **133 resources for 133 layers**, `dinner lab` 37/37,
+  `ballerina` 34 layers over 33 resources (**one** duplicated layer), `test.anie` 1/1. On this
+  corpus the sharing would save one pyramid (a few hundred KB); a project that duplicates large
+  layers is where it would pay, and the item stays open only for that case.
 - **The exporter has a different policy, not a different renderer.** A frame is written once, so
   the exporter runs a `RenderInfo::demandOnly` pass for that frame's camera, calls
   `VirtualTexture::synchronize()` (wait on the fence, map, upload), and then draws. The first
@@ -1190,8 +1208,9 @@ filter lane's field. For a paged matte that is field + levels; for a forced-full
 | `AE_VT_LANDING_SPLIT=1` | `VTLANDING` per landing frame: the landing time split into pool, read (the demand map's fence interaction), parse, clear, acquire, fill, upload and table, with the page count and how many of them the stage carried (see Instruments) |
 | `AE_VT_STAGE=0` | control: fill pages into a private buffer and upload them with `glTexSubImage2D` from client memory instead of through the staging buffer. Measured: upload 3.1-4.3 ms a frame against 0.10-0.15 with the stage, same pixels |
 | `AE_VT_COARSE` | longest side of the always-resident chain, default 512 |
+| `AE_VT_ATLAS_SIZE=<px>` | control: force the first atlas's size instead of taking it from the first landing's demand (260-pitch slots; `=2048` is 49 slots / 15.2 MB, `=4096` is the old fixed floor). Measured on `test.anie`: `tex_live` 22.0 MB by demand against 72.3 MB forced - see Measured |
 | `AE_AM1_FIELD=<n>` | gate measurement, not a control: the AM1 animated matte's field is n x n (default 900x700). Release: view 2.76 ms against materialized 2.39 at 900x700, 4.38 against 7.60 at 2048², 6.56 against 31.33 at 4096² (see Measured) |
-| `AE_VT_STATS=1` | one line per frame: resources, wanted, resident, pool pages/bytes |
+| `AE_VT_STATS=1` | one line per frame: resources, wanted, resident, pool pages/bytes, and `atlas=` (the first atlas's chosen size, 0 before the decision) |
 | `AE_VT_DEMAND=0` | diagnostic: skip the demand pass and its readback (every paged layer samples the coarse chain through the VT shader) - the control for "is the cost the shader or the demand machinery" |
 | `AE_VT_DEMAND=nodraw` | diagnostic: keep the pass's state changes, uniforms and per-layer buffer uploads and skip only the draw - the control for "is the cost the setup or the geometry" (measured: the geometry) |
 | `AE_VT_STATS=1` also prints `marks=` and `replays=` | how the frame got its demand: a mark is one layer's triangles walked, a replay is a signature repeat that walked nothing |
@@ -1245,6 +1264,21 @@ it, and the shader cost is what remains.
   direct fallback's path; and the counters the gates read must count exactly the copies. Mutation:
   shifting every staged copy by 16 bytes fails P4's two byte checks and the pixel gates
   (max 230-255). `AE_VT_STAGE=0` runs the suite green on the direct path with P4 skipped.
+- **P5 the demand-sized first atlas** (2026-11-08): the first atlas's ladder hangs off one number -
+  the pages the first landing wants across every resource. Asserts no hint keeps the full 4096
+  geometry (direct callers and the other pool gates), 20 pages choose 2048 with 7 slots per axis
+  and a 7x7 slot origin at the gutter, 60 pages choose 3072, 400 keep 4096, the allocation's
+  BYTES are the chosen size's, and a demand of 400 on a 2048 pool EMPTIES it, re-decides at 4096
+  and drops its old pages. The whole pixel suite also runs green with `AE_VT_ATLAS_SIZE=2048`, which
+  is what proves the shader's `uPageAtlasSize`/`uPageSlotsPerAxis` plumbing at a size that is not
+  the compile-time one (the slot's row/column addressing is the part a wrong uniform moves).
+- **P6 the pool grows mid-landing** (2026-11-08): a real tree of 26 paged layers, three visible
+  first (their ~27 pages choose the 2048 rung), then all 26 (their demand no longer fits four 2048
+  atlases). The landing must empty the pool and re-decide at 4096 in that frame, the following
+  frames must re-land the pages, and the frame must then equal the full-resolution control (max 0).
+  Mutation: with the growth condition disabled the 2048 atlas stays and the structural check fails;
+  the table-clearing contract the growth relies on is `V1`/`FM1`'s (dropping the generation check
+  leaves stale entries and fails FM1's no-page-resident cases).
 - **M1b chain determinism**: builds one source's chain twice with a full readback of the first in
   between and requires the two chains to be bit-identical (9 levels here). It is a STRUCTURAL
   guard, not this defect's gate: measured, the old tail construction passes it too (worst channel
@@ -1765,10 +1799,18 @@ it, and the shader cost is what remains.
   blended mip levels (with anisotropy) where the page path read level 0. The control now takes
   `textureLod(..., 0)` - the same read as the page path, and the same read as `texture()` under
   true magnification - so the band is gone rather than excused.
-  `tex_live` on this small project goes UP, 33.0 MB -> 87.4 MB, because the pool's first atlas is
-  a fixed 61 MB; that floor is the price of the scheme on projects whose whole texture set is
-  smaller than one atlas. A 2048 first atlas was built and measured and is not the answer: 57
-  pages then needed a second 4096 atlas for 8 pages, 77 MB against 61 MB.
+  **The first-atlas floor is gone where it mattered (2026-11-08).** `tex_live` on this small
+  project used to go UP, 33.0 MB -> 87.4 MB, because the pool's first atlas was a fixed 61 MB; a
+  fixed 2048 first atlas was built and measured and was not the answer (57 pages then needed a
+  second 4096 atlas for 8 pages, 77 MB against 61). The first atlas is now sized from the first
+  landing's demand IN ONE atlas - 2048/49 slots, 3072/121, 4096/225 (see The pool). On the current
+  file (one 1102x792 layer, 640x640 fit view, frames 0..3, the same binary, `AE_VT_ATLAS_SIZE=4096`
+  as the control): the first landing wants 20 pages, the pool picks 2048, `tex_live` is **22.0 MB
+  against 72.3 MB** - exactly the 50.3 MB the two atlas sizes' texels differ by - all 20 pages are
+  resident, and the paged pixels are unchanged: the whole `verify_mipmap` suite passes at
+  `AE_VT_ATLAS_SIZE=2048` as well as at 4096. `dinner lab` (5 pages) and `EmiliHappyIdle` (47
+  pages) drop the same 50.3 MB; `ballerina`'s first landing wants 354 pages, keeps the 4096 atlas
+  and its 83.8 MB is unchanged.
   RE-CONFIRMED 2026-11-06 after the folder-matte change, with `render_probe` on the same project
   (640x640 fit view, frames 0..5, `AE_VIRTUAL_TEXTURE=0` as the control): frames 2-5 are
   **bit-identical** (0 px differ), frame 1 is max 1 / mean 0.0025, and frame 0 is max 176 / mean
@@ -1984,9 +2026,27 @@ it, and the shader cost is what remains.
      not per use.
    Folder mattes and `mask_bytes` are done; filter-lane masks are the remaining full-chain
    textures (above).
-5. Per-resource pyramids for duplicated layers.
-6. The first-atlas floor (61 MB) for projects whose whole texture set is smaller than it: a
-   demand-aware first allocation is the measured-shaped answer (see the pool's header comment).
+5. ~~**Per-resource pyramids for duplicated layers**~~ - **MEASURED (2026-11-08) and not worth
+   building on this corpus.** `--list-layers` reports the shared image per layer (`res=N`): nene
+   133/133, `dinner lab` 37/37, `ballerina` 34 layers over 33 resources (one duplicate),
+   `test.anie` 1/1. Sharing one pyramid between two keys keeps its design question (which key's
+   holder owns it when the resource is reloaded), and here it would save one pyramid. If a project
+   with many duplicated large layers appears, the measurement starts from `--list-layers`' `res=`,
+   and the pyramid is the easy half - the paged RESOURCE (coarse chain + pages) is the larger prize
+   and a harder lifetime question.
+6. ~~**The first-atlas floor**~~ - **DONE (2026-11-08)**: the first atlas is sized from the first
+   landing's demand (2048/3072/4096, one atlas holding what the view wants), and a demand that
+   outgrows the chosen capacity empties the pool and re-decides at 4096. Measured: 22.0 MB against
+   72.3 MB on a 20-page project, 50.3 MB for every project on the small rung, unchanged for one on
+   the full rung; see Measured and `P5`. What remains:
+   - a session that starts on a sparse project and later needs more than four small atlases pays
+     ONE empty-and-re-land (a one-frame coarse transient, then normal landing) - the price of not
+     betting 61 MB on the first frame. If that transient ever matters, the alternative is to
+     allocate the larger atlas once the *hint* is stable, which is the same bet in a bigger box.
+   - the size is pool-wide BY CONSTRUCTION (both stacks read one `uPageAtlasSize` uniform), chosen
+     from the SUM of the image and mask demand. A project whose mask pages dominate sizes the image
+     stack up with them; per-stack uniforms would lift that, at the cost of two more uniforms and a
+     second branch in both samplers.
 
 The parity gaps are closed - the nene residual (the coarse tier's single tap) and the test.anie
 band (the control's implicit-LOD read in the biased magnified branch) - and the clipper layers are

@@ -380,6 +380,16 @@ hand it over. Its one question is `Sampling`:
   page stack cannot reproduce (measured on test.anie as 6873 px, mean 0.076, max 43, until both
   paths read level 0 explicitly).
 
+- **The first atlas is sized from the first landing's demand** (`PagePool::setPageDemand`): a page
+  is a fixed 260-texel pitch, so an atlas holds `(side/260)^2` slots - 49 at 2048 (15.2 MB), 121 at
+  3072, 225 at 4096 (60.8 MB). The landing sums every resource's wanted pages after the demand
+  parse and picks the smallest rung that holds them in ONE atlas; `AE_VT_ATLAS_SIZE=<px>` forces it
+  (`4096` is the old fixed floor). Measured on `test.anie` (20 pages): `tex_live` **22.0 MB against
+  72.3 MB** forced, same pixels - the whole `verify_mipmap` suite passes at 2048 too. A later demand
+  beyond four atlases' capacity empties the pool and re-decides at 4096 (`P5` pins the ladder,
+  `P6` a real 26-layer render that grows mid-landing and then matches the control). The size is
+  pool-wide BY CONSTRUCTION: both stacks read one `uPageAtlasSize` / `uPageSlotsPerAxis`, so the
+  masks' demand sizes the image stack with it.
 - The timeline surface, the ruler and the graph page are **Canvas Painter** hosts (`QCanvasPainterWidget`
   through `PanelHostBase`); Qt ≥ 6.12 is required. The scene models live in `ctrl/` (they read
   `ctrl::TimeLineRow`), the ink decisions in `gui/`.
@@ -503,6 +513,10 @@ ninja -C build 'src/gui/update_translations:Debug'   # the :Debug / :Release suf
 - A key is drawn at `kKeyDotRadius` but picked at `kKeyHitRadius`; a proportional key is a **ring**.
 
 ## Known-good conventions worth copying
+
+- **`slots` is a Qt macro** (like `signals` and `emit`): a local `std::vector<...> slots;` expands to
+  nothing, and the compiler says "declaration does not declare anything" and then "expected
+  expression" at the first use. Pick another name.
 
 - A dropped gesture is not an undo: keep the pushed command, drop only the transient state.
 - Clearing state and repainting are two duties; a transient view that a drag repaints must ask for the

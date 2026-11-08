@@ -103,6 +103,10 @@ void PagePool::resetState() {
         mFree[i].clear();
     }
     mAtlasCount = 0;
+    mAtlasSize = 0;
+    mAtlasSlotsPerAxis = 0;
+    mAtlasSlotCount = 0;
+    mDemandPages = 0;
     mFrameUploadBytes = 0;
     mFrameUploads = 0;
     mFrameEvictions = 0;
@@ -155,6 +159,52 @@ void PagePool::endFrame() {
 
 void PagePool::setBudgetBytes(qint64 aBytes) { mBudgetBytes = std::max<qint64>(0, aBytes); }
 
+void PagePool::setPageDemand(int aPages) {
+    // Frames with no demand (the first landing) ask nothing: the choice waits for a real hint.
+    mDemandPages = std::max(mDemandPages, aPages);
+    if (mDemandPages <= 0)
+        return;
+    if (mAtlasSize == 0) {
+        ensureAtlasSize();
+        return;
+    }
+    // GROW WHEN THE DEMAND NO LONGER FITS THE CAPACITY (four atlases of the chosen size). The
+    // alternative is to keep evicting pages the view is sampling; the pool is emptied and the
+    // next decision takes the full size, and the pages re-land over the following frames through
+    // the coarse fallback exactly as after a purge. This is the one case the small first atlas
+    // can cost: a session that started on a small project and then needs a big one pays a
+    // re-land, not a permanently smaller pool.
+    if (aPages > slotsPerAtlas() * kMaxAtlasCount && mAtlasSize < kAtlasSize) {
+        purge();
+        mDemandPages = aPages;
+        ensureAtlasSize();
+    }
+}
+
+void PagePool::ensureAtlasSize() {
+    if (mAtlasSize > 0)
+        return;
+    // ONE ATLAS MUST HOLD THE FIRST DEMAND, and the rungs are the smallest atlas that does:
+    // 2048 (7x7 = 49 slots), 3072 (11x11 = 121), 4096 (15x15 = 225). A hint beyond 225 keeps the
+    // full size - the extra pages wait for a second atlas, as they always did. No hint at all
+    // (a caller that acquires directly, the page-pool gates) is the full size.
+    int size = kAtlasSize;
+    if (mDemandPages > 0) {
+        if (mDemandPages <= kSmallAtlasSlots)
+            size = kSmallAtlasSize;
+        else if (mDemandPages <= kMediumAtlasSlots)
+            size = kMediumAtlasSize;
+    }
+    // AE_VT_ATLAS_SIZE forces the size (the A/B control for the demand policy, and the old fixed
+    // floor is =4096). Read once: it is a measurement control, not a per-frame decision.
+    static const int forced = qEnvironmentVariableIntValue("AE_VT_ATLAS_SIZE");
+    if (forced > 0)
+        size = std::max(kPitch * 2, std::min((int)kAtlasSize, forced));
+    mAtlasSize = size;
+    mAtlasSlotsPerAxis = size / kPitch;
+    mAtlasSlotCount = mAtlasSlotsPerAxis * mAtlasSlotsPerAxis;
+}
+
 /// AE_VT_ATLAS_SENTINEL: a fresh atlas starts MAGENTA instead of whatever the driver left in the
 /// allocation. It answers the one question no verifier in this file or in core::VirtualTexture
 /// asks: does any READ reach a texel that no page upload wrote? A slot check reads the slot the
@@ -187,9 +237,10 @@ std::vector<uint8>& sentinelAtlasBytes(PagePool::Format aFormat) {
 bool PagePool::makeAtlas(Format aFormat) {
     if (!ensureContext())
         return false;
+    ensureAtlasSize();
     const int first = (int)aFormat * kMaxAtlasCount;
     const int end = first + kMaxAtlasCount;
-    if (allocatedBytes() + atlasBytes(aFormat) > mBudgetBytes)
+    if (allocatedBytes() + atlasBytesAt(aFormat) > mBudgetBytes)
         return false;
 
     int index = -1;
@@ -216,11 +267,11 @@ bool PagePool::makeAtlas(Format aFormat) {
     const void* initial = sentinel ? (const void*)sentinelAtlasBytes(aFormat).data() : nullptr;
     if (aFormat == Format_R8)
         ggl.glTexImage2D(
-            GL_TEXTURE_2D, 0, GL_R8, kAtlasSize, kAtlasSize, 0, GL_RED, GL_UNSIGNED_BYTE, initial
+            GL_TEXTURE_2D, 0, GL_R8, mAtlasSize, mAtlasSize, 0, GL_RED, GL_UNSIGNED_BYTE, initial
         );
     else
         ggl.glTexImage2D(
-            GL_TEXTURE_2D, 0, GL_RGBA8, kAtlasSize, kAtlasSize, 0, GL_RGBA, GL_UNSIGNED_BYTE, initial
+            GL_TEXTURE_2D, 0, GL_RGBA8, mAtlasSize, mAtlasSize, 0, GL_RGBA, GL_UNSIGNED_BYTE, initial
         );
     ggl.glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
     ggl.glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
@@ -244,12 +295,12 @@ bool PagePool::makeAtlas(Format aFormat) {
     mAtlasUsed[index] = 0;
     mAtlasLastUsed[index] = mFrame;
     mFree[index].clear();
-    mFree[index].reserve(kSlotsPerAtlas);
+    mFree[index].reserve(mAtlasSlotCount);
     // High slot indices first, so a fresh atlas hands out slot 0, 1, 2... in that order.
-    for (int s = kSlotsPerAtlas - 1; s >= 0; --s)
+    for (int s = mAtlasSlotCount - 1; s >= 0; --s)
         mFree[index].push_back(s);
 
-    FrameStats::instance().textureCreated((int)atlasBytes(aFormat));
+    FrameStats::instance().textureCreated((int)atlasBytesAt(aFormat));
     return true;
 }
 
@@ -262,7 +313,7 @@ void PagePool::releaseAtlas(int aAtlas) {
     mAtlasUsed[aAtlas] = 0;
     mFree[aAtlas].clear();
     --mAtlasCount;
-    FrameStats::instance().textureDestroyed((int)atlasBytes(mAtlasFormat[aAtlas]));
+    FrameStats::instance().textureDestroyed((int)atlasBytesAt(mAtlasFormat[aAtlas]));
 }
 
 bool PagePool::find(const PageId& aPage, Slot* aSlot) const {
@@ -346,8 +397,9 @@ bool PagePool::acquire(const PageId& aPage, Listener* aListener, Slot* aSlot, Fo
         return false;
     }
 
-    const int sx = (slot % kSlotsPerAxis) * kPitch;
-    const int sy = (slot / kSlotsPerAxis) * kPitch;
+    const int slotsPerAxis = this->slotsPerAxis();
+    const int sx = (slot % slotsPerAxis) * kPitch;
+    const int sy = (slot / slotsPerAxis) * kPitch;
     Slot entrySlot;
     entrySlot.atlas = atlas;
     entrySlot.slot = slot;
@@ -533,6 +585,12 @@ void PagePool::purge() {
     ++mGeneration;
     mPages.clear();
     mLru.clear();
+    // THE FIRST ATLAS'S SIZE IS FORGOTTEN WITH THE ATLASES: the next landing's demand decides it
+    // again, which is what makes a project open (and the gates' rung checks) start clean.
+    mAtlasSize = 0;
+    mAtlasSlotsPerAxis = 0;
+    mAtlasSlotCount = 0;
+    mDemandPages = 0;
     for (int i = 0; i < kAtlasSlots; ++i) {
         if (mAtlas[i] != 0)
             releaseAtlas(i);
@@ -577,7 +635,7 @@ qint64 PagePool::allocatedBytes() const {
     qint64 total = 0;
     for (int i = 0; i < kAtlasSlots; ++i) {
         if (mAtlas[i] != 0)
-            total += atlasBytes(mAtlasFormat[i]);
+            total += atlasBytesAt(mAtlasFormat[i]);
     }
     return total;
 }
