@@ -2226,6 +2226,10 @@ void suiteAtlasSizing() {
 // whose demand no longer fits even four atlases of that size: the landing must empty the pool and
 // re-decide at the full size (the choice is made after the demand parse, before the resolves),
 // and the following frames must re-land the pages and draw what the full-resolution control does.
+// The report prints what that costs - the growth frame's time and the page-by-frame resident/wanted
+// curve of the re-land - because the pixel compare cannot see it: this fixture is drawn at 0.6, so
+// its fragments sample the COARSE tier, which is always resident. The pixels pin the tables and the
+// coarse chain; the transient is the curve.
 void suitePoolGrowth() {
     suiteHeader("P6 the pool grows under a frame that outgrows it");
     if (!gl::PagePool::enabled()) {
@@ -2281,14 +2285,28 @@ void suitePoolGrowth() {
     for (core::LayerNode* layer : layers)
         layer->setVisibility(true);
     fx.render(tree, camera, 3, black);   // the draw that marks the bigger demand
-    fx.render(tree, camera, 4, black);   // the landing that sees it: grow + re-land
+    // FRAMES 4..14, TIMED AND KEPT: frame 4 is the landing that sees the bigger demand and grows
+    // the pool, and the frames after it are the re-land. Keeping them lets the report say what the
+    // growth COSTS - how long its frame takes and how many frames until the frame is sharp again -
+    // instead of asserting only the endpoint.
+    std::vector<double> growthMs;
+    std::vector<std::vector<uint8_t>> growthPixels;
+    std::vector<QString> growthResidency;
+    QElapsedTimer growthTimer;
+    for (int frame = 4; frame <= 14; ++frame) {
+        growthTimer.start();
+        std::vector<uint8_t> pixels = fx.render(tree, camera, frame, black);
+        growthMs.push_back(growthTimer.nsecsElapsed() / 1000000.0);
+        int wanted = 0;
+        int resident = 0;
+        core::VirtualTexture::pageResidency(&wanted, &resident);
+        growthResidency.push_back(QString("%1/%2").arg(resident).arg(wanted));
+        growthPixels.push_back(std::move(pixels));
+    }
     expect(
         pool.atlasSize() == 4096,
         QString("P6 the bigger demand must grow the pool (atlas %1)").arg(pool.atlasSize())
     );
-    for (int frame = 5; frame < 14; ++frame)
-        fx.render(tree, camera, frame, black);
-    const std::vector<uint8_t> paged = fx.render(tree, camera, 14, black);
 
     for (core::LayerNode* layer : layers) {
         if (auto* key = dynamic_cast<core::ImageKey*>(
@@ -2300,17 +2318,23 @@ void suitePoolGrowth() {
     int maxDelta = 0;
     double meanDelta = 0.0;
     int n = 0;
-    for (int y = 8; y < canvas.height() - 8; ++y) {
-        for (int x = 8; x < canvas.width() - 8; ++x) {
-            const size_t i = ((size_t)y * canvas.width() + x) * 4;
-            for (int ch = 0; ch < 4; ++ch) {
-                const int d = std::abs((int)paged[i + ch] - (int)control[i + ch]);
-                maxDelta = std::max(maxDelta, d);
-                meanDelta += d;
-                ++n;
+    std::vector<int> growthDeltas;
+    for (const std::vector<uint8_t>& framePixels : growthPixels) {
+        int frameMax = 0;
+        for (int y = 8; y < canvas.height() - 8; ++y) {
+            for (int x = 8; x < canvas.width() - 8; ++x) {
+                const size_t i = ((size_t)y * canvas.width() + x) * 4;
+                for (int ch = 0; ch < 4; ++ch) {
+                    const int d = std::abs((int)framePixels[i + ch] - (int)control[i + ch]);
+                    frameMax = std::max(frameMax, d);
+                    meanDelta += d;
+                    ++n;
+                }
             }
         }
+        growthDeltas.push_back(frameMax);
     }
+    maxDelta = growthDeltas.back();
     meanDelta = n ? meanDelta / n : 0.0;
     expect(
         maxDelta <= 1,
@@ -2322,10 +2346,23 @@ void suitePoolGrowth() {
                 layer->timeLine()->defaultKey(core::TimeKeyType_Image)))
             key->setForceFullTexture(false);
     }
+    {
+        QString msLine, deltaLine, residencyLine;
+        for (size_t i = 0; i < growthMs.size(); ++i) {
+            msLine += QString("%1%2").arg(i ? " " : "").arg(growthMs[i], 0, 'f', 1);
+            deltaLine += QString("%1%2").arg(i ? " " : "").arg(growthDeltas[i]);
+            residencyLine += QString("%1%2").arg(i ? " " : "").arg(growthResidency[i]);
+        }
+        std::printf(
+            "  P6 frames 4..14 ms = %s; resident/wanted = %s; max delta per frame = %s\n",
+            msLine.toUtf8().constData(), residencyLine.toUtf8().constData(),
+            deltaLine.toUtf8().constData()
+        );
+    }
     caseReport(
         "pool growth", maxDelta <= 1,
         QString("atlas 2048 -> 4096 under the demand; paged vs control max %1 mean %2 of 255")
-            .arg(maxDelta).arg(meanDelta, 0, 'f', 3)
+            .arg(maxDelta).arg(meanDelta / (double)growthPixels.size(), 0, 'f', 3)
     );
 }
 

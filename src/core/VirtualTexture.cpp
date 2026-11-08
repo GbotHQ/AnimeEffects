@@ -824,6 +824,19 @@ bool VirtualTexture::pageable(const QSize& aSize) {
 }
 
 int VirtualTexture::instanceCount() { return (int)registry().size(); }
+
+void VirtualTexture::pageResidency(int* aWanted, int* aResident) {
+    int wanted = 0;
+    int resident = 0;
+    for (VirtualTexture* resource : registry()) {
+        wanted += resource->wantedPageCount();
+        resident += resource->residentWantedCount();
+    }
+    if (aWanted)
+        *aWanted = wanted;
+    if (aResident)
+        *aResident = resident;
+}
 int VirtualTexture::demandMarks() { return sDemandMarks; }
 int VirtualTexture::demandReplays() { return sDemandReplays; }
 
