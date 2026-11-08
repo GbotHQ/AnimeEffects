@@ -1815,12 +1815,14 @@ it, and the shader cost is what remains.
    would have to build the bones, the caches and a `PoseKey` before it could pull a pageable layer
    by more than a page. Until then that half rests on the draw path (`callGL`'s `useInfluence`
    branch) plus the count, and no project in the dataset shows it in pixels at the cameras tried.
-3. The pool's landing rate - **the fill is DONE (2026-11-08); the upload and the demand consume
-   are what is left.** `FrameStats` records **`vt_frame_ms`** and `AE_VT_LANDING_SPLIT=1` divides it
-   (`VTLANDING`), so this item is measured rather than reasoned. On ballerina at a 640x640 zoom-1
-   view, Release, 31 level-0 pages a landing frame at the default 8 MB cap:
-   - **fill 2.2-3.1 ms** (was 6.4-13.6), **upload 3.1-4.3 ms**, **demand consume 0.1-9.6 ms**,
-     pool + table + other < 0.6 ms, total **7.0-16.1 ms** (was 13.0-25.9). The fix is the vectorised
+3. The pool's landing rate - **the fill is DONE (2026-11-08), the demand readback is measured and
+   CLOSED, and the upload is the one thing left.** `FrameStats` records **`vt_frame_ms`** and
+   `AE_VT_LANDING_SPLIT=1` divides it (`VTLANDING`), so this item is measured rather than reasoned.
+   On ballerina at a 640x640 zoom-1 view, Release, 31 level-0 pages a landing frame at the default
+   8 MB cap:
+   - **fill 2.2-3.1 ms** (was 6.4-13.6), **upload 3.1-4.3 ms**, everything else < 0.7 ms, total
+     **7.0-16.1 ms** (was 13.0-25.9) - and the total also carries `read=`, which the third bullet
+     shows is not addable. The fix is the vectorised
      `img::premultiply` (see Measured: 0.239 -> 0.087 ms a page at the median) and its gate is `P0`.
      The fill is now at the price of a bare memcpy of the same bytes, so lever (a) has no room left
      on this machine without moving the conversion off the CPU entirely (the GPU-scratch form would
