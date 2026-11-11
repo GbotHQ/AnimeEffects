@@ -2,11 +2,67 @@
 #include "qdir.h"
 #include "util/IDSolver.h"
 #include "ctrl/ProjectLoader.h"
+#include "core/BoneKey.h"
 #include "core/Deserializer.h"
 #include "core/FormatVersion.h"
+#include "core/TimeLine.h"
 #include <qstandardpaths.h>
 
 namespace ctrl {
+
+namespace {
+
+// The influence maps are derived state: 0.21 does not write them, and a <= 0.20
+// section is discarded on read. Every loader path ends here, after the ID
+// solver, so the GUI, render_probe and the round-trip harness all start from the
+// same rebuilt caches. resetCaches schedules the actual per-vertex work on the
+// project's paralleler; the first accessor() waits for it.
+bool rebuildBoneInfluenceCaches(
+    core::Project& aProject, util::IProgressReporter& aReporter, QStringList& aLog
+) {
+    core::ObjectNode* top = aProject.objectTree().topNode();
+    if (!top)
+        return true;
+
+    int total = 0;
+    for (core::ObjectNode::Iterator itr(top); itr.hasNext();) {
+        core::ObjectNode* node = itr.next();
+        if (node && node->timeLine())
+            total += node->timeLine()->map(core::TimeKeyType_Bone).size();
+    }
+
+    if (total <= 0)
+        return true; // no bone keys: leave the load report unchanged
+
+    aReporter.setSection("Rebuilding bone influence caches...");
+    aReporter.setMaximum(qMax(1, total));
+    aReporter.setProgress(0);
+
+    int done = 0;
+    for (core::ObjectNode::Iterator itr(top); itr.hasNext();) {
+        core::ObjectNode* node = itr.next();
+        if (!node || !node->timeLine())
+            continue;
+
+        const core::TimeLine::MapType& boneKeys = node->timeLine()->map(core::TimeKeyType_Bone);
+        for (auto itrKey = boneKeys.begin(); itrKey != boneKeys.end(); ++itrKey) {
+            if (aReporter.wasCanceled()) {
+                aLog.push_back("Canceled while rebuilding bone influence caches.");
+                return false;
+            }
+
+            auto* boneKey = dynamic_cast<core::BoneKey*>(itrKey.value());
+            if (boneKey)
+                boneKey->resetCaches(aProject, *node);
+            aReporter.setProgress(++done);
+        }
+    }
+
+    aReporter.setProgress(total);
+    return true;
+}
+
+} // namespace
 
 ProjectLoader::ProjectLoader(): mLog(), mVersion() {}
 
@@ -108,6 +164,11 @@ bool ProjectLoader::load(
     // solve id references
     if (!idSolver.solve()) {
         mLog.push_back("Failed to solve id references.");
+        return false;
+    }
+
+    // Rebuild the derived skinning caches now that node references resolve.
+    if (!rebuildBoneInfluenceCaches(aProject, aReporter, mLog)) {
         return false;
     }
 

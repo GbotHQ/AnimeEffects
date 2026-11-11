@@ -14,6 +14,7 @@ add_library(${PROJECT_NAME}
     BoneInfluenceMap.cpp BoneInfluenceMap.h
     BoneKey.cpp BoneKey.h
     BoneKeyUpdater.cpp BoneKeyUpdater.h
+    BonePolygonIndex.cpp BonePolygonIndex.h
     BoneShape.cpp BoneShape.h
     CameraInfo.cpp CameraInfo.h
     ClippingFrame.cpp ClippingFrame.h

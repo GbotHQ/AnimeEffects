@@ -179,6 +179,17 @@ Every state the document holds must be reproducible by replaying the undo stack:
 - One undo step **per gesture**, not per sample: a drag rewrites its command.
 - Format versions gate structures: never patch a header to claim a newer version on an older file —
   other structures are version-gated too (`tests/roundtrip_main.cpp` writes fixtures).
+- **Derived state never gates loading.** Format 0.21 stopped persisting the bone influence cache:
+  `ProjectLoader` rebuilds every `BoneKey`'s maps after the ID solver (every loader path, not just
+  the GUI), and the reader discards a <= 0.20 section with `Deserializer::skipBytes`. A persisted
+  derived block must carry a tag and a byte length so an unknown version is skipped and recomputed,
+  never failed. See `docs/design/skeletal/influence-cache-plan.md`.
+- **The influence build's cost is its polygon containment, not its bone sweep.** `core::BonePolygonIndex`
+  is an exact y-bucketed copy of Qt's odd-even scan (`tests/bone_polygon_index` pins it against
+  `QPolygonF::containsPoint`), and the weight loop must keep bone order. A uniform bone grid and
+  per-map task chunking were both built and measured and both lost; see the plan's D4 before rebuilding
+  either. `render_probe --dump-influence` (SHA-256 of every cache's arrays) and `--bench-influence`
+  (schedule/join split) are the oracle and the cost instrument.
 - **Proportional keys** store their weights (never re-derive them after each edit: frame quantisation
   drifts). A key on a *flat* value segment inherits the time fraction — otherwise the value axis is
   inert forever. Format 0.16 carries ids and bounds.
@@ -237,6 +248,12 @@ hand it over. Its one question is `Sampling`:
 
 ## Rendering and hosts
 
+- **Bone influence vertex attributes are packed indices + float32 weights**: 4 x `uint8`
+  bone indices per set, bound through `glVertexAttribIPointer` so the shader's `ivec4`
+  sees integers, plus 4 x `float32` weights (40 B/vertex, from 64). A unorm16 weight
+  variant (24 B/vertex) was built and rejected: it exceeded the 1-LSB pixel gate on
+  2.anie (max 12 on 61 pixels of one frame). Re-measure before re-packing; see
+  `docs/design/skeletal/influence-cache-plan.md`.
 - **The layer sampler is explained, with its figure and its numbers, in
   `docs/design/renderer/layer-sampling.md`**: the two-tap, one-level reconstruction (the level from the
   footprint's minor axis, both taps splitting its major axis, eight fetches, no level blend) against the

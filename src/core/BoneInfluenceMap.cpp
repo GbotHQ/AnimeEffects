@@ -3,16 +3,35 @@
 #include "core/Project.h"
 #include "core/LayerMesh.h"
 #include "core/BoneInfluenceMap.h"
-// #include <QElapsedTimer>
 
 namespace core {
+
+namespace {
+
+// The weight a vertex with no (or one) influence carries.
+constexpr GLfloat kWeightOne = 1.0f;
+
+} // namespace
 
 //-------------------------------------------------------------------------------------------------
 BoneInfluenceMap::BoneInfluenceMap():
     mVertexCount(0), mMaxBoneCount(0), mGroupMtx(), mBoneList(), mWorks(), mBuildTask() {}
 
+BoneInfluenceMap::~BoneInfluenceMap() {
+    // A queued or running task points at this map (and at mWorks/mIndices).
+    // Task::~Task() waits only for a RUNNING task, so an idle one still in the
+    // paralleler's queue would outlive the map; cancel removes it (and joins a
+    // running one).
+    if (mBuildTask) {
+        mBuildTask->cancel();
+    }
+}
+
 void BoneInfluenceMap::setMaxBoneCount(int aBoneCount) {
     XC_ASSERT(mBuildTask.isNull());
+    // Indices are stored as uint8 for the GPU. The palette caps at 32 today;
+    // this assert is the contract that a future cap cannot silently truncate.
+    XC_ASSERT(aBoneCount <= 255);
     mMaxBoneCount = aBoneCount;
 }
 
@@ -60,7 +79,7 @@ void BoneInfluenceMap::allocate(int aVertexCount, bool aInitialize) {
 
             for (int i = 0; i < aVertexCount; ++i) {
                 const int ixc = kBonePerVtxMaxEach * i;
-                weights[ixc] = 1.0f;
+                weights[ixc] = kWeightOne;
 
                 for (int k = 1; k < kBonePerVtxMaxEach; ++k) {
                     weights[ixc + k] = 0.0f;
@@ -169,9 +188,12 @@ void BoneInfluenceMap::transformVertices() {
 }
 
 void BoneInfluenceMap::writeWeights() {
-    // each bone
-    for (int i = 0; i < mBoneList.params.size(); ++i) {
-        const BoneParam param = mBoneList.params[i];
+    // Bone order is the order in which weights reach a vertex, and
+    // tryPushBoneWeight() keeps the first slot on a tie, so this loop order is
+    // part of the stored result.
+    const int boneCount = mBoneList.params.size();
+    for (int i = 0; i < boneCount; ++i) {
+        const BoneParam& param = mBoneList.params[i];
         if (!param.hasParent || !param.hasRange)
             continue;
 
@@ -215,11 +237,12 @@ void BoneInfluenceMap::writeVertexAttribute() {
         if (work.count == 0) {
             // no bone influence
             mIndices[0][ixc] = 0;
-            mWeights[0][ixc] = 1.0f;
+            mWeights[0][ixc] = kWeightOne;
         } else if (work.count == 1) {
             // single bone influence
-            mIndices[0][ixc] = work.id[0];
-            mWeights[0][ixc] = 1.0f;
+            XC_ASSERT(work.id[0] >= 0 && work.id[0] < mBoneList.params.size() && work.id[0] <= 0xFF);
+            mIndices[0][ixc] = static_cast<IndicesType>(work.id[0]);
+            mWeights[0][ixc] = kWeightOne;
         } else {
             // some bones influence
 
@@ -237,13 +260,19 @@ void BoneInfluenceMap::writeVertexAttribute() {
                 weightAdd = (1.0f - powerSum) / work.count;
             }
 
+            float weightSum = 0.0f;
             for (int k = 0; k < work.count; ++k) {
                 const int t = k / kBonePerVtxMaxEach;
                 const int each = ixc + k - t * kBonePerVtxMaxEach;
 
-                mIndices[t][each] = work.id[k];
-                mWeights[t][each] = work.weight[k] * weightRate + weightAdd;
+                XC_ASSERT(work.id[k] >= 0 && work.id[k] < mBoneList.params.size() && work.id[k] <= 0xFF);
+                mIndices[t][each] = static_cast<IndicesType>(work.id[k]);
+                const float weight = work.weight[k] * weightRate + weightAdd;
+                mWeights[t][each] = weight;
+                weightSum += weight;
             }
+            // Build-time invariant: the used slots still partition unity.
+            XC_ASSERT(qAbs(weightSum - kWeightOne) <= 1e-5f);
         }
     }
 }
@@ -262,50 +291,6 @@ void BoneInfluenceMap::waitBuilding() const {
         mBuildTask->wait();
     }
 #endif
-}
-
-bool BoneInfluenceMap::serialize(Serializer& aOut) const {
-    waitBuilding();
-
-    // vertex count
-    aOut.write(mVertexCount);
-    // max bone count
-    aOut.write(mMaxBoneCount);
-
-    const int count = kBonePerVtxMaxEach * mVertexCount;
-    // indices
-    aOut.writeGL(mIndices[0].data(), count);
-    aOut.writeGL(mIndices[1].data(), count);
-    // weights
-    aOut.writeGL(mWeights[0].data(), count);
-    aOut.writeGL(mWeights[1].data(), count);
-
-    return aOut.checkStream();
-}
-
-bool BoneInfluenceMap::deserialize(Deserializer& aIn) {
-    waitBuilding();
-
-    // vertex count
-    {
-        int vertexCount = 0;
-        aIn.read(vertexCount);
-
-        // reallocate
-        allocate(vertexCount, false);
-    }
-    // max bone count
-    aIn.read(mMaxBoneCount);
-
-    const int count = kBonePerVtxMaxEach * mVertexCount;
-    // indices
-    aIn.readGL(mIndices[0].data(), count);
-    aIn.readGL(mIndices[1].data(), count);
-    // weights
-    aIn.readGL(mWeights[0].data(), count);
-    aIn.readGL(mWeights[1].data(), count);
-
-    return aIn.checkStream();
 }
 
 //-------------------------------------------------------------------------------------------------
@@ -349,24 +334,24 @@ BoneInfluenceMap::Accessor::Accessor(): mOwner() {}
 
 BoneInfluenceMap::Accessor::Accessor(const BoneInfluenceMap& aOwner): mOwner(&aOwner) {}
 
-const gl::Vector4I* BoneInfluenceMap::Accessor::indices0() const {
+const BoneInfluenceMap::IndicesType* BoneInfluenceMap::Accessor::indices0() const {
     XC_PTR_ASSERT(mOwner);
-    return (const gl::Vector4I*)mOwner->mIndices[0].data();
+    return mOwner->mIndices[0].data();
 }
 
-const gl::Vector4I* BoneInfluenceMap::Accessor::indices1() const {
+const BoneInfluenceMap::IndicesType* BoneInfluenceMap::Accessor::indices1() const {
     XC_PTR_ASSERT(mOwner);
-    return (const gl::Vector4I*)mOwner->mIndices[1].data();
+    return mOwner->mIndices[1].data();
 }
 
-const gl::Vector4* BoneInfluenceMap::Accessor::weights0() const {
+const BoneInfluenceMap::WeightsType* BoneInfluenceMap::Accessor::weights0() const {
     XC_PTR_ASSERT(mOwner);
-    return (const gl::Vector4*)mOwner->mWeights[0].data();
+    return mOwner->mWeights[0].data();
 }
 
-const gl::Vector4* BoneInfluenceMap::Accessor::weights1() const {
+const BoneInfluenceMap::WeightsType* BoneInfluenceMap::Accessor::weights1() const {
     XC_PTR_ASSERT(mOwner);
-    return (const gl::Vector4*)mOwner->mWeights[1].data();
+    return mOwner->mWeights[1].data();
 }
 
 } // namespace core

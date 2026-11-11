@@ -77,7 +77,11 @@
 #include <vector>
 
 #include <QApplication>
+#include <QByteArrayView>
+#include <QCryptographicHash>
 #include <QDir>
+#include <QElapsedTimer>
+#include <QFile>
 #include <QFileInfo>
 #include <QFont>
 #include <QImage>
@@ -91,10 +95,12 @@
 #include <QString>
 #include <QStringList>
 #include <QSurfaceFormat>
+#include <QTextStream>
 #include <QVector2D>
 
 #include "XC.h"
 #include "core/Animator.h"
+#include "core/BoneKey.h"
 #include "core/CameraInfo.h"
 #include "core/ClippingFrame.h"
 #include "core/DestinationTexturizer.h"
@@ -106,6 +112,7 @@
 #include "core/LayerNode.h"
 #include "core/RenderInfo.h"
 #include "core/TimeInfo.h"
+#include "core/TimeLine.h"
 #include "core/VirtualTexture.h"
 #include "ctrl/Driver.h"
 #include "ctrl/DriverResources.h"
@@ -153,7 +160,13 @@ const char* kUsage =
     "  --list-layers print each layer's name, size, shared-image id and filter/mask/deform\n"
     "                  markers, then exit\n"
     "  --require-gpu exit 4 unless GL_RENDERER looks like hardware (rejects llvmpipe,\n"
-    "                softpipe, swrast, software)\n";
+    "                softpipe, swrast, software)\n"
+    "  --dump-influence <file>\n"
+    "                write every built bone-influence map's attribute arrays as SHA-256,\n"
+    "                with the build wait time, then exit (the build's reference oracle)\n"
+    "  --bench-influence <n>\n"
+    "                force n rebuilds of every bone key's influence caches and print each\n"
+    "                wall time, then exit (the build-cost instrument; n = 1..100)\n";
 
 int fail(int aCode, const QString& aMessage) {
     std::fprintf(stderr, "render_probe: %s\n", aMessage.toUtf8().constData());
@@ -236,6 +249,157 @@ public:
 };
 
 //-------------------------------------------------------------------------------------------------
+// The reference oracle for the influence build: every built cache's four
+// attribute arrays hashed, plus the wait time. A change to the build (a broad
+// phase, a chunk split) must leave this file byte-identical. The wait is taken
+// around accessor(), which is where the async build is joined.
+int dumpInfluenceMaps(core::Project& aProject, const QString& aPath) {
+    QFile file(aPath);
+    if (!file.open(QIODevice::WriteOnly | QIODevice::Text)) {
+        return fail(2, QStringLiteral("cannot write '%1'").arg(aPath));
+    }
+    QTextStream out(&file);
+    core::ObjectNode* top = aProject.objectTree().topNode();
+    if (!top) {
+        return fail(2, QStringLiteral("the project has no object tree"));
+    }
+
+    const auto hash = [](const void* aData, qsizetype aBytes) -> QString {
+        if (!aData || aBytes <= 0)
+            return QStringLiteral("-");
+        const QByteArrayView view(static_cast<const char*>(aData), aBytes);
+        return QString::fromLatin1(
+            QCryptographicHash::hash(view, QCryptographicHash::Sha256).toHex()
+        );
+    };
+
+    qint64 waitNs = 0;
+    int mapCount = 0;
+    qint64 vertexCount = 0;
+    int nodeIndex = 0;
+    for (core::ObjectNode::Iterator itr(top); itr.hasNext();) {
+        core::ObjectNode* node = itr.next();
+        const int thisNode = nodeIndex++;
+        if (!node || !node->timeLine())
+            continue;
+        const core::TimeLine::MapType& keys = node->timeLine()->map(core::TimeKeyType_Bone);
+        for (auto itrKey = keys.begin(); itrKey != keys.end(); ++itrKey) {
+            auto* boneKey = dynamic_cast<core::BoneKey*>(itrKey.value());
+            if (!boneKey)
+                continue;
+            int cacheIndex = 0;
+            for (const core::BoneKey::Cache* cache : boneKey->caches()) {
+                if (!cache)
+                    continue;
+                const core::BoneInfluenceMap& map = cache->influence();
+                QElapsedTimer timer;
+                timer.start();
+                const core::BoneInfluenceMap::Accessor accessor = map.accessor();
+                waitNs += timer.nsecsElapsed();
+
+                const int vertices = map.vertexCount();
+                const qsizetype count =
+                    qsizetype(vertices) * core::BoneInfluenceMap::kBonePerVtxMaxEach;
+                out << "map node=" << thisNode
+                    << " name=\"" << (cache->node() ? cache->node()->name() : QString()) << "\""
+                    << " frame=" << boneKey->frame() << " cache=" << cacheIndex
+                    << " v=" << vertices
+                    << " i0=" << hash(
+                           accessor.indices0(),
+                           count * qsizetype(sizeof(core::BoneInfluenceMap::IndicesType))
+                       )
+                    << " i1=" << hash(
+                           accessor.indices1(),
+                           count * qsizetype(sizeof(core::BoneInfluenceMap::IndicesType))
+                       )
+                    << " w0=" << hash(
+                           accessor.weights0(),
+                           count * qsizetype(sizeof(core::BoneInfluenceMap::WeightsType))
+                       )
+                    << " w1=" << hash(
+                           accessor.weights1(),
+                           count * qsizetype(sizeof(core::BoneInfluenceMap::WeightsType))
+                       )
+                    << "\n";
+                ++mapCount;
+                vertexCount += vertices;
+                ++cacheIndex;
+            }
+        }
+    }
+    out.flush();
+    if (file.error() != QFileDevice::NoError) {
+        return fail(2, QStringLiteral("write failed for '%1'").arg(aPath));
+    }
+    std::printf(
+        "INFLUENCE maps=%d vertices=%lld wait_ms=%.3f\n", mapCount, (long long)vertexCount,
+        double(waitNs) / 1.0e6
+    );
+    std::fflush(stdout);
+    return 0;
+}
+
+//-------------------------------------------------------------------------------------------------
+// Force fresh builds and time the wall clock from the first schedule to the
+// last join. resetCaches recycles each key's caches, so this runs the same
+// per-vertex work a load does; the warm-up rep is the caller's to discard.
+int benchInfluenceMaps(core::Project& aProject, int aReps) {
+    core::ObjectNode* top = aProject.objectTree().topNode();
+    if (!top) {
+        return fail(2, QStringLiteral("the project has no object tree"));
+    }
+
+    for (int rep = 0; rep < aReps; ++rep) {
+        int maps = 0;
+        qint64 vertices = 0;
+        QElapsedTimer timer;
+        QElapsedTimer split;
+        timer.start();
+
+        for (core::ObjectNode::Iterator itr(top); itr.hasNext();) {
+            core::ObjectNode* node = itr.next();
+            if (!node || !node->timeLine())
+                continue;
+            const core::TimeLine::MapType& keys = node->timeLine()->map(core::TimeKeyType_Bone);
+            for (auto itrKey = keys.begin(); itrKey != keys.end(); ++itrKey) {
+                auto* boneKey = dynamic_cast<core::BoneKey*>(itrKey.value());
+                if (boneKey)
+                    boneKey->resetCaches(aProject, *node);
+            }
+        }
+        split.start();
+
+        for (core::ObjectNode::Iterator itr(top); itr.hasNext();) {
+            core::ObjectNode* node = itr.next();
+            if (!node || !node->timeLine())
+                continue;
+            const core::TimeLine::MapType& keys = node->timeLine()->map(core::TimeKeyType_Bone);
+            for (auto itrKey = keys.begin(); itrKey != keys.end(); ++itrKey) {
+                auto* boneKey = dynamic_cast<core::BoneKey*>(itrKey.value());
+                if (!boneKey)
+                    continue;
+                for (const core::BoneKey::Cache* cache : boneKey->caches()) {
+                    if (!cache)
+                        continue;
+                    ++maps;
+                    vertices += cache->influence().vertexCount();
+                    (void)cache->influence().accessor();
+                }
+            }
+        }
+
+        std::printf(
+            "INFLUENCE_BENCH rep=%d ms=%.3f schedule_ms=%.3f wait_ms=%.3f maps=%d vertices=%lld\n",
+            rep, double(timer.nsecsElapsed()) / 1.0e6,
+            double(timer.nsecsElapsed() - split.nsecsElapsed()) / 1.0e6,
+            double(split.nsecsElapsed()) / 1.0e6, maps, (long long)vertices
+        );
+        std::fflush(stdout);
+    }
+    return 0;
+}
+
+//-------------------------------------------------------------------------------------------------
 // command line
 
 struct Options {
@@ -263,6 +427,13 @@ struct Options {
     // does not contain this text (the camera and the canvas stay the project's)
     QString onlyLayer;
     bool listLayers = false;
+    // write every built bone-influence map's attribute arrays to a file, as
+    // SHA-256 per set plus the wait time: the reference oracle for a change to
+    // the influence build (the arrays must stay byte-identical).
+    QString dumpInfluence;
+    // force N rebuilds of every bone key's influence caches and print the wall
+    // time of each: the build-cost instrument. 0 disables.
+    int benchInfluence = 0;
 };
 
 bool parseSize(const QString& aText, QSize& aOut) {
@@ -583,6 +754,21 @@ int runRender(ProbeGL& aProbe, const Options& aOptions) {
         }
     }
 
+    // The influence build's reference oracle: join every cache and hash its arrays.
+    if (aOptions.benchInfluence > 0) {
+        const int code = benchInfluenceMaps(project, aOptions.benchInfluence);
+        if (code != 0)
+            return code;
+        if (aOptions.dumpInfluence.isEmpty())
+            return 0;
+    }
+    if (!aOptions.dumpInfluence.isEmpty()) {
+        const int code = dumpInfluenceMaps(project, aOptions.dumpInfluence);
+        if (code != 0)
+            return code;
+        return 0;
+    }
+
     // A per-layer diagnostic: list what the project holds, or hide all but the named layers.
     if (aOptions.listLayers || !aOptions.onlyLayer.isEmpty()) {
         int shown = 0;
@@ -883,6 +1069,17 @@ int main(int argc, char** argv) {
             options.metrics = true;
         } else if (arg == QLatin1String("--require-gpu")) {
             options.requireGpu = true;
+        } else if (arg == QLatin1String("--dump-influence")) {
+            if (!value(options.dumpInfluence)) return 2;
+        } else if (arg == QLatin1String("--bench-influence")) {
+            QString text;
+            if (!value(text)) return 2;
+            bool ok = false;
+            options.benchInfluence = text.toInt(&ok);
+            if (!ok || options.benchInfluence < 1 || options.benchInfluence > 100) {
+                std::fprintf(stderr, "render_probe: --bench-influence must be 1..100\n");
+                return 2;
+            }
         } else if (arg == QLatin1String("--help") || arg == QLatin1String("-h")) {
             std::printf("%s", kUsage);
             return 0;
@@ -893,7 +1090,8 @@ int main(int argc, char** argv) {
         }
     }
 
-    if (options.projectPath.isEmpty() || options.outDir.isEmpty()) {
+    if (options.projectPath.isEmpty()
+        || (options.outDir.isEmpty() && options.dumpInfluence.isEmpty() && options.benchInfluence <= 0)) {
         std::fprintf(stderr, "render_probe: --project and --out are required\n");
         std::fprintf(stderr, "%s", kUsage);
         return 2;

@@ -90,6 +90,9 @@ private:
     void destroyCaches();
     bool serializeBone(Serializer& aOut, const Bone2* aBone) const;
     bool deserializeBone(Deserializer& aIn, Bone2* aBone);
+    // Format <= 0.20 appended the derived influence cache to this block. Read
+    // it only to stay in sync, and discard it: ProjectLoader rebuilds it.
+    bool deserializeLegacyCaches(Deserializer& aIn);
     Data mData;
     CacheList mCaches;
     util::LinkPointer<ObjectNode> mCacheOwner;

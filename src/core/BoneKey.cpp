@@ -1,3 +1,5 @@
+#include <cstddef>
+#include <limits>
 #include "util/TreeUtil.h"
 #include "util/MathUtil.h"
 #include "core/BoneKey.h"
@@ -315,34 +317,9 @@ bool BoneKey::serialize(Serializer& aOut) const {
         }
     }
 
-    // cache owner
-    aOut.writeID(mCacheOwner.get());
-
-    // cache count
-    aOut.write(static_cast<int>(mCaches.count()));
-
-    // each caches
-    for (const auto cache : mCaches) {
-        aOut.writeID(cache->node());
-        aOut.write(cache->innerMatrix());
-        aOut.write(QVector2D()); // obsolete: origin offset
-        aOut.write(cache->frameSign());
-
-        if (!cache->influence().serialize(aOut)) {
-            return false;
-        }
-    }
-
-    // binding cache count
-    aOut.write(static_cast<int>(mBindingCaches.count()));
-
-    // each binding caches
-    for (auto& cache : mBindingCaches) {
-        aOut.writeID(cache.node);
-        aOut.write(cache.boneIndex);
-        aOut.write(cache.innerMtx);
-    }
-
+    // The influence cache (cache owner, per-node influence maps, binding
+    // caches) is DERIVED: it is rebuilt after load by ProjectLoader, never
+    // persisted. Format 0.21 dropped it; see FormatVersion.h.
     return aOut.checkStream();
 }
 
@@ -392,99 +369,72 @@ bool BoneKey::deserialize(Deserializer& aIn) {
         }
     }
 
-    // cache owner
-    {
-        auto solver = [=](void* aPtr) {
-            ObjectNode* node = (ObjectNode*)aPtr;
-            if (node)
-                this->mCacheOwner = node->pointee();
-        };
-        if (!aIn.orderIDData(solver)) {
-            return aIn.errored("invalid cache owner reference id");
-        }
+    // Derived influence caches. Format 0.21 stopped writing them; a <= 0.20
+    // file still carries the section, so consume it only to stay in sync and
+    // let ProjectLoader rebuild every map after the ID solver.
+    // 21 is the LAYOUT BOUNDARY, not the current format: every later minor
+    // still writes no section, so do not replace this with the version macro.
+    const bool hasLegacyCaches =
+        aIn.version().majorVersion() == 0 && aIn.version().minorVersion() < 21;
+    if (hasLegacyCaches && !deserializeLegacyCaches(aIn)) {
+        return false;
     }
 
-    // cache count
+    aIn.popLogScope();
+    return aIn.checkStream();
+}
+
+bool BoneKey::deserializeLegacyCaches(Deserializer& aIn) {
+    // RETIREMENT: delete this branch once the first release that writes 0.21
+    // ships. Until then it is the only way an unreleased dev file opens.
+    //
+    // Read the scalar fields so the stream advances exactly as the 0.20 writer
+    // laid them out, then skip the per-vertex arrays (64 B/vertex) without
+    // allocating. Nothing here is retained: these are the caches the loader
+    // rebuilds, and a mis-sized skip would desynchronise every later block.
+    aIn.getRead<int>(); // cache owner reference id
+
     int cacheCount = 0;
     aIn.read(cacheCount);
     if (cacheCount < 0) {
         return aIn.errored("invalid cache count");
     }
 
-    // each caches
+    static const quint64 kBytesPerVertex = 64; // 2 x 4 GLint + 2 x 4 GLfloat
     for (int i = 0; i < cacheCount; ++i) {
-        Cache* cache = new Cache();
-        mCaches.push_back(cache);
+        aIn.getRead<int>(); // node reference id
 
-        // node
-        {
-            auto solver = [=](void* aPtr) {
-                ObjectNode* node = (ObjectNode*)aPtr;
-                if (node)
-                    cache->setNode(*node);
-            };
-            if (!aIn.orderIDData(solver)) {
-                return aIn.errored("invalid cache reference id");
-            }
+        aIn.getRead<QMatrix4x4>(); // inner matrix
+        aIn.getRead<QVector2D>();  // obsolete: origin offset
+        aIn.getRead<Frame>();      // frame sign
+
+        int vertexCount = 0;
+        aIn.read(vertexCount);
+        if (vertexCount < 0) {
+            return aIn.errored("invalid influence vertex count");
         }
+        aIn.getRead<int>(); // max bone count
 
-        // inner matrix
-        cache->setInnerMatrix(aIn.getRead<QMatrix4x4>());
-
-        // obsolete: origin offset
-        aIn.getRead<QVector2D>();
-
-        // frame sign
-        cache->setFrameSign(aIn.getRead<Frame>());
-
-        // influence
-        if (!cache->influence().deserialize(aIn)) {
-            return false;
+        if (quint64(vertexCount) > std::numeric_limits<size_t>::max() / kBytesPerVertex) {
+            return aIn.errored("influence record too large");
+        }
+        const size_t bytes = static_cast<size_t>(vertexCount) * kBytesPerVertex;
+        if (!aIn.skipBytes(bytes)) {
+            return aIn.errored("influence record truncated");
         }
     }
 
-    // binding cache count
-    const int bindingCacheCount = aIn.getRead<int>();
+    int bindingCacheCount = 0;
+    aIn.read(bindingCacheCount);
     if (bindingCacheCount < 0) {
         return aIn.errored("invalid binding cache count");
     }
-
-    // each binding caches
     for (int i = 0; i < bindingCacheCount; ++i) {
-        mBindingCaches.push_back(BindingCache());
-        const int bindingIndex = i;
-
-        // node
-        {
-            // Capture the index, not the pointer: QList<BindingCache> stores
-            // values inline and a later push_back() in this loop reallocates
-            // the buffer, leaving a pointer into it dangling by the time
-            // IDSolver::solve() invokes this lambda (after the whole
-            // deserialize). Resolving through mBindingCaches[bindingIndex] at
-            // solve-time is always valid: the list is fully built by then and
-            // the element order matches the push order.
-            auto solver = [=](void* aPtr) {
-                ObjectNode* node = (ObjectNode*)aPtr;
-                if (node)
-                    mBindingCaches[bindingIndex].node = node;
-            };
-            if (!aIn.orderIDData(solver)) {
-                return aIn.errored("invalid binding cache reference id");
-            }
-        }
-
-        // bone index
-        aIn.read(mBindingCaches[bindingIndex].boneIndex);
-
-        // inner matrix
-        aIn.read(mBindingCaches[bindingIndex].innerMtx);
-
-        if (aIn.failure()) {
-            return aIn.errored("stream error");
-        }
+        aIn.getRead<int>();       // node reference id
+        aIn.getRead<int>();       // bone index
+        aIn.getRead<QMatrix4x4>(); // inner matrix
     }
 
-    aIn.popLogScope();
     return aIn.checkStream();
 }
 

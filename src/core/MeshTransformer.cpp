@@ -871,10 +871,15 @@ void MeshTransformer::callGL(
         program.setUniformValue("uWorldMatrix", worldMatrix);
 
         if (useInfluence) {
-            program.setAttributeArray("inBoneIndex0", inflData.indices0(), vtxCount);
-            program.setAttributeArray("inBoneWeight0", inflData.weights0(), vtxCount);
-            program.setAttributeArray("inBoneIndex1", inflData.indices1(), vtxCount);
-            program.setAttributeArray("inBoneWeight1", inflData.weights1(), vtxCount);
+            // PACKED INDICES: each vertex carries 4 uint8 bone indices,
+            // uploaded through glVertexAttribIPointer so the shader's ivec4
+            // input sees integers. Weights stay float32 (a vec4): the
+            // unorm16 experiment exceeded the 1-LSB gate; see the plan.
+            constexpr int kTuple = BoneInfluenceMap::kBonePerVtxMaxEach;
+            program.setAttributeArray("inBoneIndex0", inflData.indices0(), vtxCount, kTuple);
+            program.setAttributeArray("inBoneWeight0", inflData.weights0(), vtxCount, kTuple);
+            program.setAttributeArray("inBoneIndex1", inflData.indices1(), vtxCount, kTuple);
+            program.setAttributeArray("inBoneWeight1", inflData.weights1(), vtxCount, kTuple);
 
             if (useDualQuaternion) {
                 auto palette = aNonPosed ? PosePalette().dualQuaternions() : aExpans.posePalette().dualQuaternions();

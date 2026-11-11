@@ -13,8 +13,8 @@
 #include "gl/DeviceInfo.h"
 #include "ctrl/System.h"
 
-#include "core/BoneKey.h"
-#include "core/TimeKeyBlender.h"
+#include "core/TimeKeyExpans.h"
+#include "core/TimeLine.h"
 #include "ctrl/ProjectSaver.h"
 #include "ctrl/ProjectLoader.h"
 #include "ctrl/ImageFileLoader.h"
@@ -131,16 +131,13 @@ System::openProject(
         if (loader.load(aFileName, *projectScope, gl::DeviceInfo::instance(), aReporter)) {
             mProjects.push_back(projectScope.release());
             {
-                // Apparently this fixed itself in newer qt6 versions? TODO: Check if no longer necessary and if not, remove
+                // ProjectLoader has already rebuilt the derived bone influence
+                // caches; this block only drops the timeline blend, master and
+                // pose state that deserialisation filled.
                 const auto aOwner = mProjects.back()->objectTree().topNode();
                 for (ObjectNode::Iterator itr(aOwner); itr.hasNext();) {
                     ObjectNode* node = itr.next();
                     XC_PTR_ASSERT(node);
-                    // Clear deserialized bone cache
-                    for (const auto bone: node->timeLine()->map(TimeKeyType_Bone)) {
-                        auto* boneKey = dynamic_cast<BoneKey*>(node->timeLine()->timeKey(TimeKeyType_Bone, bone->frame()));
-                        boneKey->resetCaches(*mProjects.back(), *node);
-                    }
                     // Clear cache, master cache and pose palette
                     auto& curr = node->timeLine()->current();
                     curr.clearCaches();

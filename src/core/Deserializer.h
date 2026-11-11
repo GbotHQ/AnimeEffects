@@ -80,6 +80,12 @@ public:
     bool bindIDData(void* aData);
     bool orderIDData(const IDSolverType::Solver& aSolver);
 
+    // Consume a run of derived bytes without reading or allocating them.
+    // `aBytes` is checked against the remaining stream first, so a corrupt
+    // count fails here instead of silently desynchronising the next field.
+    // (The only current caller is BoneKey's legacy influence-cache discard.)
+    bool skipBytes(size_t aBytes);
+
     bool readImage(XCMemBlock& aEmptyValue);
     void readFixedString(QString& aValue, int aSize);
 

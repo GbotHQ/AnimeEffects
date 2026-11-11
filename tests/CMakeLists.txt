@@ -11,9 +11,11 @@ target_compile_definitions(autoscroll PRIVATE
     AE_MAJOR_VERSION=1 AE_MINOR_VERSION=7 AE_MICRO_VERSION=1 USE_GL_CORE_PROFILE)
 target_link_libraries(autoscroll PRIVATE Qt6::Core Qt6::Gui)
 
-# Regression test for the BoneKey::deserialize use-after-free (dangling
-# &mBindingCaches.back() captured into a deferred IDSolver lambda that runs
-# after the QList reallocates). Self-contained; see bonekey_regression.cpp.
+# BoneKey stream compatibility gate: the <= 0.20 derived influence-cache section
+# must be discarded byte-exactly, and 0.21 must carry no such section. It grew
+# out of the old deserialize use-after-free regression (dangling
+# &mBindingCaches.back() captured into a deferred IDSolver lambda); the discard
+# path no longer stores those caches. See bonekey_regression.cpp.
 add_executable(bonekey_regression bonekey_regression.cpp)
 target_include_directories(bonekey_regression PRIVATE ..)
 target_compile_definitions(bonekey_regression PRIVATE
@@ -28,6 +30,35 @@ target_link_libraries(bonekey_regression PRIVATE
     Qt6::Svg Qt6::Xml Qt6::Concurrent Qt6::Multimedia
     cmnd core ctrl gl img thr util pugixml
 )
+
+# The packed skinning attributes: 4 x uint8 indices + 4 x float32 weights per
+# set = 40 B/vertex (from 64). Pins the layout and the default weights. The
+# uint16 weight variant was measured and rejected; see the influence plan.
+add_executable(bone_influence_storage bone_influence_storage.cpp)
+target_include_directories(bone_influence_storage PRIVATE ..)
+target_compile_definitions(bone_influence_storage PRIVATE
+    AE_MAJOR_VERSION=1
+    AE_MINOR_VERSION=7
+    AE_MICRO_VERSION=1
+    USE_GL_CORE_PROFILE
+)
+target_link_libraries(bone_influence_storage PRIVATE
+    Qt6::Core Qt6::Core5Compat Qt6::Widgets
+    Qt6::Gui Qt6::OpenGL Qt6::OpenGLWidgets
+    Qt6::Svg Qt6::Xml Qt6::Concurrent Qt6::Multimedia
+    cmnd core ctrl gl img thr util pugixml
+)
+
+# BoneShape's precomputed polygon containment must return exactly what
+# QPolygonF::containsPoint(point, OddEvenFill) returns: the influence build is
+# bit-identical only while it does. One .cpp and Qt Gui, so this gate needs no
+# project, no GL and no core library.
+add_executable(bone_polygon_index
+    bone_polygon_index.cpp
+    ${CMAKE_SOURCE_DIR}/src/core/BonePolygonIndex.cpp
+)
+target_include_directories(bone_polygon_index PRIVATE .. ${CMAKE_SOURCE_DIR}/src)
+target_link_libraries(bone_polygon_index PRIVATE Qt6::Core Qt6::Gui)
 
 # Regression test for the util::TreeUtil::deleteAll use-after-free write (the
 # pre-fix body cleared the child list only AFTER deleting the children, so

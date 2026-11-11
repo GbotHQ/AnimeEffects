@@ -61,8 +61,18 @@
 //                rect and texel grid, and the key's single shared easing. The
 //                type name in the TimeKeyMap block is "Mask". Older files have
 //                no layer mask, and a node without one renders as before
+//   0.20 -> 0.21 the BONE KEY block no longer carries the derived influence
+//                cache (cache owner, per-node influence maps, binding caches).
+//                A <= 0.20 file's section is still consumed, then discarded;
+//                ProjectLoader rebuilds every map after the ID solver.
+//
+// Versioning rule (the 0.21 change is the worked example): a change to AUTHORED
+// document data bumps the minor and may gate the reader. DERIVED state - anything
+// recomputable from authored data, like the influence caches - must never be
+// required to load: if it is persisted at all, its block carries a tag and a
+// byte length so an unknown version can be skipped and recomputed, never failed.
 #define AE_PROJECT_FORMAT_MAJOR_VERSION 0
-#define AE_PROJECT_FORMAT_MINOR_VERSION 20
+#define AE_PROJECT_FORMAT_MINOR_VERSION 21
 
 #define AE_PROJECT_FORMAT_OLDEST_MAJOR_VERSION 0
 #define AE_PROJECT_FORMAT_OLDEST_MINOR_VERSION 4

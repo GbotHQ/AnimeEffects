@@ -22,25 +22,36 @@ namespace core {
 
 class BoneInfluenceMap: private util::NonCopyable {
 public:
-    typedef GLint IndicesType;
+    // Attribute storage: 4 bone indices as uint8 (the shader reads an ivec4,
+    // bound through glVertexAttribIPointer) and 4 float32 weights (a vec4).
+    // 40 B/vertex for both sets, against 64 B with int32 indices and the same
+    // float weights. The uint16 weight experiment is recorded in the plan: it
+    // exceeded the 1-LSB gate on 2.anie (max 12 on 61 pixels), so weights stay
+    // float32. Nothing here is persisted (format 0.21).
+    typedef GLubyte IndicesType;
     typedef GLfloat WeightsType;
 
     class Accessor {
     public:
         Accessor();
         Accessor(const BoneInfluenceMap& aOwner);
-        const gl::Vector4I* indices0() const;
-        const gl::Vector4I* indices1() const;
-        const gl::Vector4* weights0() const;
-        const gl::Vector4* weights1() const;
+        // Each points at vertexCount * 4 tightly packed components.
+        const IndicesType* indices0() const;
+        const IndicesType* indices1() const;
+        const WeightsType* weights0() const;
+        const WeightsType* weights1() const;
 
     private:
         const BoneInfluenceMap* mOwner;
     };
 
     enum { kBonePerVtxMaxEach = 4, kBonePerVtxMaxAll = 8 };
+    static_assert(kBonePerVtxMaxEach == 4, "the skinning shader reads one ivec4/vec4 per set");
+    static_assert(sizeof(IndicesType) == 1, "bone indices are packed uint8");
+    static_assert(sizeof(WeightsType) == 4, "bone weights stay float32");
 
     BoneInfluenceMap();
+    ~BoneInfluenceMap();
 
     void setMaxBoneCount(int aBoneCount);
     void allocate(int aVertexCount, bool aInitialize = true);
@@ -50,9 +61,6 @@ public:
     writeAsync(Project& aProject, const QList<Bone2*>& aTopBones, const QMatrix4x4& aGroupMtx, const LayerMesh& aMesh);
 
     Accessor accessor() const;
-
-    bool serialize(Serializer& aOut) const;
-    bool deserialize(Deserializer& aIn);
 
 private:
     class BoneParam {
@@ -81,7 +89,7 @@ private:
     class BuildTask: public thr::Task {
     public:
         BuildTask(Project& aProject, BoneInfluenceMap& aOwner);
-        virtual void run();
+        void run() override;
         void cancel();
 
     private:

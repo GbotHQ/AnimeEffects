@@ -6,6 +6,7 @@
 #include "util/Segment2D.h"
 #include "core/Serializer.h"
 #include "core/Deserializer.h"
+#include "core/BonePolygonIndex.h"
 
 namespace core {
 
@@ -29,7 +30,6 @@ public:
 
     float influence(const QVector2D& aPos) const;
 
-
     // serialize
     bool serialize(Serializer& aOut) const;
     QJsonObject serializeToJson() const;
@@ -52,6 +52,9 @@ private:
     std::array<QVector2D, 2> mRadius;
     QRectF mBounding;
     QPolygonF mPolygon;
+    // Derived from mPolygon; never serialized, rebuilt by the setters and the
+    // two deserialisers.
+    BonePolygonIndex mPolygonIndex;
     BendRange mRootBendRange;
     BendRange mTailBendRange;
 };
