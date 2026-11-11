@@ -4,7 +4,10 @@
 #include "core/MeshTransformer.h"
 #include "core/MeshTransformerResource.h"
 #include "core/ObjectNodeUtil.h"
+#include "core/PosePalette.h"
 
+#include <algorithm>
+#include <memory>
 #include <QOpenGLShaderProgram>
 #include <QVector>
 
@@ -466,7 +469,7 @@ private:
     void uploadTexCoords(const gl::Vector2* aTexCoords, int aCount);
     void uploadIndices(const GLuint* aIndices, GLsizei aCount);
 
-    QScopedPointer<QOpenGLShaderProgram> mProgram;
+    std::unique_ptr<QOpenGLShaderProgram> mProgram;
     BuildState mState = State_Unbuilt;
     // Resolved ONCE, at build: a uniform that is not active would make setUniformValue a
     // silent no-op, and an identity uInverseTransform is not a wrong picture, it is a wrong
@@ -503,7 +506,7 @@ void DensityMeter::build() {
     mState = State_Failed;
     gl::Global::Functions& ggl = gl::Global::functions();
 
-    QScopedPointer<QOpenGLShaderProgram> program(new QOpenGLShaderProgram());
+    std::unique_ptr<QOpenGLShaderProgram> program(new QOpenGLShaderProgram());
     bool ok = program->addShaderFromSourceCode(QOpenGLShader::Vertex, kDensityVertexShader);
     ok = ok && program->addShaderFromSourceCode(QOpenGLShader::Geometry, kDensityGeometryShader);
     ok = ok && program->addShaderFromSourceCode(QOpenGLShader::Fragment, kDensityFragmentShader);
@@ -519,7 +522,7 @@ void DensityMeter::build() {
         traceLine(QStringLiteral("DENSITY PROBE disabled: %1").arg(program->log()));
         return;
     }
-    mProgram.reset(program.take());
+    mProgram = std::move(program);
 
     mUniformTransform = mProgram->uniformLocation("uInverseTransform");
     mUniformBinBase = mProgram->uniformLocation("uBinBase");
@@ -782,8 +785,9 @@ void DensityMeter::addMesh(
         // after the draw, so the positions this prints are the ones just measured. PER FRAME:
         // the load's first layers are undeformed, and the interesting case is playback, where the
         // pose changes every frame - a run-long budget spent itself before anything moved.
-        if (aStats.frameIndex() != mTraceFrame) {
-            mTraceFrame = aStats.frameIndex();
+        const qint64 frameIndex = qint64(aStats.frameIndex());
+        if (frameIndex != mTraceFrame) {
+            mTraceFrame = frameIndex;
             mTraceLayers = 0;
         }
         if (mTraceLayers < mTraceBudget)
@@ -799,12 +803,13 @@ void DensityMeter::addMesh(
 
 //-------------------------------------------------------------------------------------------------
 MeshTransformer::MeshTransformer(const QString& aShaderPath):
-    mResource(*(new MeshTransformerResource())), mResourceOwns(true), mOutPositions(), mOutXArrows(), mOutYArrows() {
+    mResource(*(new MeshTransformerResource())), mResourceOwns(true), mOutPositions(), mOutXArrows(), mOutYArrows(),
+    mPaletteBuffer() {
     mResource.setup(aShaderPath);
 }
 
 MeshTransformer::MeshTransformer(MeshTransformerResource& aResource):
-    mResource(aResource), mResourceOwns(false), mOutPositions(), mOutXArrows(), mOutYArrows() {}
+    mResource(aResource), mResourceOwns(false), mOutPositions(), mOutXArrows(), mOutYArrows(), mPaletteBuffer() {}
 
 MeshTransformer::~MeshTransformer() {
     if (mResourceOwns) {
@@ -863,6 +868,15 @@ void MeshTransformer::callGL(
     const int influenceSlots = useInfluence ? inflData.slotCount() : 1;
     XC_ASSERT(influenceSlots >= 1 && influenceSlots <= BoneInfluenceMap::kBonePerVtxMaxAll);
 
+    // The palette's required extent is the LARGER of the palette and the map's
+    // bone count. A palette can be CLEARED while the map still addresses its
+    // bones (no pose key at this frame); those bones are in rest, so they must
+    // read identity. The old fixed array supplied that as an identity tail;
+    // with a palette sized to its used bones, the tail has to be explicit.
+    const PosePalette& palette = aExpans.posePalette();
+    const int mapBones = useInfluence ? influence->boneCount() : 0;
+    const int requiredBones = std::max(palette.usedCount(), mapBones);
+
     gl::Global::Functions& ggl = gl::Global::functions();
     gl::EasyShaderProgram& program = mResource.program(useInfluence, useDualQuaternion, influenceSlots);
 
@@ -904,13 +918,47 @@ void MeshTransformer::callGL(
             }
 
             if (useDualQuaternion) {
-                auto palette = aNonPosed ? PosePalette().dualQuaternions() : aExpans.posePalette().dualQuaternions();
-                program.setTupleUniformValueArray<GLfloat>(
-                    "uBoneDualQuat", palette.array()->data(), palette.count() * 2, 4
+                const auto dualQuats = palette.dualQuaternions();
+
+                // Pad [used, max(used, map bones)) with identity: a bone the
+                // pose does not transform. The common case has no gap and
+                // uploads the palette's own storage.
+                const int uploadCount = std::max(1, requiredBones);
+                const PosePalette::DualQuaternion* uploadData = dualQuats.array();
+                if (uploadCount > dualQuats.count()) {
+                    mPaletteUpload.resize(size_t(uploadCount));
+                    std::copy(dualQuats.array(), dualQuats.array() + dualQuats.count(), mPaletteUpload.begin());
+                    std::fill(
+                        mPaletteUpload.begin() + dualQuats.count(), mPaletteUpload.end(),
+                        PosePalette::identityDualQuaternion()
+                    );
+                    uploadData = mPaletteUpload.data();
+                }
+
+                if (mPaletteBuffer.isNull()) {
+                    mPaletteBuffer.reset(new gl::BufferObject(GL_UNIFORM_BUFFER));
+                    // Back the WHOLE declared block once (MAX_BONES * 2 vec4), so
+                    // uploading only the required prefix can never leave the
+                    // shader's block smaller than its declaration.
+                    mPaletteBuffer->resetRawData(
+                        sizeof(gl::Vector4), nullptr, int(PosePalette::kMaxCount) * 2, GL_DYNAMIC_DRAW
+                    );
+                }
+                const GLsizeiptr bytes =
+                    GLsizeiptr(uploadCount) * 2 * GLsizeiptr(sizeof(gl::Vector4));
+                mPaletteBuffer->bind();
+                ggl.glBufferSubData(GL_UNIFORM_BUFFER, 0, bytes, uploadData->data());
+                ggl.glBindBufferBase(
+                    GL_UNIFORM_BUFFER, MeshTransformerResource::kPaletteUniformBinding, mPaletteBuffer->id()
                 );
+                mPaletteBuffer->release();
             } else {
-                auto palette = aNonPosed ? PosePalette().matrices() : aExpans.posePalette().matrices();
-                program.setUniformValueArray("uBoneMatrix", palette);
+                // The unselected LBS variation is declared at 32 matrices (see
+                // the shader); never upload past it.
+                const auto matrices = palette.matrices();
+                program.setUniformValueArray(
+                    "uBoneMatrix", matrices.array(), std::min(matrices.count(), 32)
+                );
             }
         }
 

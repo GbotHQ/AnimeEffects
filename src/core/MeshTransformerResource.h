@@ -9,6 +9,9 @@ namespace core {
 
 class MeshTransformerResource {
 public:
+    /// The uniform-block binding point for the bone palette (BonePalette).
+    enum { kPaletteUniformBinding = 0 };
+
     MeshTransformerResource();
     void setup(const QString& aShaderPath);
 
@@ -21,10 +24,15 @@ private:
     static int programIndex(bool aUseSkinning, bool aUseDualQuaternion, int aSlotCount);
     void loadFile(const QString& aPath, QString& aDstCode);
     void buildShader(
-        gl::EasyShaderProgram& aProgram, const QString& aCode, bool aUseSkinning, bool aUseDualQuaternion, int aSlotCount
+        gl::EasyShaderProgram& aProgram,
+        const QString& aCode,
+        bool aUseSkinning,
+        bool aUseDualQuaternion,
+        int aSlotCount
     );
 
     QString mCode;
+    // 0 = no skinning; 1..8 LBS x slots; 9..16 DQ x slots.
     std::array<std::unique_ptr<gl::EasyShaderProgram>, 17> mPrograms;
 };
 

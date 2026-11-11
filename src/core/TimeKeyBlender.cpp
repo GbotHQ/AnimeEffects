@@ -1289,7 +1289,14 @@ void TimeKeyBlender::setBindingMatrices(
                 auto boneIndex = expans.bone().binderIndex();
                 XC_ASSERT(boneIndex >= 0);
                 if (boneIndex < PosePalette::kMaxCount) {
-                    auto transform = root.expans->posePalette().matrices()[boneIndex];
+                    // A palette can be CLEARED (no pose key at this frame) while
+                    // the binding cache still names its bones; those bones are in
+                    // rest, so the transform is identity. The palette is sized to
+                    // the used bones now, so this cannot index past its array.
+                    const int usedBones = root.expans->posePalette().usedCount();
+                    const QMatrix4x4 transform = (boneIndex < usedBones)
+                        ? root.expans->posePalette().matrices()[boneIndex]
+                        : QMatrix4x4();
                     aBindingMtx = root.expans->bone().outerMatrix() * transform * expans.bone().bindingMatrix();
                     expans.bone().setOuterMatrix(aBindingMtx);
                     expans.bone().setInnerMatrix(QMatrix4x4());

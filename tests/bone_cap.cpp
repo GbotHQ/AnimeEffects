@@ -14,8 +14,11 @@
 //     (the old 32-bone cap stored the default bone 0 weight 1 instead);
 //   * the palette builds 33 entries and the 33rd pose transform reaches
 //     matrices()[32] and dualQuaternions()[32];
-//   * the cap still exists: a 65-bone chain stops at kMaxCount and a vertex
-//     only the 65th bone covers gets the default influence.
+//   * a 65-bone chain keeps all 65 bones (past the old 64 cap, so this is the
+//     size the uniform block exists for);
+//   * the cap still exists at the uint8 ceiling: a 257-bone chain stops at
+//     kMaxCount and a vertex only the 257th bone covers gets the default
+//     influence.
 //
 // The shader half (a bone index of 32 selecting uBoneDualQuat[64..65]) cannot
 // be compiled without a GL context; the real project's frames are the GL gate
@@ -155,14 +158,13 @@ int main(int argc, char** argv) {
     using core::BoneInfluenceMap;
     using Probe = core::BoneInfluenceMapTestProbe;
 
-    // The uniform budget: 64 dual quaternions are 128 vec4 = 512 of the
-    // guaranteed 1024 vertex uniform components, and the index attribute is
-    // uint8, so 255 is the hard ceiling. The shader's default MAX_BONES
-    // literal is the same number; MeshTransformerResource overrides it from
-    // this constant, but a change here must also update that comment and the
-    // plan's uniform arithmetic.
-    static_assert(core::PosePalette::kMaxCount == 64, "the skinning uniform budget assumes 64 bones");
-    static_assert(core::PosePalette::kMaxCount <= 255, "bone indices are stored as uint8");
+    // The skeleton cap is the uint8 index ceiling (indices 0..255 = 256 bones).
+    // The palette travels in a uniform block: its guaranteed 16384 bytes hold all
+    // 256 dual quaternions (8192 bytes), while a default-block uniform array
+    // would spend the whole 1024-component budget at 128 bones. The shader's
+    // MAX_BONES is set from this constant by MeshTransformerResource; a change
+    // here must also update that arithmetic.
+    static_assert(core::PosePalette::kMaxCount == 256, "the bone index is uint8: the cap is 256 bones");
 
     // THE DATASET'S BOUNDARY: 33 bones. skel_practice_12.anie's "wings 1" key
     // holds 33; with the old cap its last bone was dropped from the influence
@@ -224,13 +226,14 @@ int main(int argc, char** argv) {
         pairs.push_back(core::PosePalette::KeyPair{&chain.key.data(), &pose});
         palette.build(pairs);
 
+        check(palette.usedCount() == 33, "the palette's used count is the skeleton's 33 bones");
         check(
-            palette.matrices().count() == core::PosePalette::kMaxCount,
-            "the palette uploads kMaxCount matrices"
+            palette.matrices().count() == 33,
+            "the palette is sized to the skeleton, not to kMaxCount (matrices)"
         );
         check(
-            palette.dualQuaternions().count() == core::PosePalette::kMaxCount,
-            "the palette uploads kMaxCount dual quaternions"
+            palette.dualQuaternions().count() == 33,
+            "the palette is sized to the skeleton, not to kMaxCount (dual quaternions)"
         );
         if (posed && keyBone32) {
             const QMatrix4x4 mtx = palette.matrices()[32];
@@ -248,8 +251,39 @@ int main(int argc, char** argv) {
         }
     }
 
-    // THE CAP STILL EXISTS: 65 bones stop at kMaxCount. This is the warning
-    // boundary, not an assumption that every rig fits.
+    // 65 BONES: past the old cap. The influence build must keep all 65, and the
+    // palette must size itself to 65, not to a path threshold.
+    {
+        Chain chain(65);
+        const QList<core::Bone2*>& tops = chain.key.data().topBones();
+        core::BoneKey::Cache cache;
+        const std::vector<QVector2D> vertices = {QVector2D(64.0f, 0.0f)};
+        const int params = Probe::buildFromBones(cache.influence(), tops, vertices);
+        check(params == 65, "a 65-bone skeleton keeps all 65 influence parameters");
+        const BoneInfluenceMap::Accessor accessor = cache.influence().accessor();
+        check(
+            accessor.indices(0) && accessor.indices(0)[0] == 64,
+            "a vertex inside the 65th bone stores index 64"
+        );
+
+        core::PoseKey::Data pose;
+        pose.createBonesBy(chain.key);
+        for (core::Bone2* top : chain.key.data().topBones())
+            top->updateWorldTransform();
+        for (core::Bone2* top : pose.topBones())
+            top->updateWorldTransform();
+        core::PosePalette palette;
+        core::PosePalette::KeyPairs pairs;
+        pairs.push_back(core::PosePalette::KeyPair{&chain.key.data(), &pose});
+        palette.build(pairs);
+        check(palette.usedCount() == 65, "the 65-bone palette keeps all 65 bones");
+        check(
+            palette.dualQuaternions().count() == 65 && palette.matrices().count() == 65,
+            "the 65-bone palette is sized to 65 on both arrays"
+        );
+    }
+
+    // THE HARD CAP STILL EXISTS: 257 bones stop at the uint8 ceiling (256).
     {
         Chain chain(core::PosePalette::kMaxCount + 1);
         core::BoneKey::Cache cache;
@@ -257,7 +291,7 @@ int main(int argc, char** argv) {
         const int params = Probe::buildFromBones(cache.influence(), chain.key.data().topBones(), vertices);
         check(
             params == core::PosePalette::kMaxCount,
-            "a skeleton beyond the cap stops at kMaxCount bone parameters"
+            "a skeleton beyond the uint8 ceiling stops at kMaxCount bone parameters"
         );
         const BoneInfluenceMap::Accessor accessor = cache.influence().accessor();
         check(

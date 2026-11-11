@@ -293,12 +293,10 @@ int main(int argc, char** argv) {
         // findChildren, never through childItems (the first version of this check walked the
         // item tree and found nothing, which is exactly the trap)
         int hoverHandlers = 0;
-        QObject* handlerParent = nullptr;
         for (QObject* object : rootItem->findChildren<QObject*>()) {
             if (QString::fromLatin1(object->metaObject()->className())
                     .startsWith(QStringLiteral("QQuickHoverHandler"))) {
                 ++hoverHandlers;
-                handlerParent = object->parent();
             }
         }
         check(hoverHandlers >= 1,

@@ -263,18 +263,25 @@ hand it over. Its one question is `Sampling`:
   was built and rejected: it exceeded the 1-LSB pixel gate on 2.anie (max 12 on 61
   pixels of one frame). Re-measure before re-packing; see
   `docs/design/skeletal/influence-cache-plan.md` (D3, D7).
-- **The skeleton bone cap is 64, one constant**: `core::PosePalette::kMaxCount` sizes the
-  pose/binding palette, `BoneKey::Cache` gives the influence build the same number, and
-  `MeshTransformerResource` sets the shader's `MAX_BONES` variation from it (the dual
-  quaternion array is `MAX_BONES * 2` vec4 = 512 of the guaranteed 1024 vertex uniform
-  components at 64). The old 32 silently dropped the 33rd bone of a real dataset rig
-  (`skel_practice_12.anie`, "wings 1"): with the raise exactly one of its five map hashes
-  changes and frames 1-3 move only in the wing (max 6/24/52), while frame 0 is identical.
-  `tests/bone_cap` pins 33-bone retention, the 65-bone cutoff and the old 32-bone control.
-  The LBS skinning variation is NOT raised (64 mat4 is the whole 1024-component budget by
-  itself) and `callGL` never selects it. A project above 64 now gets a load warning through
-  `ProjectLoader::warnings()`; `render_probe --bone-stats` is the rig-size instrument.
-  Do not change the constant without the uniform-budget measurement; see D8.
+- **The skeleton bone cap is 256, the uint8 index ceiling, and the palette is a uniform
+  block**: `core::PosePalette::kMaxCount` sizes the pose/binding palette and the influence
+  build (`BoneKey::Cache`), and `MeshTransformerResource` sets the shader's `MAX_BONES` from
+  it. `MeshTransformVert.glsl` declares `layout(std140) uniform BonePalette { vec4
+  uBoneDualQuat[MAX_BONES * 2]; }` (8192 B at 256 bones, inside the guaranteed 16384-byte
+  block size); a default-block uniform array could not hold 128 bones without spending the
+  whole guaranteed 1024-component vertex-uniform budget. The CPU arrays are sized to the
+  built skeleton (`usedCount()`), and a palette with no pose at a frame is identity-padded to
+  `BoneInfluenceMap::boneCount()` - `2.anie` has seven such layers, which the old fixed
+  array's identity tail hid; `TimeKeyBlender::setBindingMatrices` takes the same fallback.
+  Measured: the block path is bit-identical to the old uniform array on 10 frames each of
+  `2.anie` and `skel_practice_12`, at the same frame time (53.8 vs 54.0 ms on `2.anie`, 12.2
+  both on `skel`); the census's largest rig is 33 bones. `tests/bone_cap` pins 33/65/257/32
+  on the CPU and `tests/mesh_palette_block` (GL, xvfb) skins a vertex on bone **200** of a
+  201-bone block through the real shader - the range a default-block array could not hold;
+  `render_probe --bone-stats` is the rig-size instrument, and a project above 256 gets a
+  load warning through `ProjectLoader::warnings()`. See D8 in the influence plan. (A pixel
+  gate under `AE_FRAME_STATS` must not compare frame 0: the density meter leaves it blank
+  for some projects.)
 - **The layer sampler is explained, with its figure and its numbers, in
   `docs/design/renderer/layer-sampling.md`**: the two-tap, one-level reconstruction (the level from the
   footprint's minor axis, both taps splitting its major axis, eight fetches, no level blend) against the

@@ -34,9 +34,10 @@ BoneInfluenceMap::~BoneInfluenceMap() {
 
 void BoneInfluenceMap::setMaxBoneCount(int aBoneCount) {
     XC_ASSERT(mBuildTask.isNull());
-    // Indices are stored as uint8 for the GPU. The palette caps at 32 today;
-    // this assert is the contract that a future cap cannot silently truncate.
-    XC_ASSERT(aBoneCount <= 255);
+    // Indices are stored as uint8 for the GPU, so a skeleton can use indices
+    // 0..255 (256 bones). This assert is the contract that the palette cap and
+    // the index width cannot silently disagree.
+    XC_ASSERT(aBoneCount <= 256);
     mMaxBoneCount = aBoneCount;
 }
 

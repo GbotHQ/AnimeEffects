@@ -74,6 +74,10 @@ public:
 
     Accessor accessor() const;
 
+    /// The number of bone parameters this map was built with (the index ceiling
+    /// a vertex's bone indices address). Call after accessor() joins the build.
+    int boneCount() const { return int(mBoneList.params.size()); }
+
     /// Resident bytes of a map of aVertexCount vertices stored in aSlotCount
     /// slots: 1 B/vertex for one influence (its weight is implicit), otherwise
     /// 5 B per slot. The dense eight-slot form is the same 40 B/vertex.

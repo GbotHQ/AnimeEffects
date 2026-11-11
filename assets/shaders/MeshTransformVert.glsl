@@ -3,12 +3,14 @@
 #variation USE_SKINNING 1
 #variation USE_DUAL_QUATERNION 1
 #variation INFLUENCE_SLOTS 8
-// The skeleton cap, also core::PosePalette::kMaxCount. MeshTransformerResource
-// sets this from the C++ constant, so the uniform size and the CPU palette
-// cannot drift apart; the literal is the default when nothing sets it. Two vec4
-// per dual quaternion: 64 bones is 128 vec4 = 512 of the guaranteed 1024 vertex
-// uniform components.
-#variation MAX_BONES 64
+// The skeleton cap, also core::PosePalette::kMaxCount: the influence map stores
+// a bone index as one uint8, so 256 is the index ceiling. The palette lives in
+// a uniform BLOCK, not the default uniform block: two vec4 per bone makes 128
+// bones the whole guaranteed 1024 vertex-uniform components, while a block's
+// guaranteed 16384 bytes hold all 256 bones (8192 bytes). The CPU's
+// MeshTransformerResource sets MAX_BONES from the C++ constant; the literal is
+// only the default.
+#variation MAX_BONES 256
 
 in vec4 inPosition;
 
@@ -43,10 +45,14 @@ uniform mat4 uWorldMatrix;
 // The linear-blend alternative, kept declared but never selected:
 // MeshTransformer::callGL pins the dual-quaternion path. It stays at 32
 // matrices because 64 mat4 is the whole guaranteed 1024-component vertex
-// uniform budget by itself; raising it above 32 needs a uniform buffer first.
+// uniform budget by itself; it is not on the block path.
 uniform mat4 uBoneMatrix[32];
 #else
-uniform vec4 uBoneDualQuat[MAX_BONES * 2];
+layout(std140) uniform BonePalette {
+    // indexed by the per-vertex bone index; the CPU uploads the used prefix and
+    // identity-pads a palette shorter than the map's bone count
+    vec4 uBoneDualQuat[MAX_BONES * 2];
+};
 #endif
 
 out vec3 outPosition;

@@ -821,6 +821,9 @@ static TimeKey* getKeyFromObj(QJsonObject obj, util::LifeLink::Pointee<Project> 
             waveKey->setFrame(obj["Frame"].toInt());
             return waveKey;
         }
+        // A matte key is not carried by the clipboard payload yet; refusing it
+        // here is the same result as the old implicit fall-through, but says so.
+        case TimeKeyType_Mask:
         // If you end up here you've done goofed.
         case TimeKeyType_TERM: {
             return nullptr;

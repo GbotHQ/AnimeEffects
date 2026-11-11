@@ -22,11 +22,12 @@ int MeshTransformerResource::programIndex(bool aUseSkinning, bool aUseDualQuater
 gl::EasyShaderProgram& MeshTransformerResource::program(
     bool aUseSkinning, bool aUseDualQuaternion, int aSlotCount
 ) {
-    const int index = programIndex(aUseSkinning, aUseDualQuaternion, aUseSkinning ? aSlotCount : 1);
+    const int usedSlots = aUseSkinning ? aSlotCount : 1;
+    const int index = programIndex(aUseSkinning, aUseDualQuaternion, usedSlots);
     std::unique_ptr<gl::EasyShaderProgram>& slot = mPrograms[index];
     if (!slot) {
         slot.reset(new gl::EasyShaderProgram());
-        buildShader(*slot, mCode, aUseSkinning, aUseDualQuaternion, aUseSkinning ? aSlotCount : 1);
+        buildShader(*slot, mCode, aUseSkinning, aUseDualQuaternion, usedSlots);
     }
     return *slot;
 }
@@ -59,8 +60,8 @@ void MeshTransformerResource::buildShader(
     source.setVariationValue("USE_SKINNING", QString::number(aUseSkinning ? 1 : 0));
     source.setVariationValue("USE_DUAL_QUATERNION", QString::number(aUseDualQuaternion ? 1 : 0));
     source.setVariationValue("INFLUENCE_SLOTS", QString::number(aSlotCount));
-    // The uniform array is sized by the same constant that caps the CPU
-    // palette; a literal in the shader would be a second place to change.
+    // The shader's palette size is the CPU cap; a literal in the shader would be
+    // a second place to change.
     source.setVariationValue("MAX_BONES", QString::number(PosePalette::kMaxCount));
 
     // resolve variation
@@ -83,6 +84,18 @@ void MeshTransformerResource::buildShader(
     if (!aProgram.link()) {
         XC_FATAL_ERROR("OpenGL Error", "Failed to link shader.", aProgram.log());
     }
+
+    // Bind the palette's uniform block once, at build time: a per-draw
+    // glUniformBlockBinding would be state that never changes, and the block is
+    // absent from the LBS/unskinned variations (optimised out, invalid index).
+    if (aUseSkinning && aUseDualQuaternion) {
+        const GLuint block = ggl.glGetUniformBlockIndex(aProgram.id(), "BonePalette");
+        XC_ASSERT(block != GL_INVALID_INDEX);
+        if (block != GL_INVALID_INDEX) {
+            ggl.glUniformBlockBinding(aProgram.id(), block, kPaletteUniformBinding);
+        }
+    }
+
     if(ggl.glGetError() != GL_NO_ERROR){
         qDebug() << ggl.glGetError();
     }

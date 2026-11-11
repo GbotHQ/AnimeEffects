@@ -69,6 +69,27 @@ target_link_libraries(bone_cap PRIVATE
     cmnd core ctrl gl img thr util pugixml
 )
 
+# The skinning palette's uniform block at a bone index the old default-block
+# array could not address: a 201-bone palette, one point on bone 200. Compiles
+# the real shader and skins through transform feedback, so the block binding,
+# the std140 layout and the high-index fetch are pinned together. Needs a live
+# GL context; the suite runs it under xvfb. See mesh_palette_block.cpp.
+add_executable(mesh_palette_block mesh_palette_block.cpp
+    ${CMAKE_SOURCE_DIR}/assets/assets.qrc)
+target_include_directories(mesh_palette_block PRIVATE ..)
+target_compile_definitions(mesh_palette_block PRIVATE
+    AE_MAJOR_VERSION=1
+    AE_MINOR_VERSION=7
+    AE_MICRO_VERSION=1
+    USE_GL_CORE_PROFILE
+)
+target_link_libraries(mesh_palette_block PRIVATE
+    Qt6::Core Qt6::Core5Compat Qt6::Widgets
+    Qt6::Gui Qt6::OpenGL Qt6::OpenGLWidgets
+    Qt6::Svg Qt6::Xml Qt6::Concurrent Qt6::Multimedia
+    cmnd core ctrl gl img thr util pugixml
+)
+
 # BoneShape's precomputed polygon containment must return exactly what
 # QPolygonF::containsPoint(point, OddEvenFill) returns: the influence build is
 # bit-identical only while it does. One .cpp and Qt Gui, so this gate needs no
