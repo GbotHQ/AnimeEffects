@@ -1,3 +1,4 @@
+#include <algorithm>
 #include <float.h>
 #include <QtMath>
 #include "core/Project.h"
@@ -10,12 +11,16 @@ namespace {
 
 // The weight a vertex with no (or one) influence carries.
 constexpr GLfloat kWeightOne = 1.0f;
+// Below this, the normalisation adds the deficit instead of dividing (unchanged
+// from the dense writer: the arithmetic order is part of the stored result).
+constexpr GLfloat kMinPowerSum = 0.01f;
 
 } // namespace
 
 //-------------------------------------------------------------------------------------------------
 BoneInfluenceMap::BoneInfluenceMap():
-    mVertexCount(0), mMaxBoneCount(0), mGroupMtx(), mBoneList(), mWorks(), mBuildTask() {}
+    mVertexCount(0), mSlotCount(0), mMaxBoneCount(0), mGroupMtx(), mBoneList(), mSparseIndices(),
+    mSparseWeights(), mIndices(), mWeights(), mWorks(), mBuildTask() {}
 
 BoneInfluenceMap::~BoneInfluenceMap() {
     // A queued or running task points at this map (and at mWorks/mIndices).
@@ -44,51 +49,105 @@ void BoneInfluenceMap::allocate(int aVertexCount, bool aInitialize) {
     // reallocate
     if (mVertexCount != aVertexCount) {
         mWorks.reset();
+        freeStorage();
+        mVertexCount = aVertexCount;
+    }
 
-        for (int t = 0; t < 2; ++t) {
-            mIndices[t].reset();
-            mWeights[t].reset();
+    // Leave the map usable before the build joins: one slot, bone 0, weight 1
+    // (implicit). The build then stores exactly the slots the mesh needs.
+    if (aInitialize || mSlotCount == 0) {
+        ensureSparseStorage(1);
+        if (mSparseIndices) {
+            for (int i = 0; i < mVertexCount; ++i) {
+                mSparseIndices[i] = 0;
+            }
+        }
+    }
+}
+
+void BoneInfluenceMap::freeStorage() {
+    mSparseIndices.reset();
+    mSparseWeights.reset();
+    for (int t = 0; t < 2; ++t) {
+        mIndices[t].reset();
+        mWeights[t].reset();
+    }
+    mSlotCount = 0;
+}
+
+void BoneInfluenceMap::ensureSparseStorage(int aSlotCount) {
+    XC_ASSERT(aSlotCount >= 1 && aSlotCount < kBonePerVtxMaxAll);
+
+    // Only one representation lives at a time.
+    for (int t = 0; t < 2; ++t) {
+        mIndices[t].reset();
+        mWeights[t].reset();
+    }
+
+    if (mSlotCount == aSlotCount && mSparseIndices) {
+        return;
+    }
+
+    mSparseIndices.reset();
+    mSparseWeights.reset();
+
+    if (mVertexCount > 0) {
+        const int count = aSlotCount * mVertexCount;
+        mSparseIndices.reset(new IndicesType[count]);
+        XC_PTR_ASSERT(mSparseIndices);
+        if (!mSparseIndices) {
+            mSlotCount = 0;
+            return;
         }
 
-        if (aVertexCount > 0) {
-            const int dataCount = kBonePerVtxMaxEach * aVertexCount;
-            for (int t = 0; t < 2; ++t) {
-                mIndices[t].reset(new IndicesType[dataCount]);
-                XC_PTR_ASSERT(mIndices[t]);
-                if (!mIndices[t])
-                    return;
-
-                mWeights[t].reset(new WeightsType[dataCount]);
-                XC_PTR_ASSERT(mWeights[t]);
-                if (!mWeights[t])
-                    return;
+        // A one-slot map needs no weights: every vertex weight is exactly 1.
+        if (aSlotCount >= 2) {
+            mSparseWeights.reset(new WeightsType[count]);
+            XC_PTR_ASSERT(mSparseWeights);
+            if (!mSparseWeights) {
+                mSparseIndices.reset();
+                mSlotCount = 0;
+                return;
             }
         }
     }
 
-    // initialize
-    if (aInitialize) {
-        for (int t = 0; t < 2; ++t) {
-            IndicesType* indices = mIndices[t].data();
-            WeightsType* weights = mWeights[t].data();
+    mSlotCount = aSlotCount;
+}
 
-            const int count = aVertexCount * kBonePerVtxMaxEach;
-            for (int i = 0; i < count; ++i) {
-                indices[i] = 0;
+void BoneInfluenceMap::ensureDenseStorage() {
+    mSparseIndices.reset();
+    mSparseWeights.reset();
+
+    if (mSlotCount == 8 && mIndices[0]) {
+        return;
+    }
+
+    for (int t = 0; t < 2; ++t) {
+        mIndices[t].reset();
+        mWeights[t].reset();
+    }
+
+    if (mVertexCount > 0) {
+        const int count = kBonePerVtxMaxEach * mVertexCount;
+        for (int t = 0; t < 2; ++t) {
+            mIndices[t].reset(new IndicesType[count]);
+            XC_PTR_ASSERT(mIndices[t]);
+            if (!mIndices[t]) {
+                mSlotCount = 0;
+                return;
             }
 
-            for (int i = 0; i < aVertexCount; ++i) {
-                const int ixc = kBonePerVtxMaxEach * i;
-                weights[ixc] = kWeightOne;
-
-                for (int k = 1; k < kBonePerVtxMaxEach; ++k) {
-                    weights[ixc + k] = 0.0f;
-                }
+            mWeights[t].reset(new WeightsType[count]);
+            XC_PTR_ASSERT(mWeights[t]);
+            if (!mWeights[t]) {
+                mSlotCount = 0;
+                return;
             }
         }
     }
 
-    mVertexCount = aVertexCount;
+    mSlotCount = 8;
 }
 
 void BoneInfluenceMap::writeAsync(
@@ -213,7 +272,92 @@ void BoneInfluenceMap::writeWeights() {
 }
 
 void BoneInfluenceMap::writeVertexAttribute() {
-    static const float kMinPowerSum = 0.01f;
+    // Store only the slots this map actually uses. A map whose busiest vertex
+    // needs one influence carries one index byte per vertex and no weights;
+    // the dense eight-slot form is kept for the top-slot case (the scalar
+    // attributes would exceed the guaranteed 16 vertex attributes).
+    int slotCount = 1;
+    for (int i = 0; i < mVertexCount; ++i) {
+        if (mWorks[i].count > slotCount) {
+            slotCount = mWorks[i].count;
+        }
+    }
+    XC_ASSERT(slotCount <= kBonePerVtxMaxAll);
+
+    if (slotCount >= kBonePerVtxMaxAll) {
+        writeDenseAttributes();
+    } else {
+        writeSparseAttributes(slotCount);
+    }
+}
+
+void BoneInfluenceMap::writeSparseAttributes(int aSlotCount) {
+    XC_ASSERT(aSlotCount >= 1 && aSlotCount < kBonePerVtxMaxAll);
+    ensureSparseStorage(aSlotCount);
+    if (mSlotCount != aSlotCount || !mSparseIndices)
+        return;
+    if (aSlotCount >= 2) {
+        XC_PTR_ASSERT(mSparseWeights);
+        if (!mSparseWeights)
+            return;
+    }
+
+    const int vertices = mVertexCount;
+    const int count = aSlotCount * vertices;
+    std::fill(mSparseIndices.data(), mSparseIndices.data() + count, IndicesType(0));
+    if (mSparseWeights) {
+        std::fill(mSparseWeights.data(), mSparseWeights.data() + count, WeightsType(0));
+    }
+
+    // each vertex
+    for (int i = 0; i < vertices; ++i) {
+        const WorkAttribute& work = mWorks[i];
+
+        if (work.count <= 1) {
+            // no or single bone influence; slot 0 carries the whole weight
+            if (work.count == 1) {
+                XC_ASSERT(work.id[0] >= 0 && work.id[0] < mBoneList.params.size() && work.id[0] <= 0xFF);
+                mSparseIndices[i] = static_cast<IndicesType>(work.id[0]);
+            }
+            if (aSlotCount >= 2) {
+                mSparseWeights[i] = kWeightOne;
+            }
+            continue;
+        }
+
+        // some bones influence - the normalisation is the dense writer's,
+        // term by term, so every stored weight is the same float
+        float powerSum = 0.0f;
+        for (int k = 0; k < work.count; ++k) {
+            powerSum += work.weight[k];
+        }
+
+        float weightRate = 1.0f;
+        float weightAdd = 0.0f;
+
+        if (powerSum >= kMinPowerSum) {
+            weightRate /= powerSum;
+        } else {
+            weightAdd = (1.0f - powerSum) / work.count;
+        }
+
+        float weightSum = 0.0f;
+        for (int k = 0; k < work.count; ++k) {
+            XC_ASSERT(work.id[k] >= 0 && work.id[k] < mBoneList.params.size() && work.id[k] <= 0xFF);
+            mSparseIndices[k * vertices + i] = static_cast<IndicesType>(work.id[k]);
+            const float weight = work.weight[k] * weightRate + weightAdd;
+            mSparseWeights[k * vertices + i] = weight;
+            weightSum += weight;
+        }
+        // Build-time invariant: the used slots still partition unity.
+        XC_ASSERT(qAbs(weightSum - kWeightOne) <= 1e-5f);
+    }
+}
+
+void BoneInfluenceMap::writeDenseAttributes() {
+    ensureDenseStorage();
+    if (mSlotCount != kBonePerVtxMaxAll)
+        return;
 
     // clear
     for (int t = 0; t < 2; ++t) {
@@ -334,24 +478,48 @@ BoneInfluenceMap::Accessor::Accessor(): mOwner() {}
 
 BoneInfluenceMap::Accessor::Accessor(const BoneInfluenceMap& aOwner): mOwner(&aOwner) {}
 
-const BoneInfluenceMap::IndicesType* BoneInfluenceMap::Accessor::indices0() const {
+int BoneInfluenceMap::Accessor::slotCount() const {
     XC_PTR_ASSERT(mOwner);
-    return mOwner->mIndices[0].data();
+    return mOwner->mSlotCount;
 }
 
-const BoneInfluenceMap::IndicesType* BoneInfluenceMap::Accessor::indices1() const {
+bool BoneInfluenceMap::Accessor::dense() const { return slotCount() >= kBonePerVtxMaxAll; }
+
+const BoneInfluenceMap::IndicesType* BoneInfluenceMap::Accessor::indices(int aSlot) const {
     XC_PTR_ASSERT(mOwner);
-    return mOwner->mIndices[1].data();
+    XC_ASSERT(!dense());
+    XC_ASSERT(aSlot >= 0 && aSlot < slotCount());
+    if (!mOwner->mSparseIndices || mOwner->mVertexCount <= 0)
+        return nullptr;
+    return mOwner->mSparseIndices.data() + qsizetype(aSlot) * mOwner->mVertexCount;
 }
 
-const BoneInfluenceMap::WeightsType* BoneInfluenceMap::Accessor::weights0() const {
+const BoneInfluenceMap::WeightsType* BoneInfluenceMap::Accessor::weights(int aSlot) const {
     XC_PTR_ASSERT(mOwner);
-    return mOwner->mWeights[0].data();
+    XC_ASSERT(!dense());
+    XC_ASSERT(aSlot >= 0 && aSlot < slotCount());
+    if (slotCount() < 2 || !mOwner->mSparseWeights || mOwner->mVertexCount <= 0)
+        return nullptr;
+    return mOwner->mSparseWeights.data() + qsizetype(aSlot) * mOwner->mVertexCount;
 }
 
-const BoneInfluenceMap::WeightsType* BoneInfluenceMap::Accessor::weights1() const {
+const BoneInfluenceMap::IndicesType* BoneInfluenceMap::Accessor::denseIndices(int aGroup) const {
     XC_PTR_ASSERT(mOwner);
-    return mOwner->mWeights[1].data();
+    XC_ASSERT(dense());
+    XC_ASSERT(aGroup >= 0 && aGroup < 2);
+    return mOwner->mIndices[aGroup].data();
+}
+
+const BoneInfluenceMap::WeightsType* BoneInfluenceMap::Accessor::denseWeights(int aGroup) const {
+    XC_PTR_ASSERT(mOwner);
+    XC_ASSERT(dense());
+    XC_ASSERT(aGroup >= 0 && aGroup < 2);
+    return mOwner->mWeights[aGroup].data();
+}
+
+qint64 BoneInfluenceMap::Accessor::storedBytes() const {
+    XC_PTR_ASSERT(mOwner);
+    return mOwner->storedBytes();
 }
 
 } // namespace core

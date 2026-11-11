@@ -1,11 +1,13 @@
 # Bone influence cache: storage, load, and build plan
 
-Status: **Phases 0-4 landed.** Phases 1-2 measured 2026-11-10, Phase 3 measured
-2026-11-11. The format is 0.21, the attribute sets are packed, and the rebuild is
-3.4-4.5x faster in Release with byte-identical arrays.
+Status: **Phases 0-5 landed.** Phases 1-2 measured 2026-11-10, Phases 3 and 5
+measured 2026-11-11. The format is 0.21, the attributes are packed per map
+(1-7 slots sparse, 8 dense), the rebuild is 3.4-4.5x faster in Release with
+byte-identical arrays, and the resident attribute bytes are **3.3-5.7x smaller**
+on the three measured projects.
 Scope: the per-layer envelope-weight cache (`core::BoneInfluenceMap`), its
-on-disk record, when it is built, and the format/versioning rules that follow
-from it.
+on-disk record, when it is built, how its resident attributes are stored, and
+the format/versioning rules that follow from it.
 
 Phase 1 outcome, in one paragraph: `BoneKey::serialize` writes bones only;
 `BoneKey::deserialize` consumes a <= 0.20 cache section with
@@ -25,8 +27,8 @@ shipped; the planned **unorm16 weights** were built and measured, but exceeded
 the 1-LSB pixel gate on 2.anie (max 12 on 61 pixels of one frame), so the
 shipped representation keeps float32 weights: **40 B/vertex, 64 -> 40 (1.6×)**.
 The fallback is bit-identical to Phase 1 on 10 frames across three projects. The
-2-4× resident goal is therefore still open (§8); see §7 for the numbers and D3
-for what was rejected.
+2-4× resident goal was still open at that point; Phase 5 (D7) closes it with the
+sparse slot layout. See §7 for the numbers and D3 for what was rejected.
 
 Phase 3 outcome: the cost lived in the polygon containment and the weight math,
 not in the bone sweep. `core::BonePolygonIndex` precomputes a bone's influence
@@ -43,6 +45,24 @@ total wall unchanged). `tests/bone_polygon_index` pins the index against
 the bucket lookup cannot turn a NaN into an out-of-range float-to-int
 conversion).
 
+Phase 5 outcome: a map now stores only the influence slots its busiest vertex
+uses, so the 40 B/vertex dense record survives only at the eight-slot cap.
+Measured on `2.anie` (262,165 cached vertices): **214,974 vertices use one
+influence**, 33,997 use two, 9,814 use three, 1,643 use four and 1,737 use five;
+**no vertex uses six to eight**. The per-map maximum is just as skewed - 102 of
+130 maps never exceed one slot, 8 max at two, 14 at three and 5 at five. Storage
+is slot-major (one uint8 index per vertex per slot, plus one float32 weight per
+slot only when there are two or more); a one-slot map's weight is exactly 1 and
+is not stored. The resident arrays went **10,486,600 -> 2,277,514 B on 2.anie
+(4.60x)**, 124,000 -> 37,693 B on `tart` (3.29x) and 391,160 -> 68,207 B on
+`dinner lab` (5.73x). The logical eight-slot arrays are **SHA-256 identical**
+before and after on all 160 maps of the three projects, and the rendered PNGs
+are **bit-identical on all 10 sampled frames**. Build cost is unchanged
+(`2.anie` Debug wait 41.6-45.3 ms against 42.7-43.9). `tests/bone_influence_storage`
+now drives the real writer with synthetic work attributes and pins slot counts
+1-8, the default values, the one-slot implicit weight and the dense group
+layout. See D7 and §7.
+
 Read `AGENTS.md` first — it carries the build traps (one configuration at a
 time, stale binaries, `cp -a` mtimes) and the verification commands referenced
 below.
@@ -51,7 +71,8 @@ below.
 
 | claim | anchor |
 |---|---|
-| 8 slots/vertex (2 attribute sets of 4), packed `uint8` indices + `float32` weights = 40 B/vertex | `src/core/BoneInfluenceMap.h` |
+| a map stores only the slots its busiest vertex uses: one slot = **1 B/vertex** (index only; weight implicit), 2-7 slots = **5 B per slot/vertex**, eight slots = the dense two-set form, **40 B/vertex** | `src/core/BoneInfluenceMap.h` |
+| the skinning shader has one variation per slot count (1-7 sparse scalar attributes, 8 dense `ivec4`/`vec4`); missing slots were exactly-zero weights and are not stored | `assets/shaders/MeshTransformVert.glsl`, `core::MeshTransformerResource` |
 | the build's containment is an exact y-bucketed copy of Qt's odd-even polygon scan | `core::BonePolygonIndex`, `tests/bone_polygon_index` |
 | **legacy (<= 0.20) record** was `int32 vertexCount`, `int32 maxBoneCount`, `indices0[4V]`, `indices1[4V]`, `weights0[4V]`, `weights1[4V]`, little-endian; it is now only **skipped**, never stored | `BoneKey::deserializeLegacyCaches` |
 | **0.21 writes bones only.** The old cache owner / per-node / binding sections are gone from the writer | `src/core/BoneKey.cpp` (`BoneKey::serialize`) |
@@ -206,7 +227,9 @@ Work that landed:
 Resident bytes: `2.anie` 16,778,560 -> 10,486,600 B (-6,291,960), `tart`
 198,400 -> 124,000 B (-74,400). Process max RSS did not resolve the 6 MB
 difference against the ~1.28 GB image-decode peak (the ranges overlap; see §7),
-so the array-byte count is the precise number.
+so the array-byte count is the precise number. **D7 (Phase 5) later makes this
+40 B/vertex the eight-slot cap only**; the per-map sparse form is 1 B/vertex at
+one influence and 5 B per slot above that.
 
 ### D4 — Make the build cheaper without changing a single weight (landed)
 
@@ -279,6 +302,61 @@ is < the bone count used to build the map, that weights are finite, and that the
 used slots sum to 1 within 1e-6. These catch a broken spatial index or a broken
 selection rule in the harness, where a silent bad index would otherwise only
 show as a visually wrong limb.
+
+### D7 — Store only the slots a map uses (landed)
+
+The 8-slot dense record is the worst case, not the common one. On `2.anie`,
+214,974 of 262,165 vertices use exactly one influence; only 1,737 use five, and
+none use six to eight. At the map level the same skew holds: 102 of 130 maps
+never exceed one slot, 8 max at two, 14 at three, and 5 at five. Eighty-six
+percent of vertices are in maps whose busiest vertex uses at most three
+influences.
+
+Storage is chosen per map from the busiest vertex's count (`slotCount`, clamped
+to 1..8):
+
+- **1 slot:** one `uint8` index per vertex and **no weight array**. Every weight
+  in such a map is exactly `1.0` by the writer's own rule (no hit -> bone 0
+  weight 1; one hit -> its bone weight 1), so the shader supplies the constant.
+  1 B/vertex.
+- **2-7 slots:** one slot-major `uint8` array per slot and one slot-major
+  `float32` array per slot. 5 B per slot/vertex. The shader declares one scalar
+  `int` and one scalar `float` per slot; the 7-slot case is 15 vertex
+  attributes, inside the guaranteed 16.
+- **8 slots:** the historical dense two-set layout and shader code, unchanged.
+  The scalar form would need 17 attributes, above the guaranteed minimum.
+
+Exactness is structural, not a tolerance: slot `k` of a vertex with `count <= k`
+held exactly `0.0` in the dense form, so omitting its `0.0 * matrix` term adds
+nothing (adding a zero matrix to a finite sum is exact). The normalisation loop
+is the dense writer's term for term, so the stored float weights are identical.
+A one-slot map's implicit 1 is the value the dense writer stored. Missing-slot
+indices are never read; the shader omits their terms.
+
+The shader is compiled lazily per slot count (`INFLUENCE_SLOTS` variation) and
+cached in `MeshTransformerResource`; a project usually touches one to three
+variants. `MeshTransformer::callGL` binds the sparse scalar arrays for 1-7 and
+the dense groups at 8.
+
+Measured resident arrays (not process RSS, which the image-decode peak still
+dominates): **2.277 MB against 10.487 MB on 2.anie (4.60x)**, **37.7 KB against
+124.0 KB on tart (3.29x)** and **68.2 KB against 391.2 KB on dinner lab
+(5.73x)**. The logical eight-slot arrays are SHA-256 identical on all 160 maps,
+and the sampled frames are pixel-identical. See §7.
+
+Not built: a layer-granular "one set or two" layout. Calculated from the same
+distribution, the five maps that need five influences hold 36,674 vertices, so
+they would still pay 40 B and the whole project would reach only **1.75x** - it
+does not meet the 2x goal, while D7 costs nothing on those vertices beyond the
+slots they use. A per-influence compact table behind a per-vertex offset (or a
+texture fetch) was considered and not built: D7 reaches the goal with vertex
+attributes and no new GL resource.
+
+The residual: no dataset project has a map at the eight-slot cap. The dense
+layout is the pre-D7 code, its group order and weights are pinned by
+`tests/bone_influence_storage` (all eight slots), and the sparse shader was
+pixel-gated at 1, 2, 3 and 5 slots. If a real eight-slot project appears, add
+it to the pixel gate before changing the dense path.
 
 ## 5. Work plan
 
@@ -365,6 +443,29 @@ failure documented in §7.
 - This document: §7 has the measured numbers and D4 records what was rejected.
 - `AGENTS.md`: the derived-state rule, plus the containment index and the two
   rejected build accelerations so they are not rebuilt from scratch.
+
+### Phase 5 — Store only the used slots (D7) — done
+
+- `src/core/BoneInfluenceMap.{h,cpp}`: per-map `slotCount`; sparse slot-major
+  arrays for 1..7 slots; the one-slot form has no weight array; the dense
+  two-set form is retained at 8. `Accessor::slotCount()/indices()/weights()/
+  denseIndices()/denseWeights()` and `storedBytes()` are the storage contract.
+- `assets/shaders/MeshTransformVert.glsl`: `INFLUENCE_SLOTS` variation with the
+  scalar sparse path (1..7) and the unchanged dense path (8).
+- `src/core/MeshTransformerResource.{h,cpp}`: lazy per-(skinning, dual-quat,
+  slots) program cache. `MeshTransformer::callGL` binds the sparse scalar
+  attributes or the dense groups from the accessor.
+- `tools/render_probe`: `--dump-influence` still writes the **logical**
+  eight-slot hashes, so a pre-Phase-5 dump diffs directly; the summary line
+  reports `bytes=`, `logical_bytes=` and the per-map slot histogram.
+- `tests/bone_influence_storage.cpp`: drives the real writer with synthetic
+  work attributes (a narrow friend probe) and pins slots 1..8, defaults,
+  normalisation, the implicit one-slot weight, the slot-major layout, the dense
+  group order and the byte counts.
+
+Acceptance, measured: logical hashes identical on all 160 maps of the three
+projects; PNGs bit-identical on 10 frames; resident bytes 4.60x / 3.29x / 5.73x;
+build cost unchanged; `tests/bone_influence_storage` passes all 1..8 cases.
 
 ## 6. Verification commands
 
@@ -494,6 +595,58 @@ per-map chunking was a total-wall wash (56 vs 57 ms - wait 42.7-43.9 ->
 `tests/bone_polygon_index` passes 77,889 comparisons against
 `QPolygonF::containsPoint(point, OddEvenFill)`.
 
+### Phase 5 — sparse slots
+
+The slot distribution was measured through `render_probe --dump-influence` on
+the three projects. Per-vertex counts on `2.anie`: **214,974 vertices at one
+influence, 33,997 at two, 9,814 at three, 1,643 at four, 1,737 at five, and none
+at six to eight**. Per-map maximum (`maps / vertices`):
+
+| project | max 1 | max 2 | max 3 | max 4 | max 5 | max 6-8 |
+|---|---|---|---|---|---|---|
+| `2.anie` | 102 / 142,979 | 8 / 3,999 | 14 / 78,513 | 0 / 0 | 5 / 36,674 | 0 / 0 |
+| `tart` | 1 / 48 | 7 / 2,331 | 2 / 369 | 0 / 0 | 1 / 352 | 0 / 0 |
+| `dinner lab` | 11 / 3,287 | 8 / 6,492 | 0 / 0 | 0 / 0 | 0 / 0 | 0 / 0 |
+
+Resident attribute arrays after D7:
+
+| project | cached vertices | dense bytes | sparse bytes | ratio | saved |
+|---|---|---|---|---|---|
+| `2.anie` | 262,165 | 10,486,600 | **2,277,514** | **4.60x** | 8,209,086 B (78.3 %) |
+| `tart` | 3,100 | 124,000 | **37,693** | **3.29x** | 86,307 B (69.6 %) |
+| `dinner lab` | 9,779 | 391,160 | **68,207** | **5.73x** | 322,953 B (82.6 %) |
+
+The numbers are the `INFLUENCE_STORAGE ... bytes= logical_bytes=` line the probe
+now prints: the sum of `BoneInfluenceMap::storedBytes()`, which is the array
+storage only (the build's work buffer is transient). The **2-4x resident goal is
+met and exceeded**.
+
+Equality proof, two independent gates:
+
+1. **Logical hashes.** `--dump-influence` expands a sparse map back to the
+   eight-slot form before hashing, so the map lines are the same oracle Phase 3
+   used. All **160 map lines** (130 + 19 + 11) are byte-identical to the dump
+   written before D7; the sparse form stores exactly the values the dense form
+   did.
+2. **Pixels.** `render_probe --require-gpu`, 640x640, `2.anie` frames 0-2,
+   `tart` 0-3, `dinner lab` 0-2 (10 frames): every channel delta is **0**
+   (max 0, mean 0, zero differing pixels) against the pre-D7 renders. That
+   covers the sparse shader at slot counts 1, 2, 3 and 5.
+
+Build cost is unchanged within run noise (`--bench-influence 6`, Debug, reps
+1-5): total **54.8-60.8 ms**, wait **41.6-45.3 ms**, against the Phase 3
+measurement's 55.7-57.2 / 42.7-43.9. The new writer adds one max-scan over the
+work buffer and writes fewer bytes; the cost is still the polygon containment.
+
+`tests/bone_influence_storage` drives the real writer with synthetic work
+attributes at every slot count 1..8 and pins the layout, defaults, normalisation,
+the implicit one-slot weight and the dense group order.
+
+Residual, stated rather than excused: no dataset project has a map at the
+eight-slot cap. The dense path is the pre-D7 code, unit-gated at eight slots, but
+not pixel-gated through GL. If such a project appears, extend the pixel gate
+before changing that path.
+
 `scripts/run_suites.sh Debug`: **76 pass, 1 fail**. The one failure is
 `object_tree_panel` (6 checks around row selection/rename). It reproduces on a
 clean worktree built at HEAD with none of this change - the first failures are
@@ -524,17 +677,29 @@ including the GL/Canvas gates, passes.
    tiny (mean 0.0006) but the gate is a gate. Shipped: packed uint8 indices +
    float32 weights (40 B/vertex, bit-identical). Do not re-pack the weights
    without a new equality measurement.
-6. **The 2-4x resident goal is still open.** The exact fallback gives 1.6x.
-   Reaching 2x or better needs a representation other than unorm16 (sparse /
-   variable per-vertex influences, or a per-vertex scale), or a user-approved
-   pixel tolerance; the plan's gate currently forbids the latter. This is the
-   next memory change, not a tweak to the shipped packing.
+6. **The 2-4x resident goal is met by D7 (sparse slots).** The exact fallback
+   alone gave 1.6x; storing only the used slots gives **3.3-5.7x** on the three
+   projects (4.60x on `2.anie`) with byte-identical arrays and pixels, because
+   most maps need one to three influences. The one-slot form is 1 B/vertex and
+   the 2-7 slot form is 5 B/slot; the eight-slot cap still costs 40 B/vertex.
+   Do not re-pack the weights with unorm16 to chase the last case - it already
+   failed the pixel gate (item 5) and the cap is not what the projects spend.
+   The residual is that no dataset project exercises the dense eight-slot path
+   through GL; its layout is unit-gated and the code is unchanged from Phase 2.
+   If a real eight-slot project appears, add it to the pixel gate first.
 7. **32-bone cap.** `makeBoneList()` stops at `mMaxBoneCount`, and the palette
    truncates at 32 with a debug assert, so a > 32-bone layer is a debug abort and
    a silently partial skeleton in release. Out of scope here; if it is wanted,
-   it is a separate change: raise `PosePalette::kMaxCount` to 64 (the vertex
-   uniform minimum 1024 components allows 64 dual quaternions plus uniforms) and
-   add a user-visible warning instead of the assert. Measure before choosing.
+   it is a separate change: raise `PosePalette::kMaxCount` to 64 and add a
+   user-visible warning instead of the assert. `BoneKey::Cache` also hardcodes
+   `setMaxBoneCount(32)`, so raise it in the same change or the influence maps
+   still stop at 32. Measure before choosing. Budget note (arithmetic, not
+   measured): 64 dual quaternions is 128 `vec4` = 512 components, leaving room
+   under the guaranteed 1024 vertex uniform components; **64 mat4 is 1024
+   components by itself**, so the LBS variation would need a uniform buffer or
+   a lower cap. `MeshTransformer::callGL` currently selects the
+   dual-quaternion path (`useDualQuaternion = true`), so the DQ path is the one
+   to raise first.
 8. **No release yet.** That is why §D1 may delete the writer path outright and
    keep a discard-only reader. It is not why the version could stay at 0.20: the
    reader must distinguish two layouts, so the minor bumps to 0.21.
@@ -576,3 +741,15 @@ including the GL/Canvas gates, passes.
 - [x] `FormatVersion.h` rule and 0.21 history line
 - [x] `AGENTS.md` note added
 - [x] Legacy discard branch marked with the retirement rule (delete after first release)
+- [x] Phase 5 distribution measured: 2.anie per-vertex 1/2/3/4/5 = 214,974 /
+      33,997 / 9,814 / 1,643 / 1,737, none at 6-8; per-map maxima recorded in §7
+- [x] Phase 5 landed: per-map slot count, slot-major sparse 1-7 slots, one slot
+      is 1 B/vertex with an implicit weight, dense 8 kept unchanged
+- [x] Logical SHA-256 identity on all 160 maps of `2.anie`, `dinner lab`, `tart`
+- [x] PNG equality at slot counts 1, 2, 3 and 5: 10 frames, max 0 / mean 0
+- [x] Resident bytes recorded: 4.60x / 3.29x / 5.73x (the 2-4x goal is met)
+- [x] Build cost unchanged: 2.anie Debug wait 41.6-45.3 ms against 42.7-43.9
+- [x] `tests/bone_influence_storage` drives the writer at slots 1-8
+- [x] `render_probe --dump-influence` keeps the logical eight-slot oracle;
+      `INFLUENCE_STORAGE` reports resident vs logical bytes and the slot histogram
+- [x] Suite: 76 pass / 1 fail, the pre-existing `object_tree_panel` failure

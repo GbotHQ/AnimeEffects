@@ -248,12 +248,21 @@ hand it over. Its one question is `Sampling`:
 
 ## Rendering and hosts
 
-- **Bone influence vertex attributes are packed indices + float32 weights**: 4 x `uint8`
-  bone indices per set, bound through `glVertexAttribIPointer` so the shader's `ivec4`
-  sees integers, plus 4 x `float32` weights (40 B/vertex, from 64). A unorm16 weight
-  variant (24 B/vertex) was built and rejected: it exceeded the 1-LSB pixel gate on
-  2.anie (max 12 on 61 pixels of one frame). Re-measure before re-packing; see
-  `docs/design/skeletal/influence-cache-plan.md`.
+- **Bone influence attributes are stored per map, at the slot count that map uses**: one
+  slot is **1 B/vertex** (one `uint8` index; every weight is exactly 1 and is not
+  stored), 2-7 slots are one `uint8` index + one `float32` weight per slot/vertex
+  (**5 B/slot**), and only the eight-slot cap keeps the dense two-set form
+  (**40 B/vertex**) because 17 scalar attributes would exceed the guaranteed 16. The
+  shader has an `INFLUENCE_SLOTS` variation (1-7 sparse scalar attributes, 8 dense
+  `ivec4`/`vec4`), built lazily by `core::MeshTransformerResource`; missing slots were
+  exactly-zero weights, so omitting them is exact, not a tolerance. Measured: resident
+  arrays **10,486,600 -> 2,277,514 B on 2.anie (4.60x)**, 3.29x on `tart`, 5.73x on
+  `dinner lab`, with the logical eight-slot SHA-256 hashes identical on all 160 maps
+  and 10 frames bit-identical. `tests/bone_influence_storage` drives the real writer at
+  slots 1-8 (including the dense group layout). A unorm16 weight variant (24 B/vertex)
+  was built and rejected: it exceeded the 1-LSB pixel gate on 2.anie (max 12 on 61
+  pixels of one frame). Re-measure before re-packing; see
+  `docs/design/skeletal/influence-cache-plan.md` (D3, D7).
 - **The layer sampler is explained, with its figure and its numbers, in
   `docs/design/renderer/layer-sampling.md`**: the two-tap, one-level reconstruction (the level from the
   footprint's minor axis, both taps splitting its major axis, eight fetches, no level blend) against the

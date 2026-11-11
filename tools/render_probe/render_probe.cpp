@@ -277,6 +277,8 @@ int dumpInfluenceMaps(core::Project& aProject, const QString& aPath) {
     int mapCount = 0;
     qint64 vertexCount = 0;
     int nodeIndex = 0;
+    qint64 storedBytes = 0;
+    int slotHist[9] = {0};
     for (core::ObjectNode::Iterator itr(top); itr.hasNext();) {
         core::ObjectNode* node = itr.next();
         const int thisNode = nodeIndex++;
@@ -298,31 +300,72 @@ int dumpInfluenceMaps(core::Project& aProject, const QString& aPath) {
                 waitNs += timer.nsecsElapsed();
 
                 const int vertices = map.vertexCount();
-                const qsizetype count =
+                const int slotCount = accessor.slotCount();
+                const bool dense = accessor.dense();
+                const qsizetype groupBytes =
                     qsizetype(vertices) * core::BoneInfluenceMap::kBonePerVtxMaxEach;
+
+                // The oracle is the LOGICAL eight-slot form: a sparse map is
+                // expanded here so its line is the same line the dense writer
+                // produced. That is what makes an old dump directly diffable.
+                const auto logicalIndices = [&](int aGroup) -> QString {
+                    if (dense) {
+                        return hash(accessor.denseIndices(aGroup), groupBytes);
+                    }
+                    std::vector<core::BoneInfluenceMap::IndicesType> buf(
+                        size_t(groupBytes), core::BoneInfluenceMap::IndicesType(0)
+                    );
+                    for (int v = 0; v < vertices; ++v) {
+                        for (int k = 0; k < core::BoneInfluenceMap::kBonePerVtxMaxEach; ++k) {
+                            const int slot = aGroup * core::BoneInfluenceMap::kBonePerVtxMaxEach + k;
+                            if (slot < slotCount) {
+                                buf[size_t(v) * core::BoneInfluenceMap::kBonePerVtxMaxEach + k] =
+                                    accessor.indices(slot)[v];
+                            }
+                        }
+                    }
+                    return hash(buf.data(), qsizetype(buf.size()));
+                };
+                const auto logicalWeights = [&](int aGroup) -> QString {
+                    if (dense) {
+                        return hash(
+                            accessor.denseWeights(aGroup),
+                            groupBytes * qsizetype(sizeof(core::BoneInfluenceMap::WeightsType))
+                        );
+                    }
+                    std::vector<core::BoneInfluenceMap::WeightsType> buf(
+                        size_t(groupBytes), core::BoneInfluenceMap::WeightsType(0)
+                    );
+                    for (int v = 0; v < vertices; ++v) {
+                        for (int k = 0; k < core::BoneInfluenceMap::kBonePerVtxMaxEach; ++k) {
+                            const int slot = aGroup * core::BoneInfluenceMap::kBonePerVtxMaxEach + k;
+                            if (slot >= slotCount)
+                                continue;
+                            const size_t at =
+                                size_t(v) * core::BoneInfluenceMap::kBonePerVtxMaxEach + k;
+                            // A one-slot map's weight is the exact 1 the dense
+                            // writer stored and did not need to carry.
+                            buf[at] = slotCount == 1 ? 1.0f : accessor.weights(slot)[v];
+                        }
+                    }
+                    return hash(
+                        buf.data(), qsizetype(buf.size() * sizeof(core::BoneInfluenceMap::WeightsType))
+                    );
+                };
+
                 out << "map node=" << thisNode
                     << " name=\"" << (cache->node() ? cache->node()->name() : QString()) << "\""
                     << " frame=" << boneKey->frame() << " cache=" << cacheIndex
                     << " v=" << vertices
-                    << " i0=" << hash(
-                           accessor.indices0(),
-                           count * qsizetype(sizeof(core::BoneInfluenceMap::IndicesType))
-                       )
-                    << " i1=" << hash(
-                           accessor.indices1(),
-                           count * qsizetype(sizeof(core::BoneInfluenceMap::IndicesType))
-                       )
-                    << " w0=" << hash(
-                           accessor.weights0(),
-                           count * qsizetype(sizeof(core::BoneInfluenceMap::WeightsType))
-                       )
-                    << " w1=" << hash(
-                           accessor.weights1(),
-                           count * qsizetype(sizeof(core::BoneInfluenceMap::WeightsType))
-                       )
+                    << " i0=" << logicalIndices(0)
+                    << " i1=" << logicalIndices(1)
+                    << " w0=" << logicalWeights(0)
+                    << " w1=" << logicalWeights(1)
                     << "\n";
                 ++mapCount;
                 vertexCount += vertices;
+                storedBytes += accessor.storedBytes();
+                ++slotHist[slotCount];
                 ++cacheIndex;
             }
         }
@@ -334,6 +377,13 @@ int dumpInfluenceMaps(core::Project& aProject, const QString& aPath) {
     std::printf(
         "INFLUENCE maps=%d vertices=%lld wait_ms=%.3f\n", mapCount, (long long)vertexCount,
         double(waitNs) / 1.0e6
+    );
+    std::printf(
+        "INFLUENCE_STORAGE maps=%d vertices=%lld bytes=%lld logical_bytes=%lld"
+        " slots1=%d slots2=%d slots3=%d slots4=%d slots5=%d slots6=%d slots7=%d slots8=%d\n",
+        mapCount, (long long)vertexCount, (long long)storedBytes,
+        (long long)(vertexCount * 40), slotHist[1], slotHist[2], slotHist[3], slotHist[4],
+        slotHist[5], slotHist[6], slotHist[7], slotHist[8]
     );
     std::fflush(stdout);
     return 0;

@@ -858,8 +858,13 @@ void MeshTransformer::callGL(
         worldMatrix.translate(aOriginOffset.x(), aOriginOffset.y());
     }
 
+    // The map stores only the influence slots its busiest vertex uses; the
+    // shader is compiled for that count (1..7 sparse, 8 dense).
+    const int influenceSlots = useInfluence ? inflData.slotCount() : 1;
+    XC_ASSERT(influenceSlots >= 1 && influenceSlots <= BoneInfluenceMap::kBonePerVtxMaxAll);
+
     gl::Global::Functions& ggl = gl::Global::functions();
-    gl::EasyShaderProgram& program = mResource.program(useInfluence, useDualQuaternion);
+    gl::EasyShaderProgram& program = mResource.program(useInfluence, useDualQuaternion, influenceSlots);
 
     gl::Util::resetRenderState();
     ggl.glEnable(GL_RASTERIZER_DISCARD);
@@ -871,15 +876,32 @@ void MeshTransformer::callGL(
         program.setUniformValue("uWorldMatrix", worldMatrix);
 
         if (useInfluence) {
-            // PACKED INDICES: each vertex carries 4 uint8 bone indices,
-            // uploaded through glVertexAttribIPointer so the shader's ivec4
-            // input sees integers. Weights stay float32 (a vec4): the
-            // unorm16 experiment exceeded the 1-LSB gate; see the plan.
-            constexpr int kTuple = BoneInfluenceMap::kBonePerVtxMaxEach;
-            program.setAttributeArray("inBoneIndex0", inflData.indices0(), vtxCount, kTuple);
-            program.setAttributeArray("inBoneWeight0", inflData.weights0(), vtxCount, kTuple);
-            program.setAttributeArray("inBoneIndex1", inflData.indices1(), vtxCount, kTuple);
-            program.setAttributeArray("inBoneWeight1", inflData.weights1(), vtxCount, kTuple);
+            if (inflData.dense()) {
+                // DENSE: two ivec4/vec4 sets, the layout used at the eight-slot cap.
+                constexpr int kTuple = BoneInfluenceMap::kBonePerVtxMaxEach;
+                program.setAttributeArray("inBoneIndex0", inflData.denseIndices(0), vtxCount, kTuple);
+                program.setAttributeArray("inBoneWeight0", inflData.denseWeights(0), vtxCount, kTuple);
+                program.setAttributeArray("inBoneIndex1", inflData.denseIndices(1), vtxCount, kTuple);
+                program.setAttributeArray("inBoneWeight1", inflData.denseWeights(1), vtxCount, kTuple);
+            } else {
+                // SPARSE: one scalar index and (above one influence) one scalar
+                // weight per slot. A one-slot map has no weight array: the
+                // shader uses the exact 1 the old dense form stored.
+                static const char* const kIndexNames[7] = {
+                    "inBoneIndex0", "inBoneIndex1", "inBoneIndex2", "inBoneIndex3",
+                    "inBoneIndex4", "inBoneIndex5", "inBoneIndex6",
+                };
+                static const char* const kWeightNames[7] = {
+                    "inBoneWeight0", "inBoneWeight1", "inBoneWeight2", "inBoneWeight3",
+                    "inBoneWeight4", "inBoneWeight5", "inBoneWeight6",
+                };
+                for (int slot = 0; slot < influenceSlots; ++slot) {
+                    program.setAttributeArray(kIndexNames[slot], inflData.indices(slot), vtxCount, 1);
+                    if (influenceSlots >= 2) {
+                        program.setAttributeArray(kWeightNames[slot], inflData.weights(slot), vtxCount, 1);
+                    }
+                }
+            }
 
             if (useDualQuaternion) {
                 auto palette = aNonPosed ? PosePalette().dualQuaternions() : aExpans.posePalette().dualQuaternions();

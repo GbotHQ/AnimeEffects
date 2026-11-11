@@ -1,30 +1,34 @@
 #include <QFile>
 #include "gl/Global.h"
 #include "gl/ExtendShader.h"
+#include "core/BoneInfluenceMap.h"
 #include "core/MeshTransformerResource.h"
 
 namespace core {
 
 //-------------------------------------------------------------------------------------------------
-MeshTransformerResource::MeshTransformerResource() {}
+MeshTransformerResource::MeshTransformerResource(): mCode(), mPrograms() {}
 
-void MeshTransformerResource::setup(const QString& aShaderPath) {
-    QString code;
-    loadFile(aShaderPath, code);
+void MeshTransformerResource::setup(const QString& aShaderPath) { loadFile(aShaderPath, mCode); }
 
-    buildShader(mProgram[0], code, false, false);
-    buildShader(mProgram[1], code, true, false);
-    buildShader(mProgram[2], code, true, true);
+int MeshTransformerResource::programIndex(bool aUseSkinning, bool aUseDualQuaternion, int aSlotCount) {
+    if (!aUseSkinning)
+        return 0;
+    XC_ASSERT(aSlotCount >= 1 && aSlotCount <= BoneInfluenceMap::kBonePerVtxMaxAll);
+    return 1 + (aUseDualQuaternion ? 8 : 0) + (aSlotCount - 1);
 }
 
-gl::EasyShaderProgram& MeshTransformerResource::program(bool aUseSkinning, bool aUseDualQuaternion) {
-    return !aUseSkinning ? mProgram[0] : (!aUseDualQuaternion ? mProgram[1] : mProgram[2]);
+gl::EasyShaderProgram& MeshTransformerResource::program(
+    bool aUseSkinning, bool aUseDualQuaternion, int aSlotCount
+) {
+    const int index = programIndex(aUseSkinning, aUseDualQuaternion, aUseSkinning ? aSlotCount : 1);
+    std::unique_ptr<gl::EasyShaderProgram>& slot = mPrograms[index];
+    if (!slot) {
+        slot.reset(new gl::EasyShaderProgram());
+        buildShader(*slot, mCode, aUseSkinning, aUseDualQuaternion, aUseSkinning ? aSlotCount : 1);
+    }
+    return *slot;
 }
-
-const gl::EasyShaderProgram& MeshTransformerResource::program(bool aUseSkinning, bool aUseDualQuaternion) const {
-    return !aUseSkinning ? mProgram[0] : (!aUseDualQuaternion ? mProgram[1] : mProgram[2]);
-}
-
 
 void MeshTransformerResource::loadFile(const QString& aPath, QString& aDstCode) {
     QFile file(aPath);
@@ -37,7 +41,11 @@ void MeshTransformerResource::loadFile(const QString& aPath, QString& aDstCode) 
 }
 
 void MeshTransformerResource::buildShader(
-    gl::EasyShaderProgram& aProgram, const QString& aCode, bool aUseSkinning, bool aUseDualQuaternion
+    gl::EasyShaderProgram& aProgram,
+    const QString& aCode,
+    bool aUseSkinning,
+    bool aUseDualQuaternion,
+    int aSlotCount
 ) {
     gl::Global::Functions& ggl = gl::Global::functions();
 
@@ -49,6 +57,7 @@ void MeshTransformerResource::buildShader(
     // set variation
     source.setVariationValue("USE_SKINNING", QString::number(aUseSkinning ? 1 : 0));
     source.setVariationValue("USE_DUAL_QUATERNION", QString::number(aUseDualQuaternion ? 1 : 0));
+    source.setVariationValue("INFLUENCE_SLOTS", QString::number(aSlotCount));
 
     // resolve variation
     if (!source.resolveVariation()) {
