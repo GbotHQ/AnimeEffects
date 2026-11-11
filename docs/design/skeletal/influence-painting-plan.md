@@ -1,10 +1,11 @@
 # Authored bone weights: painting, constraints, and the 0.22 format
 
-Status: **Proposal, not started.** Every decision below is a proposal unless it is
-marked *measured* or *existing*, and every "recommended" item is open to being
-overturned before code lands. The envelope model, the influence cache and the
-weight heatmap are the starting point; the product source is `notes.md` (lines 82,
-92, 94, 129, 141, 143, 145) and the open questions in
+Status: **Proposal, not started.** Revised 2026-11-12 around the per-bone
+Envelope/Baked state (the rasterize analogy). Every decision below is a proposal
+unless it is marked *measured* or *existing*, and every "recommended" item is
+open to being overturned before code lands. The envelope model, the influence
+cache and the weight heatmap are the starting point; the product source is
+`notes.md` (lines 82, 92, 94, 129, 141, 143, 145) and the open questions in
 `docs/design/skeletal/influence-display.md` §6.
 
 Scope: authoring per-vertex, per-bone influence weights on top of the envelope
@@ -31,6 +32,14 @@ Existing, measured:
   over every layer the key skins, at the positions the build used
   (`influence-display.md` §2). It is a view; it changes nothing.
 - The format is **0.21**. There is no authored weight data in a project.
+- **Bone keys are per keyed frame, not per node.** The model allows one per
+  frame. Measured 2026-11-12 with `render_probe --bone-stats` over the 35
+  loadable projects in `~/Downloads/ANIE` (the `gif COPY2` file does not load):
+  32 have one BoneKey per node; 3 have a node with **two** - `2.anie` node 164,
+  `cmws81` nodes 109/112/117/120, `TaigaBoykisser EXTENDED cropped.anie` nodes
+  13/31 - and none has more than two. "One rig per node" is the common case, not
+  a document guarantee; §3.2 keeps the weights on the owner node and §3.3
+  requires the keys to share the baked bone's geometry.
 - `TimeKey` has a stable `id()` (format 0.16) that survives map moves and undo.
   `Bone2` has no stable id: its `boneIDAssigner` is a per-serializer reference
   map for its JSON form, not an identity. The influence map's bone index is the
@@ -52,49 +61,85 @@ Missing, in the user's terms:
 - a place to store all of that, and a format that keeps it authored;
 - eventually, reusing a painted rig in another project (line 145).
 
-## 2. Product model
+The first version of this document treated painting as sparse per-vertex
+overrides over a live envelope. The model below is the per-bone **bake** (the
+Photoshop rasterize analogy): a bone is Envelope or Baked. That is a cleaner
+state for the UI, a simpler build branch, and it makes "what is envelope and
+what is baked" a property of the bone rather than of each vertex.
 
-The envelope remains valuable: it gives a smooth, connected initial field and
-it is what every existing project has. The painted data must be a **correction
-layer**, not a replacement with an empty default.
+## 2. Product model: a per-bone envelope or baked state
 
-**Proposed rule: a painted weight is an absolute override for one (bone,
-vertex).**
+The envelope is the live, procedural definition of a bone's weights. It is what
+every existing project has, and it stays the default. The authored state is
+chosen **per bone**, not per vertex:
 
-- A vertex with no entry for bone `B` uses `B`'s envelope weight, exactly as
-  today.
-- An entry replaces the envelope weight for that pair, including `0.0`. A zero
-  is therefore a real "pin this bone out" edit, not "no data".
-- Unpainted vertices keep the envelope. A stroke only bakes the vertices it
-  touches; nothing else changes.
-- The existing normalisation and top-eight selection stay the final stage: an
-  override participates like any other weight; a zero simply does not reach the
-  slot list. The heatmap already shows the final normalised result.
-- The first brush stamp reads the current final weight (the envelope if there is
-  no entry), adds/subtracts/replaces with the brush falloff, clamps to
-  `[0, 1]` and stores the override. This is the standard weight-paint model and
-  matches the user's "flat 0, then raise the inside" example.
+| state | source of the bone's weights | analogue |
+|---|---|---|
+| **Envelope** | `BoneShape::influence`, evaluated every rebuild | a text layer, still editable as text |
+| **Baked** | a per-vertex weight map authored for the influenced meshes | a rasterized text layer, now pixels |
 
-Why absolute overrides and not additive deltas over the envelope: the envelope
-is a shape the user can still edit later; if a painted edit stayed a delta, a
-bone's range change would move the painted result with it. The user is taking
-ownership of that vertex. "Additive blending" in the notes (line 143) belongs to
-the curve/constraint tool (§6), where several constraints combine before they
-are committed, not to the stored model.
+**Baking** a bone evaluates its envelope once, for every influenced vertex of
+every influenced mesh at the current rig, and stores the result as authored
+per-vertex data. From then on the envelope is not consulted for that bone;
+manual paint edits change the baked map. It is the weight-painting equivalent
+of Rasterize Layer: the source of truth changes from a live definition to an
+authored one.
 
-Two tools, one data model:
+- The state is per bone. A rig can have some bones baked (a leg whose envelope is
+  close but not precise) and the rest live (the ears, still being shaped).
+  Normalisation and the top-eight selection stay the final stage across both.
+- A baked bone's map is the **complete** field for that bone: a vertex with no
+  entry is **0**, not "use the envelope". That is what makes the state
+  unambiguous. The bake writes every nonzero envelope value; painting can remove
+  entries.
+- An empty baked map is still a state (the bone is baked and contributes
+  nothing); the presence of the baked record is what says so. Do not infer the
+  state from the entry count.
+- **Bake is explicit** (recommended; §12 keeps it as an open UX decision). Like
+  rasterizing a layer, it is a document change: a named, undoable command, not a
+  side effect of a stray stroke. Entering Paint weights on an envelope bone
+  shows the state and a "Bake bone weights" action; the brush is disabled until
+  the bone is baked. A "Bake and paint" variant performs the same command and
+  then starts the stroke; one click either way, the difference is whether the
+  conversion is named.
+- **Clear visual distinction.** The panel shows the selected bone's state
+  ("Envelope (live)" or "Baked (n vertices)") with the Bake/Revert action. The
+  viewport marks baked bones differently from envelope bones; the exact ink is a
+  UI decision (the user's bone-visual note is still UNDECIDED in `notes.md`, so
+  do not lock a shape here). The heatmap carries a state label so the field
+  being drawn is known to be live or authored.
+- **Revert to envelope** removes the baked map (confirm if it has manual edits)
+  and returns the bone to the live field; one undo restores the baked map.
+- **Rebake** replaces the baked map with the current envelope (confirm: manual
+  edits are lost). This is the relation to the envelope brush: editing an
+  envelope bone's ranges changes the render; editing a baked bone's ranges
+  changes the shape but not the weights until a rebake.
+- **Clear weights** on a baked bone empties the map but leaves the bone baked
+  (it contributes nothing). It is distinct from Revert, which removes the baked
+  state entirely.
+- A new influenced layer under an already-baked bone has no baked data. Proposal:
+  it uses the envelope for that layer until the user bakes it, and the bone's
+  panel state says "Mixed (this layer is live)" rather than silently filling in.
+  Whether the bone's state should be global (auto-bake new layers) or per
+  (bone, layer) is an open question (§12).
+- The brush and constraints only edit **baked** bones. Painting a live bone is a
+  no-op with the bake affordance; it does not implicitly bake unless the chosen
+  UX is the "Bake and paint" variant.
+
+Two authored tools, one baked map:
 
 1. **Paint weights** (new mode): a per-bone, per-vertex brush with
    add/subtract/replace, the shared brush parameters, the heatmap, one gesture =
-   one command. This is the direct tool.
+   one command. It edits only baked bones.
 2. **Weight constraints** (later phase): place points/curves with values and
-   radii, box-select vertices, pin some, interpolate the rest, then commit. The
-   result is the same override map, so the two tools compose.
+   radii, box-select vertices, pin some, interpolate the rest, then commit. It
+   builds the same baked map; the bone must be baked first.
 
 The envelope tools stay: "Paint influence"/"Erase influence" change the broad
-shape, "Paint weights" corrects individual vertices. A "Clear weights" action
-removes overrides for the selected bone (or the selected vertices), returning
-those pairs to the envelope.
+shape. For an envelope bone they remain live; for a baked bone they change the
+shape only, and the panel offers Rebake. This is the same distinction as editing
+the text of a rasterized layer: it does not change the pixels until you
+rasterize again.
 
 ## 3. Data model
 
@@ -132,46 +177,62 @@ projects' ids mean the same bone.
 Recommendation: **on the bone key owner node** (the node that holds the
 `BoneKey`), not on a `BoneKey` instance and not on the mesh key.
 
-- The owner node is the rig anchor. Its bone keys may change with frames, but
-  the weights are a property of that rig on that node.
+- The owner node is the rig anchor. A node may have several BoneKeys, one per
+  keyed frame; the weights are a property of that rig on that node, not of a
+  frame. Measured 2026-11-12 with `render_probe --bone-stats` over the 35
+  loadable projects in `~/Downloads/ANIE` (the `gif COPY2` file does not load):
+  32 have one BoneKey per node; 3 have a node with **two** - `2.anie` node 164,
+  `cmws81` nodes 109/112/117/120, `TaigaBoykisser EXTENDED cropped.anie` nodes
+  13/31 - and none has more than two. "One rig per node" is the common case, not
+  a document guarantee.
 - A `BoneKey` instance is a time key. Storing weights there would duplicate them
   per key and make a new key start blank, which is not how skin weights behave.
+  It would also make the three dataset projects with two keys require two
+  independent paints for one rig.
 - A mesh key knows vertices but not bones, and grid meshes are regenerated; the
   weights would be re-created or lost with the geometry.
 - The object tree serialises each node in its own block; the owner's block can
   carry the records and resolve descendant node references through the existing
   ID solver (the pre-0.21 cache did exactly this: `aOut.writeID(node)` and
   `aIn.orderIDData`). No new global block is needed.
+- The owner-node choice is robust to one key or several. If the product later
+  decides one rig per node, the same data fits; that would be a UI/document
+  policy, not a storage reason. The multi-key case is handled in §3.3 by
+  requiring the keys to share the baked bone's authored geometry.
 
 `core::SkinWeights` (new, on `ObjectNode`):
 
 ```
 struct Entry { quint32 vertex; float weight; };          // sorted by vertex
-struct BoneWeights { int boneId; QVector<Entry> entries; };
+struct BakedBone {
+    int boneId;                     // the authoring identity, §3.1
+    QVector<Entry> entries;         // nonzero field; empty = baked to all-zero
+};
 struct NodeWeights {
     util::LifeLink::Pointee<ObjectNode> node;            // or a pruned raw pointer
     int vertexCount;
     quint64 meshSignature;                               // §3.4
-    QVector<BoneWeights> bones;                          // sorted by bone id
+    QVector<BakedBone> bakedBones;                       // sorted by bone id
 };
-QVector<NodeWeights> mNodes;                             // sorted by node pointer/id
+struct SkinWeights { QVector<NodeWeights> nodes; };      // sorted by node pointer/id
 ```
 
-- Only painted entries are stored. `weight(boneId, vertex)` returns a value and
-  a `bool` "has override"; the build needs the presence bit for zero.
+- **The presence of a `BakedBone` is the state**: absent means the bone is in
+  Envelope mode for this node; present means it is baked. An empty `entries`
+  list is a baked bone that contributes zero everywhere, not an envelope bone.
+- A baked bone's missing vertex is **0**, not the envelope. The map is the whole
+  field for that bone.
+- The weights are per node because the vertex arrays are; a bone can influence
+  several nodes, and each has its own record. The bone's panel state aggregates:
+  baked when every influenced node is baked, "Mixed" when some are.
 - The per-bone entries are sorted by vertex. The build walks them as a cursor
-  beside its vertex loop, so the override merge is O(vertices + entries), not a
+  beside its vertex loop, so the baked merge is O(vertices + entries), not a
   hash lookup per bone/vertex.
 - The object is a value type for undo (copy one node's `NodeWeights` or the whole
-  `SkinWeights`; a stroke is local, so the sparse map is small).
+  `SkinWeights`; a bake is potentially whole-rig, a brush stroke local).
 - The node records use a life-linked pointer so a deleted descendant goes null
   instead of dangling. A record whose node is null is ignored and can be pruned
   on save.
-
-The alternative - store on the `BoneKey` - is cheaper to implement (its
-serializer already has the owner and the cache list) but makes weights
-per-key. The owner-node choice is the one that makes "paint once, animate many
-keys" work; it is the main architectural decision to confirm before Phase 1.
 
 ### 3.3 Build integration
 
@@ -180,29 +241,55 @@ SkinWeights::NodeWeights* weights)`:
 
 ```
 for each bone index i with bone id b:
-    cursor = weights ? weights->entriesFor(b) : none
-    for each vertex v:
-        float w = envelopeInfluence(bone[i], v)
-        if (cursor has v) w = cursor.weight, advance
-        if (w >= FLT_EPSILON) tryPushBoneWeight(i, w)
+    const BakedBone* baked = weights ? weights->bakedFor(b) : nullptr
+    if (baked):
+        cursor = baked->entries (sorted by vertex)
+        for each vertex v:
+            float w = (cursor has v) ? cursor.weight : 0.0f
+            advance cursor
+            if (w >= FLT_EPSILON) tryPushBoneWeight(i, w)
+    else:
+        for each vertex v:
+            float w = envelopeInfluence(bone[i], v)
+            if (w >= FLT_EPSILON) tryPushBoneWeight(i, w)
 ```
 
-- A zero override must **not** call `tryPushBoneWeight`; it removes the bone
-  from that vertex.
-- No weights (null or empty) takes the current code path exactly: no extra
+- A baked bone's missing entry is a real zero; the envelope is never consulted
+  for it. This is the difference from the earlier override proposal, and it is
+  what makes "baked vs envelope" a state the user can see.
+- No baked records (null or empty) takes the current code path exactly: no extra
   allocations, no change to any existing project.
 - The output arrays, top-eight selection, normalisation and slot packing are
   unchanged. This is the invariant the format and the pixel gates protect.
 - The build remains per key and per node; the owner's `SkinWeights` is read-only
   during the build. The cache is still derived: it is never persisted.
 
+**Baking is a command.** The bake evaluates `BoneShape::influence` for the
+selected bone at the current key and mesh, for every influenced vertex, and
+stores the nonzero values in a `BakedBone` on every target node. It is one
+`cmnd` command ("Bake bone weights"); undo removes the records and returns the
+bone to Envelope mode. A bake whose envelope field is empty still writes the
+record (baked to zero), so the state survives.
+
+**Multi-key rule.** A baked bone's weights are shared by every key of the owner.
+The bake evaluates the envelope from the current key. Before it writes, it
+checks every BoneKey of the owner for a bone with the same id and compares the
+authored geometry that the envelope depends on (local position/angle, range,
+shape/bend). If they all match, the bake proceeds: the keys share the rig and
+the baked field describes all of them. If any differs, the bake is refused with
+the key's frame named; the user can make the rig shared (or remove the
+divergent key) and bake again. Silently applying one skeleton's field to
+another key's different skeleton would be the worst outcome. Pose rotations and
+frame-specific poses are not part of this comparison; the envelope is built
+from the rest bones and the node's mesh, not from the pose.
+
 **Dirtying.** The weights are on the owner node, not a timeline key. A new
 project event (or a small dedicated signal) `SkinWeightsModified` must reset the
 caches of **every** BoneKey on that owner (all frames), not just the current key.
 `BoneKeyUpdater` is the natural listener; it already owns "reset caches of this
-node". A stroke pushes one command; the command's notifier emits the event.
-Do not reuse a pose/move event: those rebuild only the affected key and are
-also used by unrelated edits.
+node". A bake, a stroke or a revert pushes one command; the command's notifier
+emits the event. Do not reuse a pose/move event: those rebuild only the affected
+key and are also used by unrelated edits.
 
 ### 3.4 Mesh identity
 
@@ -243,13 +330,17 @@ per record:
     int32 nodeReferenceId        // Serializer::writeID, resolved by orderIDData
     int32 vertexCount
     QList<int> meshSignature     // two int32 words: the serializer has no 64-bit scalar
-    int32 boneCount
-    per bone:
+    int32 bakedBoneCount
+    per baked bone:
         int32 boneId
-        int32 entryCount
+        int32 entryCount         // 0 is a baked bone that contributes zero
         per entry: int32 vertex, float32 weight (LE, as every other float)
 ```
 
+- **The record is the state.** A bone listed here is Baked for this node; a bone
+  with no record is Envelope. There is no mode byte: the presence of the baked
+  bone record is the mode, and an empty entry list is the all-zero baked field,
+  not an envelope bone. This is the one invariant the format must never lose.
 - A node with no records writes `recordCount = 0`; every node gets the block in
   0.22. The block header (tag, length, count) is a small constant, not per
   vertex; measure its exact size when implementing. Use the serializer's
@@ -266,9 +357,9 @@ per record:
   tool warns once. A mesh is authored data and may legitimately have changed;
   an old index must not make the project unopenable.
 - A bone id that is not in any `BoneKey` of the owner is **not** a load failure:
-  bones can be deleted while their weights remain dormant for undo/save. The
-  build ignores it; a save prunes it only when the user confirms a cleanup (see
-  §4.3).
+  bones can be deleted while their baked records remain dormant for undo/save.
+  The build ignores it; a save prunes it only when the user confirms a cleanup
+  (see §4.3).
 - `FormatVersion.h`: bump to 0.22 and add the history line. The 0.21 rule is
   the worked example: authored data may gate the reader; the influence cache
   remains derived and is never required.
@@ -288,11 +379,11 @@ user's paint.
 - A deleted descendant's record is life-linked to null and ignored. If the
   delete is undone and the same object returns, the record becomes live again;
   if the object is gone for good, the record is dormant.
-- A deleted bone leaves its entries dormant (the build ignores an absent id).
-  This keeps a bone-delete undo from losing the paint. The cost is a few
-  orphaned entries until the user saves; a "Remove unused weights" action can
-  prune them, and the save can report the count rather than dropping data
-  silently. This is a deliberate no-surprise rule, not an optimisation.
+- A deleted bone leaves its baked record dormant (the build ignores an absent
+  id). This keeps a bone-delete undo from losing the paint. The cost is the
+  dormant map until the user saves; a "Remove unused weights" action can prune
+  it, and the save can report the count rather than dropping data silently.
+  This is a deliberate no-surprise rule, not an optimisation.
 - A node moved out of the owner's subtree is not influenced any more; its
   record stays with the old owner (dormant) and can be pruned by the same
   action. A node moved in starts with the envelope only.
@@ -303,79 +394,136 @@ user's paint.
 
 - A 0.21 fixture loads with no weight block; the influence hashes and the
   rendered frames are identical to the pre-change build.
-- A 0.22 save/reload reproduces the in-memory sparse map exactly (entry order
-  normalised by sorting at save).
+- A 0.22 save/reload reproduces the in-memory baked maps exactly (entry order
+  normalised by sorting at save). A baked bone with zero entries round-trips as
+  **baked**, not as envelope; this is the state-preservation test.
 - A corrupt block (negative/overrunning count, truncated entries, NaN weight,
   unresolved node) fails with a named error and no partial load. A vertex index
   beyond the stored count is not corruption; it loads dormant and the build
   ignores it.
-- A 0.22 file with weights in one node and none in another round-trips both.
+- A 0.22 file with baked bones in one node and envelope bones in another
+  round-trips both.
 - The legacy 0.20 cache discard path is unaffected.
 
-## 5. Paint weights
+## 5. From envelope to baked: bake, paint, revert
 
-A new Bone editor mode, `PaintWeights`, beside the envelope modes.
+A new Bone editor mode, `PaintWeights`. The mode never operates on a live
+envelope directly: the selected bone must be **baked** first, because baking is
+the document change and the brush is the edit after it.
 
-### 5.1 Target selection
+### 5.1 The state and the action
+
+The panel names the selected bone's state and offers its action:
+
+| state | panel | allowed actions |
+|---|---|---|
+| Envelope | "Envelope (live)" | **Bake bone weights**; the brush is disabled |
+| Baked | "Baked (n vertices)" | paint; **Clear weights**; **Rebake**; **Revert to envelope** |
+| Mixed (some influenced layers baked, some live) | "Mixed - this layer is live" | **Bake this layer**; painting is disabled for the live layer |
+
+**Bake** evaluates the selected bone's envelope at the current key and frame,
+for every influenced vertex of every target node, and stores the nonzero values
+as the `BakedBone` record on each node. It is one `cmnd` command ("Bake bone
+weights"):
+
+- The target set is §5.2: the selected descendants of the owner, or every
+  influenced layer by default.
+- A node with no mesh at the current frame is skipped and named; its state stays
+  Envelope (Mixed for the bone).
+- The multi-key shared-rig check (§3.3) runs first. A divergent same-id bone on
+  another key refuses the bake with the key's frame named; it does not write a
+  field that describes only one skeleton.
+- An envelope that is zero for the whole bone still writes the baked record
+  with no entries: the bone is Baked and contributes nothing. The record's
+  presence is the state, not its size.
+- **The bake is exact, not a resample.** The values are the same floats the
+  build computes; immediately after the bake the built map's hashes and the
+  rendered frame must be bit-identical to the envelope-only control. This is
+  the acceptance gate that makes the state transition safe.
+- Undo removes the record(s) and returns the bone to Envelope; redo restores
+  them.
+
+**Revert to envelope** removes the baked records for the selected bone (all
+target nodes) and returns it to the live field. If the baked map has entries,
+confirm first: manual paint edits are lost (undo restores them). It is one
+command.
+
+**Clear weights** empties the entries of the baked map but leaves the bone
+Baked; the bone contributes nothing. It is the "transparent pixels" state, not
+the "convert back to text" state. It is one command.
+
+**Rebake** replaces the baked map with the current envelope (confirm: manual
+edits are lost). This is how the envelope and baked states relate: editing an
+Envelope bone's ranges changes the render; editing a Baked bone's ranges changes
+the shape only, and the panel offers Rebake. A rasterized layer behaves the same
+way when its source text changes.
+
+**Bake and paint** is an optional variant: the first left press on an Envelope
+bone runs the same bake command and starts the stroke inside one gesture. It
+removes one click but hides the conversion; the recommendation is explicit
+bake, and §12 keeps the choice open.
+
+### 5.2 Target selection
 
 The Bone editor's target is the bone key owner (the rig). The **paint target
 set** is the subset of its influenced layers the user wants to edit:
 
 - the object tree's selected descendants of the owner, if any;
-- otherwise every cache node under the brush (today's envelope-brush
-  population, but now writing per-vertex weights).
+- otherwise every influenced cache node.
 
 Only nodes with an influence cache for the current key and a mesh at the current
-frame are paintable. A selected node outside the owner's subtree is ignored with
-one message; it is not silently painted on another rig.
+frame are bakeable/paintable. A selected node outside the owner's subtree is
+ignored with one message; it is not silently painted on another rig. The bake
+and the brush use the same set, so the state a bake writes is the state the
+brush can edit.
 
 The targeting interaction from `influence-display.md` is reused: right-click a
 joint/connector to select the bone (left is the stroke); hovering previews its
-heatmap; the first stroke with no selected bone picks the nearest envelope.
+heatmap; the first stroke with no selected bone picks the nearest envelope. In
+this mode the selection chooses the bone whose state the panel shows, not a
+brush target inside the envelope.
 
-### 5.2 One stamp
+### 5.3 One stamp
 
-For each target node, the brush stamp is transformed into the node's mesh space
-through the same matrix the cache uses (the cache's `innerMatrix` translated by
-the origin offset, then the target matrix; the heatmap already does this
-inverse direction). For every vertex within the stamp:
+For a **baked** bone, for each target node, the brush stamp is transformed into
+the node's mesh space through the same matrix the cache uses (the cache's
+`innerMatrix` translated by the origin offset, then the target matrix; the
+heatmap already does this inverse direction). For every vertex within the stamp:
 
 ```
 t      = brushFalloff(distance, radius, hardness) * amount
-before = entry ? entry.weight : envelopeWeight(bone, vertex)   // current final
+before = baked.weight(bone, vertex)        // missing = 0 in a baked bone
 after  = clamp(before + t, 0, 1)            // add
        = clamp(before - t, 0, 1)            // subtract
        = clamp(t, 0, 1)                     // replace
-store an entry (bone, vertex, after)
+if after <= FLT_EPSILON: remove the entry   // missing already means 0
+else: store/update the entry
 ```
 
-- Reading the envelope for an unpainted vertex makes the first stroke start
-  from what the heatmap shows.
-- Keep the entry even when `after` happens to equal the envelope: comparing
-  floats to decide storage would be fragile, and the entry is what makes the
-  painted vertex independent of later envelope edits. The explicit "return to
-  envelope"/"clear weights" action is what removes it, not an implicit equality
-  test. The sparse map is local, so an entry that matches today's envelope costs
-  a few bytes, not a vertex array.
+- The baked map's missing value is **0**, so removing a zero entry is exact and
+  keeps the sparse map sparse. The bone remains Baked; the record is not
+  removed. Do not confuse this with Revert, which removes the record.
+- The brush never reads the envelope for a baked bone. If the user wants to
+  start from the current envelope after changing it, Rebake is the action.
 - The target set may contain several layers; one stamp writes each layer's own
   `(bone, vertex)` entries. Each layer's mesh has its own vertex count and
   signature.
-- The target set may contain several layers; one stamp writes each layer's own
-  `(bone, vertex)` entries. Each layer's mesh has its own vertex count and
-  signature.
+- The brush is disabled on an Envelope bone (or the Bake-and-paint variant is
+  engaged); a stamp that would paint one is a no-op with the bake affordance.
 
-### 5.3 One stroke, one command
+### 5.4 One stroke, one command
 
 - `cmnd::Gesture` (or a dedicated stroke command) captures the affected
   `NodeWeights` before the first stamp and rewrites one command as the stroke
   moves. On release the command holds the before/after snapshots.
 - A command spanning several layers is still one command and one undo step.
+- The bake, the stroke, a Clear, a Rebake and a Revert are each their own
+  command; Bake-and-paint is the one variant that combines the first two.
 - The command's listener emits the `SkinWeightsModified` event (§3.3), which
-  resets the owner's keys' caches once after the stroke (and on every undo/redo
-  replay). During the stroke the cache must not rebuild per sample: either
-  rebuild once per painted frame after `flushPendingWork`, or defer to the
-  release. The existing frame duties already have a place for this; do not add
-  a synchronous rebuild in the mouse handler.
+  resets the owner's keys' caches once after the command (and on every
+  undo/redo replay). During the stroke the cache must not rebuild per sample:
+  either rebuild once per painted frame after `flushPendingWork`, or defer to
+  the release. Do not add a synchronous rebuild in the mouse handler.
 - The heatmap reads the **built** map. During the deferral it shows the previous
   frame's field; the plan's acceptance is "one frame of lag during the stroke,
   exact on the next frame", or an explicit live preview evaluated on the CPU
@@ -384,23 +532,30 @@ store an entry (bone, vertex, after)
 - Undo restores the before map and the command's listener rebuilds; redo the
   after. A no-op stroke pushes nothing.
 
-### 5.4 UI
+### 5.5 UI and the visual state
 
-- Mode label "Paint weights"; the shared brush section; an Add/Subtract/Replace
-  selector; a "Clear weights" action for the selected bone (and the selected
-  vertices, if there is a vertex selection).
-- The heatmap toggle already exists; it should be on for this mode.
-- A readout of the current value under the cursor (the final normalised weight,
-  and the authored value if different) is useful; bone names do not exist, so
-  the readout names the joint by its index/path or the selected highlight.
-- A "return to envelope" action for the current bone/vertices is the inverse of
-  painting.
+- The panel shows the selected bone's state and the Bake/Revert/Rebake/Clear
+  actions; the shared brush section with an Add/Subtract/Replace selector.
+- The viewport distinguishes Envelope bones from Baked bones. The exact ink is
+  a UI decision (the user's bone-visual note is UNDECIDED in `notes.md`); a
+  state icon in the panel and a different bone stroke/fill is enough for the
+  first version. The heatmap carries a state label ("Envelope" / "Baked") so the
+  field being drawn is never ambiguous.
+- The heatmap toggle already exists; on for this mode.
+- A readout of the value under the cursor (baked authored value and the final
+  normalised weight) is useful; bone names do not exist, so the readout names
+  the joint by its index/path or the selected highlight.
+- On an Envelope bone the brush controls are visible but disabled with the Bake
+  action beside them; a disabled control that silently does nothing is worse
+  than one that explains why.
 
 ## 6. Points, curves and interpolation
 
 This is the user's line 143: edit weights at a few hand-placed points/curves,
 interpolate the rest; curves resampled first; additive blending; pinning; more
-than linear interpolation.
+than linear interpolation. Constraints write a **baked** bone's map; an Envelope
+bone is baked first with the same explicit action as the brush (§5.1), so the
+constraint tool never writes a live envelope.
 
 ### 6.1 Constraint model
 
@@ -445,9 +600,10 @@ Two stages, in order of fidelity:
   the default recommendation because it follows edges and needs no global
   matrix; a thin-plate spline is a later alternative if the field needs to
   ignore topology.
-- Additive blending applies to the constraints before the solve; after the
-  solve the values are clamped and written as overrides. The data model remains
-  one absolute value per (bone, vertex).
+- Additive blending applies to the constraints before the solve; after the solve
+  the values are clamped and written into the **baked** map (missing = 0). The
+  data model remains one baked value per (bone, vertex); an Envelope bone is
+  baked first (§5.1), so the constraint tool never writes a live envelope.
 
 ### 6.3 UI
 
@@ -531,37 +687,57 @@ keeps authored data out of the file until the format and the build are proven.
 
 ### Phase 0 - decisions and fixtures
 
-- Confirm §3.2 (owner node vs BoneKey) and §2 (absolute override vs delta).
-- Build fixtures: a two-bone chain with a small quad mesh (a painted 0/1 field
-  is visually unambiguous), a grid mesh, and a 33-bone/dense-map fixture for the
+- Confirm §3.2 (owner-node storage; the measured 3/35 multi-key cases), §2
+  (per-bone baked state; explicit vs Bake-and-paint), §5.1 (the new-layer Mixed
+  rule) and §3.3 (the shared-rig refusal). These are the decisions that change
+  the data model; do not code past them.
+- Build fixtures: a two-bone chain with a small quad mesh (a baked 0/1 field is
+  visually unambiguous), a grid mesh, and a 33-bone/dense-map fixture for the
   cap. These can be constructed in tests, like `tests/bone_cap.cpp`'s chain.
+- A two-key fixture whose keys share the rig (the bake must succeed) and one
+  whose keys differ (the bake must refuse), modelled on the measured 2-key
+  projects.
 - Record a 0.21 project fixture for the compatibility gate.
 
-### Phase 1 - ids, storage, format, build (no UI)
+### Phase 1 - ids, baked storage, format, build, bake command (no UI)
 
 - `Bone2` id + `reserveBoneId`, serialise/deserialise, copy/clone semantics.
-- `core::SkinWeights` on `ObjectNode`; sparse per-node/bone entries; life-linked
-  node records; value semantics.
-- `BoneInfluenceMap::writeAsync` override merge; no-weights fast path; build
+- `core::SkinWeights` on `ObjectNode`; `BakedBone` presence is the state; an
+  empty baked map round-trips as Baked; life-linked node records; value
+  semantics.
+- `BoneInfluenceMap::writeAsync` baked branch; no-baked fast path; build
   invariants.
 - `ObjectTree` 0.22 weight block; `orderIDData`; `FormatVersion.h` 0.22; prune
   policy; `SkinWeightsModified` event and cache reset for all keys of the owner.
-- Gates: `bone_ids`, `skin_weights`, `weight_roundtrip`, extended
-  `bone_influence_storage` (override merge) and `roundtrip_main`.
-- Acceptance: every 0.21 project loads and renders bit-identically (no weights
-  present -> current path); a 0.22 synthetic map round-trips; a zero override
-  removes a bone; normalisation and top-eight are pinned; a 0.21 file with no
-  block still loads; corrupt blocks fail with named errors.
+- The headless bake command: evaluate the selected bone's envelope at the
+  current key/mesh, write the nonzero entries, check the multi-key shared rig,
+  one command with undo/redo.
+- Gates: `bone_ids`, `skin_weights`, `weight_roundtrip`, `weight_bake`, extended
+  `bone_influence_storage` and `roundtrip_main`.
+- Acceptance: every 0.21 project loads and renders bit-identically (no baked
+  records -> the current path); a bake is **bit-identical** to the envelope
+  control at the bake frame (influence hashes and pixels); an empty baked map
+  remains Baked after save/load; a 0.22 synthetic map round-trips; a divergent
+  second key refuses the bake with its frame; normalisation and top-eight are
+  pinned; a 0.21 file with no block still loads; corrupt blocks fail with named
+  errors.
 
-### Phase 2 - the weight brush
+### Phase 2 - the bake action and the weight brush
 
-- New `PaintWeights` mode; target set; per-vertex stamp; add/subtract/replace;
-  one command; deferred rebuild; heatmap integration; Clear weights.
-- A GUI probe: enter the mode, select a bone, paint a stroke, see the heatmap
-  change, undo, save/reopen.
-- Acceptance: painted weights survive save/load; undo restores exactly; the
-  envelope-only path is unchanged; a stroke's rebuild is coalesced (measured);
-  the heatmap shows the final field.
+- New `PaintWeights` mode with the state panel: Envelope / Baked / Mixed, the
+  Bake/Revert/Rebake/Clear actions, the shared brush and Add/Subtract/Replace.
+- Bake and brush commands; per-vertex stamp on a baked bone; one command per
+  stroke; deferred rebuild; heatmap state label; the distinct bone ink; the
+  envelope brush on a baked bone and the Rebake relation.
+- A GUI probe: enter the mode, bake, see the render unchanged, paint a stroke,
+  see the heatmap/deformation change, undo, revert, save/reopen; assert the
+  brush is disabled/explained on an envelope bone.
+- Acceptance: baked state survives save/load; the bake frame is bit-identical
+  to the envelope control; undo restores the before map exactly; Revert returns
+  the live envelope; Rebake replaces the map; painting an envelope bone is
+  impossible without the explicit bake action (or the chosen Bake-and-paint
+  alternative); the envelope-only path is unchanged; a stroke's rebuild is
+  coalesced (measured); the heatmap shows the final field and its state.
 
 ### Phase 3 - multi-selection
 
@@ -575,10 +751,14 @@ keeps authored data out of the file until the format and the build are proven.
 
 - Constraint points/curves, arc-length resampling, radius, pin, additive;
   vertex box selection; nearest/falloff first, the mesh-graph solve second;
-  preview/commit; one command.
+  preview/commit; one command. The tool writes the baked map: if the selected
+  bone is still Envelope, it offers the same explicit bake first (or a "Bake and
+  apply" variant), because a constraint solve is the same kind of authoring
+  transition as a brush stroke.
 - Acceptance: a two-pin fixture (0 outside, 1 on a line) produces the expected
   field on the mesh (a numeric check plus a heatmap/pixel check); additive
-  overlaps clamp; pins are exact; undo one apply.
+  overlaps clamp; pins are exact; undo one apply; the bake-before-apply state
+  transition is explicit and undoable.
 
 ### Phase 5 - mesh edits
 
@@ -605,102 +785,143 @@ keeps authored data out of the file until the format and the build are proven.
 | gate | what it pins |
 |---|---|
 | `bone_ids` | fresh ids, reserve on load, copy/clone preservation, 0.21 assignment, serialise |
-| `skin_weights` | sparse entries, zero override, envelope fallback, top-eight and normalisation, node life-link, orphan policy, mesh-signature handling |
-| `bone_influence_storage` (extended) | the override merge in every slot layout, no-weights fast path |
-| `weight_roundtrip` | 0.21 no-block load, 0.22 save/load, corrupt counts/vertices/NaN, unresolved node |
-| `weight_paint_commands` | one gesture per stroke, undo/redo replay, multi-layer command, no-op |
-| `weight_constraints` | resampling, falloff, additive clamping, pins, mesh-graph solve exactness |
+| `skin_weights` | baked presence vs Envelope, an empty baked map staying Baked, per-node records, top-eight and normalisation, node life-link, orphan policy, mesh-signature handling |
+| `bone_influence_storage` (extended) | the baked merge in every slot layout (missing = 0, no envelope fallback), the no-baked fast path |
+| `weight_roundtrip` | 0.21 no-block load, 0.22 save/load, baked-with-no-entries, corrupt counts/NaN, unresolved node, dormant vertex |
+| `weight_bake` | bake equals the envelope at the bake frame (hashes), empty baked, divergent second key refusal, undo/redo of the bake |
+| `weight_paint_commands` | one gesture per stroke, separate bake/stroke/revert/rebake commands, undo/redo replay, multi-layer command, no-op |
+| `weight_constraints` | resampling, falloff, additive clamping, pins, mesh-graph solve exactness, bake-before-apply |
 | `weight_mesh_edits` | split interpolation, delete/drop, remap policy |
 
 ### Pixel and rendering
 
-- `render_probe --require-gpu` on a fixture with a two-bone chain and a painted
-  field: the deformed frame differs from the envelope-only control in the
-  expected region, and undo/save/reload reproduce it.
-- A paint/undo round-trip is pixel-identical to the pre-stroke frame.
+- **The bake is bit-identical** to the envelope-only control at the bake frame:
+  the `--dump-influence` hashes and the rendered PNGs match, because the baked
+  values are the same floats the envelope produced. This is the gate that makes
+  the state transition safe.
+- A painted stroke on a baked bone changes the field/deformation in the expected
+  region; undo restores the pre-stroke frame exactly; Revert restores the
+  envelope-only frame; Rebake reproduces the bake frame from the current
+  envelope.
 - Envelope-only projects: `--dump-influence` hashes and 10 sampled frames remain
-  bit-identical to the current build (the authored block is empty; the build
-  path is unchanged).
+  bit-identical to the current build (no baked records; the build path is
+  unchanged).
 - The heatmap's own gate remains `overlay_engine_primitives` + the manual GUI
-  check from `influence-display.md`.
+  check from `influence-display.md`, extended with the state label.
 
 ### Performance and memory
 
-- `--bench-influence` on `2.anie` with no weights must match the current
+- `--bench-influence` on `2.anie` with no baked records must match the current
   Release 8.6-10.8 ms (no new work).
-- With weights, the merge cost is measured separately from the containment; a
-  painted project's map bytes and entry count are reported.
-- A stroke's rebuild latency (deferred to the frame or release) is measured on
-  the largest dataset project; the heatmap's 120k-sample cap bounds the view.
-- Save size grows by the sparse entries plus the constant per-node block.
+- The baked merge is measured separately from the polygon containment; a baked
+  project's map bytes and entry count are reported.
+- The bake itself (evaluating the selected bone's envelope over the target
+  meshes) is a one-off cost, measured on the largest dataset project.
+- A stroke's rebuild latency (deferred to the frame or release) is measured; the
+  heatmap's 120k-sample cap bounds the view.
+- Save size grows by the baked entries plus the small per-node block.
 
 ### Probes and compatibility
 
-- GUI probe: paint a stroke, heatmap updates, undo, save/reopen, multi-select.
+- GUI probe: bake a bone (render unchanged), paint a stroke, undo, revert,
+  rebake, save/reopen, then multi-select two layers and bake/paint both. Assert
+  the brush is disabled/explained on an Envelope bone.
 - All 36 loadable dataset projects open, render envelope-only, and save/reload
-  with no weight block (or an empty one); their influence hashes are unchanged.
+  with no baked records; their influence hashes are unchanged. The three
+  measured projects with two keys on a node must round-trip; their bake
+  behaviour is the shared-rig gate.
 - A 0.20 file still discards its legacy cache; a 0.21 file loads; a 0.22 file
   is rejected by the old binary, as every newer minor is.
 
 ## 12. Risks and open questions
 
-1. **Storage location is the main decision.** Owner node (proposed) shares
-   weights across keys and survives key edits; BoneKey-local is simpler to
-   serialise but per-key; mesh-local follows geometry but has no skeleton.
-   Confirm before Phase 1.
-2. **Bone identity.** A global int id with `reserveBoneId` matches `TimeKey`.
+1. **Explicit vs implicit bake - the UX question.** The plan recommends an
+   explicit, named "Bake bone weights" command: baking changes the source of
+   truth and the file, so it should be one named undo step, not a side effect of
+   a stroke; the envelope stays inspectable until the user commits; a stray
+   click cannot convert a bone. The cost is one click. The alternative is
+   "Bake and paint": the first stroke performs the same command and the stroke
+   in one gesture, which is smoother but hides the conversion. A third option is
+   a per-bone toggle (Envelope/Baked) in a bone list, with painting allowed only
+   in Baked. The recommendation is explicit; this is the decision to make first.
+2. **Storage location.** Owner node (proposed) is the rig anchor. The document
+   model allows several BoneKeys per node; measured 3 of 35 projects use two on
+   one node, never more. Owner-node storage makes one paint serve every key,
+   which is why it beats BoneKey-local storage (per-key duplication, blank new
+   keys) and mesh-local storage (no skeleton). If the product later enforces
+   one rig per node, the same data fits; that is a document/UI policy, not a
+   storage reason.
+3. **Per-bone vs per-(bone, node) state, and new layers.** A bone can influence
+   several layers; the data is per node. The UI state aggregates. A new
+   influenced layer has no baked record; the proposal is a "Mixed" state with
+   the new layer live until baked. Whether a bone-level Bake should
+   auto-rasterize new layers, and whether the user should see a per-layer state,
+   is open.
+4. **Multiple keys and the shared-rig rule.** A baked field is evaluated from
+   one key's envelope. The proposal refuses a bake if another key has a same-id
+   bone with different authored geometry/range/shape (the three measured
+   two-key projects are the test). Alternatives: per-key baked maps (reintroduces
+   duplication), a "make the rig shared" action, or treating all BoneKeys as
+   pose keys over one rig (a larger model change, aligned with the user's
+   intuition that there is "basically one"). This needs a decision before
+   Phase 1.
+5. **Bone identity.** A global int id with `reserveBoneId` matches `TimeKey`.
    A project-local id is enough for this app; reusable rigs need an explicit
    mapping. The duplicate-bone rule and shadow-id rule must be decided with the
    command that duplicates bones (if one is added).
-3. **Override vs delta.** The plan stores absolute overrides. If the user wants
-   the envelope to remain live under a *correction*, that is a different model
-   (a per-vertex delta), and it changes the build and the clear action.
-4. **Normalisation visibility.** The heatmap shows final weights, but the
-   brush stores pre-normalisation values. The UI must say which number it is
-   editing; the plan recommends showing both the authored value and the final
-   field, with the final as the heatmap.
-5. **The top-eight cap.** A vertex with more contributions than eight loses the
-   smallest. The user needs a diagnostic (the heatmap of the selected bone may
-   not show a dropped influence). Decide whether the paint tool shows a "this
-   bone is not in the final eight" warning.
-6. **Mesh topology changes.** Index-based storage is exact until a structural
-   edit. The plan's warning/dormant policy prevents silent corruption but
-   leaves work to redo. Stable vertex ids or a UV remap are the long-term fixes;
-   neither is free.
-7. **Multi-selection architecture.** The tree has multi-selection, the Driver
+6. **Normalisation visibility.** The heatmap shows final weights, but the baked
+   map stores the bone's authored weight. The UI must say which number it is
+   editing; the plan recommends showing the baked value and the final field,
+   with the final as the heatmap and a state label.
+7. **The top-eight cap.** A vertex with more contributions than eight loses the
+   smallest. The heatmap of the selected bone may not show a dropped influence;
+   decide whether the paint tool warns "this bone is not in the final eight".
+8. **Mesh topology changes.** Index-based storage is exact until a structural
+   edit. The warning/dormant policy prevents silent corruption but leaves work
+   to redo. Stable vertex ids or a UV remap are the long-term fixes; neither is
+   free.
+9. **Multi-selection architecture.** The tree has multi-selection, the Driver
    does not. The proposed paint target set is the smallest change; a multi-rig
    editor is a bigger one. The primary-owner rule when the selection moves is
    a UI decision.
-8. **Constraint solver.** Screen-space falloff is simple and predictable;
-   a mesh-graph harmonic solve is the "not just linear" answer but needs a
-   solver, boundary conditions and performance work. The plan stages them.
-9. **Format and release.** No release has shipped; 0.22 is a dev-only bump, but
-   the 0.21 reader must still open old projects. The weight block is authored,
-   so it is read, not skipped; a corrupt block fails the load. The orphan policy
-   is a data-retention decision.
-10. **Mesh attributes and weights.** The notes' "new vertices keep attributes
+10. **Constraint solver.** Screen-space falloff is simple and predictable;
+    a mesh-graph harmonic solve is the "not just linear" answer but needs a
+    solver, boundary conditions and performance work. The plan stages them.
+11. **Revert and manual edits.** Reverting to Envelope discards the baked map;
+    undo can restore it, but a save after the revert makes the loss permanent.
+    The UI must confirm when entries exist, and the undo path must be exact.
+12. **Format and release.** No release has shipped; 0.22 is a dev-only bump, but
+    the 0.21 reader must still open old projects. The weight block is authored,
+    so it is read, not skipped; a corrupt block fails the load. The dormant
+    record policy is a data-retention decision.
+13. **Mesh attributes and weights.** The notes' "new vertices keep attributes
     interpolated until commit" is a mesh-editor change that this plan depends on
     for Phase 5. It should be designed with the mesh editor's other attributes,
     not as a weight-only special case.
-11. **Translation.** New mode, action and hint strings need the usual catalog
-    pass; the repo's new-string rule (English until the next lupdate) applies.
-12. **Performance of the heatmap and build during a stroke.** The display is
+14. **Translation.** New mode, state, action and hint strings need the usual
+    catalog pass; the repo's new-string rule (English until the next lupdate)
+    applies.
+15. **Performance of the heatmap and build during a stroke.** The display is
     already capped; the build is not incremental. Phase 2 measures the stroke
     latency before adding the curve solver, which is heavier.
 
 ## 13. Handoff checklist
 
-- [ ] Confirm storage location, override semantics and bone-id scope (§2, §3)
-- [ ] Phase 0 fixtures: two-bone quad, grid, dense-map, 0.21 compatibility
-- [ ] Phase 1: bone ids, `SkinWeights`, 0.22 block, build merge, event
-- [ ] `bone_ids` and `skin_weights` gates
+- [ ] Confirm explicit vs implicit bake; per-bone/new-layer state; the
+      shared-rig rule for the three two-key projects (§5.1, §3.3, §12)
+- [ ] Phase 0 fixtures: two-bone quad, grid, dense-map, 0.21 compatibility,
+      two-key shared/divergent
+- [ ] Phase 1: bone ids, `SkinWeights` with BakedBone presence, 0.22 block,
+      baked build branch, bake command, event
+- [ ] `bone_ids`, `skin_weights`, `weight_bake` gates
 - [ ] 0.21 compatibility: all loadable projects render bit-identically
-- [ ] Phase 2: `PaintWeights` mode, command, heatmap, Clear weights
-- [ ] GUI probe for paint/undo/save/reopen
-- [ ] Phase 3: paint target set and multi-layer command
-- [ ] Phase 4: constraints, resampling, falloff, mesh-graph solve
+- [ ] Phase 2: `PaintWeights` mode, Bake/Revert/Rebake/Clear, brush, heatmap
+      state label, distinct bone ink
+- [ ] GUI probe for bake/paint/undo/revert/save/reopen
+- [ ] Phase 3: paint target set and multi-layer bake/paint command
+- [ ] Phase 4: constraints, resampling, falloff, mesh-graph solve, bake-first
 - [ ] Phase 5: mesh edit policy and grid remap
-- [ ] Performance numbers recorded: build, stroke, save size, entry count
+- [ ] Performance numbers recorded: build, bake, stroke, save size, entry count
 - [ ] Full Debug suite green (the documented pre-existing failure excepted)
 - [ ] `AGENTS.md` updated with the landed rules
 - [ ] Revisit reusable rig and pseudo-3D as separate plans
