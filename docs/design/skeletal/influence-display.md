@@ -153,6 +153,10 @@ serialise and resolve on load (the legacy cache used reference IDs before the ID
 solver); and where painted weights sit relative to the envelope and the top-eight
 normalisation.
 
+Those questions, the 0.22 block, the brush/constraint tools and the phased
+gates are now written up in
+[influence-painting-plan.md](influence-painting-plan.md) (proposal, not started).
+
 ## 7. Gates
 
 - `tests/bone_influence_storage` - new `Accessor::weight` checks in every
