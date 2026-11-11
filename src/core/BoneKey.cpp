@@ -3,6 +3,7 @@
 #include "util/TreeUtil.h"
 #include "util/MathUtil.h"
 #include "core/BoneKey.h"
+#include "core/PosePalette.h"
 #include "core/Project.h"
 #include "core/TimeKeyBlender.h"
 #include "core/ObjectNodeUtil.h"
@@ -63,8 +64,11 @@ Bone2* BoneKey::Data::findBinderBone(const ObjectNode& aNode) {
 
 //-------------------------------------------------------------------------------------------------
 BoneKey::Cache::Cache(): mInfluence(), mNode(), mInnerMtx(), mFrameSign() {
-    static const int kMaxBoneCount = 32;
-    mInfluence.setMaxBoneCount(kMaxBoneCount);
+    // One cap for the whole skinning path: the pose palette, the influence
+    // build and the shader's uniform array (MeshTransformVert.glsl sizes it
+    // from the same constant). A cache built past it would store bone indices
+    // the palette cannot transform.
+    mInfluence.setMaxBoneCount(PosePalette::kMaxCount);
 }
 
 void BoneKey::Cache::setNode(ObjectNode& aNode) { mNode = aNode.pointee(); }

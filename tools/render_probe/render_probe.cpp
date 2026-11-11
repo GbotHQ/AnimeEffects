@@ -110,6 +110,7 @@
 #include "core/ImageKey.h"
 #include "core/Project.h"
 #include "core/LayerNode.h"
+#include "core/PosePalette.h"
 #include "core/RenderInfo.h"
 #include "core/TimeInfo.h"
 #include "core/TimeLine.h"
@@ -166,7 +167,9 @@ const char* kUsage =
     "                with the build wait time, then exit (the build's reference oracle)\n"
     "  --bench-influence <n>\n"
     "                force n rebuilds of every bone key's influence caches and print each\n"
-    "                wall time, then exit (the build-cost instrument; n = 1..100)\n";
+    "                wall time, then exit (the build-cost instrument; n = 1..100)\n"
+    "  --bone-stats  print every bone key's bone count against PosePalette::kMaxCount,\n"
+    "                then exit (the rig-size instrument for the skeleton cap)\n";
 
 int fail(int aCode, const QString& aMessage) {
     std::fprintf(stderr, "render_probe: %s\n", aMessage.toUtf8().constData());
@@ -450,6 +453,65 @@ int benchInfluenceMaps(core::Project& aProject, int aReps) {
 }
 
 //-------------------------------------------------------------------------------------------------
+// Bone census: how many bones each BoneKey holds against
+// PosePalette::kMaxCount, the one cap shared by the pose/binding palette and the
+// influence build (BoneKey::Cache). A key above it loses its last bones
+// silently, so the count is the first question any rig-size change has to
+// answer.
+int printBoneStats(core::Project& aProject) {
+    core::ObjectNode* top = aProject.objectTree().topNode();
+    if (!top) {
+        return fail(2, QStringLiteral("the project has no object tree"));
+    }
+
+    int keyCount = 0;
+    int overCapKeys = 0;
+    int maxBones = 0;
+    qint64 totalBones = 0;
+    int nodeIndex = 0;
+    for (core::ObjectNode::Iterator itr(top); itr.hasNext();) {
+        core::ObjectNode* node = itr.next();
+        const int thisNode = nodeIndex++;
+        if (!node || !node->timeLine())
+            continue;
+        const core::TimeLine::MapType& keys = node->timeLine()->map(core::TimeKeyType_Bone);
+        for (auto itrKey = keys.begin(); itrKey != keys.end(); ++itrKey) {
+            auto* boneKey = dynamic_cast<core::BoneKey*>(itrKey.value());
+            if (!boneKey)
+                continue;
+
+            int bones = 0;
+            for (const core::Bone2* topBone : boneKey->data().topBones()) {
+                for (core::Bone2::ConstIterator boneItr(topBone); boneItr.hasNext();) {
+                    boneItr.next();
+                    ++bones;
+                }
+            }
+
+            ++keyCount;
+            totalBones += bones;
+            maxBones = std::max(maxBones, bones);
+            const bool overCap = bones > core::PosePalette::kMaxCount;
+            if (overCap)
+                ++overCapKeys;
+
+            std::printf(
+                "BONEKEY node=%d name=\"%s\" frame=%d bones=%d caches=%d over_cap=%d\n",
+                thisNode, node->name().toUtf8().constData(), boneKey->frame(), bones,
+                (int)boneKey->caches().size(), overCap ? 1 : 0
+            );
+        }
+    }
+
+    std::printf(
+        "BONE_STATS keys=%d total_bones=%lld max_bones=%d cap=%d over_cap_keys=%d\n", keyCount,
+        (long long)totalBones, maxBones, (int)core::PosePalette::kMaxCount, overCapKeys
+    );
+    std::fflush(stdout);
+    return 0;
+}
+
+//-------------------------------------------------------------------------------------------------
 // command line
 
 struct Options {
@@ -484,6 +546,9 @@ struct Options {
     // force N rebuilds of every bone key's influence caches and print the wall
     // time of each: the build-cost instrument. 0 disables.
     int benchInfluence = 0;
+    // count the bones in every BoneKey against PosePalette::kMaxCount: the
+    // rig-size instrument for the skeleton-bone truncation.
+    bool boneStats = false;
 };
 
 bool parseSize(const QString& aText, QSize& aOut) {
@@ -802,6 +867,16 @@ int runRender(ProbeGL& aProbe, const Options& aOptions) {
             }
             return 2;
         }
+        // Conditions that did not fail the load but change what is drawn (the
+        // skeleton cap): print them, so a probe run states the limitation it
+        // measured instead of hiding it.
+        for (const QString& warning : loader.warnings())
+            std::fprintf(stderr, "  warning: %s\n", warning.toUtf8().constData());
+    }
+
+    // The rig-size census: does any skeleton cross the one cap?
+    if (aOptions.boneStats) {
+        return printBoneStats(project);
     }
 
     // The influence build's reference oracle: join every cache and hash its arrays.
@@ -1130,6 +1205,8 @@ int main(int argc, char** argv) {
                 std::fprintf(stderr, "render_probe: --bench-influence must be 1..100\n");
                 return 2;
             }
+        } else if (arg == QLatin1String("--bone-stats")) {
+            options.boneStats = true;
         } else if (arg == QLatin1String("--help") || arg == QLatin1String("-h")) {
             std::printf("%s", kUsage);
             return 0;
@@ -1141,7 +1218,8 @@ int main(int argc, char** argv) {
     }
 
     if (options.projectPath.isEmpty()
-        || (options.outDir.isEmpty() && options.dumpInfluence.isEmpty() && options.benchInfluence <= 0)) {
+        || (options.outDir.isEmpty() && options.dumpInfluence.isEmpty() && options.benchInfluence <= 0
+            && !options.boneStats)) {
         std::fprintf(stderr, "render_probe: --project and --out are required\n");
         std::fprintf(stderr, "%s", kUsage);
         return 2;

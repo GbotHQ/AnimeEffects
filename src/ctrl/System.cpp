@@ -58,6 +58,9 @@ QString System::LoadResult::messages() const {
 }
 
 QString System::LoadResult::warningTitle() {
+    // Shared by the PSD importer's degraded layers and the loader's skeleton
+    // cap, so the title stays the generic one. New source text here would make
+    // the catalogs stale; the line itself carries the specifics.
     return QCoreApplication::translate("ctrl::System", "Import Warnings");
 }
 
@@ -172,7 +175,10 @@ System::openProject(
                 }
             }
 
-            return LoadResult(mProjects.back(), "Success.");
+            // A successful .anie load can still carry a limitation (a skeleton
+            // past PosePalette::kMaxCount). The loader's warnings are the lines
+            // the GUI shows once, while the user is looking at the file.
+            return LoadResult(mProjects.back(), loader.warnings());
         }
 
         for (auto log : loader.log()) {

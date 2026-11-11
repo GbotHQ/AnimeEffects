@@ -49,6 +49,26 @@ target_link_libraries(bone_influence_storage PRIVATE
     cmnd core ctrl gl img thr util pugixml
 )
 
+# The skeleton bone cap: 33 bones (the dataset's largest rig) must keep their
+# last bone in the influence build and in the pose palette, and 65 must still
+# stop at kMaxCount. Drives makeBoneList/writeWeights and the palette's
+# matrices/dual quaternions through the production holder (BoneKey::Cache), so
+# the cap cannot drift from the shader's MAX_BONES variation. See bone_cap.cpp.
+add_executable(bone_cap bone_cap.cpp)
+target_include_directories(bone_cap PRIVATE ..)
+target_compile_definitions(bone_cap PRIVATE
+    AE_MAJOR_VERSION=1
+    AE_MINOR_VERSION=7
+    AE_MICRO_VERSION=1
+    USE_GL_CORE_PROFILE
+)
+target_link_libraries(bone_cap PRIVATE
+    Qt6::Core Qt6::Core5Compat Qt6::Widgets
+    Qt6::Gui Qt6::OpenGL Qt6::OpenGLWidgets
+    Qt6::Svg Qt6::Xml Qt6::Concurrent Qt6::Multimedia
+    cmnd core ctrl gl img thr util pugixml
+)
+
 # BoneShape's precomputed polygon containment must return exactly what
 # QPolygonF::containsPoint(point, OddEvenFill) returns: the influence build is
 # bit-identical only while it does. One .cpp and Qt Gui, so this gate needs no

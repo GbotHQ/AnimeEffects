@@ -3,6 +3,7 @@
 #include "gl/ExtendShader.h"
 #include "core/BoneInfluenceMap.h"
 #include "core/MeshTransformerResource.h"
+#include "core/PosePalette.h"
 
 namespace core {
 
@@ -58,6 +59,9 @@ void MeshTransformerResource::buildShader(
     source.setVariationValue("USE_SKINNING", QString::number(aUseSkinning ? 1 : 0));
     source.setVariationValue("USE_DUAL_QUATERNION", QString::number(aUseDualQuaternion ? 1 : 0));
     source.setVariationValue("INFLUENCE_SLOTS", QString::number(aSlotCount));
+    // The uniform array is sized by the same constant that caps the CPU
+    // palette; a literal in the shader would be a second place to change.
+    source.setVariationValue("MAX_BONES", QString::number(PosePalette::kMaxCount));
 
     // resolve variation
     if (!source.resolveVariation()) {

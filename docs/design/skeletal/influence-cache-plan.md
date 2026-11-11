@@ -1,13 +1,14 @@
 # Bone influence cache: storage, load, and build plan
 
-Status: **Phases 0-5 landed.** Phases 1-2 measured 2026-11-10, Phases 3 and 5
+Status: **Phases 0-6 landed.** Phases 1-2 measured 2026-11-10, Phases 3, 5 and 6
 measured 2026-11-11. The format is 0.21, the attributes are packed per map
 (1-7 slots sparse, 8 dense), the rebuild is 3.4-4.5x faster in Release with
 byte-identical arrays, and the resident attribute bytes are **3.3-5.7x smaller**
-on the three measured projects.
+on the three measured projects. The skeleton bone cap is **64** (from 32).
 Scope: the per-layer envelope-weight cache (`core::BoneInfluenceMap`), its
-on-disk record, when it is built, how its resident attributes are stored, and
-the format/versioning rules that follow from it.
+on-disk record, when it is built, how its resident attributes are stored, the
+skeleton bone cap those attributes index, and the format/versioning rules that
+follow from them.
 
 Phase 1 outcome, in one paragraph: `BoneKey::serialize` writes bones only;
 `BoneKey::deserialize` consumes a <= 0.20 cache section with
@@ -62,6 +63,20 @@ are **bit-identical on all 10 sampled frames**. Build cost is unchanged
 now drives the real writer with synthetic work attributes and pins slot counts
 1-8, the default values, the one-slot implicit weight and the dense group
 layout. See D7 and §7.
+
+Phase 6 outcome: the skeleton bone cap is **64**, not 32, and it is one constant
+(`core::PosePalette::kMaxCount`) shared by the pose/binding palette, the
+influence holder (`BoneKey::Cache`) and the skinning shader (the `MAX_BONES`
+variation set by `MeshTransformerResource`). A census of the dataset's 36
+`.anie` files found exactly one key above the old cap: `skel_practice_12.anie`'s
+"wings 1" has 33 bones (the next largest keys are 30 and 25). With the raise,
+that key's 8-slot map gains bone index 32, exactly one of its five map hashes
+changes, and the rendered frames move only in the wing region (frames 1-3: max
+channel delta 6 / 24 / 52 on 346 / 807 / 1097 pixels; frame 0 is identical).
+`tests/bone_cap` pins 33-bone retention, the 65-bone disable, and a 32-bone
+control that drops the 33rd the way the old code did. A skeleton above 64 gets a
+load warning through `ProjectLoader::warnings()` instead of losing bones
+silently. See D8 and §7.
 
 Read `AGENTS.md` first — it carries the build traps (one configuration at a
 time, stale binaries, `cp -a` mtimes) and the verification commands referenced
@@ -356,7 +371,69 @@ The residual: no dataset project has a map at the eight-slot cap. The dense
 layout is the pre-D7 code, its group order and weights are pinned by
 `tests/bone_influence_storage` (all eight slots), and the sparse shader was
 pixel-gated at 1, 2, 3 and 5 slots. If a real eight-slot project appears, add
-it to the pixel gate before changing the dense path.
+it to the pixel gate before changing the dense path. (Phase 6 found one:
+`skel_practice_12.anie` has an eight-slot map, and its before/after frames now
+exercise the dense path through GL. See D8.)
+
+### D8 — The skeleton bone cap is 64, not 32 (landed)
+
+Three limits were 32 and were really one number: `PosePalette::kMaxCount` (the
+pose and rigid-binding palette), `BoneKey::Cache`'s hard-coded
+`setMaxBoneCount(32)` (the influence build's bone list) and the shader's
+`uBoneDualQuat[64]` (32 dual quaternions; the never-selected LBS variation has
+`uBoneMatrix[32]`). A skeleton past the cap lost bones silently in Release: no
+influence weight, no pose transform, no rigid binding, and nothing said so. In
+Debug there was no assert on that path either, despite what §8.7 used to say.
+
+The census (`render_probe --bone-stats`: the 36 projects that load, of 37
+tried - every `.anie` in `~/Downloads/ANIE` except `gif COPY2 proj.anie`,
+plus `nene.anie`) found exactly one key above the old cap:
+
+| project / key | bones |
+|---|---|
+| `skel_practice_12.anie` / "wings 1" | **33** |
+| `tart.anie` / "hair" | 30 |
+| `EmiliHappyIdle.anie` | 25 |
+| every other key in the dataset | <= 16 |
+
+64 was chosen from the uniform budget, not from the census: the dual-quaternion
+path is 2 vec4 per bone, so 64 bones is 128 vec4 = **512 of the guaranteed 1024
+vertex-uniform components**, leaving room for `uInnerMatrix`, `uWorldMatrix` and
+the rest. 128 bones would spend all 1024 on the palette. The LBS variation stays
+at 32 matrices because 64 mat4 is the whole budget by itself; `callGL` pins the
+dual-quaternion path, so that variation is not compiled.
+
+The cap is now one constant. `BoneKey::Cache` passes
+`PosePalette::kMaxCount` to the influence map, and `MeshTransformerResource`
+sets the shader's `MAX_BONES` variation from it
+(`uniform vec4 uBoneDualQuat[MAX_BONES * 2]`), so the CPU palette and the
+uniform array cannot drift. No format bump: every bone was already authored and
+saved; the cap was a runtime limit.
+
+Measured on `skel_practice_12.anie`, the 33-bone key (28,131 vertices, dense
+eight-slot map). `--dump-influence`: exactly **1 of the 5 map lines changed**
+(node 12 "wings 1"); the other four and the `INFLUENCE_STORAGE` totals are
+byte-identical. Rendered at 640x640, frames 0-3: frame 0 is identical; frames
+1-3 differ by max channel delta **6 / 24 / 52** on **346 / 807 / 1097** pixels,
+all inside the wing region (bbox 527,420-626,577). That is the intended change:
+bone 33 now has its weights. It is also the GL proof for the dense eight-slot
+path that §8.6 said no dataset project had.
+
+A skeleton above 64 is still a runtime limit, so it now says so instead of
+truncating in silence: `ProjectLoader::warnings()` carries one line per over-cap
+key, `System::openProject` returns them on success, and `MainWindow` shows them
+through the same warning popup the PSD importer's degraded layers use.
+Verified with a temporary 32-bone cap control on the same project:
+`render_probe` printed `The skeleton on "wings 1" (frame 0) has 33 bones; only
+the first 32 can deform a mesh.` and `--bone-stats` reported
+`over_cap_keys=1`.
+
+`tests/bone_cap` drives the production holders on a synthetic chain: 33 bones
+keep index 32 in both the influence map (`BoneKey::Cache` +
+`makeBoneList`/`writeWeights`) and the palette (`matrices()[32]` /
+`dualQuaternions()[32]`), the 65-bone chain stops at 64, and a 32-bone control
+reproduces the old defect (the 33rd bone becomes the default index 0, weight 1).
+`render_probe --bone-stats` is the permanent rig-size instrument.
 
 ## 5. Work plan
 
@@ -467,6 +544,32 @@ Acceptance, measured: logical hashes identical on all 160 maps of the three
 projects; PNGs bit-identical on 10 frames; resident bytes 4.60x / 3.29x / 5.73x;
 build cost unchanged; `tests/bone_influence_storage` passes all 1..8 cases.
 
+### Phase 6 — The skeleton bone cap (D8) — done
+
+- `src/core/PosePalette.h`: `kMaxCount` 32 -> **64**, with the uniform-budget
+  arithmetic beside it.
+- `src/core/BoneKey.cpp`: `BoneKey::Cache` uses `PosePalette::kMaxCount`
+  instead of its own literal.
+- `assets/shaders/MeshTransformVert.glsl`: `MAX_BONES` variation and
+  `uniform vec4 uBoneDualQuat[MAX_BONES * 2]`; the unused LBS variation keeps
+  its 32 matrices with the reason stated.
+- `src/core/MeshTransformerResource.cpp`: sets `MAX_BONES` from
+  `PosePalette::kMaxCount`, so the shader and the CPU palette share one number.
+- `src/ctrl/ProjectLoader.{h,cpp}` / `src/ctrl/System.cpp` /
+  `src/gui/MainWindow.cpp`: `warnings()` on the loader, returned on a successful
+  open, shown once through the existing warning popup (and the app log) on every
+  open path. A skeleton over the cap names the node, its frame and the count.
+- `tools/render_probe`: `--bone-stats` (the census instrument) and loader
+  warnings printed after a successful load.
+- `tests/bone_cap.cpp`: the 33/65/32-bone gate described in D8; registered in
+  `tests/CMakeLists.txt`, so the suite picks it up.
+
+Acceptance, measured: the census (36 projects) found one over-cap key; its map
+hash changed alone; its frames move only in the wing region (max 52 on 1097
+pixels); the 65-bone chain stops at 64; the 32-bone control reproduces the old
+defect; `tests/bone_cap` is green; the loader's warning was exercised with a
+temporary 32-cap build. See §7.
+
 ## 6. Verification commands
 
 ```bash
@@ -476,6 +579,7 @@ ninja -C build 'src/gui/update_translations:Debug'   # only if any tr() text cha
 
 # focused gates while iterating
 ./build/tests/Debug/bonekey_regression
+./build/tests/Debug/bone_cap           # the skeleton cap; no project, no GL
 ./build/tests/Debug/bone_polygon_index   # exact containment; no project, no GL
 QT_QPA_PLATFORM=offscreen ./build/tests/Debug/bonekey_regression   # if it constructs widgets
 xvfb-run -a ./build/tests/Debug/<target>                           # any target that builds GL objects
@@ -485,6 +589,9 @@ QT_QPA_PLATFORM=offscreen ./build/tests/Debug/render_probe --project <file.anie>
     --dump-influence /tmp/influence.txt
 QT_QPA_PLATFORM=offscreen ./build/tests/Debug/render_probe --project <file.anie> \
     --bench-influence 6
+
+# the rig-size census: one line per bone key, then BONE_STATS (cap and over-cap count)
+QT_QPA_PLATFORM=offscreen ./build/tests/Debug/render_probe --project <file.anie> --bone-stats
 
 # the whole suite at the end of a coherent change
 scripts/run_suites.sh Debug
@@ -642,17 +749,62 @@ work buffer and writes fewer bytes; the cost is still the polygon containment.
 attributes at every slot count 1..8 and pins the layout, defaults, normalisation,
 the implicit one-slot weight and the dense group order.
 
-Residual, stated rather than excused: no dataset project has a map at the
-eight-slot cap. The dense path is the pre-D7 code, unit-gated at eight slots, but
-not pixel-gated through GL. If such a project appears, extend the pixel gate
-before changing that path.
+Residual, stated rather than excused: Phase 5's three projects have no map at
+the eight-slot cap. The dense path is the pre-D7 code, unit-gated at eight slots,
+but it was not pixel-gated through GL by that phase's frames. Phase 6 found a
+broader-dataset project at the cap (`skel_practice_12.anie`) and its before/after
+frames exercise the dense path; see below.
 
-`scripts/run_suites.sh Debug`: **76 pass, 1 fail**. The one failure is
+`scripts/run_suites.sh Debug`: **77 pass, 1 fail** (76 before `bone_cap` was
+registered). The one failure is
 `object_tree_panel` (6 checks around row selection/rename). It reproduces on a
 clean worktree built at HEAD with none of this change - the first failures are
 the row's accessible press action and its mouse press, before any influence
 code - so it is pre-existing and left for a separate fix. Every other target,
 including the GL/Canvas gates, passes.
+
+### Phase 6 — the bone cap
+
+Census: `render_probe --bone-stats` on the **36** projects that load (37
+tried; `gif COPY2 proj.anie` does not load through the probe). Per-key
+maximum:
+
+| project / key | bones |
+|---|---|
+| `skel_practice_12.anie` / "wings 1" | **33** |
+| `tart.anie` / "hair" | 30 |
+| `EmiliHappyIdle.anie` | 25 |
+| every other key | <= 16 |
+
+The 33-bone key is node 12, 28,131 vertices, and its influence map is **dense**
+(`slots8=1`): the eight-slot path, from a real file. With the cap at 64:
+
+| measurement | cap 32 -> 64 |
+|---|---|
+| `--dump-influence` map lines | **1 of 5 changed** (node 12 only; the other 4 and `INFLUENCE_STORAGE` bytes identical) |
+| frame 0, 640x640 | identical (max 0) |
+| frames 1 / 2 / 3 | max **6 / 24 / 52**, changed px **346 / 807 / 1097**, bbox 527,420-626,577 |
+| bones built for the key | 32 (33rd dropped) -> **33** |
+
+The changed region is the wing the 33rd bone encloses; frame 0 is the rest pose.
+This is the intended fix, not a tolerance: the old code did not put the bone in
+the map at all (the 32-cap control in `tests/bone_cap` reproduces the default
+index-0 result).
+
+Uniform: 64 dual quaternions = 128 vec4 = 512 components of the guaranteed 1024.
+The shader's `MAX_BONES` variation is set from `PosePalette::kMaxCount`, so a
+future raise changes both sides together; the shader's literal is only the
+default. The LBS variation is not selected and stays at 32 matrices.
+
+The loader warning was verified with a temporary 32-bone cap build (the control,
+not a shipped state): opening `skel_practice_12.anie` printed
+`warning: The skeleton on "wings 1" (frame 0) has 33 bones; only the first 32
+can deform a mesh.` and `--bone-stats` reported `over_cap_keys=1`. With 64 it
+reports `over_cap_keys=0` for the whole dataset.
+
+`tests/bone_cap` (target registered in `tests/CMakeLists.txt`): 14 checks, all
+green - 33-bone influence retention, palette index/matrix/DQ at 32, the 32-bone
+control, and the 65-bone cap at 64.
 
 ## 8. Risks and open questions
 
@@ -684,22 +836,21 @@ including the GL/Canvas gates, passes.
    the 2-7 slot form is 5 B/slot; the eight-slot cap still costs 40 B/vertex.
    Do not re-pack the weights with unorm16 to chase the last case - it already
    failed the pixel gate (item 5) and the cap is not what the projects spend.
-   The residual is that no dataset project exercises the dense eight-slot path
-   through GL; its layout is unit-gated and the code is unchanged from Phase 2.
-   If a real eight-slot project appears, add it to the pixel gate first.
-7. **32-bone cap.** `makeBoneList()` stops at `mMaxBoneCount`, and the palette
-   truncates at 32 with a debug assert, so a > 32-bone layer is a debug abort and
-   a silently partial skeleton in release. Out of scope here; if it is wanted,
-   it is a separate change: raise `PosePalette::kMaxCount` to 64 and add a
-   user-visible warning instead of the assert. `BoneKey::Cache` also hardcodes
-   `setMaxBoneCount(32)`, so raise it in the same change or the influence maps
-   still stop at 32. Measure before choosing. Budget note (arithmetic, not
-   measured): 64 dual quaternions is 128 `vec4` = 512 components, leaving room
-   under the guaranteed 1024 vertex uniform components; **64 mat4 is 1024
-   components by itself**, so the LBS variation would need a uniform buffer or
-   a lower cap. `MeshTransformer::callGL` currently selects the
-   dual-quaternion path (`useDualQuaternion = true`), so the DQ path is the one
-   to raise first.
+   The dense eight-slot path was unit-gated and not pixel-gated by Phase 5;
+   Phase 6 found a broader-dataset project at the cap
+   (`skel_practice_12.anie`) and exercises it through GL (D8, §7).
+7. **The 32-bone cap is resolved: it is 64 (D8, Phase 6).** The census found
+   one key above 32 (33 bones) in 36 dataset projects; with the old cap it lost
+   its last bone silently in Release (there was no debug assert on that path
+   either). `PosePalette::kMaxCount`, `BoneKey::Cache` and the shader's
+   `MAX_BONES` now come from one constant; `tests/bone_cap` pins 33, 65 and the
+   old 32-cap control; a project above 64 gets a load warning. The budget
+   arithmetic held: 64 dual quaternions is 128 `vec4` = 512 of the guaranteed
+   1024 vertex uniform components. The LBS skinning variation is still declared
+   at 32 matrices because 64 mat4 is 1024 components by itself; `callGL` pins
+   the dual-quaternion path, so it is not compiled. Raising the cap further
+   would need a uniform buffer (or a lower LBS cap) and a new uniform-budget
+   measurement - do not just change the constant.
 8. **No release yet.** That is why §D1 may delete the writer path outright and
    keep a discard-only reader. It is not why the version could stay at 0.20: the
    reader must distinguish two layouts, so the minor bumps to 0.21.
@@ -752,4 +903,16 @@ including the GL/Canvas gates, passes.
 - [x] `tests/bone_influence_storage` drives the writer at slots 1-8
 - [x] `render_probe --dump-influence` keeps the logical eight-slot oracle;
       `INFLUENCE_STORAGE` reports resident vs logical bytes and the slot histogram
-- [x] Suite: 76 pass / 1 fail, the pre-existing `object_tree_panel` failure
+- [x] Phase 6 census: all 36 dataset projects measured with `--bone-stats`; one
+      33-bone key (`skel_practice_12`), next 30 and 25, every other <= 16
+- [x] Phase 6 landed: one `PosePalette::kMaxCount = 64` used by `BoneKey::Cache`
+      and the shader's `MAX_BONES` variation; no format bump
+- [x] `tests/bone_cap` added and registered: 33-bone retention in both the
+      influence map and the palette, 65-bone cap, 32-bone control
+- [x] Real-project proof: exactly 1 of 5 map hashes changed; frames 1-3 move by
+      max 6/24/52 on 346/807/1097 px in the wing region (the dense 8-slot path)
+- [x] A >64 skeleton now warns through `ProjectLoader::warnings()` on load; the
+      path was exercised with a temporary 32-cap build (control)
+- [x] `render_probe --bone-stats` is the permanent rig-size instrument
+- [x] Suite: 77 pass / 1 fail (including `bone_cap`), the pre-existing
+      `object_tree_panel` failure

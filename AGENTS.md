@@ -263,6 +263,18 @@ hand it over. Its one question is `Sampling`:
   was built and rejected: it exceeded the 1-LSB pixel gate on 2.anie (max 12 on 61
   pixels of one frame). Re-measure before re-packing; see
   `docs/design/skeletal/influence-cache-plan.md` (D3, D7).
+- **The skeleton bone cap is 64, one constant**: `core::PosePalette::kMaxCount` sizes the
+  pose/binding palette, `BoneKey::Cache` gives the influence build the same number, and
+  `MeshTransformerResource` sets the shader's `MAX_BONES` variation from it (the dual
+  quaternion array is `MAX_BONES * 2` vec4 = 512 of the guaranteed 1024 vertex uniform
+  components at 64). The old 32 silently dropped the 33rd bone of a real dataset rig
+  (`skel_practice_12.anie`, "wings 1"): with the raise exactly one of its five map hashes
+  changes and frames 1-3 move only in the wing (max 6/24/52), while frame 0 is identical.
+  `tests/bone_cap` pins 33-bone retention, the 65-bone cutoff and the old 32-bone control.
+  The LBS skinning variation is NOT raised (64 mat4 is the whole 1024-component budget by
+  itself) and `callGL` never selects it. A project above 64 now gets a load warning through
+  `ProjectLoader::warnings()`; `render_probe --bone-stats` is the rig-size instrument.
+  Do not change the constant without the uniform-budget measurement; see D8.
 - **The layer sampler is explained, with its figure and its numbers, in
   `docs/design/renderer/layer-sampling.md`**: the two-tap, one-level reconstruction (the level from the
   footprint's minor axis, both taps splitting its major axis, eight fetches, no level blend) against the

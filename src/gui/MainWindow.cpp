@@ -1085,21 +1085,10 @@ void MainWindow::onNewProjectTriggered() {
 
         mMainDisplay->resetCamera();
 
-        // A successful import can still have degraded layers (see
-        // ImageFileLoader::warnings): say so now, once, while the user is looking
-        // at the file they just opened. The log keeps each line for later; the
-        // popup is what stops the silence.
-        if (!result.message.isEmpty()) {
-            for (const QString& note : result.message) {
-                mViaPoint.pushLog(note, ctrl::UILogType_Warn);
-            }
-            showInfoPopup(
-                ctrl::System::LoadResult::warningTitle(),
-                ctrl::System::LoadResult::warningSummary(),
-                "Warn",
-                result.message.join("\n")
-            );
-        }
+        // A successful load can still have degraded layers (see
+        // ImageFileLoader::warnings) or a skeleton past the deformable cap:
+        // say so now, once, while the user is looking at the file they just opened.
+        announceLoadWarnings(result);
 
         // The project is live now, so its assets are the ones to monitor. The
         // resource dialog was just handed the new project by resetProjectRefs,
@@ -1141,6 +1130,22 @@ void MainWindow::showInfoPopup(
     box.exec();
 }
 
+void MainWindow::announceLoadWarnings(const ctrl::System::LoadResult& aResult) {
+    if (!aResult.project || aResult.message.isEmpty()) {
+        return;
+    }
+    // The log keeps each line for later; the popup is what stops the silence.
+    for (const QString& note : aResult.message) {
+        mViaPoint.pushLog(note, ctrl::UILogType_Warn);
+    }
+    showInfoPopup(
+        ctrl::System::LoadResult::warningTitle(),
+        ctrl::System::LoadResult::warningSummary(),
+        "Warn",
+        aResult.message.join("\n")
+    );
+}
+
 void MainWindow::onOpenProjectTriggered() {
     // stop animation and main display rendering
     EventSuspender suspender(*mMainDisplay, *mTarget);
@@ -1167,6 +1172,7 @@ void MainWindow::onOpenProjectTriggered() {
         mDriverHolder->driver()->updateFrame();
         mDriverHolder->driver()->updateProjectAttribute();
 
+        announceLoadWarnings(result);
     } else {
         QMessageBox::warning(nullptr, tr("Loading Error"), result.messages());
 
@@ -1196,6 +1202,8 @@ void MainWindow::onOpenRecentTriggered(QString aFileName) {
         resetProjectRefs(result.project);
         mProjectTabBar->pushProject(*result.project);
         mMainDisplay->resetCamera();
+
+        announceLoadWarnings(result);
     } else {
         QMessageBox::warning(nullptr, tr("Loading Error"), result.messages());
 
@@ -1262,6 +1270,8 @@ void MainWindow::openRecoveryCopy(const QString& aFilePath) {
         mMainDisplay->resetCamera();
         mDriverHolder->driver()->updateFrame();
         mDriverHolder->driver()->updateProjectAttribute();
+
+        announceLoadWarnings(result);
 
         // Recovered: the copy has served its purpose.
         mSystem.removeRecoveryCopy(aFilePath);

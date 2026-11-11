@@ -14,7 +14,13 @@ namespace core {
 
 class PosePalette {
 public:
-    enum { kMaxCount = 32 };
+    // How many bones one skeleton (one BoneKey/PoseKey pair) can deform. This is
+    // also the skinning shader's bone cap (MeshTransformVert.glsl sizes its
+    // dual-quaternion array from this constant). 64 bones is 128 vec4 = 512 of
+    // the guaranteed 1024 vertex uniform components; 128 bones would spend the
+    // whole budget on the palette alone. The influence map's uint8 index and
+    // the 8-slot-per-vertex cap are separate limits.
+    enum { kMaxCount = 64 };
 
     struct KeyPair {
         const BoneKey::Data* origin;

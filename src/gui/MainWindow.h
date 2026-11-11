@@ -102,6 +102,10 @@ private:
     virtual void closeEvent(QCloseEvent* aEvent);
 
     void resetProjectRefs(core::Project* aProject);
+    // A successful load can still carry limitations (the importer's degraded
+    // layers, a skeleton past the deformable bone cap). Show them once, in the
+    // log and in a popup, on every entry point that opens a project.
+    void announceLoadWarnings(const ctrl::System::LoadResult& aResult);
     bool processProjectSaving(core::Project& aProject, bool aRename = false, bool aSilent = false, bool aStopPlayback = true);
     void updateAutosaveState();
     void offerRecoveryCopies();
