@@ -1,7 +1,9 @@
 #include <cstddef>
+#include <cfloat>
 #include <limits>
 #include "util/TreeUtil.h"
 #include "util/MathUtil.h"
+#include "util/CollDetect.h"
 #include "core/BoneKey.h"
 #include "core/PosePalette.h"
 #include "core/Project.h"
@@ -60,6 +62,42 @@ Bone2* BoneKey::Data::findBinderBone(const ObjectNode& aNode) {
         }
     }
     return nullptr;
+}
+
+int BoneKey::Data::boneIndex(const Bone2& aBone) const {
+    // The influence map's index: pre-order over the top bones, exactly the
+    // order makeBoneList() pushes. A bone outside the tree (or past the uint8
+    // ceiling) never matches and reads as -1; the caller must clamp to the
+    // map's own boneCount().
+    int index = 0;
+    for (const Bone2* topBone : mTopBones) {
+        for (Bone2::ConstIterator itr(topBone); itr.hasNext();) {
+            if (itr.next() == &aBone)
+                return index;
+            ++index;
+        }
+    }
+    return -1;
+}
+
+Bone2* BoneKey::Data::nearestBone(const QVector2D& aPos) {
+    Bone2* best = nullptr;
+    float bestDistance = FLT_MAX;
+    for (Bone2* topBone : mTopBones) {
+        for (Bone2::Iterator itr(topBone); itr.hasNext();) {
+            Bone2* bone = itr.next();
+            const Bone2* parent = bone->parent();
+            if (!parent)
+                continue;
+            const util::Segment2D segment(parent->worldPos(), bone->worldPos() - parent->worldPos());
+            const float distance = util::CollDetect::getMinDistanceSquared(segment, aPos);
+            if (distance < bestDistance) {
+                bestDistance = distance;
+                best = bone;
+            }
+        }
+    }
+    return best;
 }
 
 //-------------------------------------------------------------------------------------------------

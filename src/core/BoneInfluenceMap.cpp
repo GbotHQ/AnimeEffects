@@ -518,6 +518,45 @@ const BoneInfluenceMap::WeightsType* BoneInfluenceMap::Accessor::denseWeights(in
     return mOwner->mWeights[aGroup].data();
 }
 
+float BoneInfluenceMap::Accessor::weight(int aBoneIndex, int aVertex) const {
+    XC_PTR_ASSERT(mOwner);
+    if (aBoneIndex < 0 || aBoneIndex > 0xFF)
+        return 0.0f;
+    if (aVertex < 0 || aVertex >= mOwner->mVertexCount || mOwner->mSlotCount <= 0)
+        return 0.0f;
+
+    if (dense()) {
+        // Dense: two groups of four, each vertex's slots contiguous at
+        // vertex*4 inside its group. Unused slots are (index 0, weight 0), so a
+        // request for bone 0 only answers 0 when no real slot preceded it.
+        for (int group = 0; group < 2; ++group) {
+            const IndicesType* indices = mOwner->mIndices[group].data();
+            const WeightsType* weights = mOwner->mWeights[group].data();
+            if (!indices || !weights)
+                continue;
+            const int base = aVertex * kBonePerVtxMaxEach;
+            for (int k = 0; k < kBonePerVtxMaxEach; ++k) {
+                if (indices[base + k] == aBoneIndex)
+                    return weights[base + k];
+            }
+        }
+        return 0.0f;
+    }
+
+    // Sparse: slot-major, one index (and, from two slots, one weight) per
+    // vertex. An unused slot is (index 0, weight 0), so the same first-match
+    // rule as the dense form gives bone 0 its real weight when it has one.
+    for (int slot = 0; slot < mOwner->mSlotCount; ++slot) {
+        const IndicesType* indices = mOwner->mSparseIndices.data() + qsizetype(slot) * mOwner->mVertexCount;
+        if (indices[aVertex] != aBoneIndex)
+            continue;
+        if (mOwner->mSlotCount < 2 || !mOwner->mSparseWeights)
+            return 1.0f;
+        return mOwner->mSparseWeights[qsizetype(slot) * mOwner->mVertexCount + aVertex];
+    }
+    return 0.0f;
+}
+
 qint64 BoneInfluenceMap::Accessor::storedBytes() const {
     XC_PTR_ASSERT(mOwner);
     return mOwner->storedBytes();

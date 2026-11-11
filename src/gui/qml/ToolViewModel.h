@@ -174,6 +174,11 @@ class ToolViewModel: public QObject {
     Q_PROPERTY(bool opacityVisible READ opacityVisible NOTIFY stateChanged)
     Q_PROPERTY(bool blurVisible READ blurVisible NOTIFY stateChanged)
     Q_PROPERTY(bool weightVisible READ weightVisible NOTIFY stateChanged)
+    // The bone influence modes can paint the selected bone's weight field over the
+    // layers it skips; the toggle is offered only where that is meaningful.
+    Q_PROPERTY(bool weightHeatmapVisible READ weightHeatmapVisible NOTIFY stateChanged)
+    Q_PROPERTY(bool weightHeatmap READ weightHeatmap WRITE setWeightHeatmap NOTIFY changed)
+    Q_PROPERTY(bool weightPaintHintVisible READ weightPaintHintVisible NOTIFY stateChanged)
     Q_PROPERTY(bool srtCreateVisible READ srtCreateVisible NOTIFY stateChanged)
     Q_PROPERTY(bool srtCentroidVisible READ srtCentroidVisible NOTIFY stateChanged)
     Q_PROPERTY(bool maskPickersVisible READ maskPickersVisible NOTIFY stateChanged)
@@ -265,6 +270,10 @@ public:
     bool opacityVisible() const;
     bool blurVisible() const;
     bool weightVisible() const;
+    bool weightHeatmapVisible() const;
+    bool weightHeatmap() const;
+    void setWeightHeatmap(bool aValue);
+    bool weightPaintHintVisible() const;
     bool srtCreateVisible() const;
     bool srtCentroidVisible() const;
     bool maskPickersVisible() const;

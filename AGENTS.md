@@ -282,6 +282,23 @@ hand it over. Its one question is `Sampling`:
   load warning through `ProjectLoader::warnings()`. See D8 in the influence plan. (A pixel
   gate under `AE_FRAME_STATS` must not compare frame 0: the density meter leaves it blank
   for some projects.)
+- **The influence heatmap is a VIEW of the built map, not a second cache.** The Bone
+  editor's paint/erase modes draw the selected bone's normalised weight over every layer
+  the key skins, at the map's own vertex positions (the cache's `innerMatrix` translated
+  by `getOriginOffset`, then the owner's target matrix and the camera - the exact product
+  `BoneKey::updateCaches` used). `BoneInfluenceMap::Accessor::weight(bone, vertex)` reads
+  both storage forms (the one-slot implicit 1 included); `BoneKey::Data::boneIndex` is the
+  same pre-order index `makeBoneList` pushes, and `nearestBone` picks the target when a
+  stroke starts on the mesh. **The brush is bone-scoped**: right-click a joint/connector
+  to select it (left is always the stroke); with no selection the nearest envelope is
+  chosen at the press. The envelope arithmetic, brush and one-command undo are unchanged;
+  only the population changed from every envelope under the stroke to the chosen bone.
+  `QPainter::drawPoints` now batches `GL_POINTS` (pen width = point size, split at the
+  overlay drawer's 8192-vertex slot) instead of one ellipse per point;
+  `tests/overlay_engine_primitives` pins a 10px point at 100 pixels and a 9000-point cloud
+  at 14,400, and `tests/bone_cap`/`bone_influence_storage` pin the lookup and selection.
+  See `docs/design/skeletal/influence-display.md`. The mode's convenience is not a format
+  change: authored per-vertex weights remain the next workstream.
 - **The layer sampler is explained, with its figure and its numbers, in
   `docs/design/renderer/layer-sampling.md`**: the two-tap, one-level reconstruction (the level from the
   footprint's minor axis, both taps splitting its major axis, eight fetches, no level blend) against the

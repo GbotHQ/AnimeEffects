@@ -31,6 +31,14 @@ public:
         void deleteAll();
         bool isBinding(const ObjectNode& aNode) const;
         Bone2* findBinderBone(const ObjectNode& aNode);
+        /// The bone's index in the influence map's pre-order bone list, or -1
+        /// when it is not in this skeleton. Clamp against the built map's
+        /// boneCount() before using it as an index attribute.
+        int boneIndex(const Bone2& aBone) const;
+        /// The bone whose envelope is nearest to a target-space point, skipping
+        /// parentless roots (they carry no envelope). This is how a paint stroke
+        /// that starts on the mesh chooses the bone it edits.
+        Bone2* nearestBone(const QVector2D& aPos);
     };
 
     class Cache {

@@ -201,6 +201,10 @@ struct Probe {
     int cell;         // kWholeImage, or a 100x150 cell index
     bool expectPainted;
     std::function<void(QPainter&, const QPoint&)> draw; // (painter, cell origin)
+    // A painted probe may also require at least this many pixels: a single
+    // 10px point must be a disc, not the 1px a GL_POINTS draw falls back to
+    // when glPointSize is not applied.
+    int minPixels = 0;
 };
 
 } // namespace
@@ -449,6 +453,47 @@ int main(int argc, char** argv) {
              p.setBrush(Qt::NoBrush);
              p.drawText(QPointF(o.x() + 24, o.y() + 90), labelText);
          }},
+
+        // 10: the influence heatmap's point cloud. QPainter::drawPoints goes to
+        //     the engine's batched GL_POINTS path, and the pen width is the
+        //     point size: one 10px point must paint far more than a 1px point
+        //     would, which is what minPixels pins.
+        {"points",
+         "one 10px point must paint a disc, not a 1px speck: the heatmap cannot carry its field without the"
+         " engine applying the pen width as glPointSize",
+         0,
+         true,
+         [](QPainter& p, const QPoint& o) {
+             p.setPen(QPen(kInk, 10.0));
+             p.setBrush(Qt::NoBrush);
+             const QPointF point(o.x() + 50, o.y() + 75);
+             p.drawPoints(&point, 1);
+         },
+         50},
+
+        // 11: the batch split. The overlay's drawer holds 8192 vertices per slot
+        //     and the heatmap routinely exceeds that, so drawPoints() must split
+        //     a cloud across slots instead of dropping what does not fit. The
+        //     cloud covers the cell; if only the first chunk were drawn the
+        //     second half of the cell would stay clear.
+        {"points_batch",
+         "a 9000-point cloud (past the drawer's 8192-vertex slot) must paint across the whole cell: a"
+         " dropped second chunk leaves the lower half clear",
+         2,
+         true,
+         [](QPainter& p, const QPoint& o) {
+             p.setPen(QPen(kInk, 2.0));
+             p.setBrush(Qt::NoBrush);
+             std::vector<QPointF> cloud;
+             cloud.reserve(9000);
+             for (int y = 0; y < 90; ++y) {
+                 for (int x = 0; x < 100; ++x) {
+                     cloud.emplace_back(o.x() + 1 + x, o.y() + 1 + y * 1.6);
+                 }
+             }
+             p.drawPoints(cloud.data(), int(cloud.size()));
+         },
+         8000},
     };
 
     for (const Probe& probe : probes) {
@@ -480,12 +525,15 @@ int main(int argc, char** argv) {
         std::printf("MEASURED %s pixels=%d\n", probe.name, pixels);
 
         char message[1024];
+        const int minPixels = probe.minPixels > 0 ? probe.minPixels : 1;
         std::snprintf(
             message,
             sizeof(message),
             "%s: expected %s but counted %d pixels%s - %s",
             probe.name,
-            probe.expectPainted ? "> 0" : "0",
+            probe.expectPainted ? (probe.minPixels > 0 ? "at least the pixel count"
+                                                       : "> 0")
+                                : "0",
             pixels,
             probe.expectPainted
                 ? " (a 0 here is either the engine dropping the draw or the readback geometry moving: the GL"
@@ -493,7 +541,7 @@ int main(int argc, char** argv) {
                 : " (a change here means this harness no longer pins what it claims)",
             probe.note
         );
-        CHECK_MSG(probe.expectPainted ? (pixels > 0) : (pixels == 0), message);
+        CHECK_MSG(probe.expectPainted ? (pixels >= minPixels) : (pixels == 0), message);
     }
 
     std::printf("OK: overlay engine primitive subset pinned (%d probes)\n", int(probes.size()));

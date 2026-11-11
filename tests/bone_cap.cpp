@@ -219,6 +219,38 @@ int main(int argc, char** argv) {
                 core::PosePalette::getBoneIndex(chain.key.data(), *keyBone32) == 32,
                 "the 33rd bone's palette index is 32"
             );
+            check(
+                chain.key.data().boneIndex(*keyBone32) == 32,
+                "the 33rd bone's influence-map index is 32"
+            );
+        }
+        check(
+            chain.key.data().boneIndex(*boneAtIndex(tops, 0)) == 0,
+            "the root bone's influence-map index is 0"
+        );
+        core::Bone2 outsider;
+        check(
+            chain.key.data().boneIndex(outsider) == -1,
+            "a bone outside the skeleton has no influence-map index"
+        );
+
+        // The bone a stroke starts on: the nearest envelope in target space.
+        // Bone i owns the segment (i-1,0)->(i,0) in this chain.
+        check(
+            chain.key.data().nearestBone(QVector2D(3.5f, 0.2f)) == boneAtIndex(tops, 4),
+            "the nearest bone is the one whose segment is closest"
+        );
+        check(
+            chain.key.data().nearestBone(QVector2D(-1.0f, 0.1f)) == boneAtIndex(tops, 1),
+            "a point before the root clamps to the first child"
+        );
+        {
+            core::BoneKey rootOnly;
+            rootOnly.data().topBones().push_back(new core::Bone2());
+            check(
+                rootOnly.data().nearestBone(QVector2D(0.0f, 0.0f)) == nullptr,
+                "a root-only skeleton has no influence bone to select"
+            );
         }
 
         core::PosePalette palette;

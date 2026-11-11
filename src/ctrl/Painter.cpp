@@ -4,13 +4,21 @@
 namespace ctrl {
 
 #if USE_GL_CORE_PROFILE
+namespace {
+// The drawer's slot is the batch size for every primitive it schedules. The
+// default 512 is right for strokes; a heatmap's point cloud is thousands of
+// vertices, and 8192 keeps a 100k-vertex field to a handful of GL_POINTS
+// draws. Eight slots of two vertex buffers is ~1 MB, allocated once.
+constexpr int kOverlayVtxPerSlot = 8192;
+} // namespace
+
 //-------------------------------------------------------------------------------------------------
 GLCorePaintEngine::GLCorePaintEngine():
     QPaintEngine(
         QPaintEngine::AlphaBlend | QPaintEngine::Antialiasing | QPaintEngine::ConstantOpacity |
         QPaintEngine::PrimitiveTransform
     ),
-    mDrawer(),
+    mDrawer(kOverlayVtxPerSlot),
     mFontDrawer(),
     mTextureCaches(),
     mTextCaches() {}
@@ -91,13 +99,17 @@ void GLCorePaintEngine::updateState(const QPaintEngineState& aState) {
 }
 
 void GLCorePaintEngine::drawPoints(const QPoint* aPoints, int aCount) {
+    QVector<QPointF> points;
+    points.reserve(aCount);
     for (int i = 0; i < aCount; ++i)
-        mDrawer.drawPoint(QPointF(aPoints[i]));
+        points.append(QPointF(aPoints[i]));
+    mDrawer.drawPoints(points.constData(), int(points.size()));
 }
 
 void GLCorePaintEngine::drawPoints(const QPointF* aPoints, int aCount) {
-    for (int i = 0; i < aCount; ++i)
-        mDrawer.drawPoint(aPoints[i]);
+    // One command per slot, not one tiny ellipse per point: a heatmap's point
+    // cloud is thousands of samples and the per-point path could not carry it.
+    mDrawer.drawPoints(aPoints, aCount);
 }
 
 void GLCorePaintEngine::drawLines(const QLine* aLines, int aCount) {

@@ -50,6 +50,13 @@ public:
         const IndicesType* denseIndices(int aGroup) const;
         const WeightsType* denseWeights(int aGroup) const;
 
+        /// The normalised weight of one bone at one vertex, 0 when the bone is
+        /// not among that vertex's slots. A one-slot map's weight is implicit
+        /// (every stored weight is exactly 1), so this is the only reader that
+        /// can answer for every layout without the caller knowing the slot
+        /// count - the influence heatmap and the storage gate both use it.
+        float weight(int aBoneIndex, int aVertex) const;
+
         /// The bytes the array storage occupies (not the work buffer).
         qint64 storedBytes() const;
 

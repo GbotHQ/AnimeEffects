@@ -361,6 +361,27 @@ bool ToolViewModel::weightVisible() const {
     return mTool == ctrl::ToolType_Pose && mPose.mode == ctrl::PoseEditMode_Draw;
 }
 
+bool ToolViewModel::weightHeatmapVisible() const {
+    if (mTool != ctrl::ToolType_Bone)
+        return false;
+    return mBone.mode == ctrl::BoneEditMode_Influence || mBone.mode == ctrl::BoneEditMode_PaintInfl
+        || mBone.mode == ctrl::BoneEditMode_EraseInfl;
+}
+
+bool ToolViewModel::weightPaintHintVisible() const {
+    return mTool == ctrl::ToolType_Bone
+        && (mBone.mode == ctrl::BoneEditMode_PaintInfl || mBone.mode == ctrl::BoneEditMode_EraseInfl);
+}
+
+bool ToolViewModel::weightHeatmap() const { return mBone.showWeightHeatmap; }
+
+void ToolViewModel::setWeightHeatmap(bool aValue) {
+    if (mBone.showWeightHeatmap == aValue)
+        return;
+    mBone.showWeightHeatmap = aValue;
+    emit changed();
+}
+
 bool ToolViewModel::srtCreateVisible() const {
     return mTool == ctrl::ToolType_SRT && mSRT.mode == 0;
 }

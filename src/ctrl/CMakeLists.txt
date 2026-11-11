@@ -67,6 +67,7 @@ add_library(${PROJECT_NAME}
     bone/bone_PushNewTopPoses.h
     bone/bone_Renderer.cpp bone/bone_Renderer.h
     bone/bone_Target.h
+    bone/bone_WeightHeatmap.cpp bone/bone_WeightHeatmap.h
     ffd/ffd_BrushMode.cpp ffd/ffd_BrushMode.h
     ffd/ffd_DragMode.cpp ffd/ffd_DragMode.h
     ffd/ffd_IMode.h

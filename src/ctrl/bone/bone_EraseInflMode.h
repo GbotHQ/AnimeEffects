@@ -6,6 +6,7 @@
 #include "core/Project.h"
 #include "core/ObjectNode.h"
 #include "core/BoneKey.h"
+#include "ctrl/bone/bone_Focuser.h"
 #include "ctrl/bone/bone_IMode.h"
 #include "ctrl/bone/bone_KeyOwner.h"
 #include "ctrl/bone/bone_Target.h"
@@ -14,6 +15,9 @@
 namespace ctrl {
 namespace bone {
 
+    // The erase half of the bone-scoped influence brush: one selected bone, the
+    // same brush and heatmap as PaintInflMode. See that mode's comment for why
+    // the stroke no longer touches every envelope under it.
     class EraseInflMode: public IMode {
     public:
         EraseInflMode(core::Project& aProject, const Target& aTarget, KeyOwner& aKey);
@@ -29,12 +33,17 @@ namespace bone {
             core::Bone2& aTarget, const std::array<QVector2D, 2>& aPrev, const std::array<QVector2D, 2>& aNext
         );
         void notifyAssign();
+        void selectBone(core::Bone2* aBone);
+        QVector2D targetPos(const core::AbstractCursor& aCursor) const;
 
         core::Project& mProject;
         core::ObjectNode& mTarget;
         KeyOwner& mKeyOwner;
         QMatrix4x4 mTargetMtx;
         QMatrix4x4 mTargetInvMtx;
+        Focuser mFocuser;
+        core::Bone2* mActiveBone;
+        core::Bone2* mHoverBone;
         FuzzyAssignInfluence* mCommandRef;
 
         util::Circle mBrush;

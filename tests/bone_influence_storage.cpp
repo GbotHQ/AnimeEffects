@@ -115,6 +115,10 @@ int main(int argc, char** argv) {
         const BoneInfluenceMap::IndicesType* indices = accessor.indices(0);
         check(indices && indices[0] == 0 && indices[1] == 0 && indices[2] == 0, "every default index is bone 0");
         check(accessor.weights(0) == nullptr, "a one-slot map stores no weights");
+        check(
+            near(accessor.weight(0, 0), 1.0f) && near(accessor.weight(1, 0), 0.0f),
+            "a one-slot lookup reads the implicit weight and rejects other bones"
+        );
         check(map.storedBytes() == 3, "a default map is 1 B/vertex");
     }
 
@@ -129,6 +133,11 @@ int main(int argc, char** argv) {
         const BoneInfluenceMap::IndicesType* indices = accessor.indices(0);
         check(indices && indices[0] == 2 && indices[1] == 5 && indices[2] == 7, "single influences keep their bone");
         check(accessor.weights(0) == nullptr, "a single influence's weight is implicit");
+        check(
+            near(accessor.weight(2, 0), 1.0f) && near(accessor.weight(5, 1), 1.0f)
+                && near(accessor.weight(7, 2), 1.0f) && near(accessor.weight(2, 1), 0.0f),
+            "a one-slot lookup follows each vertex's own bone"
+        );
         check(map.storedBytes() == 3, "one-influence storage is 1 B/vertex");
     }
 
@@ -156,6 +165,12 @@ int main(int argc, char** argv) {
                     && near(weight0[2] + weight1[2], 1.0f),
                 "every two-slot vertex partitions unity"
             );
+            check(
+                near(accessor.weight(1, 0), 0.25f) && near(accessor.weight(3, 0), 0.75f)
+                    && near(accessor.weight(3, 1), 0.0f) && near(accessor.weight(0, 1), 1.0f)
+                    && near(accessor.weight(0, 2), 1.0f),
+                "a sparse lookup returns the slot weight or zero"
+            );
         }
         check(map.storedBytes() == 30, "two-slot storage is 10 B/vertex");
     }
@@ -181,6 +196,11 @@ int main(int argc, char** argv) {
         }
         check(indicesOk, "five influences keep all five bone indices");
         check(weightsOk && near(sum, 1.0f), "five influences are normalised");
+        check(
+            near(accessor.weight(0, 0), 0.2f) && near(accessor.weight(4, 0), 0.2f)
+                && near(accessor.weight(5, 0), 0.0f),
+            "a five-slot lookup finds every used slot and no other"
+        );
         check(map.storedBytes() == 25, "five-slot storage is 25 B/vertex");
     }
 
@@ -208,6 +228,11 @@ int main(int argc, char** argv) {
             }
             check(indicesOk, "dense groups keep 0..3 then 4..7");
             check(weightsOk, "dense groups normalise eight equal weights to 1/8");
+            check(
+                near(accessor.weight(0, 0), 0.125f) && near(accessor.weight(7, 0), 0.125f)
+                    && near(accessor.weight(8, 0), 0.0f),
+                "a dense lookup reads both groups and rejects an unused bone"
+            );
         }
         check(map.storedBytes() == 40, "dense storage is 40 B/vertex");
     }

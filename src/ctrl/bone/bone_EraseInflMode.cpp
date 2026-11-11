@@ -3,6 +3,7 @@
 #include "ctrl/CmndName.h"
 #include "ctrl/bone/bone_EraseInflMode.h"
 #include "ctrl/bone/bone_Renderer.h"
+#include "ctrl/bone/bone_WeightHeatmap.h"
 #include "ctrl/bone/bone_Notifier.h"
 
 using namespace core;
@@ -16,6 +17,9 @@ namespace bone {
         mKeyOwner(aKey),
         mTargetMtx(aTarget.mtx),
         mTargetInvMtx(aTarget.invMtx),
+        mFocuser(),
+        mActiveBone(),
+        mHoverBone(),
         mCommandRef(),
         mBrush(),
         mParam(),
@@ -23,6 +27,9 @@ namespace bone {
         mCursorPos(),
         mIsBrushDrawing() {
         XC_PTR_ASSERT(mKeyOwner.key);
+        mFocuser.setTopBones(mKeyOwner.key->data().topBones());
+        mFocuser.setFocusConnector(true);
+        mFocuser.setTargetMatrix(mTargetMtx);
     }
 
     void EraseInflMode::updateParam(const BoneParam& aParam) {
@@ -33,12 +40,31 @@ namespace bone {
         mBrush.setRadius(aParam.brush.radius);
     }
 
-    bool EraseInflMode::updateCursor(const CameraInfo&, const AbstractCursor& aCursor) {
+    bool EraseInflMode::updateCursor(const CameraInfo& aCamera, const AbstractCursor& aCursor) {
         mCursorPos = aCursor.worldPos();
         mBrush.setCenter(mCursorPos);
         mBrush.setRadius(mParam.brush.radius);
 
+        Bone2* hovered = mFocuser.update(aCamera, aCursor.screenPos());
+        if (hovered) {
+            mHoverBone = hovered;
+        }
+
+        if (aCursor.emitsRightPressedEvent()) {
+            if (!mIsBrushDrawing && hovered) {
+                selectBone(hovered);
+            }
+            return true;
+        }
+        if (aCursor.emitsRightDraggedEvent() || aCursor.emitsRightReleasedEvent()) {
+            return true;
+        }
+
         if (aCursor.emitsLeftPressedEvent()) {
+            if (!mActiveBone) {
+                Bone2* chosen = hovered ? hovered : mKeyOwner.key->data().nearestBone(targetPos(aCursor));
+                selectBone(chosen);
+            }
             mIsBrushDrawing = true;
             mCommandRef = nullptr;
             mStroke.begin(mParam.brush, mCursorPos, aCursor.pressure(), [this](const BrushStamp& aStamp) {
@@ -56,51 +82,46 @@ namespace bone {
     }
 
     bool EraseInflMode::updatePaint(const BrushStamp& aStamp) {
-        bool modified = false;
+        Bone2* bone = mActiveBone;
+        if (!bone || !bone->parent())
+            return false;
 
         // getSink() reads the circle: keep it at the stamp so the geometry and the
         // falloff describe the same brush
         mBrush.setCenter(aStamp.center);
         mBrush.setRadius(aStamp.radius);
 
-        auto& topBones = mKeyOwner.key->data().topBones();
-        for (auto topBone : topBones) {
-            Bone2::Iterator itr(topBone);
-            while (itr.hasNext()) {
-                auto bone = itr.next();
+        const auto sinkRes = getSink(*bone, mBrush);
+        const float sink = sinkRes.first;
+        const float ratio = sinkRes.second;
+        if (sink <= 0.0f)
+            return false;
 
-                auto sinkRes = getSink(*bone, mBrush);
-                auto sink = sinkRes.first;
-                auto ratio = sinkRes.second;
-
-                if (sink <= 0.0f)
-                    continue;
-
-                std::array<QVector2D, 2> prevRange = {bone->range(0), bone->range(1)};
-                std::array<QVector2D, 2> nextRange = prevRange;
-                for (int i = 0; i < 2; ++i) {
-                    // the shared falloff: sink is how far the brush reaches past the
-                    // bone's own range, the falloff says how much of that it deposits
-                    const float weight = aStamp.amount * brushFalloff(sink, aStamp.radius, aStamp.hardness);
-                    auto sub = weight * sink * (i == 0 ? (1.0f - ratio) : ratio);
-                    nextRange[i].setX(std::max(nextRange[i].x() - sub, 0.0f));
-                    if (nextRange[i].y() > nextRange[i].x()) {
-                        nextRange[i].setY(nextRange[i].x());
-                    }
-                }
-                assignInfluence(*bone, prevRange, nextRange);
-                modified = true;
+        std::array<QVector2D, 2> prevRange = {bone->range(0), bone->range(1)};
+        std::array<QVector2D, 2> nextRange = prevRange;
+        for (int i = 0; i < 2; ++i) {
+            // the shared falloff: sink is how far the brush reaches past the
+            // bone's own range, the falloff says how much of that it deposits
+            const float weight = aStamp.amount * brushFalloff(sink, aStamp.radius, aStamp.hardness);
+            const auto sub = weight * sink * (i == 0 ? (1.0f - ratio) : ratio);
+            nextRange[i].setX(std::max(nextRange[i].x() - sub, 0.0f));
+            if (nextRange[i].y() > nextRange[i].x()) {
+                nextRange[i].setY(nextRange[i].x());
             }
         }
-
-        if (modified) {
-            notifyAssign();
-        }
-
-        return modified;
+        assignInfluence(*bone, prevRange, nextRange);
+        notifyAssign();
+        return true;
     }
 
     void EraseInflMode::renderQt(const RenderInfo& aInfo, QPainter& aPainter) {
+        if (mParam.showWeightHeatmap) {
+            Bone2* active = mActiveBone ? mActiveBone : mHoverBone;
+            if (active) {
+                drawWeightHeatmap(aPainter, aInfo, *mKeyOwner.key, *active, mTargetMtx);
+            }
+        }
+
         bone::Renderer renderer(aPainter, aInfo);
         renderer.setAntialiasing(true);
         renderer.setFocusConnector(true);
@@ -115,6 +136,17 @@ namespace bone {
         }
 
         renderer.renderBrush(mBrush, mIsBrushDrawing, mParam.brush.hardness);
+    }
+
+    void EraseInflMode::selectBone(Bone2* aBone) {
+        if (!aBone)
+            return;
+        mFocuser.select(*aBone);
+        mActiveBone = aBone;
+    }
+
+    QVector2D EraseInflMode::targetPos(const AbstractCursor& aCursor) const {
+        return (mTargetInvMtx.map(QVector3D(aCursor.worldPos()))).toVector2D();
     }
 
     std::pair<float, float> EraseInflMode::getSink(const core::Bone2& aBone, const util::Circle& aBrush) const {

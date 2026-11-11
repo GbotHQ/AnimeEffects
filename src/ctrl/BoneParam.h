@@ -19,6 +19,11 @@ public:
     // are the same brush with `erase` set, so switching between them keeps the size
     // and the hardness (they used to be four separate sliders).
     BrushParam brush;
+
+    // The per-bone weight heatmap over the influenced layers. On by default in the
+    // influence modes: the envelope polygons say WHERE a bone reaches, but only the
+    // weights say how strongly, and that is what the paint tools are shaping.
+    bool showWeightHeatmap = true;
 };
 
 } // namespace ctrl

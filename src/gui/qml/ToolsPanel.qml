@@ -150,6 +150,19 @@ Rectangle {
                     onChosen: (index) => toolModel.setMode(index)
                 }
 
+                // The bone-scoped brush needs to say how a bone becomes the target:
+                // left is always the stroke, so the target is chosen with the other
+                // button (or, for the first stroke, by the nearest bone).
+                Text {
+                    visible: toolModel.weightPaintHintVisible
+                    x: 12
+                    width: parent.width - 28
+                    text: qsTr("Right-click a bone to target it; the brush edits only that bone")
+                    color: theme.textMuted
+                    font: uiFont
+                    wrapMode: Text.WordWrap
+                }
+
                 // ---- SR transform: the key-creation toggles -----------------
                 // "Transform" mode offers one toggle per channel it may create, and the
                 // "Move Centroid" mode offers the centroid offset instead - which is why
@@ -239,6 +252,17 @@ Rectangle {
 
                 ToolBrushSection {
                     visible: toolModel.brushVisible
+                }
+
+                // The influence modes' second readout: the envelope polygons show
+                // WHERE a bone reaches, this shows how strongly (and only the
+                // influence modes have a bone to read).
+                ToolCheckRow {
+                    visible: toolModel.weightHeatmapVisible
+                    text: qsTr("Show weights")
+                    tip: qsTr("Colour the layers this bone deforms by its influence weight")
+                    value: toolModel.weightHeatmap
+                    onToggled: (checked) => toolModel.weightHeatmap = checked
                 }
 
             }
