@@ -71,7 +71,7 @@ private:
     } while (false)
 
 const core::MoveKey::Data& moveDefault(const core::TimeLine& line) {
-    return static_cast<const core::MoveKey*>(line.defaultKey(core::TimeKeyType_Move))->data();
+    return static_cast<const core::MoveKey*>(line.baseValue(core::TimeKeyType_Move))->data();
 }
 
 // The expansion state exactly as the delegate would read it, row by row. The
@@ -165,7 +165,7 @@ int run() {
     // Rotation is degrees in the model and radians in the document.
     inspector.rotate()->setAngle(45.0);
     CHECK(inspector.rotate()->angle() == 45.0);
-    const auto* rotate = static_cast<const core::RotateKey*>(line.defaultKey(core::TimeKeyType_Rotate));
+    const auto* rotate = static_cast<const core::RotateKey*>(line.baseValue(core::TimeKeyType_Rotate));
     CHECK(rotate && std::abs(rotate->data().rotate() - 0.7853982f) < 0.0001f);
 
     // Filters: add is static-first, the dot creates the explicit key, and the
@@ -217,7 +217,7 @@ int run() {
     CHECK(hsv->keyState() == QStringLiteral("static"));
     hsv->setHue(42);
     CHECK(line.map(core::TimeKeyType_HSV).isEmpty());
-    CHECK(static_cast<const core::HSVKey*>(line.defaultKey(core::TimeKeyType_HSV))->data().hsv().at(0) == 42);
+    CHECK(static_cast<const core::HSVKey*>(line.baseValue(core::TimeKeyType_HSV))->data().hsv().at(0) == 42);
     hsv->toggleKey();
     CHECK(hsv->keyState() == QStringLiteral("keyed"));
 

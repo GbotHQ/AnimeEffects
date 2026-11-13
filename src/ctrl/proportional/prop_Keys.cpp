@@ -227,9 +227,9 @@ void ValueReflow::capture(core::TimeLine& aLine, core::TimeKeyType aType,
     const int count = weightComponentCount(aType);
 
     for (core::TimeKey* key : map) {
-        // The default key is not an authored position, and an absolute key does
+        // The base value is not an authored position, and an absolute key does
         // not follow anything: neither belongs in a reflow.
-        if (!key || key->isDefaultKey() || !key->isProportional())
+        if (!key || key->isBaseValue() || !key->isProportional())
             continue;
 
         bool alreadyCaptured = false;

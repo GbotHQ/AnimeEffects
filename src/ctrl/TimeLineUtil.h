@@ -338,7 +338,7 @@ namespace TimeLineUtil {
     //-------------------------------------------------------------------------------------------------
     // Append one key's creation commands to a macro the CALLER owns - no macro, no
     // notifier. pushNewKey() is this plus one macro and one PushKey event, and the tree's
-    // "Add keys at frame 0" uses it directly so a layer's whole set of channels is a
+    // "Add keys at playhead" uses it directly so a layer's whole set of channels is a
     // single undo step and a single event.
     void appendNewKey(
         core::Project& aProject,

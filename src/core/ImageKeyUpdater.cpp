@@ -162,8 +162,8 @@ public:
         mTimeLine(*aNode.timeLine()), mEvent(aEvent) {}
 
     virtual void exec() {
-        // push default key
-        tryPushTarget((ImageKey*)mTimeLine.defaultKey(TimeKeyType_Image));
+        // push base value
+        tryPushTarget((ImageKey*)mTimeLine.baseValue(TimeKeyType_Image));
 
         auto& map = mTimeLine.map(TimeKeyType_Image);
         for (auto itr = map.begin(); itr != map.end(); ++itr) {
@@ -249,8 +249,8 @@ public:
                 continue;
             TimeLine& timeLine = *(node->timeLine());
 
-            // push default key
-            auto dfltKey = (ImageKey*)timeLine.defaultKey(TimeKeyType_Image);
+            // push base value
+            auto dfltKey = (ImageKey*)timeLine.baseValue(TimeKeyType_Image);
             if (dfltKey)
                 mTargets.push_back(dfltKey);
 

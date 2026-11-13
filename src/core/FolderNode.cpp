@@ -76,17 +76,17 @@ FolderNode::FolderNode(const QString& aName):
 FolderNode::~FolderNode() { qDeleteAll(children()); }
 
 void FolderNode::setDefaultPosture(const QVector2D& aPos) {
-    getOrCreateDefaultKey<MoveKey, TimeKeyType_Move>(mTimeLine)->data().setPos(aPos);
-    getOrCreateDefaultKey<RotateKey, TimeKeyType_Rotate>(mTimeLine);
-    getOrCreateDefaultKey<ScaleKey, TimeKeyType_Scale>(mTimeLine);
+    getOrCreateBaseValue<MoveKey, TimeKeyType_Move>(mTimeLine)->data().setPos(aPos);
+    getOrCreateBaseValue<RotateKey, TimeKeyType_Rotate>(mTimeLine);
+    getOrCreateBaseValue<ScaleKey, TimeKeyType_Scale>(mTimeLine);
 }
 
 void FolderNode::setDefaultDepth(float aValue) {
-    getOrCreateDefaultKey<DepthKey, TimeKeyType_Depth>(mTimeLine)->setDepth(aValue);
+    getOrCreateBaseValue<DepthKey, TimeKeyType_Depth>(mTimeLine)->setDepth(aValue);
 }
 
 void FolderNode::setDefaultOpacity(float aValue) {
-    getOrCreateDefaultKey<OpaKey, TimeKeyType_Opa>(mTimeLine)->setOpacity(aValue);
+    getOrCreateBaseValue<OpaKey, TimeKeyType_Opa>(mTimeLine)->setOpacity(aValue);
 }
 
 void FolderNode::grabHeightMap(HeightMap* aNode) { mHeightMap.reset(aNode); }
@@ -99,7 +99,7 @@ bool FolderNode::isCompositeFolder(const TimeInfo&, const TimeCacheAccessor& aAc
     // value is above its epsilon puts the folder on the composite path. The frame
     // is no longer part of the test: the value that plays is already the blended
     // one, so the old "a key exists at or before this frame" proxy only hid static
-    // filters (values on the lane's default key) - see core/FilterActivity.h.
+    // filters (values on the lane's base value) - see core/FilterActivity.h.
     if (mBlendMode != img::BlendMode_Normal)
         return true;
     // A folder with a MATTE composites too, and for the same reason the filter case
@@ -461,7 +461,7 @@ void FolderNode::renderClipper(const RenderInfo& aInfo, const TimeCacheAccessor&
 }
 
 float FolderNode::initialDepth() const {
-    auto key = (DepthKey*)mTimeLine.defaultKey(TimeKeyType_Depth);
+    auto key = (DepthKey*)mTimeLine.baseValue(TimeKeyType_Depth);
     return key ? key->depth() : 0.0f;
 }
 

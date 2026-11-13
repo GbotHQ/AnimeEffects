@@ -246,7 +246,7 @@ void ObjectTreeWidget::showMenu(int aRow, const QPoint& aScenePos) {
         menu.addSeparator();
         menu.addAction(trTree("Paste from clipboard"), [this, pasteTarget]() { pasteKeys(*pasteTarget); });
         menu.addAction(trTree("Duplicate node"), [this]() { mModel->duplicateSelection(); });
-        menu.addAction(trTree("Add keys at frame 0"), [this]() { mModel->addDefaultKeysToSelection(); });
+        menu.addAction(trTree("Add keys at playhead"), [this]() { mModel->addKeysAtPlayheadToSelection(); });
         menu.addSeparator();
         menu.addAction(trTree("Delete"), [this]() { mModel->deleteSelection(); });
     }

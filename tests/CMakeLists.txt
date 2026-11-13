@@ -1067,11 +1067,11 @@ target_link_libraries(attribute_observable PRIVATE
     cmnd core ctrl gl img thr util pugixml
 )
 
-# Model 2 at the accessor layer: static properties edit their default key, and
+# Model 2 at the accessor layer: static properties edit their base value, and
 # animated properties edit/create a key at the playhead. The unified Inspector
 # depends on this split; see key_accessor_model2.cpp.
 # The Transform tool's key policy (tested with the real SRTEditor/MoveMode): a
-# static channel edits its default key, an animated one auto-keys at the playhead,
+# static channel edits its base value, an animated one auto-keys at the playhead,
 # and a checked "Create ... key" box forces exactly that channel. See srt_keys.cpp.
 add_executable(srt_keys srt_keys.cpp)
 target_include_directories(srt_keys PRIVATE .. ../src)
@@ -1283,7 +1283,7 @@ target_link_libraries(brush_stroke PRIVATE
 )
 
 # The Wave deform filter: the key's data contract and clamps, the five graph
-# channels, playback (each channel eased, the shape step-held, a default key
+# channels, playback (each channel eased, the shape step-held, a base value
 # playing), the 0.18 record on disk and the pass mapping. See wave_deform.cpp.
 add_executable(wave_deform wave_deform.cpp)
 target_include_directories(wave_deform PRIVATE ..)

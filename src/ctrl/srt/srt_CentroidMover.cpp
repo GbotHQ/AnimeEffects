@@ -13,7 +13,7 @@ namespace srt {
 
 #if 0
 //-------------------------------------------------------------------------------------------------
-void addAllKeysToEvent(ObjectNode& aTarget, TimeKeyType aType, TimeLineEvent& aEvent, bool aContainDefault)
+void addAllKeysToEvent(ObjectNode& aTarget, TimeKeyType aType, TimeLineEvent& aEvent, bool aContainBaseValue)
 {
     XC_PTR_ASSERT(aTarget.timeLine());
     auto& line = *aTarget.timeLine();
@@ -25,9 +25,9 @@ void addAllKeysToEvent(ObjectNode& aTarget, TimeKeyType aType, TimeLineEvent& aE
         }
     }
 
-    if (aContainDefault && line.defaultKey(aType))
+    if (aContainBaseValue && line.baseValue(aType))
     {
-        aEvent.pushDefaultTarget(aTarget, aType);
+        aEvent.pushBaseValueTarget(aTarget, aType);
     }
 
 }
@@ -71,7 +71,7 @@ CentroidMover::CentroidMover(Project& aProject,
 
 QMatrix4x4 CentroidMover::getLocalSRMatrix(const TimeKey& aKey)
 {
-    if (aKey.frame() == TimeLine::kDefaultKeyIndex)
+    if (aKey.frame() == TimeLine::kBaseValueIndex)
     {
         return QMatrix4x4();
     }
@@ -136,7 +136,7 @@ void CentroidMover::modifyValue(const QVector2D& aNext)
 }
 
 void CentroidMover::addAllTargets(
-        ObjectNode& aTarget, TimeKeyType aType, bool aContainDefault,
+        ObjectNode& aTarget, TimeKeyType aType, bool aContainBaseValue,
         const std::function<void(TimeKey*)>& aPusher)
 {
     XC_PTR_ASSERT(aTarget.timeLine());
@@ -148,12 +148,12 @@ void CentroidMover::addAllTargets(
         aPusher(key);
     }
 
-    if (aContainDefault)
+    if (aContainBaseValue)
     {
-        auto defaultKey = aTarget.timeLine()->defaultKey(aType);
-        if (defaultKey)
+        auto baseValue = aTarget.timeLine()->baseValue(aType);
+        if (baseValue)
         {
-            aPusher(defaultKey);
+            aPusher(baseValue);
         }
     }
 }
@@ -294,8 +294,8 @@ void CentroidMover::redo()
     }
 
     void CentroidMover::exec() {
-        mKey = (MoveKey*)(mFrame == TimeLine::kDefaultKeyIndex
-                              ? mTarget.timeLine()->defaultKey(TimeKeyType_Move)
+        mKey = (MoveKey*)(mFrame == TimeLine::kBaseValueIndex
+                              ? mTarget.timeLine()->baseValue(TimeKeyType_Move)
                               : mTarget.timeLine()->timeKey(TimeKeyType_Move, mFrame));
         XC_PTR_ASSERT(mKey);
         mPrevPosition = mKey->pos();

@@ -30,16 +30,16 @@ namespace {
 
 // The value a channel reads from the document when the map holds no key at all.
 //
-// This mirrors getDefaultKeyData<tKey, tType>() in core/TimeKeyBlender.cpp: the
-// timeline's own default key wins, and only when the document has none does the
+// This mirrors getBaseValueData<tKey, tType>() in core/TimeKeyBlender.cpp: the
+// timeline's own base value wins, and only when the document has none does the
 // concrete Data default stand in. The read itself goes through the Channel, so
 // the component mapping lives in exactly one file and the fallback cannot drift
 // away from the accessor playback uses - in particular ScaleKey::Data() is
 // (1,1), not (0,0), and a naive zero here would draw a curve playback never
 // plays.
 template<class tKey, core::TimeKeyType tType>
-float defaultKeyValue(const core::TimeLine& aTimeLine, const Channel& aChannel) {
-    if (const core::TimeKey* key = aTimeLine.defaultKey(tType)) {
+float baseValueForChannel(const core::TimeLine& aTimeLine, const Channel& aChannel) {
+    if (const core::TimeKey* key = aTimeLine.baseValue(tType)) {
         XC_ASSERT(key->type() == tType);
         return aChannel.value(*key);
     }
@@ -54,32 +54,32 @@ float defaultKeyValue(const core::TimeLine& aTimeLine, const Channel& aChannel) 
 }
 
 // dispatch on the channel's own type; the concrete key type is only needed to
-// construct the no-default-key fallback.
+// construct the no-base-value fallback.
 float defaultValue(const core::TimeLine& aTimeLine, const Channel& aChannel) {
     switch (aChannel.type()) {
     case core::TimeKeyType_Move:
-        return defaultKeyValue<core::MoveKey, core::TimeKeyType_Move>(aTimeLine, aChannel);
+        return baseValueForChannel<core::MoveKey, core::TimeKeyType_Move>(aTimeLine, aChannel);
     case core::TimeKeyType_Rotate:
-        return defaultKeyValue<core::RotateKey, core::TimeKeyType_Rotate>(aTimeLine, aChannel);
+        return baseValueForChannel<core::RotateKey, core::TimeKeyType_Rotate>(aTimeLine, aChannel);
     case core::TimeKeyType_Scale:
-        return defaultKeyValue<core::ScaleKey, core::TimeKeyType_Scale>(aTimeLine, aChannel);
+        return baseValueForChannel<core::ScaleKey, core::TimeKeyType_Scale>(aTimeLine, aChannel);
     case core::TimeKeyType_Depth:
-        return defaultKeyValue<core::DepthKey, core::TimeKeyType_Depth>(aTimeLine, aChannel);
+        return baseValueForChannel<core::DepthKey, core::TimeKeyType_Depth>(aTimeLine, aChannel);
     case core::TimeKeyType_Opa:
-        return defaultKeyValue<core::OpaKey, core::TimeKeyType_Opa>(aTimeLine, aChannel);
+        return baseValueForChannel<core::OpaKey, core::TimeKeyType_Opa>(aTimeLine, aChannel);
     case core::TimeKeyType_Blur:
-        return defaultKeyValue<core::BlurKey, core::TimeKeyType_Blur>(aTimeLine, aChannel);
+        return baseValueForChannel<core::BlurKey, core::TimeKeyType_Blur>(aTimeLine, aChannel);
     case core::TimeKeyType_HSV:
-        return defaultKeyValue<core::HSVKey, core::TimeKeyType_HSV>(aTimeLine, aChannel);
+        return baseValueForChannel<core::HSVKey, core::TimeKeyType_HSV>(aTimeLine, aChannel);
     case core::TimeKeyType_Wave:
-        return defaultKeyValue<core::WaveKey, core::TimeKeyType_Wave>(aTimeLine, aChannel);
+        return baseValueForChannel<core::WaveKey, core::TimeKeyType_Wave>(aTimeLine, aChannel);
     case core::TimeKeyType_Image: {
-        if (const core::TimeKey* key = aTimeLine.defaultKey(core::TimeKeyType_Image)) {
+        if (const core::TimeKey* key = aTimeLine.baseValue(core::TimeKeyType_Image)) {
             XC_ASSERT(key->type() == core::TimeKeyType_Image);
             return aChannel.value(*key);
         }
-        // blendImageKey() is the one blender path with no getDefaultKeyData():
-        // with neither a key nor a default key playback offsets by zero. Reading
+        // blendImageKey() is the one blender path with no getBaseValueData():
+        // with neither a key nor a base value playback offsets by zero. Reading
         // the zero directly (instead of constructing an ImageKey as the other
         // types do) keeps sample() callable outside a GL context: ImageKey::Data
         // owns a GridMesh, and GridMesh's constructor allocates GL buffers

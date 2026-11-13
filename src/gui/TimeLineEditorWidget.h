@@ -160,7 +160,7 @@ public:
     // selection actions rather than duplicating the toggle in the bar.
     //
     // FALSE when there is nothing to act on: no project/editor, an empty
-    // selection, or only default keys (which have no authored position).
+    // selection, or only base values (which have no authored position).
     bool setSelectionProportional(bool aEnabled);
 
     // THE BACKGROUND MENU, for a caller whose pointer is in ANOTHER view's space: the

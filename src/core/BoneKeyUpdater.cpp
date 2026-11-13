@@ -46,7 +46,7 @@ void BoneKeyUpdater::onTimeLineModified(TimeLineEvent& aEvent) {
             targets.push_back(t.node);
         }
     }
-    for (auto t : aEvent.defaultTargets()) {
+    for (auto t : aEvent.baseValueTargets()) {
         if (keyAffectsToInfluenceMap(t.pos.type())) {
             targets.push_back(t.node);
         }

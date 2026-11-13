@@ -787,12 +787,12 @@
     </message>
     <message>
         <location filename="../../src/gui/qml/ToolsPanel.qml" line="430"/>
-        <location filename="../../src/gui/qml/ToolBrushSection.qml" line="50"/>
+        <location filename="../../src/gui/qml/ToolBrushSection.qml" line="51"/>
         <source>Value</source>
         <translation type="unfinished">Яркость</translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ToolBrushSection.qml" line="51"/>
+        <location filename="../../src/gui/qml/ToolBrushSection.qml" line="52"/>
         <source>The envelope range the brush moves toward; Flow limits each stamp</source>
         <translation type="unfinished"></translation>
     </message>
@@ -817,47 +817,47 @@
         <translation type="unfinished">Отключено</translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ToolBrushSection.qml" line="24"/>
+        <location filename="../../src/gui/qml/ToolBrushSection.qml" line="25"/>
         <source>Brush</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ToolBrushSection.qml" line="28"/>
+        <location filename="../../src/gui/qml/ToolBrushSection.qml" line="29"/>
         <source>Size</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ToolBrushSection.qml" line="38"/>
+        <location filename="../../src/gui/qml/ToolBrushSection.qml" line="39"/>
         <source>Hardness</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ToolBrushSection.qml" line="60"/>
+        <location filename="../../src/gui/qml/ToolBrushSection.qml" line="61"/>
         <source>Flow</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ToolBrushSection.qml" line="71"/>
+        <location filename="../../src/gui/qml/ToolBrushSection.qml" line="72"/>
         <source>Opacity</source>
         <translation type="unfinished">Непрозрачность</translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ToolBrushSection.qml" line="84"/>
+        <location filename="../../src/gui/qml/ToolBrushSection.qml" line="85"/>
         <source>Pressure size</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ToolBrushSection.qml" line="85"/>
+        <location filename="../../src/gui/qml/ToolBrushSection.qml" line="86"/>
         <source>A tablet pen&apos;s pressure scales the brush size</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ToolBrushSection.qml" line="90"/>
+        <location filename="../../src/gui/qml/ToolBrushSection.qml" line="91"/>
         <source>Pressure flow</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ToolBrushSection.qml" line="91"/>
+        <location filename="../../src/gui/qml/ToolBrushSection.qml" line="92"/>
         <source>A tablet pen&apos;s pressure scales what a stamp deposits</source>
         <translation type="unfinished"></translation>
     </message>
@@ -1606,8 +1606,8 @@
         <translation>Создать объект-папку</translation>
     </message>
     <message>
-        <location filename="../../src/ctrl/TreeActions.cpp" line="596"/>
-        <source>Add keys at frame 0</source>
+        <location filename="../../src/ctrl/TreeActions.cpp" line="597"/>
+        <source>Add keys at playhead</source>
         <translation type="unfinished"></translation>
     </message>
     <message>

@@ -2127,7 +2127,7 @@ namespace ctrl {
 
             for (core::TimeKeyType type : graph::Channel::graphableTypes()) {
                 // A type whose map is empty has no curve: every sample would come
-                // from the default key, i.e. a value no key ever wrote, drawn as
+                // from the base value, i.e. a value no key ever wrote, drawn as
                 // a dead flat line through the panel.
                 if (timeLine->map(type).isEmpty())
                     continue;
@@ -2366,7 +2366,7 @@ namespace ctrl {
         // The key playback is on at this frame, and where the payload and the
         // easing come from: the last key at or before the frame, else the first
         // key of the map (playback holds the first key before the first key), else
-        // the timeline's default key. A shown curve always has at least one key -
+        // the timeline's base value. A shown curve always has at least one key -
         // buildEntries skips a type whose map is empty - so the last fallback is
         // the guard for a caller that reached here some other way.
         core::TimeKey* played = nullptr;
@@ -2381,7 +2381,7 @@ namespace ctrl {
             }
         }
         if (!played)
-            played = aLine.defaultKey(type);
+            played = aLine.baseValue(type);
         if (!played)
             return false;
 

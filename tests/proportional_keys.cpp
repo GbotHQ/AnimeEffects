@@ -590,7 +590,7 @@ int main(int argc, char** argv) {
             std::printf("[7] ValueReflow: a replaced bound is rebased once, then the weight is fixed\n");
     }
 
-    // --- 8. Several types in one reflow, and the default key excluded ---
+    // --- 8. Several types in one reflow, and the base value excluded ---
     {
         const int before = failures;
         core::TimeLine line;
@@ -633,24 +633,24 @@ int main(int argc, char** argv) {
         check(nearly(valueOf(*mp, TimeKeyType_Move, 0), 50.0f), "restore returns the Move group");
         check(nearly(valueOf(*bp, TimeKeyType_Blur, 0), 50.0f), "restore returns the Blur group");
 
-        // The default key is not an authored position: a proportional default
+        // The base value is not an authored position: a proportional default
         // key is never captured.
-        core::TimeLine defaultLine;
+        core::TimeLine baseLine;
         cmnd::Stack defaultStack;
-        pushMove(defaultLine, defaultStack, 0, QVector2D(0, 0));
-        pushMove(defaultLine, defaultStack, 10, QVector2D(10, 10));
-        auto* defaultKey = new core::MoveKey();
-        defaultKey->setProportional(true);
-        defaultLine.grabDefaultKey(TimeKeyType_Move, defaultKey);
-        check(defaultLine.defaultKey(TimeKeyType_Move) == defaultKey, "the default key is installed");
-        check(defaultKey->isDefaultKey(), "and carries the default frame marker");
+        pushMove(baseLine, defaultStack, 0, QVector2D(0, 0));
+        pushMove(baseLine, defaultStack, 10, QVector2D(10, 10));
+        auto* baseValue = new core::MoveKey();
+        baseValue->setProportional(true);
+        baseLine.setBaseValue(TimeKeyType_Move, baseValue);
+        check(baseLine.baseValue(TimeKeyType_Move) == baseValue, "the base value is installed");
+        check(baseValue->isBaseValue(), "and carries the default frame marker");
 
         prop::ValueReflow defaultReflow;
-        defaultReflow.capture(defaultLine, TimeKeyType_Move, QVector<core::TimeKey*> {});
-        check(defaultReflow.empty(), "a proportional default key is not captured");
+        defaultReflow.capture(baseLine, TimeKeyType_Move, QVector<core::TimeKey*> {});
+        check(defaultReflow.empty(), "a proportional base value is not captured");
 
         if (failures == before)
-            std::printf("[8] ValueReflow: multiple type groups, default key excluded\n");
+            std::printf("[8] ValueReflow: multiple type groups, base value excluded\n");
     }
 
     // --- 9. A key that left the map during the gesture is skipped ---

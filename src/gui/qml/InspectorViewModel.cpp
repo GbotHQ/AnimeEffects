@@ -250,7 +250,7 @@ const core::TimeLine* maskLine(const core::ObjectNode* aTarget) {
 
 bool InspectorViewModel::maskPresent() const {
     const core::TimeLine* line = maskLine(mTarget);
-    return line && (line->defaultKey(core::TimeKeyType_Mask) || !line->map(core::TimeKeyType_Mask).isEmpty());
+    return line && (line->baseValue(core::TimeKeyType_Mask) || !line->map(core::TimeKeyType_Mask).isEmpty());
 }
 
 bool InspectorViewModel::maskKeyed() const {
@@ -281,7 +281,7 @@ QImage InspectorViewModel::maskThumbnail(const QSize& aRequested) const {
     if (const core::TimeKey* atFrame = line->map(core::TimeKeyType_Mask).value(frame()))
         key = static_cast<const core::MaskKey*>(atFrame);
     else
-        key = static_cast<const core::MaskKey*>(line->defaultKey(core::TimeKeyType_Mask));
+        key = static_cast<const core::MaskKey*>(line->baseValue(core::TimeKeyType_Mask));
     if (!key || !key->data().isValid())
         return QImage();
 

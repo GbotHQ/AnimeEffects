@@ -214,7 +214,7 @@ int main(int argc, char** argv) {
 
     // --- C2: a stale index (an event naming a frame with no key) is filtered
     // out; the current selection is left untouched rather than injecting a
-    // null-key entry. A default-key-only payload likewise selects nothing.
+    // null-key entry. A base-value-only payload likewise selects nothing.
     {
         core::TestNode node;
         auto* keyB = new core::MoveKey();
@@ -238,7 +238,7 @@ int main(int argc, char** argv) {
 
         core::TimeLineEvent defaultOnly;
         defaultOnly.setType(core::TimeLineEvent::Type_PushKey);
-        defaultOnly.pushDefaultTarget(node, core::TimeKeyType_Move);
+        defaultOnly.pushBaseValueTarget(node, core::TimeKeyType_Move);
         editor.selectCreatedKeys(defaultOnly);
         CHECK(editor.retrieveSelectionTargets(after = core::TimeLineEvent()));
         CHECK(singleTargetIs(after, keyB)); // still untouched

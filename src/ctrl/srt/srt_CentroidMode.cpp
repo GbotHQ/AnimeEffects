@@ -97,8 +97,8 @@ namespace srt {
         cmnd::Stack& stack = mProject.commandStack();
         const int frame = mProject.animator().currentFrame().get();
         // A static transform has no key at the playhead: the edit belongs to the
-        // DEFAULT key, exactly as it does in MoveMode and the inspector.
-        const int editFrame = mKeyOwner.moveIsDefault ? TimeLine::kDefaultKeyIndex : frame;
+        // BASE VALUE, exactly as it does in MoveMode and the inspector.
+        const int editFrame = mKeyOwner.moveIsBaseValue ? TimeLine::kBaseValueIndex : frame;
         auto centroidMove = aNewCentroid - mBaseCentroid;
         auto positionMove = aNewPosition - mBasePosition;
 
@@ -120,8 +120,8 @@ namespace srt {
                 notifier->event().setType(
                     mKeyOwner.ownsMoveKey ? TimeLineEvent::Type_PushKey : TimeLineEvent::Type_ChangeKeyValue
                 );
-                if (mKeyOwner.moveIsDefault)
-                    notifier->event().pushDefaultTarget(mTarget, TimeKeyType_Move);
+                if (mKeyOwner.moveIsBaseValue)
+                    notifier->event().pushBaseValueTarget(mTarget, TimeKeyType_Move);
                 else
                     notifier->event().pushTarget(mTarget, TimeKeyType_Move, frame);
                 macro.grabListener(notifier);

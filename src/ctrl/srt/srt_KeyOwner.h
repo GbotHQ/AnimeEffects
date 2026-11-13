@@ -36,11 +36,11 @@ namespace srt {
         bool ownsMoveKey;
         bool ownsRotateKey;
         bool ownsScaleKey;
-        // The key pointer is the timeline's DEFAULT key (a static transform), not a
+        // The key pointer is the timeline's BASE VALUE (a static transform), not a
         // key at the playhead: an edit writes it in place and must not push a key.
-        bool moveIsDefault;
-        bool rotateIsDefault;
-        bool scaleIsDefault;
+        bool moveIsBaseValue;
+        bool rotateIsBaseValue;
+        bool scaleIsBaseValue;
 
         QMatrix4x4 parentMtx;
         QMatrix4x4 invParentMtx;

@@ -1,5 +1,5 @@
 // Pins model 2 at the accessor layer: a property with no explicit keys is
-// static (edits write the default key), and a property with any explicit key is
+// static (edits write the base value), and a property with any explicit key is
 // animated (edits write the current frame, creating a key when needed). This is
 // the behaviour the unified inspector relies on; a regression here silently
 // turns every static field edit into an animation key.
@@ -60,10 +60,10 @@ private:
     } while (false)
 
 const core::MoveKey::Data& moveDefault(const core::TimeLine& line) {
-    return static_cast<const core::MoveKey*>(line.defaultKey(core::TimeKeyType_Move))->data();
+    return static_cast<const core::MoveKey*>(line.baseValue(core::TimeKeyType_Move))->data();
 }
 const core::DepthKey::Data& depthDefault(const core::TimeLine& line) {
-    return static_cast<const core::DepthKey*>(line.defaultKey(core::TimeKeyType_Depth))->data();
+    return static_cast<const core::DepthKey*>(line.baseValue(core::TimeKeyType_Depth))->data();
 }
 
 int run() {

@@ -261,7 +261,7 @@ void ToolWidget::refreshMaskTargets() {
 
             if (!fields.isEmpty()) {
                 empty.clear();
-            } else if (line->defaultKey(core::TimeKeyType_Mask)
+            } else if (line->baseValue(core::TimeKeyType_Mask)
                        || !line->map(core::TimeKeyType_Mask).isEmpty()) {
                 empty = QCoreApplication::translate(
                     "gui::ToolViewModel", "Key the mask at this frame to paint it."

@@ -24,11 +24,11 @@ class ResourceEvent;
 namespace core {
 
 template <typename KeyType, TimeKeyType keyEnum>
-KeyType* getOrCreateDefaultKey(TimeLine& timeLine) {
-    auto key = static_cast<KeyType*>(timeLine.defaultKey(keyEnum));
+KeyType* getOrCreateBaseValue(TimeLine& timeLine) {
+    auto key = static_cast<KeyType*>(timeLine.baseValue(keyEnum));
     if (!key) {
         key = new KeyType();
-        timeLine.grabDefaultKey(keyEnum, key);
+        timeLine.setBaseValue(keyEnum, key);
     }
     return key;
 }

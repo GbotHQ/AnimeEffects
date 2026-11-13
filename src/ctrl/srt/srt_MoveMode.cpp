@@ -139,15 +139,15 @@ namespace ctrl::srt {
     }
 
     void MoveMode::setAssignNotifier(
-        cmnd::ScopedMacro& aMacro, TimeKeyType aKeyType, bool aPushKey, bool aDefaultKey
+        cmnd::ScopedMacro& aMacro, TimeKeyType aKeyType, bool aPushKey, bool aBaseValue
     ) {
         auto notifyType = aPushKey ? TimeLineEvent::Type_PushKey : TimeLineEvent::Type_ChangeKeyValue;
         const int frame = mProject.animator().currentFrame().get();
 
         auto notifier = new TimeLineUtil::Notifier(mProject);
         notifier->event().setType(notifyType);
-        if (aDefaultKey)
-            notifier->event().pushDefaultTarget(mTarget, aKeyType);
+        if (aBaseValue)
+            notifier->event().pushBaseValueTarget(mTarget, aKeyType);
         else
             notifier->event().pushTarget(mTarget, aKeyType, frame);
         aMacro.grabListener(notifier);
@@ -179,7 +179,7 @@ namespace ctrl::srt {
         } else {
             cmnd::ScopedMacro macro(stack, CmndName::tr("update a moving key"));
             setAssignNotifier(
-                macro, TimeKeyType_Move, mKeyOwner.ownsMoveKey || appendKeys, mKeyOwner.moveIsDefault
+                macro, TimeKeyType_Move, mKeyOwner.ownsMoveKey || appendKeys, mKeyOwner.moveIsBaseValue
             );
             // push commands
             mKeyOwner.pushOwningMoveKey(stack, timeLine, frame);
@@ -219,7 +219,7 @@ namespace ctrl::srt {
         } else {
             cmnd::ScopedMacro macro(stack, CmndName::tr("update a rotation key"));
             setAssignNotifier(
-                macro, TimeKeyType_Rotate, mKeyOwner.ownsRotateKey || appendKeys, mKeyOwner.rotateIsDefault
+                macro, TimeKeyType_Rotate, mKeyOwner.ownsRotateKey || appendKeys, mKeyOwner.rotateIsBaseValue
             );
             // push commands
             mKeyOwner.pushOwningRotateKey(stack, timeLine, frame);
@@ -255,7 +255,7 @@ namespace ctrl::srt {
         } else {
             cmnd::ScopedMacro macro(stack, CmndName::tr("update a scaling key"));
             setAssignNotifier(
-                macro, TimeKeyType_Scale, mKeyOwner.ownsScaleKey || appendKeys, mKeyOwner.scaleIsDefault
+                macro, TimeKeyType_Scale, mKeyOwner.ownsScaleKey || appendKeys, mKeyOwner.scaleIsBaseValue
             );
             // push commands
             mKeyOwner.pushOwningScaleKey(stack, timeLine, frame);

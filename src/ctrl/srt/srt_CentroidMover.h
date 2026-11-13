@@ -30,7 +30,7 @@ class CentroidMover : public cmnd::Stable
     void addAllTargets(
             core::ObjectNode& aTarget,
             core::TimeKeyType aType,
-            bool aContainDefault,
+            bool aContainBaseValue,
             const std::function<void(core::TimeKey*)>& aPusher);
 
     core::Project& mProject;

@@ -72,7 +72,7 @@ void InspectorRowModel::readMove(core::TimeLine& aLine, int aFrame) {
     if (const auto* key = aLine.timeKey(core::TimeKeyType_Move, aFrame)) {
         data = &static_cast<const core::MoveKey*>(key)->data();
     } else if (!aLine.map(core::TimeKeyType_Move).isEmpty()) {
-        if (const auto* def = aLine.defaultKey(core::TimeKeyType_Move)) {
+        if (const auto* def = aLine.baseValue(core::TimeKeyType_Move)) {
             mSmooth = static_cast<const core::MoveKey*>(def)->data().spline() == core::MoveKey::SplineType_CatmullRom;
         }
         const auto& srt = aLine.current().srt();
@@ -81,7 +81,7 @@ void InspectorRowModel::readMove(core::TimeLine& aLine, int aFrame) {
         mCentroidX = srt.centroid().x();
         mCentroidY = srt.centroid().y();
         return;
-    } else if (const auto* def = aLine.defaultKey(core::TimeKeyType_Move)) {
+    } else if (const auto* def = aLine.baseValue(core::TimeKeyType_Move)) {
         data = &static_cast<const core::MoveKey*>(def)->data();
     }
 
@@ -100,7 +100,7 @@ void InspectorRowModel::readImage(core::TimeLine& aLine, int aFrame) {
         key = static_cast<const core::ImageKey*>(exact);
     } else if (!aLine.map(core::TimeKeyType_Image).isEmpty()) {
         key = aLine.current().areaImageKey();
-    } else if (const auto* def = aLine.defaultKey(core::TimeKeyType_Image)) {
+    } else if (const auto* def = aLine.baseValue(core::TimeKeyType_Image)) {
         key = static_cast<const core::ImageKey*>(def);
     }
     if (!key)
@@ -181,7 +181,7 @@ void InspectorRowModel::refresh() {
                 data = &static_cast<const core::RotateKey*>(key)->data();
             else if (!line->map(core::TimeKeyType_Rotate).isEmpty())
                 mAngle = util::MathUtil::getDegreeFromRadian(line->current().srt().rotate());
-            else if (const auto* def = line->defaultKey(core::TimeKeyType_Rotate))
+            else if (const auto* def = line->baseValue(core::TimeKeyType_Rotate))
                 data = &static_cast<const core::RotateKey*>(def)->data();
             if (data)
                 mAngle = util::MathUtil::getDegreeFromRadian(data->rotate());
@@ -195,7 +195,7 @@ void InspectorRowModel::refresh() {
                 const QVector2D scale = line->current().srt().scale();
                 mScaleX = scale.x();
                 mScaleY = scale.y();
-            } else if (const auto* def = line->defaultKey(core::TimeKeyType_Scale)) {
+            } else if (const auto* def = line->baseValue(core::TimeKeyType_Scale)) {
                 data = &static_cast<const core::ScaleKey*>(def)->data();
             }
             if (data) {
@@ -210,7 +210,7 @@ void InspectorRowModel::refresh() {
                 data = &static_cast<const core::DepthKey*>(key)->data();
             else if (!line->map(core::TimeKeyType_Depth).isEmpty())
                 mDepth = line->current().depth();
-            else if (const auto* def = line->defaultKey(core::TimeKeyType_Depth))
+            else if (const auto* def = line->baseValue(core::TimeKeyType_Depth))
                 data = &static_cast<const core::DepthKey*>(def)->data();
             if (data)
                 mDepth = data->depth();
@@ -222,7 +222,7 @@ void InspectorRowModel::refresh() {
                 data = &static_cast<const core::OpaKey*>(key)->data();
             else if (!line->map(core::TimeKeyType_Opa).isEmpty())
                 mOpacity = line->current().opa().opacity();
-            else if (const auto* def = line->defaultKey(core::TimeKeyType_Opa))
+            else if (const auto* def = line->baseValue(core::TimeKeyType_Opa))
                 data = &static_cast<const core::OpaKey*>(def)->data();
             if (data)
                 mOpacity = data->opacity();

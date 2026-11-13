@@ -325,7 +325,7 @@ QVector<ObjectNode*> ObjectTree::findNodesUsingResource(const img::ResourceNode&
         if (!timeLine)
             continue; // a folder holds no image key
 
-        // Both the default key and every key on the timeline hold a resource
+        // Both the base value and every key on the timeline hold a resource
         // handle; the object references the asset if any of them points into it.
         const auto usesTarget = [&resourceNodes](const TimeKey* aKey) {
             if (!aKey || aKey->type() != TimeKeyType_Image)
@@ -334,7 +334,7 @@ QVector<ObjectNode*> ObjectTree::findNodesUsingResource(const img::ResourceNode&
             return handle && resourceNodes.contains(handle->serialAddress());
         };
 
-        bool uses = usesTarget(timeLine->defaultKey(TimeKeyType_Image));
+        bool uses = usesTarget(timeLine->baseValue(TimeKeyType_Image));
         if (!uses) {
             const auto& map = timeLine->map(TimeKeyType_Image);
             for (auto it = map.begin(); it != map.end(); ++it) {

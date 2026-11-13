@@ -924,9 +924,9 @@ int runRender(ProbeGL& aProbe, const Options& aOptions) {
                             if (line->filterEnabled(type))
                                 flags += QStringLiteral("filter:%1 ").arg((int)type);
                         }
-                        // a matte can live on the default key OR on animated keys; the old test
+                        // a matte can live on the base value OR on animated keys; the old test
                         // saw only the first, so a keyed mask read as "no mask"
-                        if (line->defaultKey(core::TimeKeyType_Mask)
+                        if (line->baseValue(core::TimeKeyType_Mask)
                             || !line->map(core::TimeKeyType_Mask).isEmpty())
                             flags += QStringLiteral("mask ");
                     }
@@ -950,7 +950,7 @@ int runRender(ProbeGL& aProbe, const Options& aOptions) {
                         if (line->filterEnabled(type))
                             flags += QStringLiteral("filter:%1 ").arg((int)type);
                     }
-                    if (line->defaultKey(core::TimeKeyType_Mask)
+                    if (line->baseValue(core::TimeKeyType_Mask)
                         || !line->map(core::TimeKeyType_Mask).isEmpty())
                         flags += QStringLiteral("mask ");
                     if (!line->map(core::TimeKeyType_Bone).isEmpty()
@@ -963,7 +963,7 @@ int runRender(ProbeGL& aProbe, const Options& aOptions) {
                 int resourceId = 0;
                 if (line) {
                     if (auto* imageKey =
-                            dynamic_cast<core::ImageKey*>(line->defaultKey(core::TimeKeyType_Image))) {
+                            dynamic_cast<core::ImageKey*>(line->baseValue(core::TimeKeyType_Image))) {
                         const img::ResourceData* resource = imageKey->data().resource().get();
                         if (resource) {
                             auto found = resourceIds.find(resource);

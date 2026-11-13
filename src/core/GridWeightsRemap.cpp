@@ -26,7 +26,7 @@ bool imageFeedsABoneFrame(ObjectNode& aNode, ObjectNode& aOwner, ImageKey& aKey)
     }
 
     // Bone keys are always real frame keys (BoneEditor::initializeKey creates
-    // one at the current frame, never a default key); a default key has no
+    // one at the current frame, never a base value); a base value has no
     // frame at which an area mesh could be chosen, so it cannot name one.
     const TimeLine::MapType& bones = aOwner.timeLine()->map(TimeKeyType_Bone);
     for (auto itr = bones.begin(); itr != bones.end(); ++itr) {

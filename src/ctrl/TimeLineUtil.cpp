@@ -482,7 +482,7 @@ namespace TimeLineUtil {
                 continue;
 
             TimeKey* key = target.pos.key();
-            if (!key || key->isDefaultKey() || seen.contains(key))
+            if (!key || key->isBaseValue() || seen.contains(key))
                 continue;
             seen.insert(key);
 
@@ -548,7 +548,7 @@ namespace TimeLineUtil {
         Project& aProject, ObjectNode& aTarget, int aFrame, const typename tKey::Data& aNewData, const QString& aText
     ) {
         XC_ASSERT(aTarget.timeLine());
-        tKey* key = (tKey*)(aFrame == TimeLine::kDefaultKeyIndex ? aTarget.timeLine()->defaultKey(tType)
+        tKey* key = (tKey*)(aFrame == TimeLine::kBaseValueIndex ? aTarget.timeLine()->baseValue(tType)
                                                                  : aTarget.timeLine()->timeKey(tType, aFrame));
         XC_PTR_ASSERT(key);
 
@@ -556,7 +556,7 @@ namespace TimeLineUtil {
         // itself is pushed AFTER the edit, so exec applies them after the edited
         // component and undo restores them before it.
         ReflowValuesCommand* reflow = nullptr;
-        if (aFrame != TimeLine::kDefaultKeyIndex) {
+        if (aFrame != TimeLine::kBaseValueIndex) {
             reflow = new ReflowValuesCommand(*aTarget.timeLine(), tType, *key);
         }
 
@@ -565,8 +565,8 @@ namespace TimeLineUtil {
 
             auto notifier = new Notifier(aProject);
             notifier->event().setType(TimeLineEvent::Type_ChangeKeyValue);
-            if (aFrame == TimeLine::kDefaultKeyIndex) {
-                notifier->event().pushDefaultTarget(aTarget, tType);
+            if (aFrame == TimeLine::kBaseValueIndex) {
+                notifier->event().pushBaseValueTarget(aTarget, tType);
             } else {
                 notifier->event().pushTarget(aTarget, tType, aFrame);
             }
@@ -591,7 +591,7 @@ namespace TimeLineUtil {
         Project& aProject, ObjectNode& aTarget, int aFrame, const util::Easing::Param& aNewData, const QString& aText
     ) {
         XC_ASSERT(aTarget.timeLine());
-        tKey* key = (tKey*)(aFrame == TimeLine::kDefaultKeyIndex ? aTarget.timeLine()->defaultKey(tType)
+        tKey* key = (tKey*)(aFrame == TimeLine::kBaseValueIndex ? aTarget.timeLine()->baseValue(tType)
                                                                  : aTarget.timeLine()->timeKey(tType, aFrame));
         XC_PTR_ASSERT(key);
 
@@ -600,8 +600,8 @@ namespace TimeLineUtil {
 
             auto notifier = new Notifier(aProject);
             notifier->event().setType(TimeLineEvent::Type_ChangeKeyValue);
-            if (aFrame == TimeLine::kDefaultKeyIndex) {
-                notifier->event().pushDefaultTarget(aTarget, tType);
+            if (aFrame == TimeLine::kBaseValueIndex) {
+                notifier->event().pushBaseValueTarget(aTarget, tType);
             } else {
                 notifier->event().pushTarget(aTarget, tType, aFrame);
             }
@@ -622,14 +622,14 @@ namespace TimeLineUtil {
         const std::function<void(tKey*)>& aFunc
     ) {
         XC_ASSERT(aTarget.timeLine());
-        tKey* key = (tKey*)(aFrame == TimeLine::kDefaultKeyIndex ? aTarget.timeLine()->defaultKey(tType)
+        tKey* key = (tKey*)(aFrame == TimeLine::kBaseValueIndex ? aTarget.timeLine()->baseValue(tType)
                                                                  : aTarget.timeLine()->timeKey(tType, aFrame));
         XC_PTR_ASSERT(key);
 
         // Same capture-before / push-after rule as assignKeyData: aFunc writes the
         // edited key, then the followers reflow inside the same macro.
         ReflowValuesCommand* reflow = nullptr;
-        if (aFrame != TimeLine::kDefaultKeyIndex) {
+        if (aFrame != TimeLine::kBaseValueIndex) {
             reflow = new ReflowValuesCommand(*aTarget.timeLine(), tType, *key);
         }
 
@@ -638,8 +638,8 @@ namespace TimeLineUtil {
 
             auto notifier = new Notifier(aProject);
             notifier->event().setType(TimeLineEvent::Type_ChangeKeyValue);
-            if (aFrame == TimeLine::kDefaultKeyIndex) {
-                notifier->event().pushDefaultTarget(aTarget, tType);
+            if (aFrame == TimeLine::kBaseValueIndex) {
+                notifier->event().pushBaseValueTarget(aTarget, tType);
             } else {
                 notifier->event().pushTarget(aTarget, tType, aFrame);
             }
@@ -664,7 +664,7 @@ namespace TimeLineUtil {
             aTarget,
             aFrame,
             aNewData,
-            aFrame == TimeLine::kDefaultKeyIndex ? CmndName::tr("Update position")
+            aFrame == TimeLine::kBaseValueIndex ? CmndName::tr("Update position")
                                                  : CmndName::tr("Update position key")
         );
     }
@@ -675,7 +675,7 @@ namespace TimeLineUtil {
             aTarget,
             aFrame,
             aNewData,
-            aFrame == TimeLine::kDefaultKeyIndex ? CmndName::tr("Update rotation")
+            aFrame == TimeLine::kBaseValueIndex ? CmndName::tr("Update rotation")
                                                  : CmndName::tr("Update rotation key")
         );
     }
@@ -686,7 +686,7 @@ namespace TimeLineUtil {
             aTarget,
             aFrame,
             aNewData,
-            aFrame == TimeLine::kDefaultKeyIndex ? CmndName::tr("Update scale")
+            aFrame == TimeLine::kBaseValueIndex ? CmndName::tr("Update scale")
                                                  : CmndName::tr("Update scale key")
         );
     }
@@ -697,7 +697,7 @@ namespace TimeLineUtil {
             aTarget,
             aFrame,
             aNewData,
-            aFrame == TimeLine::kDefaultKeyIndex ? CmndName::tr("Update depth")
+            aFrame == TimeLine::kBaseValueIndex ? CmndName::tr("Update depth")
                                                  : CmndName::tr("Update depth key")
         );
     }
@@ -708,7 +708,7 @@ namespace TimeLineUtil {
             aTarget,
             aFrame,
             aNewData,
-            aFrame == TimeLine::kDefaultKeyIndex ? CmndName::tr("Update opacity")
+            aFrame == TimeLine::kBaseValueIndex ? CmndName::tr("Update opacity")
                                                  : CmndName::tr("Update opacity key")
         );
     }
@@ -719,7 +719,7 @@ namespace TimeLineUtil {
             aTarget,
             aFrame,
             aNewData,
-            aFrame == TimeLine::kDefaultKeyIndex ? CmndName::tr("Update HSV")
+            aFrame == TimeLine::kBaseValueIndex ? CmndName::tr("Update HSV")
                                                  : CmndName::tr("Update HSV key")
         );
     }
@@ -730,7 +730,7 @@ namespace TimeLineUtil {
             aTarget,
             aFrame,
             aNewData,
-            aFrame == TimeLine::kDefaultKeyIndex ? CmndName::tr("Update blur")
+            aFrame == TimeLine::kBaseValueIndex ? CmndName::tr("Update blur")
                                                  : CmndName::tr("Update blur key")
         );
     }
@@ -741,7 +741,7 @@ namespace TimeLineUtil {
             aTarget,
             aFrame,
             aNewData,
-            aFrame == TimeLine::kDefaultKeyIndex ? CmndName::tr("Update wave")
+            aFrame == TimeLine::kBaseValueIndex ? CmndName::tr("Update wave")
                                                  : CmndName::tr("Update wave key")
         );
     }
@@ -752,7 +752,7 @@ namespace TimeLineUtil {
             aTarget,
             aFrame,
             aNewData,
-            aFrame == TimeLine::kDefaultKeyIndex ? CmndName::tr("Update pose")
+            aFrame == TimeLine::kBaseValueIndex ? CmndName::tr("Update pose")
                                                  : CmndName::tr("Update pose key")
         );
     }
@@ -763,7 +763,7 @@ namespace TimeLineUtil {
             aTarget,
             aFrame,
             aNewData,
-            aFrame == TimeLine::kDefaultKeyIndex ? CmndName::tr("Update FFD")
+            aFrame == TimeLine::kBaseValueIndex ? CmndName::tr("Update FFD")
                                                  : CmndName::tr("Update FFD key")
         );
     }
@@ -776,7 +776,7 @@ namespace TimeLineUtil {
             aProject,
             aTarget,
             aFrame,
-            aFrame == TimeLine::kDefaultKeyIndex ? CmndName::tr("Update image")
+            aFrame == TimeLine::kBaseValueIndex ? CmndName::tr("Update image")
                                                  : CmndName::tr("Update image key"),
             [&](ImageKey* aKey) {
                 // image key
@@ -797,7 +797,7 @@ namespace TimeLineUtil {
             aProject,
             aTarget,
             aFrame,
-            aFrame == TimeLine::kDefaultKeyIndex ? CmndName::tr("Update image offset")
+            aFrame == TimeLine::kBaseValueIndex ? CmndName::tr("Update image offset")
                                                  : CmndName::tr("Update image offset key"),
             [&](ImageKey* aKey) {
                 auto prevOffset = aKey->data().imageOffset();
@@ -817,7 +817,7 @@ namespace TimeLineUtil {
             aProject,
             aTarget,
             aFrame,
-            aFrame == TimeLine::kDefaultKeyIndex ? CmndName::tr("Update mesh spacing")
+            aFrame == TimeLine::kBaseValueIndex ? CmndName::tr("Update mesh spacing")
                                                  : CmndName::tr("Update mesh spacing key"),
             [&](ImageKey* aKey) {
                 // image key
@@ -861,7 +861,7 @@ namespace TimeLineUtil {
 
     // The COMMAND half of pushNewKey, with no macro and no notifier: the caller owns
     // both, so it decides how many keys are one undo step and which event names them.
-    // "Add keys at frame 0" on a layer with six animated channels is one step, not six -
+    // "Add keys at playhead" on a layer with six animated channels is one step, not six -
     // which is what the tree's own action had to be, and the per-key macro could not
     // express. The key's own type() is the map it lands in.
     void appendNewKey(
@@ -956,13 +956,13 @@ namespace TimeLineUtil {
 
     namespace {
 
-        // The key a paint would edit: the one at this frame, or the DEFAULT key. A
+        // The key a paint would edit: the one at this frame, or the BASE VALUE. A
         // mask with keys and no key at this frame has nothing to paint - that is the
         // "read-only between keys" state the card shows, and this rule is behind it.
         MaskKey* maskKeyForEdit(TimeLine& aLine, int aFrame) {
             if (const TimeKey* atFrame = aLine.map(TimeKeyType_Mask).value(aFrame))
                 return const_cast<MaskKey*>(static_cast<const MaskKey*>(atFrame));
-            return static_cast<MaskKey*>(aLine.defaultKey(TimeKeyType_Mask));
+            return static_cast<MaskKey*>(aLine.baseValue(TimeKeyType_Mask));
         }
 
         // Where a field lives, in the node's CONTENT space. The same two branches
@@ -994,14 +994,14 @@ namespace TimeLineUtil {
             );
         }
 
-        // The DEFAULT key is a store of its own (TimeLine::grabDefaultKey owns the key
+        // The BASE VALUE is a store of its own (TimeLine::setBaseValue owns the key
         // and deletes the one it replaces), so it is written by VALUE: a state is
         // "present, with this field" or "absent", and both undo and redo replay it.
         // That keeps the mask's add/remove value-replayable like every other command
-        // without inventing pointer hand-over in grabDefaultKey.
-        class AssignDefaultMask: public cmnd::Stable {
+        // without inventing pointer hand-over in setBaseValue.
+        class AssignBaseValueMask: public cmnd::Stable {
         public:
-            AssignDefaultMask(TimeLine& aLine, bool aPresent, const MaskKey::Data& aData)
+            AssignBaseValueMask(TimeLine& aLine, bool aPresent, const MaskKey::Data& aData)
                 : mLine(aLine), mPresent(aPresent), mData(aData) {}
 
             virtual bool redoable() const { return true; }
@@ -1011,17 +1011,17 @@ namespace TimeLineUtil {
 
         private:
             void apply(bool aPresent, const MaskKey::Data& aData) {
-                MaskKey* existing = static_cast<MaskKey*>(mLine.defaultKey(TimeKeyType_Mask));
+                MaskKey* existing = static_cast<MaskKey*>(mLine.baseValue(TimeKeyType_Mask));
                 if (aPresent) {
                     if (existing) {
                         existing->data().assign(aData);
                     } else {
                         auto* key = new MaskKey();
                         key->data().assign(aData);
-                        mLine.grabDefaultKey(TimeKeyType_Mask, key);
+                        mLine.setBaseValue(TimeKeyType_Mask, key);
                     }
                 } else if (existing) {
-                    mLine.grabDefaultKey(TimeKeyType_Mask, nullptr);
+                    mLine.setBaseValue(TimeKeyType_Mask, nullptr);
                 }
             }
 
@@ -1074,7 +1074,7 @@ namespace TimeLineUtil {
         if (!aTarget.timeLine())
             return;
         TimeLine& line = *aTarget.timeLine();
-        if (!line.map(TimeKeyType_Mask).isEmpty() || line.defaultKey(TimeKeyType_Mask))
+        if (!line.map(TimeKeyType_Mask).isEmpty() || line.baseValue(TimeKeyType_Mask))
             return; // one mask per node
 
         const QRectF rect = maskContentRect(aProject, aTarget);
@@ -1084,12 +1084,12 @@ namespace TimeLineUtil {
         cmnd::ScopedMacro macro(aProject.commandStack(), CmndName::tr("Add mask"));
         auto* notifier = new Notifier(aProject);
         notifier->event().setType(TimeLineEvent::Type_PushKey);
-        notifier->event().pushTarget(aTarget, TimeKeyType_Mask, TimeKey::kDefaultKeyIndex);
+        notifier->event().pushTarget(aTarget, TimeKeyType_Mask, TimeKey::kBaseValueIndex);
         macro.grabListener(notifier);
 
         MaskKey::Data data;
         data.alloc(maskTexelSize(rect), rect, MaskKey::kNeutral);
-        aProject.commandStack().push(new AssignDefaultMask(line, true, data));
+        aProject.commandStack().push(new AssignBaseValueMask(line, true, data));
     }
 
     void removeMask(Project& aProject, ObjectNode& aTarget) {
@@ -1097,7 +1097,7 @@ namespace TimeLineUtil {
             return;
         TimeLine& line = *aTarget.timeLine();
         const QVector<int> frames = line.map(TimeKeyType_Mask).keys();
-        if (frames.isEmpty() && !line.defaultKey(TimeKeyType_Mask))
+        if (frames.isEmpty() && !line.baseValue(TimeKeyType_Mask))
             return;
 
         cmnd::ScopedMacro macro(aProject.commandStack(), CmndName::tr("Remove mask"));
@@ -1106,13 +1106,13 @@ namespace TimeLineUtil {
                                                    : TimeLineEvent::Type_RemoveKey);
         for (const int frame : frames)
             notifier->event().pushTarget(aTarget, TimeKeyType_Mask, frame);
-        notifier->event().pushTarget(aTarget, TimeKeyType_Mask, TimeKey::kDefaultKeyIndex);
+        notifier->event().pushTarget(aTarget, TimeKeyType_Mask, TimeKey::kBaseValueIndex);
         macro.grabListener(notifier);
 
         for (const int frame : frames)
             aProject.commandStack().push(line.createRemover(TimeKeyType_Mask, frame));
-        if (const MaskKey* key = static_cast<const MaskKey*>(line.defaultKey(TimeKeyType_Mask))) {
-            aProject.commandStack().push(new AssignDefaultMask(line, false, key->data()));
+        if (const MaskKey* key = static_cast<const MaskKey*>(line.baseValue(TimeKeyType_Mask))) {
+            aProject.commandStack().push(new AssignBaseValueMask(line, false, key->data()));
         }
     }
 
@@ -1208,7 +1208,7 @@ namespace TimeLineUtil {
             auto* key = new HSVKey();
             for (int c = 0; c < HSVKey::kComponents; ++c)
                 key->data().easing(c) = easing;
-            line.grabDefaultKey(aType, key);
+            line.setBaseValue(aType, key);
         } else if (aType == TimeKeyType_Wave) {
             // A wave's starter values are NOT its identity: an inert filter
             // would look broken on add. It starts as a gentle water surface
@@ -1218,12 +1218,12 @@ namespace TimeLineUtil {
             key->data() = WaveKey::Data::presetData();
             for (int c = 0; c < WaveKey::kComponents; ++c)
                 key->data().easing(c) = easing;
-            line.grabDefaultKey(aType, key);
+            line.setBaseValue(aType, key);
         } else {
             auto* key = new BlurKey();
             for (int c = 0; c < BlurKey::kComponents; ++c)
                 key->data().easing(c) = easing;
-            line.grabDefaultKey(aType, key);
+            line.setBaseValue(aType, key);
         }
     }
 

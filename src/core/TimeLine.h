@@ -29,9 +29,9 @@ namespace core {
 
 class TimeLine {
 public:
-    // The default key's frame marker; see TimeKey::kDefaultKeyIndex (moved
+    // The base value's frame marker; see TimeKey::kBaseValueIndex (moved
     // off -1 so negative frames are ordinary frames).
-    enum { kDefaultKeyIndex = TimeKey::kDefaultKeyIndex };
+    enum { kBaseValueIndex = TimeKey::kBaseValueIndex };
 
     typedef QMap<int, TimeKey*> MapType;
 
@@ -91,9 +91,11 @@ public:
     TimeKey* timeKey(TimeKeyType aType, int aIndex);
     const TimeKey* timeKey(TimeKeyType aType, int aIndex) const;
 
-    void grabDefaultKey(TimeKeyType aType, TimeKey* aKey);
-    TimeKey* defaultKey(TimeKeyType aType);
-    const TimeKey* defaultKey(TimeKeyType aType) const;
+    // The unkeyed value for a type: a TimeKey-typed data record whose frame is
+    // kBaseValueIndex. It is not an authored position and never appears in a lane.
+    void setBaseValue(TimeKeyType aType, TimeKey* aKey);
+    TimeKey* baseValue(TimeKeyType aType);
+    const TimeKey* baseValue(TimeKeyType aType) const;
 
     TimeKeyExpans& current() { return *mCurrent; }
     const TimeKeyExpans& current() const { return *mCurrent; }
@@ -129,7 +131,7 @@ private:
     QVector<FilterEntry> mFilters;
     QScopedPointer<TimeKeyExpans> mCurrent;
     QScopedPointer<TimeKeyExpans> mWorking;
-    std::array<QScopedPointer<TimeKey>, TimeKeyType_TERM> mDefaultKeys;
+    std::array<QScopedPointer<TimeKey>, TimeKeyType_TERM> mBaseValues;
     std::array<std::array<std::unique_ptr<FilterMask>, FilterMaskChannel_TERM>, TimeKeyType_TERM> mFilterMasks;
 };
 

@@ -205,7 +205,7 @@ public:
     // ---- actions (each one undo step; they act on the whole selection) --------
     Q_INVOKABLE void deleteSelection();
     Q_INVOKABLE void duplicateSelection();
-    Q_INVOKABLE void addDefaultKeysToSelection();
+    Q_INVOKABLE void addKeysAtPlayheadToSelection();
     Q_INVOKABLE void createFolder(int aRow);
     Q_INVOKABLE void setSelectionSlimmed(bool aSlimmed);
     Q_INVOKABLE void pasteKeys(int aRow);
@@ -308,7 +308,7 @@ private:
     void rebuild();
     // a row has a matte when its node HAS a mask (painted or not), and the chip's url follows
     bool rowHasMatte(const Row& aRow) const;
-    // the node's mask data: the blended field, else the lane's DEFAULT key (a fresh mask has one)
+    // the node's mask data: the blended field, else the lane's BASE VALUE (a fresh mask has one)
     const core::MaskKey::Data* maskDataOf(const core::ObjectNode& aNode) const;
     QString matteUrlFor(const Row& aRow, int aRowIndex) const;
     void appendRow(core::ObjectNode& aNode, int aDepth, bool aIsDocument, int& aTop);

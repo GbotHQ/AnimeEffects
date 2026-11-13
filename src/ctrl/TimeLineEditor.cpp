@@ -187,7 +187,7 @@ void TimeLineEditor::selectCreatedKeys(const core::TimeLineEvent& aEvent) {
     // event through pos.isExist() so a stale index (a notification that named a
     // frame the key no longer occupies) can never inject a null-key entry into
     // the selection — it is simply skipped. Default-key payloads
-    // (kDefaultKeyIndex) carry nothing selectable in the lane maps, so they
+    // (kBaseValueIndex) carry nothing selectable in the lane maps, so they
     // leave the current selection untouched rather than clearing it.
     core::TimeLineEvent live;
     for (const core::TimeLineEvent::Target& target : aEvent.targets()) {

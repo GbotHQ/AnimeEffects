@@ -113,7 +113,7 @@ void FilterRowModel::refresh() {
     } else if (isBlur()) {
         const auto data = mOwner.accessor().blurData();
         const bool hasExplicit = line->hasTimeKey(mType, frame);
-        const auto* key = hasExplicit ? line->timeKey(mType, frame) : line->defaultKey(mType);
+        const auto* key = hasExplicit ? line->timeKey(mType, frame) : line->baseValue(mType);
         // Between keys the live radii are what the frame plays; the mode flag
         // belongs to a stored key, so it falls back to linear when this frame
         // is interpolated.

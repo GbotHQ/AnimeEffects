@@ -132,15 +132,15 @@ void testStaticEditsDefault() {
     Fixture f;
     f.target(f.param());
     const QVector2D before = static_cast<const core::MoveKey*>(
-        f.line().defaultKey(core::TimeKeyType_Move))->pos();
+        f.line().baseValue(core::TimeKeyType_Move))->pos();
     f.dragTranslation(40.0f);
     check(f.line().map(core::TimeKeyType_Move).isEmpty(), "static: drag creates no explicit Move key");
     const QVector2D after = static_cast<const core::MoveKey*>(
-        f.line().defaultKey(core::TimeKeyType_Move))->pos();
+        f.line().baseValue(core::TimeKeyType_Move))->pos();
     check(after != before, "static: the base Move value is what the drag edits");
     f.project.commandStack().undo();
     const QVector2D undone = static_cast<const core::MoveKey*>(
-        f.line().defaultKey(core::TimeKeyType_Move))->pos();
+        f.line().baseValue(core::TimeKeyType_Move))->pos();
     check(undone == before, "static: one undo restores the base value");
     f.project.commandStack().redo();
 }

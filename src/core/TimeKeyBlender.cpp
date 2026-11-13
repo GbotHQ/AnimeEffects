@@ -66,7 +66,7 @@ public:
 namespace core {
 //-------------------------------------------------------------------------------------------------
 QMatrix4x4 TimeKeyBlender::getLocalSRMatrix(const ObjectNode& aNode, const TimeInfo& aTime) {
-    XC_ASSERT(aTime.frame.get() != TimeLine::kDefaultKeyIndex);
+    XC_ASSERT(aTime.frame.get() != TimeLine::kBaseValueIndex);
     if (aNode.timeLine()) {
         SRTExpans expans;
         getRotateExpans(expans, aNode, aTime);
@@ -78,7 +78,7 @@ QMatrix4x4 TimeKeyBlender::getLocalSRMatrix(const ObjectNode& aNode, const TimeI
 
 //-------------------------------------------------------------------------------------------------
 QMatrix4x4 TimeKeyBlender::getWorldCSRTMatrix(ObjectNode& aNode, const TimeInfo& aTime) {
-    XC_ASSERT(aTime.frame.get() != TimeLine::kDefaultKeyIndex);
+    XC_ASSERT(aTime.frame.get() != TimeLine::kBaseValueIndex);
     if (aNode.timeLine()) {
         ObjectTreeSeeker seeker(true);
         TimeKeyBlender blender(seeker, seeker.position(&aNode));
@@ -89,7 +89,7 @@ QMatrix4x4 TimeKeyBlender::getWorldCSRTMatrix(ObjectNode& aNode, const TimeInfo&
 }
 
 QMatrix4x4 TimeKeyBlender::getRelativeMatrix(ObjectNode& aNode, const TimeInfo& aTime, const ObjectNode* aParent) {
-    XC_ASSERT(aTime.frame.get() != TimeLine::kDefaultKeyIndex);
+    XC_ASSERT(aTime.frame.get() != TimeLine::kBaseValueIndex);
     QMatrix4x4 result;
 
     if (aNode.timeLine()) {
@@ -177,7 +177,7 @@ QVector2D TimeKeyBlender::getOriginOffset(ObjectNode& aNode, const TimeInfo& aTi
 }
 
 QVector2D TimeKeyBlender::getCentroid(const ObjectNode& aNode, const TimeInfo& aTime) {
-    XC_ASSERT(aTime.frame.get() != TimeLine::kDefaultKeyIndex);
+    XC_ASSERT(aTime.frame.get() != TimeLine::kBaseValueIndex);
     if (aNode.timeLine()) {
         SRTExpans expans;
         getMoveExpans(expans, aNode, aTime);
@@ -382,9 +382,9 @@ float getEasingRateFromTwoKeys(const TimeKeyGatherer& aGatherer, int aComponent)
 }
 
 template<class tKey, TimeKeyType tType>
-typename tKey::Data getDefaultKeyData(const ObjectNode& aNode) {
+typename tKey::Data getBaseValueData(const ObjectNode& aNode) {
     if (aNode.timeLine()) {
-        auto key = (tKey*)aNode.timeLine()->defaultKey(tType);
+        auto key = (tKey*)aNode.timeLine()->baseValue(tType);
         if (key)
             return key->data();
     }
@@ -396,7 +396,7 @@ void TimeKeyBlender::getMoveExpans(SRTExpans& aExpans, const ObjectNode& aNode, 
     TimeKeyGatherer blend(aNode.timeLine()->map(TimeKeyType_Move), aTime);
 
     if (blend.isEmpty()) { // no key is exists
-        auto keyData = getDefaultKeyData<MoveKey, TimeKeyType_Move>(aNode);
+        auto keyData = getBaseValueData<MoveKey, TimeKeyType_Move>(aNode);
         aExpans.setPos(keyData.pos());
         aExpans.setCentroid(keyData.centroid());
     } else if (blend.hasSameFrame()) { // a key is exists
@@ -447,7 +447,7 @@ void TimeKeyBlender::getRotateExpans(SRTExpans& aExpans, const ObjectNode& aNode
     TimeKeyGatherer blend(aNode.timeLine()->map(TimeKeyType_Rotate), aTime);
     if (blend.isEmpty()) {
         // No key exists
-        aExpans.setRotate(getDefaultKeyData<RotateKey, TimeKeyType_Rotate>(aNode).rotate());
+        aExpans.setRotate(getBaseValueData<RotateKey, TimeKeyType_Rotate>(aNode).rotate());
     } else if (blend.hasSameFrame()) {
         // Inserted point from easing
         aExpans.setRotate(((const RotateKey*)blend.point(0).key)->data().rotate());
@@ -469,7 +469,7 @@ void TimeKeyBlender::getScaleExpans(SRTExpans& aExpans, const ObjectNode& aNode,
     TimeKeyGatherer blend(aNode.timeLine()->map(TimeKeyType_Scale), aTime);
 
     if (blend.isEmpty()) { // no key is exists
-        aExpans.setScale(getDefaultKeyData<ScaleKey, TimeKeyType_Scale>(aNode).scale());
+        aExpans.setScale(getBaseValueData<ScaleKey, TimeKeyType_Scale>(aNode).scale());
     } else if (blend.hasSameFrame()) { // a key is exists
         aExpans.setScale(((const ScaleKey*)blend.point(0).key)->data().scale());
     } else if (blend.isSingle()) { // perfect following
@@ -548,8 +548,8 @@ void TimeKeyBlender::blendDepthKey(PositionType aPos, const TimeInfo& aTime) {
 
     // no key is exists
     if (blend.isEmpty()) {
-        auto defaultKey = (DepthKey*)node.timeLine()->defaultKey(TimeKeyType_Depth);
-        expans.setDepth(defaultKey ? defaultKey->depth() : DepthKey::Data().depth());
+        auto baseValue = (DepthKey*)node.timeLine()->baseValue(TimeKeyType_Depth);
+        expans.setDepth(baseValue ? baseValue->depth() : DepthKey::Data().depth());
     } else if (blend.hasSameFrame()) {
         // a key is exists
         expans.setDepth(((const DepthKey*)blend.point(0).key)->depth());
@@ -600,8 +600,8 @@ void TimeKeyBlender::blendHSVKey(PositionType aPos, const TimeInfo& aTime) {
 
     // no key is exists
     if (blend.isEmpty()) {
-        auto defaultKey = (HSVKey*)node.timeLine()->defaultKey(TimeKeyType_HSV);
-        expans.hsv() = defaultKey ? defaultKey->data() : HSVKey::Data();
+        auto baseValue = (HSVKey*)node.timeLine()->baseValue(TimeKeyType_HSV);
+        expans.hsv() = baseValue ? baseValue->data() : HSVKey::Data();
     } else if (blend.hasSameFrame()) {
         // a key is exists
         expans.hsv() = ((const HSVKey*)blend.point(0).key)->data();
@@ -645,9 +645,9 @@ void TimeKeyBlender::blendBlurKey(PositionType aPos, const TimeInfo& aTime) {
 
     // no key is exists
     if (blend.isEmpty()) {
-        auto defaultKey = (BlurKey*)node.timeLine()->defaultKey(TimeKeyType_Blur);
-        if (defaultKey) {
-            const auto& d = defaultKey->data();
+        auto baseValue = (BlurKey*)node.timeLine()->baseValue(TimeKeyType_Blur);
+        if (baseValue) {
+            const auto& d = baseValue->data();
             expans.setBlurEllipse(d.blurX(), d.blurY(), d.angleDeg());
         } else {
             expans.setBlurEllipse(0.0f, 0.0f, 0.0f);
@@ -697,8 +697,8 @@ void TimeKeyBlender::blendWaveKey(PositionType aPos, const TimeInfo& aTime) {
 
     // no key is exists
     if (blend.isEmpty()) {
-        auto defaultKey = (WaveKey*)node.timeLine()->defaultKey(TimeKeyType_Wave);
-        expans.wave() = defaultKey ? defaultKey->data() : WaveKey::Data();
+        auto baseValue = (WaveKey*)node.timeLine()->baseValue(TimeKeyType_Wave);
+        expans.wave() = baseValue ? baseValue->data() : WaveKey::Data();
     } else if (blend.hasSameFrame()) {
         // a key is exists
         expans.wave() = ((const WaveKey*)blend.point(0).key)->data();
@@ -752,8 +752,8 @@ void TimeKeyBlender::blendOpaKey(PositionType aPos, const TimeInfo& aTime) {
 
     // no key is exists
     if (blend.isEmpty()) {
-        auto defaultKey = (OpaKey*)node.timeLine()->defaultKey(TimeKeyType_Opa);
-        expans.opa() = defaultKey ? defaultKey->data() : OpaKey::Data();
+        auto baseValue = (OpaKey*)node.timeLine()->baseValue(TimeKeyType_Opa);
+        expans.opa() = baseValue ? baseValue->data() : OpaKey::Data();
     } else if (blend.hasSameFrame()) {
         // a key is exists
         expans.opa() = ((const OpaKey*)blend.point(0).key)->data();
@@ -1009,11 +1009,11 @@ void TimeKeyBlender::blendMaskKey(PositionType aPos, const TimeInfo& aTime) {
     TimeKeyGatherer blend(node.timeLine()->map(TimeKeyType_Mask), aTime);
 
     if (blend.isEmpty()) {
-        // no key at all: the default key's field, or no mask
+        // no key at all: the base value's field, or no mask
         out.clear();
-        auto defaultKey = (const MaskKey*)node.timeLine()->defaultKey(TimeKeyType_Mask);
-        if (defaultKey && defaultKey->data().isValid())
-            out.assign(defaultKey->data());
+        auto baseValue = (const MaskKey*)node.timeLine()->baseValue(TimeKeyType_Mask);
+        if (baseValue && baseValue->data().isValid())
+            out.assign(baseValue->data());
         return;
     }
 
@@ -1126,7 +1126,7 @@ ImageKey* TimeKeyBlender::getImageKey(const ObjectNode& aNode, const TimeInfo& a
         return nullptr;
     const TimeLine::MapType& map = aNode.timeLine()->map(TimeKeyType_Image);
     auto imageKey = (ImageKey*)TimeKeyGatherer::findLastKey(map, aTime.frame);
-    return imageKey ? imageKey : (ImageKey*)aNode.timeLine()->defaultKey(TimeKeyType_Image);
+    return imageKey ? imageKey : (ImageKey*)aNode.timeLine()->baseValue(TimeKeyType_Image);
 }
 
 void TimeKeyBlender::buildPosePalette(ObjectNode& aNode, PosePalette::KeyPair aPair) {

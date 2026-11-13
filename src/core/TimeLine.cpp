@@ -63,7 +63,7 @@ TimeKeyType TimeLine::getTimeKeyTypeInOrderOfOperations(int aIndex) {
     return kTimeKeyTypeInOrderOfOperations.at(aIndex);
 }
 
-TimeLine::TimeLine(): mMap(), mCurrent(new TimeKeyExpans()), mWorking(new TimeKeyExpans()), mDefaultKeys() {}
+TimeLine::TimeLine(): mMap(), mCurrent(new TimeKeyExpans()), mWorking(new TimeKeyExpans()), mBaseValues() {}
 
 TimeLine::~TimeLine() { clear(); }
 
@@ -196,16 +196,16 @@ const TimeKey* TimeLine::timeKey(TimeKeyType aType, int aIndex) const {
     return NULL;
 }
 
-void TimeLine::grabDefaultKey(TimeKeyType aType, TimeKey* aKey) {
+void TimeLine::setBaseValue(TimeKeyType aType, TimeKey* aKey) {
     if (aKey) {
-        aKey->setFrame(kDefaultKeyIndex);
+        aKey->setFrame(kBaseValueIndex);
     }
-    mDefaultKeys.at(aType).reset(aKey);
+    mBaseValues.at(aType).reset(aKey);
 }
 
-TimeKey* TimeLine::defaultKey(TimeKeyType aType) { return mDefaultKeys.at(aType).data(); }
+TimeKey* TimeLine::baseValue(TimeKeyType aType) { return mBaseValues.at(aType).data(); }
 
-const TimeKey* TimeLine::defaultKey(TimeKeyType aType) const { return mDefaultKeys.at(aType).data(); }
+const TimeKey* TimeLine::baseValue(TimeKeyType aType) const { return mBaseValues.at(aType).data(); }
 
 void TimeLine::clear() {
     mFilters.clear();
@@ -215,7 +215,7 @@ void TimeLine::clear() {
         }
     }
     for (int i = 0; i < TimeKeyType_TERM; ++i) {
-        mDefaultKeys[i].reset();
+        mBaseValues[i].reset();
 
         QList<TimeKey*> values = mMap[i].values();
         qDeleteAll(values.begin(), values.end());
@@ -302,11 +302,11 @@ bool TimeLine::overwriteMove(TimeKeyType aType, int aFrom, int aTo) {
 bool TimeLine::adoptKey(TimeKeyType aType, int aFrame, TimeKey* aTimeKey) {
     if (!aTimeKey)
         return false;
-    if (aFrame == kDefaultKeyIndex) {
-        if (mDefaultKeys[aType])
+    if (aFrame == kBaseValueIndex) {
+        if (mBaseValues[aType])
             return false;
         aTimeKey->setFrame(aFrame);
-        mDefaultKeys[aType].reset(aTimeKey);
+        mBaseValues[aType].reset(aTimeKey);
         return true;
     }
     if (mMap[aType].contains(aFrame))
@@ -372,7 +372,7 @@ void TimeLine::pushRemoveCommands(TimeKeyType aType, int aFrame, cmnd::Vector& a
 int TimeLine::serializeTypeCount() const {
     int count = 0;
     for (int i = 0; i < TimeKeyType_TERM; ++i) {
-        if (mDefaultKeys[i] || !mMap[i].isEmpty())
+        if (mBaseValues[i] || !mMap[i].isEmpty())
             ++count;
     }
     return count;
@@ -385,15 +385,15 @@ bool TimeLine::serialize(Serializer& aOut) const {
     // signature
     auto pos = aOut.beginBlock(kSignature);
 
-    // non-empty type count (including default keys)
+    // non-empty type count (including base values)
     aOut.write(serializeTypeCount());
 
     // each map
     for (int i = 0; i < TimeKeyType_TERM; ++i) {
         const MapType& map = mMap[i];
-        auto defaultKey = mDefaultKeys[i].data();
+        auto baseValue = mBaseValues[i].data();
 
-        if (!defaultKey && map.isEmpty())
+        if (!baseValue && map.isEmpty())
             continue;
 
         // signature
@@ -402,12 +402,12 @@ bool TimeLine::serialize(Serializer& aOut) const {
         // type name
         aOut.write(getTimeKeyName(static_cast<TimeKeyType>(i)));
 
-        // default key is exists
-        aOut.write(static_cast<bool>(defaultKey));
+        // a base value exists
+        aOut.write(static_cast<bool>(baseValue));
 
         // defautltKey
-        if (defaultKey) {
-            if (!serializeTimeKey(aOut, *defaultKey)) {
+        if (baseValue) {
+            if (!serializeTimeKey(aOut, *baseValue)) {
                 return false;
             }
         }
@@ -516,7 +516,7 @@ bool TimeLine::deserialize(Deserializer& aIn) {
     }
     aIn.pushLogScope("TimeLine");
 
-    // non empty type count (including default keys)
+    // non empty type count (including base values)
     int mapCount = 0;
     aIn.read(mapCount);
 
@@ -537,13 +537,13 @@ bool TimeLine::deserialize(Deserializer& aIn) {
         if (typeIndex >= TimeKeyType_TERM)
             continue;
 
-        // default key is exists
-        bool hasDefaultKey = false;
-        aIn.read(hasDefaultKey);
+        // a base value exists
+        bool hasBaseValue = false;
+        aIn.read(hasBaseValue);
 
-        // default key
-        if (hasDefaultKey) {
-            if (!deserializeTimeKey(aIn, (TimeKeyType)typeIndex, TimeLine::kDefaultKeyIndex)) {
+        // base value
+        if (hasBaseValue) {
+            if (!deserializeTimeKey(aIn, (TimeKeyType)typeIndex, TimeLine::kBaseValueIndex)) {
                 return false;
             }
         }
@@ -708,8 +708,8 @@ bool TimeLine::deserializeTimeKey(Deserializer& aIn, TimeKeyType aType, int aInd
         }
     }
 
-    if (aIndex == TimeLine::kDefaultKeyIndex) {
-        mDefaultKeys[aType].reset(key);
+    if (aIndex == TimeLine::kBaseValueIndex) {
+        mBaseValues[aType].reset(key);
     } else {
         mMap[aType].insert(aIndex, key);
     }

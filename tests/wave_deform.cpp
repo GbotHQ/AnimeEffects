@@ -1,7 +1,7 @@
 // Gate for the WAVE DEFORM filter (core/WaveKey.h, core/WavePass.h,
 // core/FilterFrame.cpp's wave pass, core/LayerNode.cpp + core/FolderNode.cpp):
 //
-//   [1] the key's data contract - a default key is inert, the preset is the
+//   [1] the key's data contract - a base value is inert, the preset is the
 //       visible starter a new filter gets, and every setter keeps the range the
 //       shader and the UI assume;
 //   [2] the five graph channels read and write the same five fields playback
@@ -9,7 +9,7 @@
 //   [3] playback: a two-key segment interpolates each channel with its OWN
 //       easing while the shape fields (speed, crest, the dual wave, the deform
 //       mode) are STEP-HELD from the earlier key, and a lane with no explicit
-//       key plays its default key;
+//       key plays its base value;
 //   [4] the 0.18 record: every field, the easings and the filter stack survive
 //       TimeLine serialize -> deserialize;
 //   [5] the PASS MAPPING: content pixels -> composite pixels is the exact path
@@ -19,7 +19,7 @@
 //       instead of to the screen;
 //   [6] the 0.19 painted-mask record: both fields, their content rectangles and
 //       their neutral starts survive TimeLine serialize -> deserialize;
-//   [7] filter ACTIVITY: a value living on a lane's DEFAULT key (no explicit key
+//   [7] filter ACTIVITY: a value living on a lane's BASE VALUE (no explicit key
 //       at all) is live, editing it back to the identity makes it not live, and
 //       a key at a later frame is live BEFORE that frame too - the renderer tests
 //       the BLENDED value, not the key map (core/FilterActivity.h), so a static
@@ -305,20 +305,20 @@ int main(int argc, char** argv) {
         check(nearly(onKey.crest(), 1.0f), "the later key's own shape plays on its frame");
         check(onKey.deform() == core::WaveKey::Deform_Ripple, "the later key's own deform plays");
 
-        // A lane with only a DEFAULT key must play it: that is what makes a
+        // A lane with only a BASE VALUE must play it: that is what makes a
         // filter added from the stack deform before it is keyed at all.
         core::TestNode defaulted;
         core::WaveKey::Data only = core::WaveKey::Data::presetData();
         only.setStrength(7.0f);
-        auto* defaultKey = new core::WaveKey();
-        defaultKey->data() = only;
-        defaulted.timeLine()->grabDefaultKey(core::TimeKeyType_Wave, defaultKey);
+        auto* baseValue = new core::WaveKey();
+        baseValue->data() = only;
+        defaulted.timeLine()->setBaseValue(core::TimeKeyType_Wave, baseValue);
         info.frame = core::Frame(3);
         core::TimeKeyBlender defaultBlender(defaulted, false);
         defaultBlender.updateCurrents(&defaulted, info);
         check(
             nearly(defaulted.timeLine()->current().wave().strength(), 7.0f),
-            "a wave with no explicit key plays its default key"
+            "a wave with no explicit key plays its base value"
         );
 
         if (failures == before)
@@ -579,11 +579,11 @@ int main(int argc, char** argv) {
             std::printf("[6] the 0.19 painted-mask record round-trips\n");
     }
 
-    // ------------------------------ [7] a filter's DEFAULT key makes it live
+    // ------------------------------ [7] a filter's BASE VALUE makes it live
     //
     // The reported defect this gates: a Blur/HSV added from the stack and edited
-    // BEFORE any keyframe is written to the lane's DEFAULT key (prop_KeyAccessor's
-    // editFrame picks TimeLine::kDefaultKeyIndex while the map is empty), and the
+    // BEFORE any keyframe is written to the lane's BASE VALUE (prop_KeyAccessor's
+    // editFrame picks TimeLine::kBaseValueIndex while the map is empty), and the
     // renderer used to require "an explicit key at or before this frame" - so the
     // value the panel showed and playback blended was never rendered, while Wave
     // (which already read the blended value) applied. The gate is now the
@@ -623,14 +623,14 @@ int main(int argc, char** argv) {
 
             auto* blur = new core::BlurKey();
             blur->setAmount(8.0f); // the edit the panel writes
-            line.grabDefaultKey(core::TimeKeyType_Blur, blur);
+            line.setBaseValue(core::TimeKeyType_Blur, blur);
             auto* hsv = new core::HSVKey();
             hsv->setHue(40); // additive hue 40: not the identity
-            line.grabDefaultKey(core::TimeKeyType_HSV, hsv);
+            line.setBaseValue(core::TimeKeyType_HSV, hsv);
 
             const core::TimeKeyExpans& expans = readFrame(node, info);
             std::printf(
-                "[7] default-key edits at frame 0: blur keys=%d radius=%.3f, hsv keys=%d hue=%d\n",
+                "[7] base-value edits at frame 0: blur keys=%d radius=%.3f, hsv keys=%d hue=%d\n",
                 int(line.map(core::TimeKeyType_Blur).size()), expans.maxBlurRadius(),
                 int(line.map(core::TimeKeyType_HSV).size()), expans.hsv().hsv().at(0)
             );
@@ -638,15 +638,15 @@ int main(int argc, char** argv) {
             check(line.map(core::TimeKeyType_HSV).isEmpty(), "an edit before any key adds no explicit HSV key");
             check(
                 core::filterValueIsActive(core::TimeKeyType_Blur, expans),
-                "a static blur (default key only) is live"
+                "a static blur (base value only) is live"
             );
-            check(core::filterValueIsActive(core::TimeKeyType_HSV, expans), "a static HSV (default key only) is live");
+            check(core::filterValueIsActive(core::TimeKeyType_HSV, expans), "a static HSV (base value only) is live");
             check(live(line, expans, core::TimeKeyType_Blur), "the enabled static blur reads live");
             check(live(line, expans, core::TimeKeyType_HSV), "the enabled static HSV reads live");
 
             // The same slots, edited back to the type's identity.
-            static_cast<core::BlurKey*>(line.defaultKey(core::TimeKeyType_Blur))->setAmount(0.0f);
-            static_cast<core::HSVKey*>(line.defaultKey(core::TimeKeyType_HSV))->setHSV({0, 100, 100, 0});
+            static_cast<core::BlurKey*>(line.baseValue(core::TimeKeyType_Blur))->setAmount(0.0f);
+            static_cast<core::HSVKey*>(line.baseValue(core::TimeKeyType_HSV))->setHSV({0, 100, 100, 0});
             const core::TimeKeyExpans& identity = readFrame(node, info);
             std::printf(
                 "[7] edited back to the identity: radius=%.3f hue=%d sat=%d val=%d\n",
@@ -710,10 +710,10 @@ int main(int argc, char** argv) {
 
             auto* blur = new core::BlurKey();
             blur->setAmount(8.0f);
-            line.grabDefaultKey(core::TimeKeyType_Blur, blur);
+            line.setBaseValue(core::TimeKeyType_Blur, blur);
             auto* hsv = new core::HSVKey();
             hsv->setHue(40);
-            line.grabDefaultKey(core::TimeKeyType_HSV, hsv);
+            line.setBaseValue(core::TimeKeyType_HSV, hsv);
 
             const core::TimeKeyExpans& expans = readFrame(node, info);
             std::printf(

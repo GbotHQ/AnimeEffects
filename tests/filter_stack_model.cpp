@@ -71,11 +71,11 @@ int run() {
     folder.setDefaultPosture(QVector2D(0, 0));
     core::TimeLine& line = *folder.timeLine();
 
-    // A filter starts STATIC: its entry and default key are one undo step, and
+    // A filter starts STATIC: its entry and base value are one undo step, and
     // the timeline gains no explicit key until the row's key dot is pressed.
     ctrl::TimeLineUtil::addFilter(project, folder, core::TimeKeyType_HSV);
     CHECK(types(line) == QVector<core::TimeKeyType>{core::TimeKeyType_HSV});
-    CHECK(line.defaultKey(core::TimeKeyType_HSV) != nullptr);
+    CHECK(line.baseValue(core::TimeKeyType_HSV) != nullptr);
     CHECK(line.map(core::TimeKeyType_HSV).isEmpty());
 
     // Duplicate add is a no-op: the stack and its default stay exactly as they were.
@@ -85,10 +85,10 @@ int run() {
 
     ctrl::TimeLineUtil::addFilter(project, folder, core::TimeKeyType_Blur);
     CHECK(types(line) == (QVector<core::TimeKeyType>{core::TimeKeyType_HSV, core::TimeKeyType_Blur}));
-    CHECK(line.defaultKey(core::TimeKeyType_Blur) != nullptr);
+    CHECK(line.baseValue(core::TimeKeyType_Blur) != nullptr);
     CHECK(line.map(core::TimeKeyType_Blur).isEmpty());
 
-    // Undo removes the stack row. The default key is structural and stays (a
+    // Undo removes the stack row. The base value is structural and stays (a
     // hidden value reused if the filter is added again), so the visible state
     // is what we assert.
     project.commandStack().undo();
@@ -96,7 +96,7 @@ int run() {
     CHECK(line.map(core::TimeKeyType_Blur).isEmpty());
     project.commandStack().redo();
     CHECK(types(line) == (QVector<core::TimeKeyType>{core::TimeKeyType_HSV, core::TimeKeyType_Blur}));
-    CHECK(line.defaultKey(core::TimeKeyType_Blur) != nullptr);
+    CHECK(line.baseValue(core::TimeKeyType_Blur) != nullptr);
 
     // Model 2: a static filter edit writes its default, not a key; pressing
     // the dot is what adds the explicit key; the dot toggles it back off.
@@ -105,7 +105,7 @@ int run() {
     accessor.setTarget(&folder);
     accessor.assignHSV(42, "hue");
     CHECK(line.map(core::TimeKeyType_HSV).isEmpty());
-    CHECK(static_cast<const core::HSVKey*>(line.defaultKey(core::TimeKeyType_HSV))->data().hsv().at(0) == 42);
+    CHECK(static_cast<const core::HSVKey*>(line.baseValue(core::TimeKeyType_HSV))->data().hsv().at(0) == 42);
     accessor.knockNewHSV();
     CHECK(line.hasTimeKey(core::TimeKeyType_HSV, 7));
     accessor.removeKey(core::TimeKeyType_HSV);

@@ -588,26 +588,28 @@ core::ObjectNode* duplicateNode(core::Project& aProject, core::ObjectNode& aSour
     return command->copy();
 }
 
-void addDefaultKeys(core::Project& aProject, core::ObjectNode& aNode) {
+void addKeysAtPlayhead(core::Project& aProject, core::ObjectNode& aNode) {
     core::TimeLine* line = aNode.timeLine();
     if (!line)
         return;
 
-    cmnd::ScopedMacro macro(aProject.commandStack(), CmndName::tr("Add keys at frame 0"));
+    const int frame = aProject.animator().currentFrame().get();
+    cmnd::ScopedMacro macro(aProject.commandStack(), CmndName::tr("Add keys at playhead"));
     auto* notifier = new TimeLineUtil::Notifier(aProject);
     notifier->event().setType(core::TimeLineEvent::Type_PushKey);
     macro.grabListener(notifier);
 
-    // one frame-0 key per channel the node is missing, named in the event as it is made
+    // one key per channel that has none at the playhead, seeded from the value the
+    // playhead currently shows
     const auto push = [&](core::TimeKey* aKey, core::TimeKey* aParentKey = nullptr) {
         if (!aKey)
             return;
-        notifier->event().pushTarget(aNode, aKey->type(), aKey->frame());
-        TimeLineUtil::appendNewKey(aProject, aNode, aKey->frame(), aKey, aParentKey);
+        aKey->setFrame(frame);
+        notifier->event().pushTarget(aNode, aKey->type(), frame);
+        TimeLineUtil::appendNewKey(aProject, aNode, frame, aKey, aParentKey);
     };
-    const auto needs = [line](core::TimeKeyType aType) {
-        const auto& map = line->map(aType);
-        return map.isEmpty() || map.firstKey() != 0;
+    const auto needs = [line, frame](core::TimeKeyType aType) {
+        return !line->hasTimeKey(aType, frame);
     };
 
     if (needs(core::TimeKeyType_Move)) {
@@ -659,7 +661,7 @@ void addDefaultKeys(core::Project& aProject, core::ObjectNode& aNode) {
     }
     if (aNode.type() == core::ObjectType_Folder) {
         for (core::ObjectNode* child : aNode.children())
-            addDefaultKeys(aProject, *child);
+            addKeysAtPlayhead(aProject, *child);
     }
 }
 

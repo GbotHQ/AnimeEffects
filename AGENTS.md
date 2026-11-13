@@ -673,6 +673,10 @@ ninja -C build 'src/gui/update_translations:Debug'   # the :Debug / :Release suf
   expanded, and only a CHILD row gives the Properties board a target.
 - The expander is the branch indicator at `(rowX - 12, rowY + rowH/2)` from the row's own rect; it
   toggles, and a double-click on the row collapses too — use single indicator clicks.
+- **An unkeyed channel is stored as a BASE VALUE, not a "default key"**: the API is
+  `TimeLine::baseValue()` / `setBaseValue()` / `kBaseValueIndex`, and `TimeKey::isBaseValue()`.
+  The tree action **Add keys at playhead** materializes the current value as an explicit key at the
+  animator's current frame (channels already keyed there are skipped); frame 0 is not special.
 - A collapsed folder with keyed descendants gets a **summary lane**: its own ink, one rounded triangle
   per frame, fill-only, `TimeLineRow::summaryRect()`; the tree's row height follows the same rule.
 - Row seams are **solid** (`trackEdgeColor` 70 %); key-type separators inside a row are **dashed

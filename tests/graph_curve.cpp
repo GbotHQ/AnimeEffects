@@ -15,7 +15,7 @@
 //     which channel is step-held, and that value() reads the component the
 //     blender blends for that channel
 //   2 the sampler equals playback frame by frame over a span, plus the no-key,
-//     default-key and one-key cases playback handles differently
+//     base-value and one-key cases playback handles differently
 //   3 the easing identities the graph is built on: a Linear midpoint is the
 //     exact average, Floor holds the lower key, a Custom bezier passes through
 //     a point stated in closed form
@@ -519,7 +519,7 @@ int sectionSamplerMatchesPlayback() {
     const QVector<ctrl::graph::Curve> curves = allCurves(*node.timeLine());
     // 2+2+1+2+1+1+3+3 components plus the wave's five (strength, wavelength,
     // direction, phase, mix), which have no keys here and so exercise the
-    // no-key/default-key path on both sides of the comparison.
+    // no-key/base-value path on both sides of the comparison.
     CHECK(curves.size() == 20);
 
     for (int frame = 1; frame <= 19; ++frame) {
@@ -546,7 +546,7 @@ int sectionSamplerMatchesPlayback() {
     return 0;
 }
 
-// 2b. An unkeyed channel reads what playback holds there. With no default key
+// 2b. An unkeyed channel reads what playback holds there. With no base value
 // that is the key type's own default Data -- not zero: an unkeyed layer plays at
 // scale 1, full opacity, HSV saturation 100. Created layers DO carry default
 // keys, so this is the case the graph shows for a freshly added layer.
@@ -589,16 +589,16 @@ int sectionSamplerWithoutKeys() {
             CHECK(sampled == 0.0f);
     }
 
-    // ...and once the timeline HAS a default key, that key is the value: it is
-    // what the blender reads when the key map is empty (getDefaultKeyData).
+    // ...and once the timeline HAS a base value, that key is the value: it is
+    // what the blender reads when the key map is empty (getBaseValueData).
     auto* defaultScale = new core::ScaleKey();
     defaultScale->data().setScale(QVector2D(5.0f, 7.0f));
-    node.timeLine()->grabDefaultKey(core::TimeKeyType_Scale, defaultScale);
-    CHECK(node.timeLine()->defaultKey(core::TimeKeyType_Scale) == defaultScale);
+    node.timeLine()->setBaseValue(core::TimeKeyType_Scale, defaultScale);
+    CHECK(node.timeLine()->baseValue(core::TimeKeyType_Scale) == defaultScale);
 
     auto* defaultOpa = new core::OpaKey();
     defaultOpa->data().setOpacity(0.4f);
-    node.timeLine()->grabDefaultKey(core::TimeKeyType_Opa, defaultOpa);
+    node.timeLine()->setBaseValue(core::TimeKeyType_Opa, defaultOpa);
 
     for (int frame = 0; frame <= 20; frame += 5) {
         const BlenderOracle oracle(node, core::Frame(frame));
@@ -821,7 +821,7 @@ int sectionImageOffsetStaircase() {
     CHECK(!Channel(core::TimeKeyType_Image, 1).isInterpolated());
 
     // The half that IS observable without a key: with neither an image key nor
-    // an image default key, playback holds the (0,0) offset
+    // an image base value, playback holds the (0,0) offset
     // (TimeKeyBlender::getImageOffset), and the sampler reads the same square.
     core::TestNode node;
     const ctrl::graph::Curve cx(*node.timeLine(), Channel(core::TimeKeyType_Image, 0));

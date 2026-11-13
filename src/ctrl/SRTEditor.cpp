@@ -19,7 +19,7 @@ bool SRTEditor::initializeKey(TimeLine& aLine, QString* aMessage) {
     TimeKeyExpans& current = aLine.current();
     const int frame = mProject.animator().currentFrame().get();
 
-    // A PROPERTY WITH NO EXPLICIT KEYS IS STATIC. Editing it writes the DEFAULT key,
+    // A PROPERTY WITH NO EXPLICIT KEYS IS STATIC. Editing it writes the BASE VALUE,
     // exactly as the inspector's KeyAccessor::editFrame does; only an animated channel
     // (or a checked "Create ... key" box) gets a new key at the playhead. The old code
     // treated every missing frame key as owned and pushed it on the first drag, which
@@ -36,9 +36,9 @@ bool SRTEditor::initializeKey(TimeLine& aLine, QString* aMessage) {
             return nullptr; // the caller seeds its typed key from the current transform
         aIsDefault = true;
         switch (aType) {
-        case TimeKeyType_Move: return getOrCreateDefaultKey<MoveKey, TimeKeyType_Move>(aLine);
-        case TimeKeyType_Rotate: return getOrCreateDefaultKey<RotateKey, TimeKeyType_Rotate>(aLine);
-        case TimeKeyType_Scale: return getOrCreateDefaultKey<ScaleKey, TimeKeyType_Scale>(aLine);
+        case TimeKeyType_Move: return getOrCreateBaseValue<MoveKey, TimeKeyType_Move>(aLine);
+        case TimeKeyType_Rotate: return getOrCreateBaseValue<RotateKey, TimeKeyType_Rotate>(aLine);
+        case TimeKeyType_Scale: return getOrCreateBaseValue<ScaleKey, TimeKeyType_Scale>(aLine);
         default: return nullptr;
         }
     };
@@ -54,7 +54,7 @@ bool SRTEditor::initializeKey(TimeLine& aLine, QString* aMessage) {
 
     {
         TimeKey* base = keyFor(TimeKeyType_Move, mParam.necessarilyMove, mKeyOwner.ownsMoveKey,
-                               mKeyOwner.moveIsDefault);
+                               mKeyOwner.moveIsBaseValue);
         if (mKeyOwner.ownsMoveKey) {
             mKeyOwner.moveKey = new MoveKey();
             const util::Easing::Param aParam = util::Easing::defaultParam();
@@ -71,7 +71,7 @@ bool SRTEditor::initializeKey(TimeLine& aLine, QString* aMessage) {
     // rotateKey
     {
         TimeKey* base = keyFor(TimeKeyType_Rotate, mParam.necessarilyRotate, mKeyOwner.ownsRotateKey,
-                               mKeyOwner.rotateIsDefault);
+                               mKeyOwner.rotateIsBaseValue);
         if (mKeyOwner.ownsRotateKey) {
             mKeyOwner.rotateKey = new RotateKey();
             const util::Easing::Param aParam = util::Easing::defaultParam();
@@ -87,7 +87,7 @@ bool SRTEditor::initializeKey(TimeLine& aLine, QString* aMessage) {
     // scaleKey
     {
         TimeKey* base = keyFor(TimeKeyType_Scale, mParam.necessarilyScale, mKeyOwner.ownsScaleKey,
-                               mKeyOwner.scaleIsDefault);
+                               mKeyOwner.scaleIsBaseValue);
         if (mKeyOwner.ownsScaleKey) {
             mKeyOwner.scaleKey = new ScaleKey();
             const util::Easing::Param aParam = util::Easing::defaultParam();
