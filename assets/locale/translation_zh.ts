@@ -1534,7 +1534,7 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainMenuBar.cpp" line="576"/>
+        <location filename="../../src/gui/MainMenuBar.cpp" line="581"/>
         <source>Change the canvas size</source>
         <translation>修改画布尺寸</translation>
     </message>
@@ -1543,22 +1543,22 @@
         <translation type="vanished">修改最大帧数</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainMenuBar.cpp" line="597"/>
+        <location filename="../../src/gui/MainMenuBar.cpp" line="602"/>
         <source>Change the frame range</source>
         <translation>更改帧范围</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainMenuBar.cpp" line="618"/>
+        <location filename="../../src/gui/MainMenuBar.cpp" line="623"/>
         <source>Change loop settings</source>
         <translation>修改循环设置</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainMenuBar.cpp" line="640"/>
+        <location filename="../../src/gui/MainMenuBar.cpp" line="645"/>
         <source>Change the FPS</source>
         <translation>修改帧率FPS</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainMenuBar.cpp" line="668"/>
+        <location filename="../../src/gui/MainMenuBar.cpp" line="673"/>
         <source>Change the viewport background</source>
         <translation>修改视口背景</translation>
     </message>
@@ -3775,60 +3775,60 @@ The %2 encoder could not be opened either (%3).</source>
         <translation type="vanished">需要 %1</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainWindow.cpp" line="1572"/>
-        <location filename="../../src/gui/MainWindow.cpp" line="1635"/>
-        <location filename="../../src/gui/MainWindow.cpp" line="1735"/>
-        <location filename="../../src/gui/MainWindow.cpp" line="1780"/>
-        <location filename="../../src/gui/MainWindow.cpp" line="1830"/>
-        <location filename="../../src/gui/MainWindow.cpp" line="1857"/>
-        <location filename="../../src/gui/MainWindow.cpp" line="1888"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="1756"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="1819"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="1919"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="1964"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="2014"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="2041"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="2072"/>
         <source>Export Error</source>
         <translation>导出错误</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainWindow.cpp" line="1573"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="1757"/>
         <source>Unknown export destination: %1</source>
         <translation>未知的导出目的地：%1</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainWindow.cpp" line="1664"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="1848"/>
         <source>File exists</source>
         <translation>文件已存在</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainWindow.cpp" line="1665"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="1849"/>
         <source>The file &quot;%1&quot; already exists. Overwrite?</source>
         <translation>文件“%1”已存在。要覆盖吗？</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainWindow.cpp" line="1736"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="1920"/>
         <source>%1 caps the file size, which means encoding it more than once, and that needs all %2 frames in memory (~%3 MB). Export fewer frames, or choose a destination without a size limit.</source>
         <translation>%1限制了文件大小，这意味着需要多次编码，而这需要把全部%2帧都放在内存中（约%3 MB）。请减少导出帧数，或选择没有体积限制的目的地。</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainWindow.cpp" line="1754"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="1938"/>
         <source>Fitting under %1&apos;s %2 KB limit...</source>
         <translation>正在适配%1的%2 KB上限...</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainWindow.cpp" line="1767"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="1951"/>
         <source>Export Canceled</source>
         <translation>导出已取消</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainWindow.cpp" line="1768"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="1952"/>
         <source>The export was stopped while fitting under %1&apos;s size limit. The file already written is the last attempt, and may exceed the limit.</source>
         <translation>在适配%1的体积上限时导出被中止。已写入的文件是最后一次尝试的结果，可能超出该上限。</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainWindow.cpp" line="1781"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="1965"/>
         <source>%1 caps the file at %2 KB and even the smallest setting did not fit it (%3 KB).
 %4</source>
         <translation>%1把文件限制在%2 KB以内，而即使最小的设置也放不进（%3 KB）。
 %4</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainWindow.cpp" line="1789"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="1973"/>
         <source>Fitted to %1 bytes in %2 attempts (%3x%4).</source>
         <translation>经过%2次尝试后适配到%1字节（%3x%4）。</translation>
     </message>
@@ -4710,6 +4710,24 @@ The %2 encoder could not be opened either (%3).</source>
     <message>
         <source>Use this destination</source>
         <translation type="vanished">使用此目的地</translation>
+    </message>
+</context>
+<context>
+    <name>gui::DockPanel</name>
+    <message>
+        <location filename="../../src/gui/DockPanel.cpp" line="25"/>
+        <source>Dock panel</source>
+        <translation>停靠面板</translation>
+    </message>
+    <message>
+        <location filename="../../src/gui/DockPanel.cpp" line="26"/>
+        <source>Undock panel</source>
+        <translation>取消停靠面板</translation>
+    </message>
+    <message>
+        <location filename="../../src/gui/DockPanel.cpp" line="27"/>
+        <source>Hide panel</source>
+        <translation>隐藏面板</translation>
     </message>
 </context>
 <context>
@@ -5716,12 +5734,12 @@ Check FFmpeg palette generation 🗸</source>
         <translation>素材</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainMenuBar.cpp" line="265"/>
+        <location filename="../../src/gui/MainMenuBar.cpp" line="269"/>
         <source>Preferences</source>
         <translation>偏好设置</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainMenuBar.cpp" line="267"/>
+        <location filename="../../src/gui/MainMenuBar.cpp" line="271"/>
         <source>Settings</source>
         <translation>设置</translation>
     </message>
@@ -5734,37 +5752,37 @@ Check FFmpeg palette generation 🗸</source>
         <translation type="vanished">鼠标设置</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainMenuBar.cpp" line="268"/>
+        <location filename="../../src/gui/MainMenuBar.cpp" line="272"/>
         <source>Keybindings</source>
         <translation>快捷键</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainMenuBar.cpp" line="296"/>
+        <location filename="../../src/gui/MainMenuBar.cpp" line="300"/>
         <source>Help</source>
         <translation>帮助</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainMenuBar.cpp" line="298"/>
+        <location filename="../../src/gui/MainMenuBar.cpp" line="302"/>
         <source>About AnimeEffects</source>
         <translation>关于AnimeEffects</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainMenuBar.cpp" line="307"/>
+        <location filename="../../src/gui/MainMenuBar.cpp" line="311"/>
         <source>### AnimeEffects for </source>
         <translation>### AnimeEffects 适用于 </translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainMenuBar.cpp" line="307"/>
+        <location filename="../../src/gui/MainMenuBar.cpp" line="311"/>
         <source> version </source>
         <translation>版本</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainMenuBar.cpp" line="308"/>
+        <location filename="../../src/gui/MainMenuBar.cpp" line="312"/>
         <source>An easy to use 2D animation software maintained by the [AnimeEffectsDevs](https://github.com/AnimeEffectsDevs).&lt;br /&gt;Licensed under the GPL v3.0 and powered by various open source libraries.</source>
         <translation>一款由 [AnimeEffectsDevs] 维护的易于使用的2D动画软件。(https://github.com/AnimeEffectsDevs).&lt;br /&gt;根据GPL v3.0许可证授权，并由多种开源库提供支持。</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainMenuBar.cpp" line="316"/>
+        <location filename="../../src/gui/MainMenuBar.cpp" line="320"/>
         <source>&lt;br /&gt;&lt;br /&gt;Contributors:&lt;br /&gt;[Hidefuku](https://github.com/hidefuku), [Yukusai](https://github.com/p-yukusai), [Gambot](https://github.com/GbotHQ), [Arrangemonk](https://github.com/Arrangemonk), [OneByStudio](https://onebystudio.com), [Larpon](https://github.com/larpon), [Herace](https://github.com/herace), [Aodaruma](https://github.com/Aodaruma), [Azagaya](https://github.com/azagaya), [FoxyHawk](https://github.com/FoxyHawk), [Nanashia](https://github.com/Nanashia), [Henrich](https://github.com/henrich), [mcddx330](https://github.com/mcddx330), [Freddii](https://github.com/freddii), [Aki017](https://github.com/aki017), [PicoHz](https://github.com/picoHz), [Peter9811](https://github.com/peter9811), [GES233](https://github.com/GES233), [h-banii](https://github.com/h-banii), [henrich](https://github.com/henrich), [Nanashia](https://github.com/Nanashia).
 If we forgot to include you please let us know or open a PR!</source>
         <translation>&lt;br /&gt;&lt;br /&gt;贡献者：&lt;br /&gt;[Hidefuku](https://github.com/hidefuku), [Yukusai](https://github.com/p-yukusai), [Gambot](https://github.com/GbotHQ), [Arrangemonk](https://github.com/Arrangemonk), [OneByStudio](https://onebystudio.com), [Larpon](https://github.com/larpon), [Herace](https://github.com/herace), [Aodaruma](https://github.com/Aodaruma), [Azagaya](https://github.com/azagaya), [FoxyHawk](https://github.com/FoxyHawk), [Nanashia](https://github.com/Nanashia), [Henrich](https://github.com/henrich), [mcddx330](https://github.com/mcddx330), [Freddii](https://github.com/freddii), [Aki017](https://github.com/aki017), [PicoHz](https://github.com/picoHz), [Peter9811](https://github.com/peter9811), [GES233](https://github.com/GES233), [h-banii](https://github.com/h-banii), [henrich](https://github.com/henrich), [Nanashia](https://github.com/Nanashia).
@@ -5775,48 +5793,48 @@ If we forgot to include you please let us know or open a PR!</source>
         <translation type="vanished">&lt;br /&gt;&lt;br /&gt;贡献者：&lt;br /&gt;[Hidefuku](https://github.com/hidefuku), [Yukusai](https://github.com/p-yukusai), [Gambot](https://github.com/GbotHQ), [Arrangemonk](https://github.com/Arrangemonk), [OneByStudio](https://onebystudio.com), [Larpon](https://github.com/larpon), [Herace](https://github.com/herace), [Aodaruma](https://github.com/Aodaruma), [Azagaya](https://github.com/azagaya), [FoxyHawk](https://github.com/FoxyHawk), [Nanashia](https://github.com/Nanashia), [Henrich](https://github.com/henrich), [mcddx330](https://github.com/mcddx330), [Freddii](https://github.com/freddii), [aki017](https://github.com/aki017), [picoHz](https://github.com/picoHz).</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainMenuBar.cpp" line="345"/>
+        <location filename="../../src/gui/MainMenuBar.cpp" line="349"/>
         <source>About us</source>
         <translation>关于我们</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainMenuBar.cpp" line="351"/>
+        <location filename="../../src/gui/MainMenuBar.cpp" line="355"/>
         <source>Check for updates</source>
         <translation>检查更新</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainMenuBar.cpp" line="356"/>
-        <location filename="../../src/gui/MainMenuBar.cpp" line="501"/>
+        <location filename="../../src/gui/MainMenuBar.cpp" line="360"/>
+        <location filename="../../src/gui/MainMenuBar.cpp" line="505"/>
         <source>System telemetry</source>
         <translation>系统遥测</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainMenuBar.cpp" line="396"/>
+        <location filename="../../src/gui/MainMenuBar.cpp" line="400"/>
         <source>Version: </source>
         <translation>版本: </translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainMenuBar.cpp" line="397"/>
+        <location filename="../../src/gui/MainMenuBar.cpp" line="401"/>
         <source>Format version: </source>
         <translation>格式版本： </translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainMenuBar.cpp" line="398"/>
+        <location filename="../../src/gui/MainMenuBar.cpp" line="402"/>
         <source>Platform: </source>
         <translation>平台: </translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainMenuBar.cpp" line="399"/>
+        <location filename="../../src/gui/MainMenuBar.cpp" line="403"/>
         <source>Build ABI: </source>
         <translation>生成 ABI： </translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainMenuBar.cpp" line="424"/>
+        <location filename="../../src/gui/MainMenuBar.cpp" line="428"/>
         <source>CPU vendor: </source>
         <translation>CPU 供应商： </translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainMenuBar.cpp" line="425"/>
+        <location filename="../../src/gui/MainMenuBar.cpp" line="429"/>
         <source>CPU architecture: </source>
         <translation>CPU 结构： </translation>
     </message>
@@ -5835,72 +5853,77 @@ If we forgot to include you please let us know or open a PR!</source>
         <translation>再次导出</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainMenuBar.cpp" line="311"/>
+        <location filename="../../src/gui/MainMenuBar.cpp" line="267"/>
+        <source>Panels</source>
+        <translation>面板</translation>
+    </message>
+    <message>
+        <location filename="../../src/gui/MainMenuBar.cpp" line="315"/>
         <source>&lt;br /&gt;&lt;br /&gt;Video/audio encoding uses the FFmpeg libraries (https://ffmpeg.org), which are licensed under the GNU Lesser GPL v2.1+ (or GPL, depending on the build). Their corresponding source is available as required by that license.</source>
         <translation>&lt;br /&gt;&lt;br /&gt;视频/音频编码使用 FFmpeg 库（https://ffmpeg.org），这些库按 GNU Lesser GPL v2.1+（视构建方式也可能为 GPL）授权。我们按照该许可的要求提供其对应源代码。</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainMenuBar.cpp" line="426"/>
+        <location filename="../../src/gui/MainMenuBar.cpp" line="430"/>
         <source>CPU threads: </source>
         <translation>CPU 线程： </translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainMenuBar.cpp" line="430"/>
+        <location filename="../../src/gui/MainMenuBar.cpp" line="434"/>
         <source>System RAM:</source>
         <translation>系统 RAM</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainMenuBar.cpp" line="432"/>
+        <location filename="../../src/gui/MainMenuBar.cpp" line="436"/>
         <source>System </source>
         <translation>系统 </translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainMenuBar.cpp" line="434"/>
+        <location filename="../../src/gui/MainMenuBar.cpp" line="438"/>
         <source>Current GPU: </source>
         <translation>当前 GPU: </translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainMenuBar.cpp" line="467"/>
+        <location filename="../../src/gui/MainMenuBar.cpp" line="471"/>
         <source>GPU Vendor: </source>
         <translation>GPU 厂商: </translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainMenuBar.cpp" line="468"/>
+        <location filename="../../src/gui/MainMenuBar.cpp" line="472"/>
         <source>Max VRAM: </source>
         <translation>最大显存：</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainMenuBar.cpp" line="469"/>
+        <location filename="../../src/gui/MainMenuBar.cpp" line="473"/>
         <source>OpenGL version: </source>
         <translation>OpenGL 版本： </translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainMenuBar.cpp" line="470"/>
+        <location filename="../../src/gui/MainMenuBar.cpp" line="474"/>
         <source>Qt Version: </source>
         <translation>Qt 版本: </translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainMenuBar.cpp" line="471"/>
+        <location filename="../../src/gui/MainMenuBar.cpp" line="475"/>
         <source>System locale: </source>
         <translation>系统本地化： </translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainMenuBar.cpp" line="476"/>
+        <location filename="../../src/gui/MainMenuBar.cpp" line="480"/>
         <source>Location Has Unicode: </source>
         <translation>位置包含 Unicode 字符：</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainMenuBar.cpp" line="489"/>
+        <location filename="../../src/gui/MainMenuBar.cpp" line="493"/>
         <source>Location Is Writable: </source>
         <translation>位置可写： </translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainMenuBar.cpp" line="495"/>
+        <location filename="../../src/gui/MainMenuBar.cpp" line="499"/>
         <source>libav licence: </source>
         <translation>libav 许可证： </translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainMenuBar.cpp" line="496"/>
+        <location filename="../../src/gui/MainMenuBar.cpp" line="500"/>
         <source>libav configuration: </source>
         <translation>libav 配置： </translation>
     </message>
@@ -5909,12 +5932,12 @@ If we forgot to include you please let us know or open a PR!</source>
         <translation type="vanished">FFmpeg 达标类型：</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainMenuBar.cpp" line="497"/>
+        <location filename="../../src/gui/MainMenuBar.cpp" line="501"/>
         <source>System specs successfully copied to the clipboard</source>
         <translation>系统规格已成功复制到剪贴板。</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainMenuBar.cpp" line="512"/>
+        <location filename="../../src/gui/MainMenuBar.cpp" line="516"/>
         <source>Donate</source>
         <translation>捐赠</translation>
     </message>
@@ -5943,37 +5966,37 @@ If we forgot to include you please let us know or open a PR!</source>
         <translation type="vanished">工具库</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainWindow.cpp" line="747"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="931"/>
         <source>Theme changed</source>
         <translation>主题已更改</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainWindow.cpp" line="749"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="933"/>
         <source>There may be visual artifacts after changing themes, we recommend you restart the application.</source>
         <translation>更换主题后可能会出现视觉障碍，建议重新启动应用程序。</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainWindow.cpp" line="971"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="1155"/>
         <source> has been modified. Save changes?</source>
         <translation> 已改动。保存变动？</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainWindow.cpp" line="973"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="1157"/>
         <source>Some projects have been modified. Save changes?</source>
         <translation>一些项目已被修改。保存修改？</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainWindow.cpp" line="981"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="1165"/>
         <source>Save Changes</source>
         <translation>保存更改</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainWindow.cpp" line="982"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="1166"/>
         <source>Discard Changes</source>
         <translation>放弃修改</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainWindow.cpp" line="983"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="1167"/>
         <source>Cancel</source>
         <translation>取消</translation>
     </message>
@@ -5986,47 +6009,58 @@ If we forgot to include you please let us know or open a PR!</source>
         <translation type="vanished">重置 : </translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainWindow.cpp" line="1124"/>
-        <location filename="../../src/gui/MainWindow.cpp" line="1201"/>
-        <location filename="../../src/gui/MainWindow.cpp" line="1232"/>
-        <location filename="../../src/gui/MainWindow.cpp" line="1303"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="1308"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="1385"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="1416"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="1487"/>
         <source>Loading Error</source>
         <translation>加载错误</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainWindow.cpp" line="1177"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="1361"/>
         <source>Open File</source>
         <translation>打开文件</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainWindow.cpp" line="1317"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="1501"/>
         <source>Save File</source>
         <translation>保存文件</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainWindow.cpp" line="1966"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="2150"/>
         <source>Exported %1 (%2 KB)</source>
         <translation>已导出 %1（%2 KB）</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainWindow.cpp" line="1976"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="2160"/>
         <source> (%1 of %2 KB allowed for %3)</source>
         <translation> （%1，%3 的上限为 %2 KB）</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainWindow.cpp" line="1981"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="2165"/>
         <source>; OVER THE LIMIT, it will be rejected</source>
         <translation>；已超出上限，将被拒收</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainWindow.cpp" line="2020"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="2204"/>
         <source>All files (*)</source>
         <translation>所有文件 (*)</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainWindow.cpp" line="2021"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="2205"/>
         <source>%1 files (*.%2)</source>
         <translation>%1 文件 (*.%2)</translation>
+    </message>
+    <message>
+        <location filename="../../src/gui/MainWindow.cpp" line="2948"/>
+        <source>Nothing is docked on the %1</source>
+        <translation>%1上没有停靠的面板</translation>
+    </message>
+    <message>
+        <location filename="../../src/gui/MainWindow.cpp" line="2946"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="2949"/>
+        <source>Show or hide the %1</source>
+        <translation>显示或隐藏%1</translation>
     </message>
     <message>
         <source>My platform isn&apos;t listed (I&apos;ll choose the format)</source>
@@ -6083,27 +6117,42 @@ In the following screen you can instruct AnimeEffects to download and install it
         <translation type="vanished">FFmpeg 无法生成调色板，请进行故障排查。</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainWindow.cpp" line="199"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="230"/>
         <source>Animation</source>
         <translation>动画</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainWindow.cpp" line="225"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="263"/>
         <source>Properties</source>
         <translation>属性</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainWindow.cpp" line="271"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="311"/>
         <source>Tools</source>
         <translation>工具</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainWindow.cpp" line="1252"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="423"/>
+        <source>left side</source>
+        <translation>左侧</translation>
+    </message>
+    <message>
+        <location filename="../../src/gui/MainWindow.cpp" line="424"/>
+        <source>right side</source>
+        <translation>右侧</translation>
+    </message>
+    <message>
+        <location filename="../../src/gui/MainWindow.cpp" line="425"/>
+        <source>bottom</source>
+        <translation>底部</translation>
+    </message>
+    <message>
+        <location filename="../../src/gui/MainWindow.cpp" line="1436"/>
         <source>Recover unsaved project?</source>
         <translation>恢复未保存的项目？</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainWindow.cpp" line="1253"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="1437"/>
         <source>AnimeEffects found an unsaved project from a previous session:
 %1
 
@@ -6194,8 +6243,8 @@ Open it?</source>
         <translation type="vanished">标签图片</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainWindow.cpp" line="2014"/>
-        <location filename="../../src/gui/MainWindow.cpp" line="2093"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="2198"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="2277"/>
         <source>Export Folder</source>
         <translation>导出文件</translation>
     </message>
@@ -6212,7 +6261,7 @@ Open it?</source>
         <translation type="vanished">导出错误</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainWindow.cpp" line="2022"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="2206"/>
         <source>Export File</source>
         <translation>导出文件</translation>
     </message>
@@ -6547,37 +6596,37 @@ The log is available below.</source>
 <context>
     <name>gui::ProjectTabBar</name>
     <message>
-        <location filename="../../src/gui/ProjectTabBar.cpp" line="71"/>
+        <location filename="../../src/gui/ProjectTabBar.cpp" line="109"/>
         <source>Close tab</source>
         <translation>关闭标签页</translation>
     </message>
     <message>
-        <location filename="../../src/gui/ProjectTabBar.cpp" line="140"/>
+        <location filename="../../src/gui/ProjectTabBar.cpp" line="178"/>
         <source>Save</source>
         <translation>保存</translation>
     </message>
     <message>
-        <location filename="../../src/gui/ProjectTabBar.cpp" line="141"/>
+        <location filename="../../src/gui/ProjectTabBar.cpp" line="179"/>
         <source>Save As</source>
         <translation>另存为</translation>
     </message>
     <message>
-        <location filename="../../src/gui/ProjectTabBar.cpp" line="143"/>
+        <location filename="../../src/gui/ProjectTabBar.cpp" line="181"/>
         <source>Close</source>
         <translation>关闭</translation>
     </message>
     <message>
-        <location filename="../../src/gui/ProjectTabBar.cpp" line="144"/>
+        <location filename="../../src/gui/ProjectTabBar.cpp" line="182"/>
         <source>Close Others</source>
         <translation>关闭其他</translation>
     </message>
     <message>
-        <location filename="../../src/gui/ProjectTabBar.cpp" line="145"/>
+        <location filename="../../src/gui/ProjectTabBar.cpp" line="183"/>
         <source>Close All</source>
         <translation>关闭全部</translation>
     </message>
     <message>
-        <location filename="../../src/gui/ProjectTabBar.cpp" line="147"/>
+        <location filename="../../src/gui/ProjectTabBar.cpp" line="185"/>
         <source>Copy Full Path</source>
         <translation>复制完整路径</translation>
     </message>

@@ -1534,7 +1534,7 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainMenuBar.cpp" line="576"/>
+        <location filename="../../src/gui/MainMenuBar.cpp" line="581"/>
         <source>Change the canvas size</source>
         <translation>キャンバスサイズを変更</translation>
     </message>
@@ -1543,22 +1543,22 @@
         <translation type="vanished">最大フレームを変更</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainMenuBar.cpp" line="597"/>
+        <location filename="../../src/gui/MainMenuBar.cpp" line="602"/>
         <source>Change the frame range</source>
         <translation>フレーム範囲を変更</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainMenuBar.cpp" line="618"/>
+        <location filename="../../src/gui/MainMenuBar.cpp" line="623"/>
         <source>Change loop settings</source>
         <translation>ループ設定を変更</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainMenuBar.cpp" line="640"/>
+        <location filename="../../src/gui/MainMenuBar.cpp" line="645"/>
         <source>Change the FPS</source>
         <translation>FPSを変更する</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainMenuBar.cpp" line="668"/>
+        <location filename="../../src/gui/MainMenuBar.cpp" line="673"/>
         <source>Change the viewport background</source>
         <translation>ビューポートの背景を変更</translation>
     </message>
@@ -3775,60 +3775,60 @@ The %2 encoder could not be opened either (%3).</source>
         <translation type="vanished">%1 が必要</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainWindow.cpp" line="1572"/>
-        <location filename="../../src/gui/MainWindow.cpp" line="1635"/>
-        <location filename="../../src/gui/MainWindow.cpp" line="1735"/>
-        <location filename="../../src/gui/MainWindow.cpp" line="1780"/>
-        <location filename="../../src/gui/MainWindow.cpp" line="1830"/>
-        <location filename="../../src/gui/MainWindow.cpp" line="1857"/>
-        <location filename="../../src/gui/MainWindow.cpp" line="1888"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="1756"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="1819"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="1919"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="1964"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="2014"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="2041"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="2072"/>
         <source>Export Error</source>
         <translation>エクスポートエラー</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainWindow.cpp" line="1573"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="1757"/>
         <source>Unknown export destination: %1</source>
         <translation>不明な出力先: %1</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainWindow.cpp" line="1664"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="1848"/>
         <source>File exists</source>
         <translation>ファイルが存在します</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainWindow.cpp" line="1665"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="1849"/>
         <source>The file &quot;%1&quot; already exists. Overwrite?</source>
         <translation>ファイル &quot;%1&quot; はすでに存在します。上書きしますか？</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainWindow.cpp" line="1736"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="1920"/>
         <source>%1 caps the file size, which means encoding it more than once, and that needs all %2 frames in memory (~%3 MB). Export fewer frames, or choose a destination without a size limit.</source>
         <translation>%1 はファイルサイズに上限を設けているため、エンコードを複数回行う必要があり、そのためには %2 フレームすべてをメモリに保持する必要があります（約 %3 MB）。フレーム数を減らすか、サイズ制限のない出力先を選んでください。</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainWindow.cpp" line="1754"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="1938"/>
         <source>Fitting under %1&apos;s %2 KB limit...</source>
         <translation>%1 の %2 KB の上限に収まるよう調整中...</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainWindow.cpp" line="1767"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="1951"/>
         <source>Export Canceled</source>
         <translation>エクスポート中止</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainWindow.cpp" line="1768"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="1952"/>
         <source>The export was stopped while fitting under %1&apos;s size limit. The file already written is the last attempt, and may exceed the limit.</source>
         <translation>%1 のサイズ上限に収める処理の途中でエクスポートが中止されました。すでに書き出されたファイルは最後の試行の結果であり、上限を超えている可能性があります。</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainWindow.cpp" line="1781"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="1965"/>
         <source>%1 caps the file at %2 KB and even the smallest setting did not fit it (%3 KB).
 %4</source>
         <translation>%1 はファイルを %2 KB に制限していますが、最小の設定でも収まりませんでした（%3 KB）。
 %4</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainWindow.cpp" line="1789"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="1973"/>
         <source>Fitted to %1 bytes in %2 attempts (%3x%4).</source>
         <translation>%1 バイトに収まりました（%2 回の試行、%3x%4）。</translation>
     </message>
@@ -4710,6 +4710,24 @@ The %2 encoder could not be opened either (%3).</source>
     <message>
         <source>Use this destination</source>
         <translation type="vanished">この出力先を使う</translation>
+    </message>
+</context>
+<context>
+    <name>gui::DockPanel</name>
+    <message>
+        <location filename="../../src/gui/DockPanel.cpp" line="25"/>
+        <source>Dock panel</source>
+        <translation>パネルをドッキング</translation>
+    </message>
+    <message>
+        <location filename="../../src/gui/DockPanel.cpp" line="26"/>
+        <source>Undock panel</source>
+        <translation>パネルを切り離す</translation>
+    </message>
+    <message>
+        <location filename="../../src/gui/DockPanel.cpp" line="27"/>
+        <source>Hide panel</source>
+        <translation>パネルを隠す</translation>
     </message>
 </context>
 <context>
@@ -5746,12 +5764,12 @@ FFmpegのパレット生成の確認 ... 🗸</translation>
         <translation>アセット</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainMenuBar.cpp" line="265"/>
+        <location filename="../../src/gui/MainMenuBar.cpp" line="269"/>
         <source>Preferences</source>
         <translation>環境設定</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainMenuBar.cpp" line="267"/>
+        <location filename="../../src/gui/MainMenuBar.cpp" line="271"/>
         <source>Settings</source>
         <translation>設定</translation>
     </message>
@@ -5764,37 +5782,37 @@ FFmpegのパレット生成の確認 ... 🗸</translation>
         <translation type="vanished">マウス設定</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainMenuBar.cpp" line="268"/>
+        <location filename="../../src/gui/MainMenuBar.cpp" line="272"/>
         <source>Keybindings</source>
         <translation>キーバインド</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainMenuBar.cpp" line="296"/>
+        <location filename="../../src/gui/MainMenuBar.cpp" line="300"/>
         <source>Help</source>
         <translation>ヘルプ</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainMenuBar.cpp" line="298"/>
+        <location filename="../../src/gui/MainMenuBar.cpp" line="302"/>
         <source>About AnimeEffects</source>
         <translation>AnimeEffectsについて</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainMenuBar.cpp" line="307"/>
+        <location filename="../../src/gui/MainMenuBar.cpp" line="311"/>
         <source>### AnimeEffects for </source>
         <translation>### AnimeEffects 「</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainMenuBar.cpp" line="307"/>
+        <location filename="../../src/gui/MainMenuBar.cpp" line="311"/>
         <source> version </source>
         <translation>版」&#x3000;バージョン</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainMenuBar.cpp" line="308"/>
+        <location filename="../../src/gui/MainMenuBar.cpp" line="312"/>
         <source>An easy to use 2D animation software maintained by the [AnimeEffectsDevs](https://github.com/AnimeEffectsDevs).&lt;br /&gt;Licensed under the GPL v3.0 and powered by various open source libraries.</source>
         <translation>[AnimeEffectsDevs](https://github.com/AnimeEffectsDevs) が管理する使いやすい 2D アニメーション ソフトウェア.&lt;br /&gt;GPL v3.0 に基づいてライセンスされており、さまざまなオープンソース ライブラリを活用しています。</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainMenuBar.cpp" line="316"/>
+        <location filename="../../src/gui/MainMenuBar.cpp" line="320"/>
         <source>&lt;br /&gt;&lt;br /&gt;Contributors:&lt;br /&gt;[Hidefuku](https://github.com/hidefuku), [Yukusai](https://github.com/p-yukusai), [Gambot](https://github.com/GbotHQ), [Arrangemonk](https://github.com/Arrangemonk), [OneByStudio](https://onebystudio.com), [Larpon](https://github.com/larpon), [Herace](https://github.com/herace), [Aodaruma](https://github.com/Aodaruma), [Azagaya](https://github.com/azagaya), [FoxyHawk](https://github.com/FoxyHawk), [Nanashia](https://github.com/Nanashia), [Henrich](https://github.com/henrich), [mcddx330](https://github.com/mcddx330), [Freddii](https://github.com/freddii), [Aki017](https://github.com/aki017), [PicoHz](https://github.com/picoHz), [Peter9811](https://github.com/peter9811), [GES233](https://github.com/GES233), [h-banii](https://github.com/h-banii), [henrich](https://github.com/henrich), [Nanashia](https://github.com/Nanashia).
 If we forgot to include you please let us know or open a PR!</source>
         <translation>&lt;br /&gt;&lt;br /&gt;寄稿者:&lt;br /&gt;[Hidefuku](https://github.com/hidefuku), [Yukusai](https://github.com/p-yukusai), [Gambot](https://github.com/GbotHQ), [Arrangemonk](https://github.com/Arrangemonk), [OneByStudio](https://onebystudio.com), [Larpon](https://github.com/larpon), [Herace](https://github.com/herace), [Aodaruma](https://github.com/Aodaruma), [Azagaya](https://github.com/azagaya), [FoxyHawk](https://github.com/FoxyHawk), [Nanashia](https://github.com/Nanashia), [Henrich](https://github.com/henrich), [mcddx330](https://github.com/mcddx330), [Freddii](https://github.com/freddii), [Aki017](https://github.com/aki017), [PicoHz](https://github.com/picoHz), [Peter9811](https://github.com/peter9811), [GES233](https://github.com/GES233), [h-banii](https://github.com/h-banii), [henrich](https://github.com/henrich), [Nanashia](https://github.com/Nanashia).
@@ -5815,63 +5833,68 @@ If we forgot to include you please let us know or open a PR!</source>
         <translation>同じ設定で再エクスポート</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainMenuBar.cpp" line="311"/>
+        <location filename="../../src/gui/MainMenuBar.cpp" line="267"/>
+        <source>Panels</source>
+        <translation>パネル</translation>
+    </message>
+    <message>
+        <location filename="../../src/gui/MainMenuBar.cpp" line="315"/>
         <source>&lt;br /&gt;&lt;br /&gt;Video/audio encoding uses the FFmpeg libraries (https://ffmpeg.org), which are licensed under the GNU Lesser GPL v2.1+ (or GPL, depending on the build). Their corresponding source is available as required by that license.</source>
         <translation>&lt;br /&gt;&lt;br /&gt;映像と音声のエンコードには FFmpeg ライブラリ（https://ffmpeg.org）を使用しており、これらは GNU Lesser GPL v2.1+（ビルドによっては GPL）の下でライセンスされています。対応するソースコードは、そのライセンスの要求に従って入手できます。</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainMenuBar.cpp" line="345"/>
+        <location filename="../../src/gui/MainMenuBar.cpp" line="349"/>
         <source>About us</source>
         <translation>私たちについて</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainMenuBar.cpp" line="351"/>
+        <location filename="../../src/gui/MainMenuBar.cpp" line="355"/>
         <source>Check for updates</source>
         <translation>アップデートをチェックする</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainMenuBar.cpp" line="356"/>
-        <location filename="../../src/gui/MainMenuBar.cpp" line="501"/>
+        <location filename="../../src/gui/MainMenuBar.cpp" line="360"/>
+        <location filename="../../src/gui/MainMenuBar.cpp" line="505"/>
         <source>System telemetry</source>
         <translation>システムテレメトリ</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainMenuBar.cpp" line="396"/>
+        <location filename="../../src/gui/MainMenuBar.cpp" line="400"/>
         <source>Version: </source>
         <translation>バージョン: </translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainMenuBar.cpp" line="397"/>
+        <location filename="../../src/gui/MainMenuBar.cpp" line="401"/>
         <source>Format version: </source>
         <translation>バージョンをフォーマット: </translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainMenuBar.cpp" line="398"/>
+        <location filename="../../src/gui/MainMenuBar.cpp" line="402"/>
         <source>Platform: </source>
         <translation>オーエス: </translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainMenuBar.cpp" line="399"/>
+        <location filename="../../src/gui/MainMenuBar.cpp" line="403"/>
         <source>Build ABI: </source>
         <translation>ABIビルド: </translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainMenuBar.cpp" line="424"/>
+        <location filename="../../src/gui/MainMenuBar.cpp" line="428"/>
         <source>CPU vendor: </source>
         <translation>CPU ベンダー: </translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainMenuBar.cpp" line="425"/>
+        <location filename="../../src/gui/MainMenuBar.cpp" line="429"/>
         <source>CPU architecture: </source>
         <translation>CPU アーキテクチャ: </translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainMenuBar.cpp" line="495"/>
+        <location filename="../../src/gui/MainMenuBar.cpp" line="499"/>
         <source>libav licence: </source>
         <translation>libav ライセンス: </translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainMenuBar.cpp" line="496"/>
+        <location filename="../../src/gui/MainMenuBar.cpp" line="500"/>
         <source>libav configuration: </source>
         <translation>libav 設定: </translation>
     </message>
@@ -5880,32 +5903,32 @@ If we forgot to include you please let us know or open a PR!</source>
         <translation type="vanished">CPU コア: </translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainMenuBar.cpp" line="426"/>
+        <location filename="../../src/gui/MainMenuBar.cpp" line="430"/>
         <source>CPU threads: </source>
         <translation>CPU スレッド: </translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainMenuBar.cpp" line="430"/>
+        <location filename="../../src/gui/MainMenuBar.cpp" line="434"/>
         <source>System RAM:</source>
         <translation>システム RAM:</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainMenuBar.cpp" line="432"/>
+        <location filename="../../src/gui/MainMenuBar.cpp" line="436"/>
         <source>System </source>
         <translation>システム </translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainMenuBar.cpp" line="434"/>
+        <location filename="../../src/gui/MainMenuBar.cpp" line="438"/>
         <source>Current GPU: </source>
         <translation>カレントGPU: </translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainMenuBar.cpp" line="467"/>
+        <location filename="../../src/gui/MainMenuBar.cpp" line="471"/>
         <source>GPU Vendor: </source>
         <translation>GPUベンダ: </translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainMenuBar.cpp" line="468"/>
+        <location filename="../../src/gui/MainMenuBar.cpp" line="472"/>
         <source>Max VRAM: </source>
         <translation>最大VRAM: </translation>
     </message>
@@ -5914,27 +5937,27 @@ If we forgot to include you please let us know or open a PR!</source>
         <translation type="vanished">利用可能なVRAM: </translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainMenuBar.cpp" line="469"/>
+        <location filename="../../src/gui/MainMenuBar.cpp" line="473"/>
         <source>OpenGL version: </source>
         <translation>OpenGL バージョン: </translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainMenuBar.cpp" line="470"/>
+        <location filename="../../src/gui/MainMenuBar.cpp" line="474"/>
         <source>Qt Version: </source>
         <translation>Qtバージョン: </translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainMenuBar.cpp" line="471"/>
+        <location filename="../../src/gui/MainMenuBar.cpp" line="475"/>
         <source>System locale: </source>
         <translation>システムのロケール: </translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainMenuBar.cpp" line="476"/>
+        <location filename="../../src/gui/MainMenuBar.cpp" line="480"/>
         <source>Location Has Unicode: </source>
         <translation>場所はユニコードを持っています： </translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainMenuBar.cpp" line="489"/>
+        <location filename="../../src/gui/MainMenuBar.cpp" line="493"/>
         <source>Location Is Writable: </source>
         <translation>場所は書き込み可能： </translation>
     </message>
@@ -5943,12 +5966,12 @@ If we forgot to include you please let us know or open a PR!</source>
         <translation type="vanished">FFmpeg実行可能タイプ: </translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainMenuBar.cpp" line="497"/>
+        <location filename="../../src/gui/MainMenuBar.cpp" line="501"/>
         <source>System specs successfully copied to the clipboard</source>
         <translation>システム仕様がクリップボードにコピーされました</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainMenuBar.cpp" line="512"/>
+        <location filename="../../src/gui/MainMenuBar.cpp" line="516"/>
         <source>Donate</source>
         <translation>寄付する</translation>
     </message>
@@ -5977,37 +6000,37 @@ If we forgot to include you please let us know or open a PR!</source>
         <translation type="vanished">ツールドック</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainWindow.cpp" line="747"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="931"/>
         <source>Theme changed</source>
         <translation>テーマ変更</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainWindow.cpp" line="749"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="933"/>
         <source>There may be visual artifacts after changing themes, we recommend you restart the application.</source>
         <translation>テーマを変更した後、視覚的な不具合が発生する可能性があります。アプリケーションを再起動することをお勧めします。</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainWindow.cpp" line="971"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="1155"/>
         <source> has been modified. Save changes?</source>
         <translation> は変更が加えられてます。変更を保存しますか？</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainWindow.cpp" line="973"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="1157"/>
         <source>Some projects have been modified. Save changes?</source>
         <translation>いくつかのプロジェクトは変更が加えられてます。変更を保存しますか？</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainWindow.cpp" line="981"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="1165"/>
         <source>Save Changes</source>
         <translation>変更を保存する</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainWindow.cpp" line="982"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="1166"/>
         <source>Discard Changes</source>
         <translation>変更を破棄する</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainWindow.cpp" line="983"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="1167"/>
         <source>Cancel</source>
         <translation>キャンセル</translation>
     </message>
@@ -6020,47 +6043,58 @@ If we forgot to include you please let us know or open a PR!</source>
         <translation type="vanished">やり直す : </translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainWindow.cpp" line="1124"/>
-        <location filename="../../src/gui/MainWindow.cpp" line="1201"/>
-        <location filename="../../src/gui/MainWindow.cpp" line="1232"/>
-        <location filename="../../src/gui/MainWindow.cpp" line="1303"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="1308"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="1385"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="1416"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="1487"/>
         <source>Loading Error</source>
         <translation>読み込みエラー</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainWindow.cpp" line="1177"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="1361"/>
         <source>Open File</source>
         <translation>ファイルを開く</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainWindow.cpp" line="1317"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="1501"/>
         <source>Save File</source>
         <translation>ファイルを保存する</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainWindow.cpp" line="1966"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="2150"/>
         <source>Exported %1 (%2 KB)</source>
         <translation>%1 をエクスポートしました（%2 KB）</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainWindow.cpp" line="1976"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="2160"/>
         <source> (%1 of %2 KB allowed for %3)</source>
         <translation>（%3 に許される %2 KB のうち %1）</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainWindow.cpp" line="1981"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="2165"/>
         <source>; OVER THE LIMIT, it will be rejected</source>
         <translation>。上限を超えているため拒否されます</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainWindow.cpp" line="2020"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="2204"/>
         <source>All files (*)</source>
         <translation>すべてのファイル (*)</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainWindow.cpp" line="2021"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="2205"/>
         <source>%1 files (*.%2)</source>
         <translation>%1 ファイル (*.%2)</translation>
+    </message>
+    <message>
+        <location filename="../../src/gui/MainWindow.cpp" line="2948"/>
+        <source>Nothing is docked on the %1</source>
+        <translation>%1には何もドッキングされていません</translation>
+    </message>
+    <message>
+        <location filename="../../src/gui/MainWindow.cpp" line="2946"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="2949"/>
+        <source>Show or hide the %1</source>
+        <translation>%1の表示/非表示</translation>
     </message>
     <message>
         <source>My platform isn&apos;t listed (I&apos;ll choose the format)</source>
@@ -6117,27 +6151,42 @@ In the following screen you can instruct AnimeEffects to download and install it
         <translation type="vanished">FFmpegはパレットを生成できませんでした、トラブルシューティングしてください。</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainWindow.cpp" line="199"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="230"/>
         <source>Animation</source>
         <translation>アニメーション</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainWindow.cpp" line="225"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="263"/>
         <source>Properties</source>
         <translation>プロパティ</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainWindow.cpp" line="271"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="311"/>
         <source>Tools</source>
         <translation>ツール</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainWindow.cpp" line="1252"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="423"/>
+        <source>left side</source>
+        <translation>左側</translation>
+    </message>
+    <message>
+        <location filename="../../src/gui/MainWindow.cpp" line="424"/>
+        <source>right side</source>
+        <translation>右側</translation>
+    </message>
+    <message>
+        <location filename="../../src/gui/MainWindow.cpp" line="425"/>
+        <source>bottom</source>
+        <translation>下部</translation>
+    </message>
+    <message>
+        <location filename="../../src/gui/MainWindow.cpp" line="1436"/>
         <source>Recover unsaved project?</source>
         <translation>未保存のプロジェクトを復元しますか？</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainWindow.cpp" line="1253"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="1437"/>
         <source>AnimeEffects found an unsaved project from a previous session:
 %1
 
@@ -6228,8 +6277,8 @@ Open it?</source>
         <translation type="vanished">タグ画像</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainWindow.cpp" line="2014"/>
-        <location filename="../../src/gui/MainWindow.cpp" line="2093"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="2198"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="2277"/>
         <source>Export Folder</source>
         <translation>出力フォルダ</translation>
     </message>
@@ -6246,7 +6295,7 @@ Open it?</source>
         <translation type="vanished">出力エラー</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainWindow.cpp" line="2022"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="2206"/>
         <source>Export File</source>
         <translation>出力ファイル</translation>
     </message>
@@ -6580,37 +6629,37 @@ The log is available below.</source>
 <context>
     <name>gui::ProjectTabBar</name>
     <message>
-        <location filename="../../src/gui/ProjectTabBar.cpp" line="71"/>
+        <location filename="../../src/gui/ProjectTabBar.cpp" line="109"/>
         <source>Close tab</source>
         <translation>タブを閉じる</translation>
     </message>
     <message>
-        <location filename="../../src/gui/ProjectTabBar.cpp" line="140"/>
+        <location filename="../../src/gui/ProjectTabBar.cpp" line="178"/>
         <source>Save</source>
         <translation>保存</translation>
     </message>
     <message>
-        <location filename="../../src/gui/ProjectTabBar.cpp" line="141"/>
+        <location filename="../../src/gui/ProjectTabBar.cpp" line="179"/>
         <source>Save As</source>
         <translation>名前を付けて保存</translation>
     </message>
     <message>
-        <location filename="../../src/gui/ProjectTabBar.cpp" line="143"/>
+        <location filename="../../src/gui/ProjectTabBar.cpp" line="181"/>
         <source>Close</source>
         <translation>閉じる</translation>
     </message>
     <message>
-        <location filename="../../src/gui/ProjectTabBar.cpp" line="144"/>
+        <location filename="../../src/gui/ProjectTabBar.cpp" line="182"/>
         <source>Close Others</source>
         <translation>他のタブを閉じる</translation>
     </message>
     <message>
-        <location filename="../../src/gui/ProjectTabBar.cpp" line="145"/>
+        <location filename="../../src/gui/ProjectTabBar.cpp" line="183"/>
         <source>Close All</source>
         <translation>すべて閉じる</translation>
     </message>
     <message>
-        <location filename="../../src/gui/ProjectTabBar.cpp" line="147"/>
+        <location filename="../../src/gui/ProjectTabBar.cpp" line="185"/>
         <source>Copy Full Path</source>
         <translation>フルパスをコピー</translation>
     </message>
