@@ -197,6 +197,7 @@ qt_add_qml_module(${PROJECT_NAME}
         qml/ToolModeRow.qml
         qml/ToolBrushSection.qml
         qml/ToolTextAction.qml
+        qml/ToolMenu.qml
         # The Animation dock's tree column. The scene owns the rows' ink and the pointer;
         # gui::ObjectTreeModel owns what a row means (its rows are the timeline's lanes too).
         qml/ObjectTreePanel.qml

@@ -153,6 +153,21 @@ QVector2D TimeKeyBlender::getImageOffset(ObjectNode& aNode, const TimeInfo& aTim
     return imageKey ? imageKey->data().imageOffset() : QVector2D();
 }
 
+QMatrix4x4 TimeKeyBlender::getInfluenceMapMatrix(
+    const QMatrix4x4& aInnerMtx, ObjectNode& aNode, const TimeInfo& aTime
+) {
+    QMatrix4x4 mtx = aInnerMtx;
+    const QVector2D offset = getOriginOffset(aNode, aTime);
+    mtx.translate(offset.x(), offset.y());
+    return mtx;
+}
+
+QMatrix4x4 TimeKeyBlender::getInfluenceMapMatrix(
+    ObjectNode& aNode, const TimeInfo& aTime, const ObjectNode* aParent
+) {
+    return getInfluenceMapMatrix(getRelativeMatrix(aNode, aTime, aParent), aNode, aTime);
+}
+
 QVector2D TimeKeyBlender::getOriginOffset(ObjectNode& aNode, const TimeInfo& aTime) {
     auto areaMesh = getAreaMeshImpl(aNode, aTime);
     if (areaMesh.second) {

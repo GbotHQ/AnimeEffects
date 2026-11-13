@@ -141,7 +141,27 @@ class DuplicateCommand: public cmnd::Stable {
     core::ObjectNode& mSource;
     core::ObjectNode* mParent;
     int mIndex;
-    std::unique_ptr<core::ObjectNode> mCopy;
+    // The copy is OWNED only while it is detached (undone): the tree owns a
+    // node that is inserted. A plain unique_ptr double-deleted the copy when
+    // the project closed with the duplicate still in the tree, and a command
+    // evicted from the stack would have deleted an attached node.
+    core::ObjectNode* mCopy = nullptr;
+    std::unique_ptr<core::ObjectNode> mDetached;
+    // source node -> copied node, filled while the copy is built. The authored
+    // weights are addressed by NODE pointer, so copying a record without this
+    // map would make the duplicate read the ORIGINAL's vertices.
+    QHash<const core::ObjectNode*, core::ObjectNode*> mNodeMap;
+    // A rig OWNER above the duplicated subtree keeps its records for the copied
+    // targets: the duplicate is influenced by the same rig, so its authored
+    // field has to be copied onto the owner too. These are the only records the
+    // command writes outside its own copy, and undo removes them again.
+    struct ExternalRecord {
+        util::LinkPointer<core::ObjectNode> owner;
+        util::LinkPointer<core::ObjectNode> target;
+        core::SkinWeights::NodeWeights before;
+        core::SkinWeights::NodeWeights after;
+    };
+    QVector<ExternalRecord> mExternal;
 
 public:
     DuplicateCommand(core::Project& aProject, core::ObjectNode& aSource):
@@ -149,9 +169,10 @@ public:
         mSource(aSource),
         mParent(aSource.parent()),
         mIndex(mParent ? mParent->children().indexOf(&aSource) + 1 : 0),
-        mCopy() {}
+        mCopy(nullptr),
+        mDetached() {}
 
-    core::ObjectNode* copy() const { return mCopy.get(); }
+    core::ObjectNode* copy() const { return mCopy; }
 
     QString name() const override {
         return mSource.canHoldChild() ? CmndName::tr("Duplicate base folder") : CmndName::tr("Duplicate layer");
@@ -163,12 +184,32 @@ public:
         if (!mParent)
             return;
         if (!mCopy) {
-            mCopy.reset(buildNode(mSource));
-            if (!mCopy)
+            mDetached.reset(buildNode(mSource));
+            if (!mDetached)
                 return;
+            mCopy = mDetached.get();
+            mNodeMap.clear();
             copyContents(mSource, *mCopy);
+            copyAuthoredWeights();
+            // The records captured for an outside owner are written on the
+            // first exec too (the post-undo redo path below does the same).
+            for (const ExternalRecord& record : mExternal) {
+                if (record.owner && record.target) {
+                    record.owner->skinWeights().setNodeWeights(record.after);
+                }
+            }
+        } else {
+            // A redo after an undo detached the copy; the copy's own fields are
+            // part of it and still address its own descendants. Only the records
+            // written on an OUTSIDE rig owner were undone.
+            for (const ExternalRecord& record : mExternal) {
+                if (record.owner && record.target) {
+                    record.owner->skinWeights().setNodeWeights(record.after);
+                }
+            }
         }
-        mParent->children().insert(mIndex, mCopy.get());
+        mParent->children().insert(mIndex, mCopy);
+        mDetached.release();   // the tree owns an attached node
     }
 
     void undo() override {
@@ -176,9 +217,20 @@ public:
             return;
         // Undo is LIFO, so nothing else has touched this parent between this command's
         // redo and its undo: the recorded index still names the copy.
-        if (mParent->children().indexOf(mCopy.get()) != mIndex)
+        if (mParent->children().indexOf(mCopy) != mIndex)
             return;
         mParent->children().erase(mIndex);
+        mDetached.reset(mCopy);   // detached again: the command owns it
+
+        for (const ExternalRecord& record : mExternal) {
+            if (!record.owner || !record.target)
+                continue;
+            if (record.before.node) {
+                record.owner->skinWeights().setNodeWeights(record.before);
+            } else {
+                record.owner->skinWeights().removeNodeWeights(*record.target);
+            }
+        }
     }
 
 private:
@@ -196,6 +248,7 @@ private:
     // blend, depth and the default opacity live on the CONCRETE node (ObjectNode is the
     // thin base the tree walks), so they are copied through the type.
     void copyContents(core::ObjectNode& aSource, core::ObjectNode& aCopy) {
+        mNodeMap.insert(&aSource, &aCopy);
         aCopy.setVisibility(aSource.isVisible());
         aCopy.setSlimDown(aSource.isSlimmedDown());
         aCopy.setInitialRect(aSource.initialRect());
@@ -221,7 +274,10 @@ private:
                 copyKeys(*source, *copy);
                 for (core::TimeKey* bone : copy->map(core::TimeKeyType_Bone)) {
                     if (auto* boneKey = dynamic_cast<core::BoneKey*>(bone))
-                        boneKey->resetCaches(mProject, aSource);
+                        // The CLONE's owner is the copy, not the source: the caches
+                        // it builds must name the copy's subtree (the tree event
+                        // rebuilds them again once the children exist).
+                        boneKey->resetCaches(mProject, aCopy);
                 }
                 copy->current().clearCaches();
                 copy->current().clearMasterCache();
@@ -234,6 +290,48 @@ private:
                 continue;
             copyContents(*child, *childCopy);
             aCopy.children().pushBack(childCopy.release());
+        }
+    }
+
+    // The authored fields, after the whole subtree exists. Inside the copied
+    // subtree a record addresses a node, so each target is re-pointed at its
+    // copy; a record whose target is outside the copied subtree belongs to the
+    // source rig and is not duplicated. A rig owner ABOVE the subtree keeps its
+    // record for the copied target, because the duplicate is influenced by that
+    // same rig.
+    void copyAuthoredWeights() {
+        for (auto itr = mNodeMap.constBegin(); itr != mNodeMap.constEnd(); ++itr) {
+            core::ObjectNode* source = const_cast<core::ObjectNode*>(itr.key());
+            core::ObjectNode& copy = *itr.value();
+            for (const core::SkinWeights::NodeWeights& record : source->skinWeights().nodes()) {
+                if (!record.node)
+                    continue;
+                core::ObjectNode* mapped = mNodeMap.value(record.node.get());
+                if (!mapped)
+                    continue;
+                core::SkinWeights::NodeWeights next = record;
+                next.node = mapped->pointee();
+                copy.skinWeights().setNodeWeights(next);
+            }
+        }
+
+        for (core::ObjectNode* owner = mParent; owner; owner = owner->parent()) {
+            if (owner->skinWeights().isEmpty())
+                continue;
+            for (auto itr = mNodeMap.constBegin(); itr != mNodeMap.constEnd(); ++itr) {
+                const core::SkinWeights::NodeWeights* record = owner->skinWeights().find(*itr.key());
+                if (!record || !record->node)
+                    continue;
+                ExternalRecord external;
+                external.owner = owner->pointee();
+                external.target = itr.value()->pointee();
+                const core::SkinWeights::NodeWeights* existing =
+                    owner->skinWeights().find(*itr.value());
+                external.before = existing ? *existing : core::SkinWeights::NodeWeights();
+                external.after = *record;
+                external.after.node = itr.value()->pointee();
+                mExternal.push_back(external);
+            }
         }
     }
 };

@@ -32,6 +32,7 @@ add_library(${PROJECT_NAME}
     FolderNode.cpp FolderNode.h
     Frame.h
     GridMesh.cpp GridMesh.h
+    GridWeightsRemap.cpp GridWeightsRemap.h
     HSVKey.cpp
     HeightMap.cpp HeightMap.h
     HsvKey.h
@@ -67,6 +68,7 @@ add_library(${PROJECT_NAME}
     ScaleKey.cpp ScaleKey.h
     Serializer.cpp Serializer.h
     ShaderHolder.cpp ShaderHolder.h
+    SkinWeights.cpp SkinWeights.h
     TimeCacheAccessor.cpp TimeCacheAccessor.h
     TimeCacheLock.cpp TimeCacheLock.h
     TimeFormat.cpp TimeFormat.h

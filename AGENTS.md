@@ -184,6 +184,70 @@ Every state the document holds must be reproducible by replaying the undo stack:
   the GUI), and the reader discards a <= 0.20 section with `Deserializer::skipBytes`. A persisted
   derived block must carry a tag and a byte length so an unknown version is skipped and recomputed,
   never failed. See `docs/design/skeletal/influence-cache-plan.md`.
+- **Authored skin weights are format 0.22 and per bone, not per vertex.** `core::SkinWeights` lives on
+  the BoneKey owner node and holds a `NodeWeights` record per influenced node; a `BakedBone` record's
+  **presence** is the Baked state (an empty entry list is baked-to-zero, not Envelope). Entries are
+  sorted/sparse; the build walks them as a cursor. `Bone2::boneId()` is the stable identity (process
+  counter + `reserveBoneId`, preserved by copies/shadows; the influence map's uint8 index stays tree
+  order). `SkinWgt_` is a length-checked block inside every `ObjNode_` block; descendant node refs go
+  through `orderIDData`; a save keeps the bake-time mesh signature (refreshing it would hide the mesh
+  change the warning exists to report) and drops only null-node records. `tests/bone_ids`,
+  `skin_weights`, `weight_bake`, `weight_roundtrip`.
+- **A bake must be bit-identical to the envelope at the bake frame.** `SkinWeights::bakeBone` transforms
+  the mesh's 2D position (z = 0) with the same matrix `BoneKey::updateCaches` builds and evaluates
+  `BoneShape::influence`; the build's baked branch pushes the same floats in the same bone order. The
+  baked field is snapshotted before the worker task starts (the document can change mid-build), and a
+  record with no baked bones takes the old path with no copy. `ctrl::bone::BakeWeightsCommand` is a
+  value replay with one-step undo; a bake merges ONE bone into the node's record and never drops the
+  node's other baked bones; `bakeBoneFields` refuses when every BoneKey of the owner lacks the same-id
+  bone or has different authored geometry, naming the frame. `weight_bake` pins all of it.
+- **One authored field serves every frame of the owner.** `Project::onSkinWeightsModified` →
+  `BoneKeyUpdater::onSkinWeightsModified` resets **all** BoneKeys of that owner; a pose/move event
+  rebuilds only one key and would leave other frames showing the old paint. `DriverHolder` also
+  connects it to `Driver::updateSkinWeights`, which marks ONE re-blend for the next paint (and repaints)
+  without calling the editor's updateEvent: a key event there would recreate the mode and end the
+  stroke that asked for it.
+- **The mesh signature is TOPOLOGICAL (vertex count + index buffer), not positions/uvs.** The storage
+  key is the vertex array POSITION, so moving a vertex or editing a uv keeps the mapping and must not
+  warn; only a reorder/insert/remove does. A structural edit is remapped in the same undo step by
+  `ctrl::bone::createMeshWeightsRemap`: survivors keep their value at their new index, a removed
+  vertex's entries are dropped, and a split centre interpolates from the two vertices of the old edge
+  (the old edge set is captured before the geometry runs; the signature is hashed from the faces'
+  current indices because `mesh_Notifier` rebuilds the GL index array after the macro). The mesh modes
+  push it after the geometry command; `weight_paint_commands` pins the shift and the 0.2/0.8 -> 0.5
+  split. A save still keeps the bake-time signature. **A grid regeneration is remapped too**
+  (`core::GridWeightsRemap`, called from `ImageKeyUpdater`'s own command): a cell-size edit, an image
+  replacement and an external reload all rebuild the ImageKey's grid, so each new vertex is placed in
+  the old triangle containing it and takes the old field's barycentric interpolation, with a neighbour
+  fill for vertices outside the old coverage. It only touches a record whose signature is the OLD
+  grid's and whose owner reads this ImageKey at a bone frame (a MeshKey, or another image key with the
+  same topology, is not identity). The new count/signature lands in the same undo step.
+- **Duplicating a node copies authored weights, with the node pointers remapped.** `DuplicateCommand`
+  records source->copy while it builds the subtree: an internal rig owner's records are re-pointed at
+  the copy's descendants (a record for a node outside the copied subtree is not copied), and every
+  ancestor owner ABOVE the subtree gets a record for the copied target, restored/removed on redo/undo.
+  The copy is owned by the command ONLY while it is detached: `mDetached` releases on insert and
+  reclaims on undo. A plain `unique_ptr` double-deleted the copy when the project closed with the
+  duplicate still attached (and deleting the command on stack-limit eviction would have deleted an
+  attached node).
+- **PaintWeights is the authored-field brush.** `BoneEditMode_PaintWeights` + `ctrl::bone::PaintWeightsMode`:
+  right-click selects a bone, left paints only BAKED nodes; the stamp is a WORLD-space circle (the
+  target matrix times the influence map matrix maps each vertex), accelerated by a per-stroke coarse
+  cell grid; Add/Subtract/Replace live in `BoneParam::weightMode` (not the shared `brush.erase`). One
+  stroke is one `AssignSkinWeightsCommand`, rewritten while `Stack::isModifiable` holds; stamps are
+  queued and drained by `flushPendingWork`, so the owner rebuild is once per painted FRAME. Bake writes
+  only live nodes (an already-baked layer keeps its paint); Rebake replaces the selected bone and
+  refreshes count/signature; Revert removes the records; Clear empties but keeps Baked. The panel's
+  state is `WeightState` (Envelope/Baked/Mixed + counts + mismatch) shown as the dock's stat row:
+  the "Weights" label and the state word, with the authored count in the state's TOOLTIP
+  (a count is a diagnostic, not a state: "Baked · 622" made the number the state and left its
+  unit to guess); the actions are one primary button (`Bake`/`Rebake`) and an
+  overflow menu (`Rebake All`, `Revert to Envelope`, `Clear Weights`), never a row of bare text
+  verbs. The brush rows are shown disabled on a live bone and the explanations are tooltips, not
+  visible paragraphs. The canvas draws only the skeleton and the heatmap: no envelope fills, no floating
+  state label, no joint dot (a UI-review removal; the bone visual itself is still undecided). `tests/weight_paint_commands` and the live
+  `scripts/gui/probe_weights_bake_paint.sh` (bake crop pixel-identical, a stroke changes the
+  canvas wash while undo/redo restore it pixel-exactly, revert/rebake/clear, save/reopen) are the gates.
 - **The influence build's cost is its polygon containment, not its bone sweep.** `core::BonePolygonIndex`
   is an exact y-bucketed copy of Qt's odd-even scan (`tests/bone_polygon_index` pins it against
   `QPolygonF::containsPoint`), and the weight loop must keep bone order. A uniform bone grid and
@@ -293,13 +357,37 @@ hand it over. Its one question is `Sampling`:
   to select it (left is always the stroke); with no selection the nearest envelope is
   chosen at the press. The envelope arithmetic, brush and one-command undo are unchanged;
   only the population changed from every envelope under the stroke to the chosen bone.
-  `QPainter::drawPoints` now batches `GL_POINTS` (pen width = point size, split at the
-  overlay drawer's 8192-vertex slot) instead of one ellipse per point;
-  `tests/overlay_engine_primitives` pins a 10px point at 100 pixels and a 9000-point cloud
-  at 14,400, and `tests/bone_cap`/`bone_influence_storage` pin the lookup and selection.
-  See `docs/design/skeletal/influence-display.md`. The mode's convenience is not a format
-  change: authored per-vertex weights remain the next workstream, planned in
-  `docs/design/skeletal/influence-painting-plan.md` (proposal).
+  The heatmap itself is a **GPU surface now**: one indexed triangle draw per skinned mesh
+  through `GLCorePaintEngine::drawWeightField`, one weight per vertex, the GPU interpolating
+  the selected bone's weight across every triangle and the fragment shader evaluating the
+  ramp (`kWeightFieldMinWeight = 0.002` discards the field's outside; alpha 120/255). There
+  is no viewport-sized image, no CPU rasterisation and no image upload; the field is drawn
+  at the framebuffer's own resolution (multisampled when the widget is) and the wash keeps
+  the destination opaque. The model-view is the same product the map was built with
+  (`getInfluenceMapMatrix` then the target matrix then the camera). `tests/overlay_engine_primitives`
+  pins the whole quad (3600 px), the below-threshold discard (0 px), the ramp's left-to-right
+  orientation and the destination alpha, from three read-back pixels. The overlay's
+  image/pixmap textures are still flipped **vertically only** (the horizontal flip mirrored
+  every image), but the weight field is not an image any more. The old point-cloud path and
+  the CPU surface image are gone. The engine's batched `GL_POINTS` primitive remains and
+  `tests/overlay_engine_primitives` pins a 10px point at 100 pixels and a 9000-point batch
+  at 14,400; `tests/bone_cap`/`bone_influence_storage` pin the lookup and selection.
+  See `docs/design/skeletal/influence-display.md`. The mode's convenience is not the authored
+  weight feature: format 0.22, the bake, and the PaintWeights mode/panel/brush are landed in
+  `docs/design/skeletal/influence-painting-plan.md` (Phases 1-2, with the mesh remap and the
+  duplication copy from Phase 5). The panel is a conventional stat row (the label and the state
+  word; the authored count lives in the tooltip) plus one primary action button and an overflow menu
+  (`qml/ToolMenu.qml`) - not a row of bare text verbs. The bone mode strip is **one row of seven**
+  (the four rig modes, then Adjust envelope, ONE Envelope brush, and the plain brush for Paint
+  weights); the old 4x2 grid existed only for the eighth paint/erase mode and is gone with that pair.
+  The UI says ENVELOPE for the procedural `BoneShape`: weights are influence too,
+  so the old "influence" labels named only one of the two fields. The envelope brush is the qualified
+  variant; the plain brush is the canonical per-vertex weight paint; never the opacity droplet. The
+  old paint/erase modes and the +/- direction are gone: Size/Hardness are only the footprint, Flow is
+  the rate, and **Value** is the envelope range the brush paints toward (below it shrinks, above it
+  grows). The icon is a rotated envelope band (capsule plus its axis line) with a paintbrush badge,
+  not a brush with a badge; Adjust envelope uses the same band without the badge. This is a
+  scalar range brush over the procedural band, not a per-vertex value; Size decides only WHERE it acts.
 - **The layer sampler is explained, with its figure and its numbers, in
   `docs/design/renderer/layer-sampling.md`**: the two-tap, one-level reconstruction (the level from the
   footprint's minor axis, both taps splitting its major axis, eight fetches, no level blend) against the
@@ -586,4 +674,8 @@ ninja -C build 'src/gui/update_translations:Debug'   # the :Debug / :Release suf
   repaint when it clears.
 - A gate that excuses a region must still assert the region is **occupied on both sides**, or the excuse
   becomes the hole.
+- **`util::LinkPointer` has an explicit copy assignment** because value containers (`QVector<
+  SkinWeights::NodeWeights>`) relocate it and the implicit one is deprecated against its user-provided
+  copy constructor. The assignment relinks the copy to the same `LifeLink`; do not delete it to "simplify"
+  the class or the next `QVector` of a record type warns and, worse, could move a stale link.
 - Measured claims name their number; a claim you did not measure is marked as inference.

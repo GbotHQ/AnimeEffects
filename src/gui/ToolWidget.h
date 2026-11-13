@@ -81,6 +81,9 @@ private:
     // tool and a mismatched call is a crash rather than a no-op.
     void pushParam();
     void onParamUpdated();
+    // Re-read the Bone editor's selected-bone state into the panel model.
+    void syncWeightsState();
+    void onWeightsAction(int aAction);
 
     // "Show mesh" while the FFD tool is up (generalsettings/tools/autoshowmesh). The
     // flag is what keeps the tool from taking ownership of a mesh the USER turned on.
@@ -95,6 +98,7 @@ private:
     ToolViewModel* mModel;
     QmlTheme* mTheme;
     QQuickWidget* mQuick;
+    util::SlotId mWeightsSlot;
 };
 
 } // namespace gui

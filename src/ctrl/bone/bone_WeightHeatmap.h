@@ -11,15 +11,17 @@ namespace ctrl {
 namespace bone {
 
     /// The normalised weight of one bone over every skinned mesh of a key, as
-    /// a colour-ramped point cloud. The points sit exactly where the influence
-    /// map's vertices were built: the cache's inner matrix times the node's
-    /// origin offset, then the key owner's target matrix and the camera. It is
-    /// a diagnostic over the artwork, so it is drawn before the envelopes and
-    /// the bones - the skeleton must stay legible above it.
+    /// a colour-ramped SURFACE wash. Every mesh triangle is DRAWN ON THE GPU with
+    /// one weight per vertex: the rasteriser interpolates the weight across the
+    /// triangle and the fragment shader evaluates the ramp, so a vertex is a
+    /// control value and the field between vertices is the surface itself. There
+    /// is no screen-sized image, no CPU rasterisation and no image upload.
     ///
-    /// The point cloud is one QPainter::drawPoints() per colour bucket; the
-    /// overlay's GL engine batches each call into GL_POINTS, so the cost is one
-    /// draw per non-empty bucket per 8192-vertex chunk - not one per vertex.
+    /// The screen positions come from the influence map's own product: the
+    /// cache's inner matrix times the node's origin offset, then the key owner's
+    /// target matrix and the camera - so the wash sits exactly on the mesh the
+    /// bone editor displays. It is a diagnostic over the artwork, so it is drawn
+    /// before the bones and the skeleton stays legible above it.
     void drawWeightHeatmap(
         QPainter& aPainter, const core::RenderInfo& aInfo, const core::BoneKey& aKey,
         const core::Bone2& aBone, const QMatrix4x4& aTargetMtx

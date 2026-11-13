@@ -19,10 +19,12 @@ namespace {
 // Say so on load, where the user would otherwise get a silently partial
 // skeleton (the same shape as the PSD importer's degraded-layer warnings).
 QString oneOverCapBoneWarning(const core::ObjectNode& aNode, const core::BoneKey& aKey, int aBoneCount) {
-    return QCoreApplication::translate(
-               "ctrl::ProjectLoader",
-               "The skeleton on \"%1\" (frame %2) has %3 bones; only the first %4 can deform a mesh."
-    )
+    // The explicit context names the class (there is no Q_OBJECT here). It stays on
+    // the CALL's line so scripts/i18n/check_tr_contexts.py can see that this context
+    // is asked for by name; wrapping it onto its own line read as "no call site" and
+    // failed the suite's catalog gate.
+    return QCoreApplication::translate("ctrl::ProjectLoader",
+                                       "The skeleton on \"%1\" (frame %2) has %3 bones; only the first %4 can deform a mesh.")
         .arg(aNode.name())
         .arg(aKey.frame())
         .arg(aBoneCount)

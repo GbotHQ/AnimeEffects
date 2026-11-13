@@ -30,6 +30,11 @@ public:
 
     float influence(const QVector2D& aPos) const;
 
+    // Exact authored-geometry comparison, ignoring derived values (validity,
+    // unit vector, length, bounding box and the polygon index). Two shapes that
+    // compare equal produce the same influence for every point.
+    bool hasSameAuthoredGeometry(const BoneShape& aRhs) const;
+
     // serialize
     bool serialize(Serializer& aOut) const;
     QJsonObject serializeToJson() const;

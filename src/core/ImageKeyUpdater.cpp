@@ -1,13 +1,19 @@
 #include "core/ImageKeyUpdater.h"
+#include "core/GridWeightsRemap.h"
 #include "core/ImageKey.h"
+#include "core/Project.h"
 
 namespace core {
 
 //-------------------------------------------------------------------------------------------------
 class ImageResourceUpdaterBase: public cmnd::Stable {
 public:
-    ImageResourceUpdaterBase(const ResourceUpdatingWorkspacePtr& aWorkspace, bool aCreateTransitions):
-        mTargets(), mWorkspace(aWorkspace), mCreateTransitions(aCreateTransitions) {}
+    ImageResourceUpdaterBase(
+        Project& aProject, ObjectNode& aNode, const ResourceUpdatingWorkspacePtr& aWorkspace,
+        bool aCreateTransitions
+    ):
+        mProject(&aProject), mNode(&aNode), mTargets(), mWorkspace(aWorkspace),
+        mCreateTransitions(aCreateTransitions) {}
 
     virtual ~ImageResourceUpdaterBase() {}
 
@@ -35,6 +41,14 @@ public:
             target.nextOffset = target.prevOffset + move;
             key->data().setImageOffset(target.nextOffset);
 
+            // authored weights follow the regenerated grid in this same undo
+            // step; an ImageKey owns one grid, and a record is keyed to it
+            target.weightRemaps = remapGridWeights(
+                *mNode, *key, *target.anotherMesh, target.prevImage->pos(),
+                key->data().gridMesh(), target.nextImage->pos()
+            );
+            applyWeightRemaps(target, false);
+
             // create transition data
             if (mCreateTransitions) {
                 auto& trans = mWorkspace->makeSureTransitions(key, key->data().gridMesh());
@@ -46,6 +60,7 @@ public:
             }
         }
         mWorkspace.reset(); // finish using
+        notifyWeightRemaps(false);
     }
 
     virtual void redo() {
@@ -53,21 +68,26 @@ public:
             target.key->setImage(target.nextImage);
             target.key->data().gridMesh().swap(*target.anotherMesh);
             target.key->data().setImageOffset(target.nextOffset);
+            applyWeightRemaps(target, false);
         }
+        notifyWeightRemaps(false);
     }
 
     virtual void undo() {
         for (auto& target : mTargets) {
+            applyWeightRemaps(target, true);
             target.key->setImage(target.prevImage);
             target.key->data().gridMesh().swap(*target.anotherMesh);
             target.key->data().setImageOffset(target.prevOffset);
         }
+        notifyWeightRemaps(true);
     }
 
 protected:
     struct Target {
         Target(ImageKey* aKey):
-            key(aKey), prevImage(), nextImage(), prevOffset(), nextOffset(), anotherMesh(), nextCellSize(0) {}
+            key(aKey), prevImage(), nextImage(), prevOffset(), nextOffset(), anotherMesh(),
+            nextCellSize(0), weightRemaps() {}
         ImageKey* key;
         img::ResourceHandle prevImage;
         img::ResourceHandle nextImage;
@@ -75,12 +95,39 @@ protected:
         QVector2D nextOffset;
         std::shared_ptr<GridMesh> anotherMesh;
         int nextCellSize;
+        QVector<GridWeightsRemap> weightRemaps;
     };
 
     QList<Target>& targets() { return mTargets; }
     const QList<Target>& targets() const { return mTargets; }
 
 private:
+    void applyWeightRemaps(Target& aTarget, bool aUndo) {
+        for (GridWeightsRemap& remap : aTarget.weightRemaps) {
+            if (remap.owner) {
+                remap.owner->skinWeights().setNodeWeights(aUndo ? remap.before : remap.after);
+            }
+        }
+    }
+
+    void notifyWeightRemaps(bool aUndo) {
+        if (!mProject) {
+            return;
+        }
+        QVector<ObjectNode*> owners;
+        for (const Target& target : mTargets) {
+            for (const GridWeightsRemap& remap : target.weightRemaps) {
+                ObjectNode* owner = remap.owner.get();
+                if (owner && !owners.contains(owner)) {
+                    owners.push_back(owner);
+                    mProject->onSkinWeightsModified(*owner, aUndo);
+                }
+            }
+        }
+    }
+
+    Project* mProject;
+    ObjectNode* mNode;
     QList<Target> mTargets;
     ResourceUpdatingWorkspacePtr mWorkspace;
     bool mCreateTransitions;
@@ -108,12 +155,11 @@ class ImageReloader: public ImageResourceUpdaterBase {
 
 public:
     ImageReloader(
-        TimeLine& aTimeLine,
-        const ResourceEvent& aEvent,
-        const ResourceUpdatingWorkspacePtr& aWorkspace,
-        bool aCreateTransitions
+        ObjectNode& aNode, Project& aProject, const ResourceEvent& aEvent,
+        const ResourceUpdatingWorkspacePtr& aWorkspace, bool aCreateTransitions
     ):
-        ImageResourceUpdaterBase(aWorkspace, aCreateTransitions), mTimeLine(aTimeLine), mEvent(aEvent) {}
+        ImageResourceUpdaterBase(aProject, aNode, aWorkspace, aCreateTransitions),
+        mTimeLine(*aNode.timeLine()), mEvent(aEvent) {}
 
     virtual void exec() {
         // push default key
@@ -136,12 +182,10 @@ public:
 class ImageChanger: public ImageResourceUpdaterBase {
 public:
     ImageChanger(
-        ImageKey& aKey,
-        img::ResourceNode& aNewResource,
-        const ResourceUpdatingWorkspacePtr& aWorkspace,
-        bool aCreateTransitions
+        ImageKey& aKey, ObjectNode& aNode, Project& aProject, img::ResourceNode& aNewResource,
+        const ResourceUpdatingWorkspacePtr& aWorkspace, bool aCreateTransitions
     ):
-        ImageResourceUpdaterBase(aWorkspace, aCreateTransitions) {
+        ImageResourceUpdaterBase(aProject, aNode, aWorkspace, aCreateTransitions) {
         this->targets().push_back(Target(&aKey));
         this->targets().back().prevImage = aKey.data().resource();
         this->targets().back().nextImage = aNewResource.handle();
@@ -152,9 +196,10 @@ public:
 class GridMeshUpdater: public ImageResourceUpdaterBase {
 public:
     GridMeshUpdater(
-        ImageKey& aKey, int aNewCellSize, const ResourceUpdatingWorkspacePtr& aWorkspace, bool aCreateTransitions
+        ImageKey& aKey, ObjectNode& aNode, Project& aProject, int aNewCellSize,
+        const ResourceUpdatingWorkspacePtr& aWorkspace, bool aCreateTransitions
     ):
-        ImageResourceUpdaterBase(aWorkspace, aCreateTransitions) {
+        ImageResourceUpdaterBase(aProject, aNode, aWorkspace, aCreateTransitions) {
         this->targets().push_back(Target(&aKey));
         this->targets().back().prevImage = aKey.data().resource();
         this->targets().back().nextImage = aKey.data().resource();
@@ -171,22 +216,21 @@ cmnd::Stable* ImageKeyUpdater::createResourceUpdater(
 ) {
     if (!aNode.timeLine())
         return nullptr;
-    return new ImageReloader(*aNode.timeLine(), aEvent, aWorkspace, aCreateTransitions);
+    return new ImageReloader(aNode, aEvent.project(), aEvent, aWorkspace, aCreateTransitions);
 }
 
 cmnd::Stable* ImageKeyUpdater::createResourceUpdater(
-    ImageKey& aKey,
-    img::ResourceNode& aNewResource,
-    const ResourceUpdatingWorkspacePtr& aWorkspace,
-    bool aCreateTransitions
+    ImageKey& aKey, ObjectNode& aNode, Project& aProject, img::ResourceNode& aNewResource,
+    const ResourceUpdatingWorkspacePtr& aWorkspace, bool aCreateTransitions
 ) {
-    return new ImageChanger(aKey, aNewResource, aWorkspace, aCreateTransitions);
+    return new ImageChanger(aKey, aNode, aProject, aNewResource, aWorkspace, aCreateTransitions);
 }
 
 cmnd::Stable* ImageKeyUpdater::createGridMeshUpdater(
-    ImageKey& aKey, int aNewCellSize, const ResourceUpdatingWorkspacePtr& aWorkspace, bool aCreateTransitions
+    ImageKey& aKey, ObjectNode& aNode, Project& aProject, int aNewCellSize,
+    const ResourceUpdatingWorkspacePtr& aWorkspace, bool aCreateTransitions
 ) {
-    return new GridMeshUpdater(aKey, aNewCellSize, aWorkspace, aCreateTransitions);
+    return new GridMeshUpdater(aKey, aNode, aProject, aNewCellSize, aWorkspace, aCreateTransitions);
 }
 
 //-------------------------------------------------------------------------------------------------

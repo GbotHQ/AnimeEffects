@@ -100,6 +100,7 @@ ToolWidget::ToolWidget(ViaPoint& aViaPoint,
         if (mDriver)
             mDriver->clearMask();
     });
+    connect(mModel, &ToolViewModel::weightsActionRequested, this, &ToolWidget::onWeightsAction);
 
     // ---- key bindings -------------------------------------------------------
     // The tool-selection bindings press the toolbox's own buttons through the model, so
@@ -160,17 +161,54 @@ ToolWidget::~ToolWidget() {
 }
 
 void ToolWidget::setDriver(ctrl::Driver* aDriver) {
+    // NO DISCONNECT THROUGH THE OLD POINTER: DriverHolder::create destroys the
+    // previous driver before this call, so `mDriver` here may already be freed
+    // (the crash this code first shipped: setDriver -> Signaler::disconnect on a
+    // deleted Driver). The slot was a function inside that driver's own Signaler
+    // and died with it; the id is simply replaced.
+    mWeightsSlot = util::SlotId();
+
     mDriver = aDriver;
     mDriverTool = ctrl::ToolType_TERM;
     mModel->setDriverActive(aDriver != nullptr);
 
     if (mDriver) {
+        // Connected before setTool: creating the Bone editor already announces
+        // its (empty) selection.
+        mWeightsSlot = mDriver->onBoneWeightsStateChanged.connect([this]() { syncWeightsState(); });
         // The tool the model remembers (the dock keeps it across projects, which is what
         // the widget did) is what the new driver starts on.
         mDriverTool = ctrl::ToolType(mModel->tool());
         mDriver->setTool(mDriverTool);
         pushParam();
+        syncWeightsState();
+    } else {
+        mModel->setWeightsState(ctrl::bone::WeightState());
     }
+}
+
+void ToolWidget::syncWeightsState() {
+    ctrl::bone::WeightState state;
+    if (mDriver && mDriver->boneEditor()) {
+        state = mDriver->boneEditor()->weightsState();
+    }
+    mModel->setWeightsState(state);
+}
+
+void ToolWidget::onWeightsAction(int aAction) {
+    if (!mDriver)
+        return;
+
+    QString error;
+    switch (ToolViewModel::WeightAction(aAction)) {
+    case ToolViewModel::WeightAction_Bake: mDriver->bakeBoneWeights(false, &error); break;
+    case ToolViewModel::WeightAction_Rebake: mDriver->bakeBoneWeights(true, &error); break;
+    case ToolViewModel::WeightAction_Revert: mDriver->revertBoneWeights(&error); break;
+    case ToolViewModel::WeightAction_Clear: mDriver->clearBoneWeights(&error); break;
+    default: return;
+    }
+    syncWeightsState();
+    onVisualUpdated();
 }
 
 void ToolWidget::onModelToolChanged(int aOldType, int aNewType) {
@@ -205,6 +243,7 @@ void ToolWidget::onModelToolChanged(int aOldType, int aNewType) {
     // "push it again after the switch" rule the widget version needed for the mask
     // editor, and it applies to every tool for the same reason.
     pushParam();
+    syncWeightsState();
     onVisualUpdated();
 }
 
@@ -259,6 +298,7 @@ void ToolWidget::setMaskValue(float aValue) {
 
 void ToolWidget::onParamUpdated() {
     pushParam();
+    syncWeightsState();
     onVisualUpdated();
 }
 

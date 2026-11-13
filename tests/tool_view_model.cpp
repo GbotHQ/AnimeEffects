@@ -170,8 +170,17 @@ int main(int argc, char** argv) {
     check(near(model.brush()->radius(), 50.0), QStringLiteral("bone: the brush points at the BONE copy (50)"));
 
     model.setMode(int(ctrl::BoneEditMode_PaintInfl));
-    check(model.brushVisible(), QStringLiteral("bone: Paint influence shows the brush"));
-    check(model.modeName() == QStringLiteral("Paint influence"), QStringLiteral("bone: the caption names it"));
+    check(model.brushVisible(), QStringLiteral("bone: Envelope brush shows the brush"));
+    check(model.modeName() == QStringLiteral("Envelope brush"), QStringLiteral("bone: the caption names it"));
+    check(model.envelopeBrushVisible(), QStringLiteral("bone: the Value row is offered"));
+    check(near(model.envelopeValue(), 50.0), QStringLiteral("bone: the envelope brush starts at value 50"));
+    model.setEnvelopeValue(123.0);
+    check(near(model.envelopeValue(), 123.0) && near(model.boneParam().envelopeValue, 123.0),
+          QStringLiteral("bone: the Value row reaches the param"));
+    model.setEnvelopeValue(2000.0);
+    check(near(model.envelopeValue(), model.envelopeValueMax()),
+          QStringLiteral("bone: Value clamps at its maximum (%1)").arg(model.envelopeValueMax()));
+    model.setEnvelopeValue(50.0);
     // NOT shown: nothing in ctrl/bone reads BrushParam::opacity (the influence weight is
     // `stamp.amount * falloff` alone), so the row would do nothing.
     check(!model.opacityVisible(), QStringLiteral("bone: no Opacity row (the influence brush ignores it)"));
@@ -180,6 +189,100 @@ int main(int argc, char** argv) {
     check(near(model.boneParam().brush.radius, 123.0), QStringLiteral("bone: the write lands on the bone param"));
     check(near(model.poseParam().brush.radius, 200.0),
           QStringLiteral("bone: and the pose brush is untouched (%1)").arg(model.poseParam().brush.radius));
+
+    // ---- paint weights: the state panel and its four actions --------------------
+    model.setMode(6);
+    check(model.modeName() == QStringLiteral("Paint weights"), QStringLiteral("bone: Paint weights is the seventh mode"));
+    check(model.modeIndex() == 6, QStringLiteral("bone: the weights index is 6 in the seven-entry row"));
+    check(!model.envelopeBrushVisible(), QStringLiteral("bone: the envelope Value row is gone on weights"));
+    check(model.brushVisible(), QStringLiteral("weights: the shared brush is shown"));
+    check(model.weightHeatmapVisible(), QStringLiteral("weights: the heatmap toggle is offered"));
+    check(model.weightsStateVisible(), QStringLiteral("weights: the state panel is shown"));
+    check(model.weightsState().kind == ctrl::bone::WeightState::Kind_None,
+          QStringLiteral("weights: the model starts from the editor's empty state"));
+    check(model.weightsStateText() == QStringLiteral("No bone key"),
+          QStringLiteral("weights: the empty state is a status word, not a sentence"));
+    check(model.weightsStateRole() == QStringLiteral("none"),
+          QStringLiteral("weights: the empty state has no status ink"));
+    check(!model.brushEnabled() && !model.weightsBakeVisible() && !model.weightsActionsVisible(),
+          QStringLiteral("weights: no actions before a bone is selected"));
+    {
+        ctrl::bone::WeightState state;
+        state.kind = ctrl::bone::WeightState::Kind_Envelope;
+        state.boneIndex = 2;
+        state.liveNodes = 3;
+        model.setWeightsState(state);
+        check(model.weightsStateText() == QStringLiteral("Envelope"),
+              QStringLiteral("weights: the envelope state is named"));
+        check(model.weightsStateRole() == QStringLiteral("envelope"),
+              QStringLiteral("weights: and gets the neutral status ink"));
+        check(model.weightsStateTip().contains(QStringLiteral("Bake")),
+              QStringLiteral("weights: the explanation lives in the state tooltip"));
+        check(model.weightsBakeVisible() && model.weightsBakeEnabled(),
+              QStringLiteral("weights: an envelope bone offers an enabled Bake"));
+        check(!model.weightsRebakeVisible() && !model.weightsClearVisible(),
+              QStringLiteral("weights: and no baked-field actions"));
+        check(!model.brushEnabled() && !model.weightsPaintEnabled(),
+              QStringLiteral("weights: the brush is disabled until the bone is baked"));
+        const int before = model.weightPaintMode();
+        model.setWeightPaintMode(int(ctrl::WeightPaint_Replace));
+        check(model.weightPaintMode() == int(ctrl::WeightPaint_Replace)
+                  && model.boneParam().weightMode == ctrl::WeightPaint_Replace,
+              QStringLiteral("weights: the chooser writes the shared param"));
+        model.setWeightPaintMode(before);
+    }
+    {
+        ctrl::bone::WeightState state;
+        state.kind = ctrl::bone::WeightState::Kind_Baked;
+        state.boneIndex = 0;
+        state.bakedNodes = 2;
+        state.bakedVertices = 12;
+        state.meshMismatch = true;
+        model.setWeightsState(state);
+        check(model.weightsStateText() == QStringLiteral("Baked"),
+              QStringLiteral("weights: the baked state is one word (%1)").arg(model.weightsStateText()));
+        check(!model.weightsStateText().contains(QStringLiteral("·")),
+              QStringLiteral("weights: the state is not a dot-separated token (%1)")
+                  .arg(model.weightsStateText()));
+        // The count is a diagnostic, not a state: it belongs to the tooltip, where
+        // a reader can ask for it, never to the row.
+        check(model.weightsStateTip().contains(QStringLiteral("12"))
+                  && model.weightsStateTip().contains(QStringLiteral("vert")),
+              QStringLiteral("weights: the authored count is in the state tooltip (%1)")
+                  .arg(model.weightsStateTip()));
+        check(model.weightsStateRole() == QStringLiteral("baked"),
+              QStringLiteral("weights: and gets the authored status ink"));
+        check(model.weightsRebakeVisible() && model.weightsRevertVisible() && model.weightsClearVisible(),
+              QStringLiteral("weights: a baked bone offers Rebake/Revert/Clear"));
+        check(!model.weightsBakeVisible(),
+              QStringLiteral("weights: and Bake is not offered (it would do nothing)"));
+        check(model.brushEnabled() && model.weightsPaintEnabled(),
+              QStringLiteral("weights: the brush is enabled on a baked field"));
+        check(model.weightsMeshWarningVisible(),
+              QStringLiteral("weights: a mesh-signature mismatch is surfaced"));
+    }
+    {
+        ctrl::bone::WeightState state;
+        state.kind = ctrl::bone::WeightState::Kind_Mixed;
+        state.bakedNodes = 1;
+        state.liveNodes = 2;
+        state.bakedVertices = 5;
+        model.setWeightsState(state);
+        check(model.weightsStateText() == QStringLiteral("Partly baked"),
+              QStringLiteral("weights: a mixed rig names the state in words (%1)").arg(model.weightsStateText()));
+        check(model.weightsStateTip().contains(QStringLiteral("2"))
+                  && model.weightsStateTip().contains(QStringLiteral("layer")),
+              QStringLiteral("weights: and counts the nodes still live in its tooltip (%1)")
+                  .arg(model.weightsStateTip()));
+        check(model.weightsBakeVisible() && model.weightsBakeEnabled(),
+              QStringLiteral("weights: a mixed rig offers Bake for its live layers"));
+        check(model.weightsRebakeVisible() && model.weightsClearVisible(),
+              QStringLiteral("weights: and the baked-field actions"));
+    }
+    model.setWeightsState(ctrl::bone::WeightState());
+    model.setMode(int(ctrl::BoneEditMode_PaintInfl));
+    check(!model.weightsStateVisible(), QStringLiteral("weights: leaving the mode hides the state panel"));
+    check(model.brushEnabled(), QStringLiteral("weights: the brush enablement does not leak into other modes"));
 
     // the [ ] notches, on the ACTIVE tool's brush
     model.adjustBrush(+1, -1);

@@ -1,6 +1,7 @@
 #include <cstddef>
 #include <cfloat>
 #include <limits>
+#include <QSet>
 #include "util/TreeUtil.h"
 #include "util/MathUtil.h"
 #include "util/CollDetect.h"
@@ -143,19 +144,20 @@ void BoneKey::updateCaches(Project& aProject, const QList<Cache*>& aTargets) {
             if (mesh->vertexCount() <= 0)
                 continue;
 
-            // set world matrix
+            // set world matrix (the cache keeps the inner matrix for the
+            // skinning pass); the map matrix is the one shared product
             cache->setInnerMatrix(TimeKeyBlender::getRelativeMatrix(node, time, owner));
-            auto originOffset = TimeKeyBlender::getOriginOffset(node, time);
-
-            // influence map matrix
-            auto mapMtx = cache->innerMatrix();
-            mapMtx.translate(originOffset.x(), originOffset.y());
+            const auto mapMtx = TimeKeyBlender::getInfluenceMapMatrix(cache->innerMatrix(), node, time);
 
             BoneInfluenceMap& map = cache->influence();
             // allocate if necessary
             map.allocate(mesh->vertexCount(), false);
+            // The owner carries the authored fields; the record for this node
+            // turns a baked bone into an authored field instead of the live
+            // envelope. A null record is the envelope-only path, unchanged.
+            const SkinWeights::NodeWeights* baked = owner->skinWeights().find(node);
             // request writing
-            map.writeAsync(aProject, mData.topBones(), mapMtx, *mesh);
+            map.writeAsync(aProject, mData.topBones(), mapMtx, *mesh, baked);
         }
 
 #ifndef UNUSE_PARALLEL
@@ -213,15 +215,16 @@ void BoneKey::updateCaches(Project& aProject, ObjectNode& aOwner, const QVector<
     updateCaches(aProject, caches);
 }
 
-void BoneKey::resetCacheListRecursive(const TimeInfo& aTime, ObjectNode& aNode, CacheList& aNewList) {
+void BoneKey::collectInfluenceTargetsRecursive(
+    const TimeInfo& aTime, ObjectNode& aNode, QVector<ObjectNode*>& aTargets
+) {
     bool useMe = true;
 
-    // A node with an area mesh — even a zero-vertex one — stays in the cache
-    // list, so an incremental updateCaches can populate it once the mesh gains
-    // vertices (otherwise only a full resetCaches would ever touch it). Nodes
-    // with no area mesh (no image/mesh key, e.g. a folder) stay excluded: they
-    // can never be a deform target, and keeping them out avoids the null-mesh
-    // deref in TimeKeyBlender::setBoneInfluenceMaps.
+    // A node with an area mesh — even a zero-vertex one — is a target, so an
+    // incremental updateCaches can populate it once the mesh gains vertices
+    // (otherwise only a full resetCaches would ever touch it). Nodes with no
+    // area mesh (no image/mesh key, e.g. a folder) are not targets themselves,
+    // but their children can be.
     {
         const LayerMesh* mesh = TimeKeyBlender::getAreaMesh(aNode, aTime);
         if (!mesh)
@@ -240,65 +243,46 @@ void BoneKey::resetCacheListRecursive(const TimeInfo& aTime, ObjectNode& aNode, 
         return;
 
     if (useMe) {
-        // find a cache from old list
-        Cache* cache = popCache(aNode);
-
-        // create new cache
-        if (!cache) {
-            cache = new Cache();
-            // set node
-            cache->setNode(aNode);
-        }
-
-        aNewList.push_back(cache);
+        aTargets.push_back(&aNode);
     }
 
     for (auto child : aNode.children()) {
-        resetCacheListRecursive(aTime, *child, aNewList);
+        collectInfluenceTargetsRecursive(aTime, *child, aTargets);
     }
 }
 
+void BoneKey::collectInfluenceTargets(
+    const TimeInfo& aTime, ObjectNode& aOwner, QVector<ObjectNode*>& aTargets
+) {
+    aTargets.clear();
+    collectInfluenceTargetsRecursive(aTime, aOwner, aTargets);
+}
+
 void BoneKey::resetCaches(Project& aProject, ObjectNode& aOwner) {
-#if 0
-    // temp list
-    CacheList newCaches;
-
-    // find valid caches
-    for (ObjectNode::Iterator itr(&aOwner); itr.hasNext();)
-    {
-        ObjectNode* node = itr.next();
-        XC_PTR_ASSERT(node);
-
-        {
-            auto time = aProject.currentTimeInfo();
-            time.frame.set(this->frame());
-            const LayerMesh* mesh = TimeKeyBlender::getAreaMesh(*node, time);
-            if (!mesh || mesh->vertexCount() <= 0) continue;
-        }
-
-        // find a cache from old list
-        Cache* cache = popCache(*node);
-
-        // create new cache
-        if (!cache)
-        {
-            cache = new Cache();
-            // set node
-            cache->setNode(*node);
-        }
-
-        newCaches.push_back(cache);
-    }
-#else
     // temp list
     CacheList newCaches;
     // make new cache list (recycle old cache)
     {
         auto time = aProject.currentTimeInfo();
         time.frame.set(this->frame());
-        resetCacheListRecursive(time, aOwner, newCaches);
+
+        QVector<ObjectNode*> targets;
+        collectInfluenceTargets(time, aOwner, targets);
+        for (ObjectNode* node : targets) {
+            XC_PTR_ASSERT(node);
+            // find a cache from old list
+            Cache* cache = popCache(*node);
+
+            // create new cache
+            if (!cache) {
+                cache = new Cache();
+                // set node
+                cache->setNode(*node);
+            }
+
+            newCaches.push_back(cache);
+        }
     }
-#endif
 
     // destroy unuse caches
     destroyCaches();
@@ -408,6 +392,22 @@ bool BoneKey::deserialize(Deserializer& aIn) {
 
         if (!deserializeBone(aIn, topBone)) {
             return false;
+        }
+    }
+
+    // The authored ids are the address of a baked field, so one key must not
+    // contain the same id twice. A 0.21 file gets fresh unique ids; only a
+    // corrupt or hand-merged 0.22 file can fail here.
+    {
+        QSet<int> ids;
+        for (const Bone2* top : mData.topBones()) {
+            for (Bone2::ConstIterator itr(top); itr.hasNext();) {
+                const int id = itr.next()->boneId();
+                if (id <= 0 || ids.contains(id)) {
+                    return aIn.errored("invalid or duplicate bone id");
+                }
+                ids.insert(id);
+            }
         }
     }
 

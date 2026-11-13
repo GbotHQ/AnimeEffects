@@ -495,9 +495,12 @@ int printBoneStats(core::Project& aProject) {
             if (overCap)
                 ++overCapKeys;
 
+            QString path = node->name();
+            for (core::ObjectNode* p = node->parent(); p; p = p->parent())
+                path = p->name() + QStringLiteral("/") + path;
             std::printf(
-                "BONEKEY node=%d name=\"%s\" frame=%d bones=%d caches=%d over_cap=%d\n",
-                thisNode, node->name().toUtf8().constData(), boneKey->frame(), bones,
+                "BONEKEY node=%d path=\"%s\" frame=%d bones=%d caches=%d over_cap=%d\n",
+                thisNode, path.toUtf8().constData(), boneKey->frame(), bones,
                 (int)boneKey->caches().size(), overCap ? 1 : 0
             );
         }

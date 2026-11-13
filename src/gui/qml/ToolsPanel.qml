@@ -150,6 +150,156 @@ Rectangle {
                     onChosen: (index) => toolModel.setMode(index)
                 }
 
+                // ---- paint weights: the authored field's state and actions ----
+                // A conventional stat row: the label on the dock's grid, the state beside
+                // it, and the count on a muted second line. The verbs are a real primary
+                // button plus the overflow menu; the explanations are tooltips, not
+                // paragraphs (a dock is not a manual).
+                Item {
+                    id: weightsPanel
+                    visible: toolModel.weightsStateVisible
+                    width: parent.width
+                    // A plain Item does not follow its implicitHeight, and the Column
+                    // below decides the block's height.
+                    height: weightsStateColumn.implicitHeight + 10
+
+                    Text {
+                        id: weightsLabel
+                        x: 12
+                        anchors.top: parent.top
+                        anchors.topMargin: 7
+                        text: qsTr("Weights")
+                        color: theme.text
+                        font: uiFont
+                        Accessible.role: Accessible.StaticText
+                        Accessible.name: text
+                    }
+
+                    Column {
+                        id: weightsStateColumn
+                        x: 90
+                        width: parent.width - 90 - 16
+                        anchors.top: parent.top
+                        anchors.topMargin: 5
+                        spacing: 1
+
+                        Text {
+                            id: weightsStateValue
+                            width: parent.width
+                            text: toolModel.weightsStateText
+                            color: toolModel.weightsStateRole === "mixed" ? theme.warning
+                                 : (toolModel.weightsStateRole === "baked"
+                                    || toolModel.weightsStateRole === "envelope") ? theme.text
+                                 : theme.textMuted
+                            font: uiFont
+                            elide: Text.ElideRight
+                            Accessible.role: Accessible.StaticText
+                            Accessible.name: text
+                        }
+                        Text {
+                            id: weightsMeshWarning
+                            width: parent.width
+                            visible: toolModel.weightsMeshWarningVisible
+                            text: qsTr("Mesh changed since bake")
+                            color: theme.warning
+                            font.pixelSize: 10
+                            wrapMode: Text.WordWrap
+                            Accessible.role: Accessible.StaticText
+                            Accessible.name: text
+                        }
+                        Text {
+                            id: weightsErrorText
+                            width: parent.width
+                            visible: text !== ""
+                            text: toolModel.weightsError
+                            color: theme.warning
+                            font.pixelSize: 10
+                            wrapMode: Text.WordWrap
+                            Accessible.role: Accessible.StaticText
+                            Accessible.name: text
+                        }
+                    }
+
+                    HoverHandler { id: weightsHover }
+                    ToolTip.visible: weightsHover.hovered && toolModel.weightsStateTip !== ""
+                    ToolTip.delay: 500
+                    ToolTip.text: toolModel.weightsStateTip
+                }
+
+                // ONE primary verb and the maintenance verbs behind the ellipsis. The
+                // button is the inspector's action shape (height 22, full width) so the
+                // dock has one action look; a row of bare words was not a control.
+                RowLayout {
+                    id: weightsActions
+                    visible: toolModel.weightsActionsVisible
+                    x: 12
+                    width: parent.width - 28
+                    height: 28
+                    spacing: 6
+
+                    AeButton {
+                        id: weightsPrimary
+                        Layout.fillWidth: true
+                        height: 22
+                        textFont: uiFont
+                        // Envelope/Mixed: Bake fills the live nodes. Baked: Rebake is the
+                        // primary verb. Mixed also offers Rebake in the menu.
+                        text: toolModel.weightsBakeVisible ? qsTr("Bake") : qsTr("Rebake")
+                        enabled: toolModel.weightsBakeVisible ? toolModel.weightsBakeEnabled
+                                                             : toolModel.weightsRebakeEnabled
+                        onClicked: toolModel.requestWeightsAction(toolModel.weightsBakeVisible ? 0 : 1)
+
+                        property bool rowHovered: hovered
+                        AeToolTip {
+                            ownerItem: weightsPrimary
+                            shown: weightsPrimary.rowHovered
+                            text: toolModel.weightsBakeVisible
+                                  ? qsTr("Evaluate the selected bone's live envelope once, so the brush can paint it")
+                                  : qsTr("Replace the selected bone's authored field with the current envelope (one undo step)")
+                        }
+                    }
+
+                    ToolMenu {
+                        visible: toolModel.weightsRebakeVisible
+                        // The menu mirrors the actions that are NOT the primary verb: on
+                        // Mixed the primary is Bake, so Rebake lives here; on Baked Rebake
+                        // is the primary and only the two maintenance verbs remain.
+                        items: {
+                            let rows = [];
+                            if (toolModel.weightsBakeVisible) {
+                                rows.push({ label: qsTr("Rebake All"), action: 1,
+                                            enabled: toolModel.weightsRebakeEnabled });
+                            }
+                            rows.push({ label: qsTr("Revert to Envelope"), action: 2,
+                                        enabled: toolModel.weightsRevertEnabled });
+                            rows.push({ label: qsTr("Clear Weights"), action: 3,
+                                        enabled: toolModel.weightsClearEnabled });
+                            return rows;
+                        }
+                        label: qsTr("More weight actions")
+                        onTriggered: (action) => toolModel.requestWeightsAction(action)
+                    }
+                }
+
+                // WHAT a stamp does to the value it covers. The brush's own Size and
+                // Hardness are below; the envelope brush's target Value sits with the
+                // brush rows, and the weight brush has three deposit rules.
+                ToolRow {
+                    visible: toolModel.weightsStateVisible
+                    label: qsTr("Paint")
+                    AeComboBox {
+                        Layout.fillWidth: true
+                        height: 23
+                        textFont: uiFont
+                        options: toolModel.weightModes
+                        index: toolModel.weightPaintMode
+                        // A stable name for a reader/probe: the combo's own name is the
+                        // current VALUE ("Add"), which changes as the mode does.
+                        Accessible.name: qsTr("Paint mode")
+                        onActivated: (index) => toolModel.weightPaintMode = index
+                    }
+                }
+
                 // The bone-scoped brush needs to say how a bone becomes the target:
                 // left is always the stroke, so the target is chosen with the other
                 // button (or, for the first stroke, by the nearest bone).
@@ -252,6 +402,9 @@ Rectangle {
 
                 ToolBrushSection {
                     visible: toolModel.brushVisible
+                    // The weight brush is shown but disabled on a live bone; the
+                    // state panel above explains the one action that unlocks it.
+                    enabled: toolModel.brushEnabled
                 }
 
                 // The influence modes' second readout: the envelope polygons show

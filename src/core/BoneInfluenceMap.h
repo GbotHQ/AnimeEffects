@@ -11,6 +11,7 @@
 #include "gl/Vector4.h"
 #include "gl/Vector4I.h"
 #include "core/Bone2.h"
+#include "core/SkinWeights.h"
 namespace core {
 class Project;
 }
@@ -77,7 +78,10 @@ public:
     int vertexCount() const { return mVertexCount; }
 
     void
-    writeAsync(Project& aProject, const QList<Bone2*>& aTopBones, const QMatrix4x4& aGroupMtx, const LayerMesh& aMesh);
+    writeAsync(
+        Project& aProject, const QList<Bone2*>& aTopBones, const QMatrix4x4& aGroupMtx,
+        const LayerMesh& aMesh, const SkinWeights::NodeWeights* aBakedWeights = nullptr
+    );
 
     Accessor accessor() const;
 
@@ -104,8 +108,13 @@ private:
     class BoneParam {
     public:
         BoneParam();
-        bool hasParent;
-        bool hasRange;
+        // The authored identity of the bone this index stands for. The GPU
+        // index above is pre-order and can change; the baked field is keyed by
+        // this id.
+        int boneId;
+        // Bone2::hasInfluenceEnvelope(): the envelope path skips a bone without
+        // it; the shared predicate keeps the bake from re-deriving the rule.
+        bool hasEnvelope;
         BoneShape shape;
     };
 
@@ -157,6 +166,12 @@ private:
     int mMaxBoneCount;
     QMatrix4x4 mGroupMtx;
     BoneList mBoneList;
+    // A snapshot of the target node's baked bones, taken before the task is
+    // queued: the document may change (an undo, another stroke) while the build
+    // runs, and the build must see the field it was started with. The copy is
+    // ONLY the bones - not NodeWeights, whose life-linked node would mutate a
+    // LifeLink from the worker thread.
+    QVector<SkinWeights::BakedBone> mBakedBones;
     // Sparse form (slotCount 1..7): one contiguous array per slot.
     QScopedArrayPointer<IndicesType> mSparseIndices;
     QScopedArrayPointer<WeightsType> mSparseWeights;

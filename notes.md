@@ -105,14 +105,6 @@ The Filters cards seem to support only one expanded at a time. Should be any num
 
 Expanding/collapsing a Filter card in the properties panel seems to affect the layout of the header despite the header staying the same height. The headers layout should not shift.
 
-Ctrl + Z shortcut for some reason ceased to work.
-
-The brush alt + rmb drag UX is rough, shows no photoshop style brush preview and even though the user is dragging e.g. vertically, it changes both hardness and size, making it annoying to change one or the other, there is no photoshop style axis snap lock.
-
-FFD and Filter mask paint menus in the Tools panel have broken layout, controls draw over each other.
-
-Tooltips in the filter cards items draw behind the cards so theyre invisible.
-
 Do we have a global tooltip delay variable somewhere? Hovering over mesh cell size in the properties panel for more than tooltip amount should show the mesh overlay for that node. Also when in text edit mode or while scrubbing, it should show the overlay. Consider whether it should linger for a timer amount before disappearing like tooltips or whether it should disappear instantly it loses hover, text edit, or scrubbing. Also rename the property label to something that makes more sense "Mesh cell" doesnt mean anything and exposes internals. The user knows what a mesh is, but not what a cell is.
 
 The old number fields allowed mouse wheel and up/down arrows to increment/decrement the value when in text edit state, makes sure this is still supported.
@@ -126,6 +118,8 @@ Properties > Mask > Paint should be disabled when already painting.
 
 The transform tool is broken when there is no transform keyframe. Its grayed out for no reason, behaves strange and automatically creates a key. It should only create keys if there is an existing position/rotation/scale key or when one of the key checkboxes are checked.
 
+Weight painting and FFD needs to work with multiselection.
+
 Currently there is no good way to do camera and especially no good way to do perspective camera. Should perspective be first-class? I would argue yes, but we should consider other designs as well. Perspective exists at two levels, at the layer transform, and at the vertex level. Both have to store perspective depth data. Possible cases are a panning camera with parallax on the background, when the pan is limited to a single direction, this is easy enough to do, but anything more complex is hard to do by keying per layer movements and if you have already moving layers, you would have to combine the per layer movements with the parallax movements, which would at least require creating an outer folder for the perspective movement and doing the animation movement itself on the inner folder to be feasible, or an animation layers system. Another case is an object moving across the canvas, instead of doing manual vertex deform perspective, we would want it to just happen. A last case is bone roll, currently bones are purely 2D so animations end up looking flat, that has to be made up for with FFD and other things. Id be curious what to approach to the last one is in FFD. Currently we have no weight painting, so for the vertex case we would need proper weight painting. Local depth testing needs to be based on vertex depth, global depth testing stay unaffected. Our case isnt a traditional perspective camera, so there are likely few difference ways to do the perspective math, both at the layer level and at the vertex level.
 
 Our depth model could be a lot better for animation, currently each layer has explicit depth which means that reordering layers in the tree doesnt change the depth, and if the user creates more layers, it can mess up depth, its not straightforward to insert a layer into the tree. Presumably the user expects the depth to be automatic from the tree but overridable, possibly a integer or float offset. What if a layer has -4 and the layer above it has -5. Which one ends up on top? How do you achieve an exact order with this model, especially if you want to put multiple layers into a specific slot in a specific order? Are numeric offsets the way to do it? I cant think of a visual UI that wouldnt be rough to use. Though numeric offsets are probably rough to use as well.
@@ -133,3 +127,13 @@ Our depth model could be a lot better for animation, currently each layer has ex
 Animation layers?
 
 At some point figure out interactivity, mouse move around the canvas for perspective, SMA or EMA for smoothness. Click on a character hat to change it to a different hat with particle effects at mouse on click and a scale effect for a smoother looking swap.
+
+When mesh editing, for new vertices keep vertex attribute interpolated until commit. So if the user creates a new vertex and moves it around, the vertex attribute interpolate when the user stops editing rather than on vertex creation.
+
+Currently custom meshes are too manual. Creating a mesh involves manually specifying all vertices and edges. The former makes sense, but the latter not so much. Is there a better approach?
+
+Weight painting needs a way to edit weights at few hand placed points/curves and the rest gets interpolated. Curves should likely be bezier but focused on a workflow that usually doesnt require manual tangents, placing points is more intuitive than tangents. Curves get resampled first, then the interpolation algorithm gets applied. Additive blending. E.g. for perspective painting a characters leg, the leg would start at flat 0, the user selects the points on the outside of the leg to pin them as well as a line going through the leg on the inside. Then the user box selects the inside points, raises them, and then they go with a brush to raise some of the other points. This needs to support interpolation other than just linear.
+
+Reusable rigging. E.g. a vtuber with a fancy eye blink needs to be able to reuse that eyeblink across projects even when the mesh and images are different.
+
+Parametric lineart and outlines. PSD layers or groups with suffixes .L for lineart or .O for outline. Parametrize including handling junctions. Zoom scales thickness with sqrt.

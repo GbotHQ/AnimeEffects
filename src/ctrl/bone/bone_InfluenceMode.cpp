@@ -134,7 +134,7 @@ namespace bone {
             Notifier notifier(mProject, mTarget, *mKeyOwner.key, eventType);
             notifier.notify();
         } else {
-            cmnd::ScopedMacro macro(stack, CmndName::tr("Update bone influence"));
+            cmnd::ScopedMacro macro(stack, CmndName::tr("Update bone envelope"));
             macro.grabListener(new Notifier(mProject, mTarget, *mKeyOwner.key, eventType));
 
             // push command

@@ -780,9 +780,9 @@ namespace TimeLineUtil {
                                                  : CmndName::tr("update image resource key"),
             [&](ImageKey* aKey) {
                 // image key
-                aProject.commandStack().push(
-                    ImageKeyUpdater::createResourceUpdater(*aKey, aNewData, workspace, createTransitions)
-                );
+                aProject.commandStack().push(ImageKeyUpdater::createResourceUpdater(
+                    *aKey, aTarget, aProject, aNewData, workspace, createTransitions
+                ));
 
                 // ffd key should be called finally
                 if (createTransitions) {
@@ -821,9 +821,9 @@ namespace TimeLineUtil {
                                                  : CmndName::tr("Update mesh size key"),
             [&](ImageKey* aKey) {
                 // image key
-                aProject.commandStack().push(
-                    ImageKeyUpdater::createGridMeshUpdater(*aKey, aNewData, workspace, createTransitions)
-                );
+                aProject.commandStack().push(ImageKeyUpdater::createGridMeshUpdater(
+                    *aKey, aTarget, aProject, aNewData, workspace, createTransitions
+                ));
 
                 // ffd key should be called finally
                 if (createTransitions) {

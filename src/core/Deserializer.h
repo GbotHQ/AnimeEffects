@@ -99,6 +99,11 @@ public:
     bool beginBlock(const std::string& aSignature);
     bool endBlock();
 
+    // Bytes left in the file from the current position. Used to bound a count
+    // read from the stream before it allocates or loops; a count cannot exceed
+    // the smallest record it could describe.
+    size_t remainingBytes() const { return getRestSize(); }
+
     bool failure() const;
 
     void pushLogScope(const QString& aScope);

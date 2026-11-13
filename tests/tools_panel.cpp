@@ -200,7 +200,15 @@ int main(int argc, char** argv) {
     root->setHeight(620);
     window.resize(int(dockWidth), 620);
     window.show();
-    QCoreApplication::processEvents();
+    // THE DOCK'S WIDTH ARRIVES AFTER THE SCENE IS BUILT, and a Flow lays its items
+    // out from its OWN width: the first pass runs while the root is still 0-wide
+    // (one item per row) and the reflow is a POLISH pass. The live window gets that
+    // from its frame loop; this test has to drain it explicitly, or every measured
+    // rect is the pre-resize layout (measured: the toolbox read as one column).
+    for (int i = 0; i < 4; ++i) {
+        QCoreApplication::processEvents();
+        window.update();
+    }
 
     // ---- the toolbox -----------------------------------------------------------
     const QVariantList tools = model.tools();
@@ -241,24 +249,116 @@ int main(int argc, char** argv) {
           "and the only BUTTON with that name is the toolbox's");
 
     // ---- the modes -------------------------------------------------------------
-    check(control(root, QStringLiteral("Add bones"), QAccessible::Button) != nullptr,
-          "the bone editor's mode row publishes its mode names");
+    const QStringList boneModeNames = {
+        QStringLiteral("Add bones"), QStringLiteral("Remove bones"), QStringLiteral("Move joints"),
+        QStringLiteral("Bind bone to node"), QStringLiteral("Adjust envelope"),
+        QStringLiteral("Envelope brush"), QStringLiteral("Paint weights")};
+    QList<QQuickItem*> modeButtons;
+    for (const QString& name : boneModeNames) {
+        QQuickItem* button = control(root, name, QAccessible::Button);
+        check(button != nullptr, QStringLiteral("the bone editor's mode row publishes '%1'").arg(name));
+        if (button)
+            modeButtons << button;
+    }
+    check(modeButtons.size() == 7, QStringLiteral("all seven modes are named and reachable (%1)").arg(modeButtons.size()));
+    // The one Envelope brush replaced the old paint/erase pair, so seven modes fit one
+    // row again; the four-column grid that made room for the eighth is gone.
+    if (modeButtons.size() == 7) {
+        const qreal firstTop = topOf(modeButtons[0], root);
+        bool oneRow = true;
+        bool columns = true;
+        for (int i = 0; i < 7; ++i) {
+            oneRow = oneRow && qAbs(topOf(modeButtons[i], root) - firstTop) <= 0.5;
+            const qreal expected = modeButtons[0]->mapToItem(root, 0, 0).x() + 28.0 * i;
+            columns = columns && qAbs(modeButtons[i]->mapToItem(root, 0, 0).x() - expected) <= 0.5;
+        }
+        check(oneRow, QStringLiteral("the seven modes sit on ONE row"));
+        check(columns, QStringLiteral("the seven columns follow the 26+2 grid"));
+        check(modeButtons[6]->mapToItem(root, 0, 0).x() + modeButtons[6]->width() <= dockWidth,
+              QStringLiteral("the last mode ends inside the dock (%1)").arg(describeRect(modeButtons[6], root)));
+        QTextStream(stdout) << "MEASURED  first mode: " << describeRect(modeButtons[0], root)
+                            << "  last mode: " << describeRect(modeButtons[6], root) << "\n";
+    }
+    // The glyphs say what each mode does. Adjust is the envelope RANGE (broadcast),
+    // Envelope brush is a brush qualified by that same range (the small badge is the
+    // range simplified for 18px), and the PLAIN brush is weights. The envelope brush is
+    // the qualified variant; the unqualified brush is the canonical weight paint.
+    {
+        const QVariantList modes = model.modes();
+        check(modes.size() == 7, "the model publishes the seven mode entries");
+        if (modes.size() == 7) {
+            const QString adjustIcon = modes.at(4).toMap().value(QStringLiteral("icon")).toString();
+            const QString inflIcon = modes.at(5).toMap().value(QStringLiteral("icon")).toString();
+            const QString weightsIcon = modes.at(6).toMap().value(QStringLiteral("icon")).toString();
+            check(adjustIcon == QStringLiteral("envelope") && inflIcon == QStringLiteral("paint-envelope")
+                      && weightsIcon == QStringLiteral("paint-brush"),
+                  QStringLiteral("the field row: range, qualified brush, plain brush (%1, %2, %3)")
+                      .arg(adjustIcon, inflIcon, weightsIcon));
+            check(inflIcon != weightsIcon, "the envelope brush and the weight brush are not the same glyph");
+            int plainBrushes = 0;
+            for (const QVariant& mode : modes) {
+                if (mode.toMap().value(QStringLiteral("icon")).toString() == QStringLiteral("paint-brush")) {
+                    ++plainBrushes;
+                }
+            }
+            check(plainBrushes == 1,
+                  QStringLiteral("exactly one plain brush, and it is weights (%1)").arg(plainBrushes));
+            check(weightsIcon != QStringLiteral("drop"), "the weights mode is not the opacity droplet");
+        }
+        QQuickItem* weightsButton = control(root, QStringLiteral("Paint weights"), QAccessible::Button);
+        QQuickItem* inflButton = control(root, QStringLiteral("Envelope brush"), QAccessible::Button);
+        bool weightsGlyph = false;
+        bool influenceGlyph = false;
+        if (weightsButton) {
+            QList<QQuickItem*> items;
+            collectItems(weightsButton, items);
+            for (QQuickItem* item : items) {
+                if (item->property("source").toString().contains(QStringLiteral("paint-brush.svg"))) {
+                    weightsGlyph = true;
+                }
+            }
+        }
+        if (inflButton) {
+            QList<QQuickItem*> items;
+            collectItems(inflButton, items);
+            for (QQuickItem* item : items) {
+                if (item->property("source").toString().contains(QStringLiteral("paint-envelope.svg"))) {
+                    influenceGlyph = true;
+                }
+            }
+        }
+        check(weightsGlyph, "the Paint weights button resolves the plain brush glyph");
+        check(influenceGlyph, "the Envelope brush button resolves the range-qualified brush");
+    }
     // The caption names the mode: at this point it is "Add bones", not the mode the
     // heading would show after a switch.
     check(control(root, QStringLiteral("Add bones"), QAccessible::Heading) == nullptr,
           "the caption is not a heading (the heading names the TOOL)");
-    QQuickItem* paintInfl = control(root, QStringLiteral("Paint influence"), QAccessible::Button);
-    check(paintInfl && press(paintInfl), "the Paint influence mode button accepts a press");
+    QQuickItem* paintInfl = control(root, QStringLiteral("Envelope brush"), QAccessible::Button);
+    check(paintInfl && press(paintInfl), "the Envelope brush mode button accepts a press");
     QCoreApplication::processEvents();
     check(model.modeIndex() == int(ctrl::BoneEditMode_PaintInfl), "and writes the model's mode");
     {
-        // seven mode buttons on ONE row: the widget wrapped them at 172px
-        QQuickItem* eraseInfl = control(root, QStringLiteral("Erase influence"), QAccessible::Button);
-        check(eraseInfl && qAbs(topOf(eraseInfl, root) - topOf(paintInfl, root)) <= 0.5,
-              QStringLiteral("seven mode buttons fit on one row at 236px (%1)")
-                  .arg(eraseInfl ? describeRect(eraseInfl, root) : QString()));
-        if (eraseInfl)
-            QTextStream(stdout) << "MEASURED  last mode button: " << describeRect(eraseInfl, root) << "\n";
+        QQuickItem* paintWeights = control(root, QStringLiteral("Paint weights"), QAccessible::Button);
+        check(paintWeights && press(paintWeights), "the Paint weights mode button accepts a press");
+        QCoreApplication::processEvents();
+        check(model.modeIndex() == 6, "and writes the weights mode (the seventh row entry)");
+        check(model.modeName() == QStringLiteral("Paint weights"), "the heading names the weights mode");
+        // Back to the envelope brush for the shared brush rows the rest of this gate reads.
+        check(press(paintInfl), "Envelope brush can be pressed again");
+        QCoreApplication::processEvents();
+        check(model.modeIndex() == int(ctrl::BoneEditMode_PaintInfl), "and restores the envelope mode");
+
+        // The VALUE row is the one explicit parameter: size/hardness are the
+        // footprint and flow the rate, so the old direction toggles are gone.
+        QQuickItem* valueField = visibleControl(root, QStringLiteral("Value"), QAccessible::SpinBox);
+        check(valueField != nullptr, "the envelope brush publishes a Value field");
+        if (valueField) {
+            check(setValue(valueField, 123.0), "the Value field accepts a write");
+            QCoreApplication::processEvents();
+            check(qAbs(model.envelopeValue() - 123.0) < 0.001,
+                  QStringLiteral("and the value lands on the model (%1)").arg(model.envelopeValue()));
+        }
     }
 
     // ---- the brush's numeric fields are real edit paths ------------------------
@@ -406,6 +506,24 @@ int main(int argc, char** argv) {
     // plain glyph whatever the button's state.
     check(!theme.iconUrl(QStringLiteral("bone")).toString().contains(QStringLiteral("-active")),
           "the checked state does not ask for a second glyph file");
+
+    // A visual record for a UI change: set AE_TOOLS_PANEL_SHOT=<file> to write the
+    // panel's own window. A gate does not need it; the reviewer does.
+    if (const QByteArray shot = qgetenv("AE_TOOLS_PANEL_SHOT"); !shot.isEmpty()) {
+        // The shot is the panel a UI change is about, not whatever the last assertion
+        // happened to leave up. Default to weights; AE_TOOLS_PANEL_SHOT_MODE=envelope
+        // selects the envelope brush, where its range badge is the thing under review.
+        model.activate(ctrl::ToolType_Bone);
+        model.setMode(qgetenv("AE_TOOLS_PANEL_SHOT_MODE") == "envelope"
+                          ? ctrl::BoneEditMode_PaintInfl
+                          : ctrl::BoneEditMode_PaintWeights);
+        for (int i = 0; i < 4; ++i) {
+            QCoreApplication::processEvents();
+            window.update();
+        }
+        check(window.grabWindow().save(QString::fromLocal8Bit(shot)),
+              QStringLiteral("the panel window is captured to %1").arg(QString::fromLocal8Bit(shot)));
+    }
 
     if (failures) {
         QTextStream(stdout) << "FAILED " << failures << " check(s)\n";

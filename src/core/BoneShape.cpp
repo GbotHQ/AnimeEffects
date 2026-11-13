@@ -140,6 +140,32 @@ float BoneShape::influence(const QVector2D& aPos) const {
     return 0.0f;
 }
 
+bool BoneShape::hasSameAuthoredGeometry(const BoneShape& aRhs) const {
+    // Derived fields (mIsValid, mVUnit, mLength, mVDirAngle, mBounding,
+    // mPolygonIndex) are functions of these, so comparing them would be noise.
+    if (mSegment.start != aRhs.mSegment.start || mSegment.dir != aRhs.mSegment.dir) {
+        return false;
+    }
+    for (int i = 0; i < 2; ++i) {
+        if (mRadius[i] != aRhs.mRadius[i]) {
+            return false;
+        }
+        if (mRootBendRange.angle[i] != aRhs.mRootBendRange.angle[i]
+            || mTailBendRange.angle[i] != aRhs.mTailBendRange.angle[i]) {
+            return false;
+        }
+    }
+    if (mPolygon.size() != aRhs.mPolygon.size()) {
+        return false;
+    }
+    for (int i = 0; i < mPolygon.size(); ++i) {
+        if (mPolygon.at(i) != aRhs.mPolygon.at(i)) {
+            return false;
+        }
+    }
+    return true;
+}
+
 float BoneShape::getBoneEllipseWeight(
     const QVector2D& aCenter, const QVector2D& aVUnit, const QVector2D& aRadius, const QVector2D& aPoint
 ) const {

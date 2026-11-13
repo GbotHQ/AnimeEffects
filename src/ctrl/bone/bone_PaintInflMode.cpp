@@ -89,43 +89,46 @@ namespace bone {
             return false;
 
         const QVector2D brushPos = (mTargetInvMtx.map(QVector3D(aStamp.center))).toVector2D();
-        const float brushRange = (mTargetInvMtx.map(QVector3D(aStamp.radius, 0.0f, 0.0f)) - mTargetInvMtx.map(QVector3D()))
-                                     .toVector2D()
-                                     .length();
-        // the hard core is the shared brush hardness (was a hard-wired 0.3)
-        const float brushCoreRange = aStamp.hardness * brushRange;
+        const float brushRange =
+            (mTargetInvMtx.map(QVector3D(aStamp.radius, 0.0f, 0.0f)) - mTargetInvMtx.map(QVector3D()))
+                .toVector2D()
+                .length();
+        if (brushRange <= 0.0f)
+            return false;
 
         const QVector2D ppos = bone->parent()->worldPos();
         const QVector2D cpos = bone->worldPos();
         const util::Segment2D boneSeg(ppos, cpos - ppos);
-        const float ratio = util::CollDetect::getRawSegmentRate(boneSeg, brushPos);
+        const float rawRatio = util::CollDetect::getRawSegmentRate(boneSeg, brushPos);
+        const float ratio = std::min(std::max(rawRatio, 0.0f), 1.0f);
 
-        if (!xc_contains(ratio, 0.0f, 1.0f))
+        const QVector2D closest = ppos + (cpos - ppos) * ratio;
+        const float distance = (brushPos - closest).length();
+        // The stamp is a footprint around the bone segment, not an edge probe:
+        // the target range is painted wherever the brush covers the band.
+        const float weight = aStamp.amount * brushFalloff(distance, brushRange, aStamp.hardness);
+        if (weight <= 0.0f)
             return false;
 
-        util::Segment2D v;
-        v.start = boneSeg.start + boneSeg.dir * ratio;
-        v.dir = brushPos - v.start;
-        const float vlen = v.dir.length();
-
-        auto linearRange = bone->blendedRange(ratio);
-        const float append = (vlen + brushRange) - linearRange.x();
-
-        if (append < 0)
-            return false;
-        if (vlen - brushRange > std::max(linearRange.x(), brushCoreRange))
-            return false;
-
-        // the shared falloff over the distance from the bone to the stamp
-        const float weight = aStamp.amount * brushFalloff(vlen, brushRange, aStamp.hardness);
-
+        const float target = mParam.envelopeValue;
         std::array<QVector2D, 2> prevRange = {bone->range(0), bone->range(1)};
         std::array<QVector2D, 2> nextRange = prevRange;
+        bool changed = false;
         for (int i = 0; i < 2; ++i) {
-            const float rangeAdd = weight * append * (i == 0 ? (1.0f - ratio) : ratio);
-            nextRange[i].setX(std::min(nextRange[i].x() + rangeAdd, brushRange));
-            nextRange[i].setY(std::min(nextRange[i].y() + rangeAdd, brushRange));
+            const float endWeight = weight * (i == 0 ? (1.0f - ratio) : ratio);
+            if (endWeight <= 0.0f)
+                continue;
+            const QVector2D before = prevRange[i];
+            const QVector2D after(
+                std::max(before.x() + (target - before.x()) * endWeight, 0.0f),
+                std::max(before.y() + (target - before.y()) * endWeight, 0.0f)
+            );
+            nextRange[i] = after;
+            changed = changed || after != before;
         }
+        if (!changed)
+            return false;
+
         assignInfluence(*bone, prevRange, nextRange);
         notifyAssign();
         return true;
@@ -179,7 +182,7 @@ namespace bone {
         if (mCommandRef && stack.isModifiable(mCommandRef)) {
             mCommandRef->push(aTarget, aPrev, aNext);
         } else {
-            cmnd::ScopedMacro macro(stack, CmndName::tr("Update bone influence"));
+            cmnd::ScopedMacro macro(stack, CmndName::tr("Update bone envelope"));
             macro.grabListener(new Notifier(mProject, mTarget, *mKeyOwner.key, eventType));
 
             // push command

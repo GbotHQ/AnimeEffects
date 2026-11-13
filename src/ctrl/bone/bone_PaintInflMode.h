@@ -32,8 +32,9 @@ namespace bone {
         virtual void renderQt(const core::RenderInfo& aInfo, QPainter& aPainter);
 
     private:
-        // one shared-brush stamp: the falloff, hardness and amount come from
-        // ctrl/Brush.h like every other painting tool
+        // One shared-brush stamp: SIZE/HARDNESS are only the footprint, FLOW is
+        // the per-stamp rate, and the envelope range is moved toward the explicit
+        // BoneParam::envelopeValue (below it shrinks, above it grows).
         bool updatePaint(const BrushStamp& aStamp);
         void assignInfluence(
             core::Bone2& aTarget, const std::array<QVector2D, 2>& aPrev, const std::array<QVector2D, 2>& aNext

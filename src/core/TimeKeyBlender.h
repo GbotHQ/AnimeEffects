@@ -37,6 +37,20 @@ public:
     static BoneKey* getNearestInfluencerBone(ObjectNode& aNode, const TimeInfo& aTime);
     static QVector2D getImageOffset(ObjectNode& aNode, const TimeInfo& aTime);
     static QVector2D getOriginOffset(ObjectNode& aNode, const TimeInfo& aTime);
+
+    // THE influence-map matrix: the node's relative matrix to the owner,
+    // translated by its origin offset. The influence build, the bake and the
+    // heatmap all read this one function; before it they each assembled the
+    // product by hand, so a change in one could silently stop matching the
+    // other. The overload takes an inner matrix already computed (BoneKey's
+    // cache) so the heatmap can reuse it instead of recomputing the relative
+    // matrix.
+    static QMatrix4x4 getInfluenceMapMatrix(
+        const QMatrix4x4& aInnerMtx, ObjectNode& aNode, const TimeInfo& aTime
+    );
+    static QMatrix4x4 getInfluenceMapMatrix(
+        ObjectNode& aNode, const TimeInfo& aTime, const ObjectNode* aParent
+    );
     static QVector2D getCentroid(const ObjectNode& aNode, const TimeInfo& aTime);
 
     TimeKeyBlender(ObjectTree& aTree);

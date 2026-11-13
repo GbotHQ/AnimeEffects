@@ -49,6 +49,98 @@ target_link_libraries(bone_influence_storage PRIVATE
     cmnd core ctrl gl img thr util pugixml
 )
 
+# Stable bone ids (format 0.22): fresh ids, reservation, copy/clone/shadow
+# semantics, and the version gate that keeps a 0.21 Bone2 block readable. See
+# bone_ids.cpp.
+add_executable(bone_ids bone_ids.cpp)
+target_include_directories(bone_ids PRIVATE ..)
+target_compile_definitions(bone_ids PRIVATE
+    AE_MAJOR_VERSION=1
+    AE_MINOR_VERSION=7
+    AE_MICRO_VERSION=1
+    USE_GL_CORE_PROFILE
+)
+target_link_libraries(bone_ids PRIVATE
+    Qt6::Core Qt6::Core5Compat Qt6::Widgets
+    Qt6::Gui Qt6::OpenGL Qt6::OpenGLWidgets
+    Qt6::Svg Qt6::Xml Qt6::Concurrent Qt6::Multimedia
+    cmnd core ctrl gl img thr util pugixml
+)
+
+# core::SkinWeights: BakedBone presence is the state (an empty baked field is
+# Baked, not Envelope), entries stay sorted/sparse, node records are
+# life-linked, and bakeBone evaluates the build's exact float. See
+# skin_weights.cpp.
+add_executable(skin_weights skin_weights.cpp)
+target_include_directories(skin_weights PRIVATE ..)
+target_compile_definitions(skin_weights PRIVATE
+    AE_MAJOR_VERSION=1
+    AE_MINOR_VERSION=7
+    AE_MICRO_VERSION=1
+    USE_GL_CORE_PROFILE
+)
+target_link_libraries(skin_weights PRIVATE
+    Qt6::Core Qt6::Core5Compat Qt6::Widgets
+    Qt6::Gui Qt6::OpenGL Qt6::OpenGLWidgets
+    Qt6::Svg Qt6::Xml Qt6::Concurrent Qt6::Multimedia
+    cmnd core ctrl gl img thr util pugixml
+)
+
+# The baked build branch and the bake command: a bake is bit-identical to the
+# envelope at the bake frame, a missing baked vertex is 0 (never the envelope),
+# and two keys with divergent same-id geometry refuse with their frame named.
+# See weight_bake.cpp.
+add_executable(weight_bake weight_bake.cpp)
+target_include_directories(weight_bake PRIVATE ..)
+target_compile_definitions(weight_bake PRIVATE
+    AE_MAJOR_VERSION=1
+    AE_MINOR_VERSION=7
+    AE_MICRO_VERSION=1
+    USE_GL_CORE_PROFILE
+)
+target_link_libraries(weight_bake PRIVATE
+    Qt6::Core Qt6::Core5Compat Qt6::Widgets
+    Qt6::Gui Qt6::OpenGL Qt6::OpenGLWidgets
+    Qt6::Svg Qt6::Xml Qt6::Concurrent Qt6::Multimedia
+    cmnd core ctrl gl img thr util pugixml
+)
+
+# Format 0.22 weight block round trip: a 0.21 object tree with no block loads,
+# a 0.22 save/reload keeps empty Baked records and descendant references, and
+# corrupt counts/weights/node references fail the load. See weight_roundtrip.cpp.
+add_executable(weight_roundtrip weight_roundtrip.cpp)
+target_include_directories(weight_roundtrip PRIVATE ..)
+target_compile_definitions(weight_roundtrip PRIVATE
+    AE_MAJOR_VERSION=1
+    AE_MINOR_VERSION=7
+    AE_MICRO_VERSION=1
+    USE_GL_CORE_PROFILE
+)
+target_link_libraries(weight_roundtrip PRIVATE
+    Qt6::Core Qt6::Core5Compat Qt6::Widgets
+    Qt6::Gui Qt6::OpenGL Qt6::OpenGLWidgets
+    Qt6::Svg Qt6::Xml Qt6::Concurrent Qt6::Multimedia
+    cmnd core ctrl gl img thr util pugixml
+)
+
+# Phase 2's authored-weight actions: the Envelope/Baked/Mixed state, one-step
+# Bake/Rebake/Revert/Clear, the one-command stroke rewrite, the structural mesh
+# remap and duplication's field copy. See weight_paint_commands.cpp.
+add_executable(weight_paint_commands weight_paint_commands.cpp)
+target_include_directories(weight_paint_commands PRIVATE ..)
+target_compile_definitions(weight_paint_commands PRIVATE
+    AE_MAJOR_VERSION=1
+    AE_MINOR_VERSION=7
+    AE_MICRO_VERSION=1
+    USE_GL_CORE_PROFILE
+)
+target_link_libraries(weight_paint_commands PRIVATE
+    Qt6::Core Qt6::Core5Compat Qt6::Widgets
+    Qt6::Gui Qt6::OpenGL Qt6::OpenGLWidgets
+    Qt6::Svg Qt6::Xml Qt6::Concurrent Qt6::Multimedia
+    cmnd core ctrl gl img thr util pugixml
+)
+
 # The skeleton bone cap: 33 bones (the dataset's largest rig) must keep their
 # last bone in the influence build and in the pose palette, and 65 must still
 # stop at kMaxCount. Drives makeBoneList/writeWeights and the palette's

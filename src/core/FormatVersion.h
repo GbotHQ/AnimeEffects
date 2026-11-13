@@ -65,6 +65,16 @@
 //                cache (cache owner, per-node influence maps, binding caches).
 //                A <= 0.20 file's section is still consumed, then discarded;
 //                ProjectLoader rebuilds every map after the ID solver.
+//   0.21 -> 0.22 AUTHORED SKIN WEIGHTS and stable bone ids. Every bone writes
+//                its project-local id (after its historical fields, so only a
+//                0.22 reader knows it); every object node carries a "SkinWgt_"
+//                block inside its ObjNode block: the baked per-bone weight
+//                fields of the layers it skins. A 0.21 file has neither, loads
+//                with the live envelope and assigns fresh bone ids (which its
+//                first save writes). The weight block is authored data and is
+//                read, not skipped: a corrupt one fails the load at its own
+//                length-checked boundary. See docs/design/skeletal/
+//                influence-painting-plan.md §4.
 //
 // Versioning rule (the 0.21 change is the worked example): a change to AUTHORED
 // document data bumps the minor and may gate the reader. DERIVED state - anything
@@ -72,7 +82,7 @@
 // required to load: if it is persisted at all, its block carries a tag and a
 // byte length so an unknown version can be skipped and recomputed, never failed.
 #define AE_PROJECT_FORMAT_MAJOR_VERSION 0
-#define AE_PROJECT_FORMAT_MINOR_VERSION 21
+#define AE_PROJECT_FORMAT_MINOR_VERSION 22
 
 #define AE_PROJECT_FORMAT_OLDEST_MAJOR_VERSION 0
 #define AE_PROJECT_FORMAT_OLDEST_MINOR_VERSION 4

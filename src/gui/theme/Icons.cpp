@@ -56,6 +56,7 @@ const QHash<QString, IconRole>& roleTable() {
         {QStringLiteral("down_arrow_disabled"), IconRole::Disabled},
         {QStringLiteral("down_arrow_hover"), IconRole::Accent},
         {QStringLiteral("ease"), IconRole::Text},
+        {QStringLiteral("envelope"), IconRole::Text},
         {QStringLiteral("eraser"), IconRole::Text},
         {QStringLiteral("eye-close"), IconRole::Muted},
         {QStringLiteral("eye-open"), IconRole::Muted},
@@ -84,6 +85,7 @@ const QHash<QString, IconRole>& roleTable() {
         {QStringLiteral("navigation-arrow"), IconRole::Text},
         {QStringLiteral("crosshair"), IconRole::Text},
         {QStringLiteral("paint-brush"), IconRole::Text},
+        {QStringLiteral("paint-envelope"), IconRole::Text},
         {QStringLiteral("pause"), IconRole::Text},
         {QStringLiteral("pencil-simple"), IconRole::Text},
         {QStringLiteral("play"), IconRole::Text},
@@ -150,7 +152,7 @@ const QSet<QString>& activeVariantNames() {
         "dot-outline", "flip-horizontal",
         // tool mode groups (checkable SingleOutItem buttons)
         "plus-bold", "minus-bold", "navigation-arrow", "link", "broadcast",
-        "paint-brush", "eraser", "pencil-simple", "hardness-1", "hardness-2",
+        "paint-brush", "paint-envelope", "envelope", "eraser", "pencil-simple", "hardness-1", "hardness-2",
         "hardness-3", "crosshair",
     };
     return s;

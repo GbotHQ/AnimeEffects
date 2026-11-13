@@ -8,8 +8,10 @@
 
 #include "core/FilterMask.h"
 #include "core/TimeKeyType.h"
+#include "ctrl/BoneEditMode.h"
 #include "ctrl/BoneParam.h"
 #include "ctrl/Brush.h"
+#include "ctrl/bone/bone_WeightState.h"
 #include "ctrl/FFDParam.h"
 #include "ctrl/MaskParam.h"
 #include "ctrl/MeshParam.h"
@@ -174,11 +176,51 @@ class ToolViewModel: public QObject {
     Q_PROPERTY(bool opacityVisible READ opacityVisible NOTIFY stateChanged)
     Q_PROPERTY(bool blurVisible READ blurVisible NOTIFY stateChanged)
     Q_PROPERTY(bool weightVisible READ weightVisible NOTIFY stateChanged)
-    // The bone influence modes can paint the selected bone's weight field over the
+    // The bone field modes can paint the selected bone's weight field over the
     // layers it skips; the toggle is offered only where that is meaningful.
     Q_PROPERTY(bool weightHeatmapVisible READ weightHeatmapVisible NOTIFY stateChanged)
     Q_PROPERTY(bool weightHeatmap READ weightHeatmap WRITE setWeightHeatmap NOTIFY changed)
     Q_PROPERTY(bool weightPaintHintVisible READ weightPaintHintVisible NOTIFY stateChanged)
+
+    // ---- Paint weights -------------------------------------------------------
+    // The authored-weight mode's state panel. The editor owns the selected bone;
+    // the host copies its WeightState here after every selection/action/stroke,
+    // and this model turns it into the one line the panel shows and the action
+    // rows that are legal in it.
+    Q_PROPERTY(bool weightsStateVisible READ weightsStateVisible NOTIFY weightsChanged)
+    Q_PROPERTY(QString weightsStateText READ weightsStateText NOTIFY weightsChanged)
+    // "baked" / "mixed" / "envelope" / "select" / "none" / "no-targets": the
+    // panel's state ink, without exposing the ctrl enum's numeric values to QML.
+    Q_PROPERTY(QString weightsStateRole READ weightsStateRole NOTIFY weightsChanged)
+    // The state's explanation, in a TOOLTIP: the dock has no visible hint lines
+    // (the reported "too busy" verdict), and the state line is the control.
+    Q_PROPERTY(QString weightsStateTip READ weightsStateTip NOTIFY weightsChanged)
+    Q_PROPERTY(bool weightsMeshWarningVisible READ weightsMeshWarningVisible NOTIFY weightsChanged)
+    Q_PROPERTY(QString weightsError READ weightsError NOTIFY weightsChanged)
+    Q_PROPERTY(bool weightsActionsVisible READ weightsActionsVisible NOTIFY weightsChanged)
+    Q_PROPERTY(bool weightsBakeVisible READ weightsBakeVisible NOTIFY weightsChanged)
+    Q_PROPERTY(bool weightsBakeEnabled READ weightsBakeEnabled NOTIFY weightsChanged)
+    Q_PROPERTY(bool weightsRebakeVisible READ weightsRebakeVisible NOTIFY weightsChanged)
+    Q_PROPERTY(bool weightsRebakeEnabled READ weightsRebakeEnabled NOTIFY weightsChanged)
+    Q_PROPERTY(bool weightsRevertVisible READ weightsRevertVisible NOTIFY weightsChanged)
+    Q_PROPERTY(bool weightsRevertEnabled READ weightsRevertEnabled NOTIFY weightsChanged)
+    Q_PROPERTY(bool weightsClearVisible READ weightsClearVisible NOTIFY weightsChanged)
+    Q_PROPERTY(bool weightsClearEnabled READ weightsClearEnabled NOTIFY weightsChanged)
+    Q_PROPERTY(bool weightsPaintEnabled READ weightsPaintEnabled NOTIFY weightsChanged)
+    // The shared brush rows are visible in this mode even when painting is not
+    // legal yet: they are disabled and the state panel says why (a control that
+    // silently does nothing is worse than one that explains itself).
+    Q_PROPERTY(bool brushEnabled READ brushEnabled NOTIFY weightsChanged)
+    // Add / Subtract / Replace: one list and one index, so the chooser cannot
+    // describe a mode the editor does not have.
+    Q_PROPERTY(QVariantList weightModes READ weightModes CONSTANT)
+    Q_PROPERTY(int weightPaintMode READ weightPaintMode WRITE setWeightPaintMode NOTIFY changed)
+    // One envelope brush: Size/Hardness are the footprint, Flow the rate, and
+    // Value the envelope range it paints toward (below it shrinks, above it grows).
+    Q_PROPERTY(bool envelopeBrushVisible READ envelopeBrushVisible NOTIFY stateChanged)
+    Q_PROPERTY(double envelopeValue READ envelopeValue WRITE setEnvelopeValue NOTIFY changed)
+    Q_PROPERTY(int envelopeValueMin READ envelopeValueMin CONSTANT)
+    Q_PROPERTY(int envelopeValueMax READ envelopeValueMax CONSTANT)
     Q_PROPERTY(bool srtCreateVisible READ srtCreateVisible NOTIFY stateChanged)
     Q_PROPERTY(bool srtCentroidVisible READ srtCentroidVisible NOTIFY stateChanged)
     Q_PROPERTY(bool maskPickersVisible READ maskPickersVisible NOTIFY stateChanged)
@@ -274,6 +316,46 @@ public:
     bool weightHeatmap() const;
     void setWeightHeatmap(bool aValue);
     bool weightPaintHintVisible() const;
+    bool weightsStateVisible() const;
+    QString weightsStateText() const;
+    QString weightsStateRole() const;
+    QString weightsStateTip() const;
+    bool weightsMeshWarningVisible() const;
+    QString weightsError() const;
+    bool weightsActionsVisible() const;
+    bool weightsBakeVisible() const;
+    bool weightsBakeEnabled() const;
+    bool weightsRebakeVisible() const;
+    bool weightsRebakeEnabled() const;
+    bool weightsRevertVisible() const;
+    bool weightsRevertEnabled() const;
+    bool weightsClearVisible() const;
+    bool weightsClearEnabled() const;
+    bool weightsPaintEnabled() const;
+    bool brushEnabled() const;
+    QVariantList weightModes() const;
+    int weightPaintMode() const;
+    void setWeightPaintMode(int aMode);
+    bool envelopeBrushVisible() const;
+    double envelopeValue() const;
+    void setEnvelopeValue(double aValue);
+    int envelopeValueMin() const;
+    int envelopeValueMax() const;
+    // The host's push of the editor's answer. Ignored when equal, so a stroke's
+    // per-frame re-read does not churn every binding in the panel.
+    void setWeightsState(const ctrl::bone::WeightState& aState);
+    const ctrl::bone::WeightState& weightsState() const { return mWeights; }
+
+    // The four state actions, as one index so the scene has one verb and the
+    // host one switch.
+    enum WeightAction {
+        WeightAction_Bake,
+        WeightAction_Rebake,
+        WeightAction_Revert,
+        WeightAction_Clear,
+    };
+    Q_ENUM(WeightAction)
+    Q_INVOKABLE void requestWeightsAction(int aAction);
     bool srtCreateVisible() const;
     bool srtCentroidVisible() const;
     bool maskPickersVisible() const;
@@ -391,6 +473,10 @@ signals:
     void changed();
     // the mask's target/channel/value changed, or its chooser's labels did
     void maskChanged();
+    // the authored-weight state or one of its action's availability changed
+    void weightsChanged();
+    // one of the four state actions was asked for (the host owns the driver)
+    void weightsActionRequested(int aAction);
     void viewChanged();
     void viewSettingsChanged();
     void driverActiveChanged();
@@ -400,6 +486,9 @@ signals:
 
 private:
     void retargetBrush();
+    // The state tooltip's authored count, with a numerus form: the visible line
+    // carries no number, so this is the only place the count is worded.
+    QString authoredVertexCountText() const;
 
     ctrl::ToolType mTool = ctrl::ToolType_TERM;
     bool mDriverActive = false;
@@ -417,6 +506,7 @@ private:
 
     ToolBrushModel* mBrush = nullptr;
     bool mMaskPinned = false;
+    ctrl::bone::WeightState mWeights;
 };
 
 } // namespace gui

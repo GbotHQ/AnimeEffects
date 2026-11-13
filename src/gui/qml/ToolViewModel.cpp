@@ -294,9 +294,9 @@ QVariantList ToolViewModel::modes() const {
             entry(QCoreApplication::translate("gui::tool::BonePanel", "Remove bones"), QStringLiteral("minus-bold")),
             entry(QCoreApplication::translate("gui::tool::BonePanel", "Move joints"), QStringLiteral("navigation-arrow")),
             entry(QCoreApplication::translate("gui::tool::BonePanel", "Bind bone to node"), QStringLiteral("link")),
-            entry(QCoreApplication::translate("gui::tool::BonePanel", "Adjust influence"), QStringLiteral("broadcast")),
-            entry(QCoreApplication::translate("gui::tool::BonePanel", "Paint influence"), QStringLiteral("paint-brush")),
-            entry(QCoreApplication::translate("gui::tool::BonePanel", "Erase influence"), QStringLiteral("eraser")),
+            entry(QCoreApplication::translate("gui::tool::BonePanel", "Adjust envelope"), QStringLiteral("envelope")),
+            entry(QCoreApplication::translate("gui::tool::BonePanel", "Envelope brush"), QStringLiteral("paint-envelope")),
+            entry(QCoreApplication::translate("gui::tool::BonePanel", "Paint weights"), QStringLiteral("paint-brush")),
         };
     case ctrl::ToolType_Pose:
         return {
@@ -325,7 +325,12 @@ QVariantList ToolViewModel::modes() const {
 int ToolViewModel::modeIndex() const {
     switch (mTool) {
     case ctrl::ToolType_SRT: return mSRT.mode;
-    case ctrl::ToolType_Bone: return int(mBone.mode);
+    case ctrl::ToolType_Bone:
+        // The UI order has seven entries; the persisted enum keeps PaintWeights at 7
+        // and the retired EraseInfl at 6, so the list index is mapped explicitly.
+        if (mBone.mode == ctrl::BoneEditMode_PaintWeights) return 6;
+        if (mBone.mode == ctrl::BoneEditMode_EraseInfl) return 5;
+        return int(mBone.mode);
     case ctrl::ToolType_Pose: return int(mPose.mode);
     case ctrl::ToolType_Mesh: return mMesh.mode;
     case ctrl::ToolType_FFD: return int(mFFD.type);
@@ -344,7 +349,8 @@ QString ToolViewModel::modeName() const {
 bool ToolViewModel::brushVisible() const {
     switch (mTool) {
     case ctrl::ToolType_Bone:
-        return mBone.mode == ctrl::BoneEditMode_PaintInfl || mBone.mode == ctrl::BoneEditMode_EraseInfl;
+        return mBone.mode == ctrl::BoneEditMode_PaintInfl || mBone.mode == ctrl::BoneEditMode_EraseInfl
+            || mBone.mode == ctrl::BoneEditMode_PaintWeights;
     case ctrl::ToolType_Pose: return mPose.mode == ctrl::PoseEditMode_Erase;
     case ctrl::ToolType_FFD:
         return mFFD.type == ctrl::FFDParam::Type_Pencil || mFFD.type == ctrl::FFDParam::Type_Eraser;
@@ -365,13 +371,34 @@ bool ToolViewModel::weightHeatmapVisible() const {
     if (mTool != ctrl::ToolType_Bone)
         return false;
     return mBone.mode == ctrl::BoneEditMode_Influence || mBone.mode == ctrl::BoneEditMode_PaintInfl
-        || mBone.mode == ctrl::BoneEditMode_EraseInfl;
+        || mBone.mode == ctrl::BoneEditMode_EraseInfl || mBone.mode == ctrl::BoneEditMode_PaintWeights;
 }
 
 bool ToolViewModel::weightPaintHintVisible() const {
     return mTool == ctrl::ToolType_Bone
         && (mBone.mode == ctrl::BoneEditMode_PaintInfl || mBone.mode == ctrl::BoneEditMode_EraseInfl);
 }
+
+bool ToolViewModel::envelopeBrushVisible() const {
+    return mTool == ctrl::ToolType_Bone
+        && (mBone.mode == ctrl::BoneEditMode_PaintInfl || mBone.mode == ctrl::BoneEditMode_EraseInfl);
+}
+
+double ToolViewModel::envelopeValue() const { return double(mBone.envelopeValue); }
+
+void ToolViewModel::setEnvelopeValue(double aValue) {
+    const float clamped = float(std::min(std::max(aValue, double(envelopeValueMin())),
+                                         double(envelopeValueMax())));
+    if (std::abs(mBone.envelopeValue - clamped) < 1.0e-6f) {
+        return;
+    }
+    mBone.envelopeValue = clamped;
+    emit changed();
+}
+
+int ToolViewModel::envelopeValueMin() const { return 0; }
+
+int ToolViewModel::envelopeValueMax() const { return 1000; }
 
 bool ToolViewModel::weightHeatmap() const { return mBone.showWeightHeatmap; }
 
@@ -380,6 +407,182 @@ void ToolViewModel::setWeightHeatmap(bool aValue) {
         return;
     mBone.showWeightHeatmap = aValue;
     emit changed();
+}
+
+//-------------------------------------------------------------------------------------------------
+// Paint weights
+//-------------------------------------------------------------------------------------------------
+namespace {
+bool sameWeightsState(const ctrl::bone::WeightState& aLhs, const ctrl::bone::WeightState& aRhs) {
+    return aLhs.kind == aRhs.kind && aLhs.boneIndex == aRhs.boneIndex
+        && aLhs.bakedNodes == aRhs.bakedNodes && aLhs.liveNodes == aRhs.liveNodes
+        && aLhs.bakedVertices == aRhs.bakedVertices && aLhs.meshMismatch == aRhs.meshMismatch
+        && aLhs.error == aRhs.error;
+}
+} // namespace
+
+void ToolViewModel::setWeightsState(const ctrl::bone::WeightState& aState) {
+    if (sameWeightsState(mWeights, aState))
+        return;
+    mWeights = aState;
+    emit weightsChanged();
+}
+
+bool ToolViewModel::weightsStateVisible() const {
+    return mTool == ctrl::ToolType_Bone && mBone.mode == ctrl::BoneEditMode_PaintWeights;
+}
+
+bool ToolViewModel::weightsActionsVisible() const {
+    return weightsStateVisible() && mWeights.kind != ctrl::bone::WeightState::Kind_None
+        && mWeights.kind != ctrl::bone::WeightState::Kind_SelectBone
+        && mWeights.kind != ctrl::bone::WeightState::Kind_NoTargets;
+}
+
+QString ToolViewModel::weightsStateText() const {
+    using Kind = ctrl::bone::WeightState::Kind;
+    switch (mWeights.kind) {
+    case Kind::Kind_None: return tr("No bone key");
+    case Kind::Kind_SelectBone: return tr("Select a bone");
+    case Kind::Kind_NoTargets: return tr("No mesh here");
+    case Kind::Kind_Envelope: return tr("Envelope");
+    // ONE WORD. The count is a diagnostic, not a state: it lives in the state
+    // tooltip, where a reader who wants the number can find it, and never in the
+    // row ("Baked · 622" made the number the state and left its unit to guess).
+    case Kind::Kind_Baked: return tr("Baked");
+    case Kind::Kind_Mixed: return tr("Partly baked");
+    }
+    return QString();
+}
+
+QString ToolViewModel::weightsStateRole() const {
+    using Kind = ctrl::bone::WeightState::Kind;
+    switch (mWeights.kind) {
+    case Kind::Kind_None: return QStringLiteral("none");
+    case Kind::Kind_SelectBone: return QStringLiteral("select");
+    case Kind::Kind_NoTargets: return QStringLiteral("no-targets");
+    case Kind::Kind_Envelope: return QStringLiteral("envelope");
+    case Kind::Kind_Baked: return QStringLiteral("baked");
+    case Kind::Kind_Mixed: return QStringLiteral("mixed");
+    }
+    return QString();
+}
+
+QString ToolViewModel::weightsStateTip() const {
+    using Kind = ctrl::bone::WeightState::Kind;
+    switch (mWeights.kind) {
+    case Kind::Kind_None:
+        return tr("Create a bone key at this frame to paint weights.");
+    case Kind::Kind_SelectBone:
+        return tr("Right-click a bone to target it. Left is always the stroke.");
+    case Kind::Kind_NoTargets:
+        return tr("The key skins no mesh at this frame.");
+    case Kind::Kind_Envelope:
+        return tr("This bone's weights are live. Bake evaluates its envelope once, then the brush edits the result.");
+    case Kind::Kind_Baked:
+        return tr("The field is authored (%1). Rebake replaces it from the envelope.")
+            .arg(authoredVertexCountText());
+    case Kind::Kind_Mixed:
+        return tr("%n layer(s) still use the live envelope; the brush paints the baked ones.", "", mWeights.liveNodes);
+    }
+    return QString();
+}
+
+QString ToolViewModel::authoredVertexCountText() const {
+    // `%n` is the Qt numerus form; the English catalog supplies "vertex"/"vertices".
+    return tr("%n vertex(s)", "", mWeights.bakedVertices);
+}
+
+bool ToolViewModel::weightsMeshWarningVisible() const {
+    return weightsStateVisible() && mWeights.meshMismatch;
+}
+
+QString ToolViewModel::weightsError() const {
+    return weightsStateVisible() ? mWeights.error : QString();
+}
+
+bool ToolViewModel::weightsBakeVisible() const {
+    using Kind = ctrl::bone::WeightState::Kind;
+    return weightsActionsVisible()
+        && (mWeights.kind == Kind::Kind_Envelope || mWeights.kind == Kind::Kind_Mixed);
+}
+
+bool ToolViewModel::weightsBakeEnabled() const { return weightsBakeVisible() && mWeights.canBake(); }
+
+bool ToolViewModel::weightsRebakeVisible() const {
+    using Kind = ctrl::bone::WeightState::Kind;
+    return weightsActionsVisible()
+        && (mWeights.kind == Kind::Kind_Baked || mWeights.kind == Kind::Kind_Mixed);
+}
+
+bool ToolViewModel::weightsRebakeEnabled() const {
+    return weightsRebakeVisible() && mWeights.canRebake();
+}
+
+bool ToolViewModel::weightsRevertVisible() const { return weightsRebakeVisible(); }
+
+bool ToolViewModel::weightsRevertEnabled() const {
+    return weightsRebakeVisible() && mWeights.canRevert();
+}
+
+bool ToolViewModel::weightsClearVisible() const { return weightsRebakeVisible(); }
+
+bool ToolViewModel::weightsClearEnabled() const {
+    return weightsRebakeVisible() && mWeights.canClear();
+}
+
+bool ToolViewModel::weightsPaintEnabled() const {
+    return weightsStateVisible() && mWeights.canPaint();
+}
+
+bool ToolViewModel::brushEnabled() const {
+    if (mTool != ctrl::ToolType_Bone || mBone.mode != ctrl::BoneEditMode_PaintWeights) {
+        return true;
+    }
+    return mWeights.canPaint();
+}
+
+QVariantList ToolViewModel::weightModes() const {
+    QVariantList out;
+    const char* labels[ctrl::WeightPaintMode_TERM] = {QT_TRANSLATE_NOOP("gui::ToolViewModel", "Add"),
+                                                      QT_TRANSLATE_NOOP("gui::ToolViewModel", "Subtract"),
+                                                      QT_TRANSLATE_NOOP("gui::ToolViewModel", "Replace")};
+    for (int i = 0; i < ctrl::WeightPaintMode_TERM; ++i) {
+        QVariantMap map;
+        map.insert(QStringLiteral("label"), tr(labels[i]));
+        map.insert(QStringLiteral("value"), i);
+        out.append(map);
+    }
+    return out;
+}
+
+int ToolViewModel::weightPaintMode() const { return int(mBone.weightMode); }
+
+void ToolViewModel::setWeightPaintMode(int aMode) {
+    if (aMode < 0 || aMode >= ctrl::WeightPaintMode_TERM || mBone.weightMode == ctrl::WeightPaintMode(aMode)) {
+        return;
+    }
+    mBone.weightMode = ctrl::WeightPaintMode(aMode);
+    emit changed();
+}
+
+void ToolViewModel::requestWeightsAction(int aAction) {
+    switch (WeightAction(aAction)) {
+    case WeightAction_Bake:
+        if (!weightsBakeEnabled()) return;
+        break;
+    case WeightAction_Rebake:
+        if (!weightsRebakeEnabled()) return;
+        break;
+    case WeightAction_Revert:
+        if (!weightsRevertEnabled()) return;
+        break;
+    case WeightAction_Clear:
+        if (!weightsClearEnabled()) return;
+        break;
+    default:
+        return;
+    }
+    emit weightsActionRequested(aAction);
 }
 
 bool ToolViewModel::srtCreateVisible() const {
@@ -679,6 +882,7 @@ void ToolViewModel::activate(int aType) {
     emit toolChanged(int(old), int(mTool));
     emit stateChanged();
     emit modeChanged();
+    emit weightsChanged();
 }
 
 void ToolViewModel::setMode(int aIndex) {
@@ -691,9 +895,9 @@ void ToolViewModel::setMode(int aIndex) {
         mSRT.mode = aIndex;
         break;
     case ctrl::ToolType_Bone:
-        if (aIndex >= ctrl::BoneEditMode_TERM)
+        if (aIndex < 0 || aIndex > 6)
             return;
-        mBone.mode = ctrl::BoneEditMode(aIndex);
+        mBone.mode = aIndex == 6 ? ctrl::BoneEditMode_PaintWeights : ctrl::BoneEditMode(aIndex);
         break;
     case ctrl::ToolType_Pose:
         if (aIndex >= ctrl::PoseEditMode_TERM)
@@ -719,6 +923,7 @@ void ToolViewModel::setMode(int aIndex) {
     retargetBrush();
     emit stateChanged();
     emit modeChanged();
+    emit weightsChanged();
     emit changed();
 }
 

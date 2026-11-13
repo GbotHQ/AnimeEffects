@@ -147,6 +147,21 @@ void BoneKeyUpdater::onProjectAttributeModified(ProjectEvent& aEvent) {
     }
 }
 
+void BoneKeyUpdater::onSkinWeightsModified(Project& aProject, ObjectNode& aOwner, bool) {
+    if (!aOwner.timeLine()) {
+        return;
+    }
+
+    auto& map = aOwner.timeLine()->map(TimeKeyType_Bone);
+    for (auto itr = map.begin(); itr != map.end(); ++itr) {
+        TimeKey* key = itr.value();
+        TIMEKEY_PTR_TYPE_ASSERT(key, Bone);
+        // resetCaches takes the new field for this node; every key of the owner
+        // shares it, so all frames are refreshed in one event.
+        static_cast<BoneKey*>(key)->resetCaches(aProject, aOwner);
+    }
+}
+
 //-------------------------------------------------------------------------------------------------
 class Unbinder {
     struct Pos {

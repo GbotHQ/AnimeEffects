@@ -19,8 +19,8 @@ constexpr GLfloat kMinPowerSum = 0.01f;
 
 //-------------------------------------------------------------------------------------------------
 BoneInfluenceMap::BoneInfluenceMap():
-    mVertexCount(0), mSlotCount(0), mMaxBoneCount(0), mGroupMtx(), mBoneList(), mSparseIndices(),
-    mSparseWeights(), mIndices(), mWeights(), mWorks(), mBuildTask() {}
+    mVertexCount(0), mSlotCount(0), mMaxBoneCount(0), mGroupMtx(), mBoneList(), mBakedBones(),
+    mSparseIndices(), mSparseWeights(), mIndices(), mWeights(), mWorks(), mBuildTask() {}
 
 BoneInfluenceMap::~BoneInfluenceMap() {
     // A queued or running task points at this map (and at mWorks/mIndices).
@@ -152,7 +152,8 @@ void BoneInfluenceMap::ensureDenseStorage() {
 }
 
 void BoneInfluenceMap::writeAsync(
-    Project& aProject, const QList<Bone2*>& aTopBones, const QMatrix4x4& aGroupMtx, const LayerMesh& aMesh
+    Project& aProject, const QList<Bone2*>& aTopBones, const QMatrix4x4& aGroupMtx, const LayerMesh& aMesh,
+    const SkinWeights::NodeWeights* aBakedWeights
 ) {
     XC_ASSERT(mMaxBoneCount > 0);
 
@@ -163,6 +164,15 @@ void BoneInfluenceMap::writeAsync(
 
     // set group matrix
     mGroupMtx = aGroupMtx;
+
+    // Snapshot the authored bones: the build runs on another thread and the
+    // document may change before it reads. Copies only when the node actually
+    // has baked bones, so every envelope-only project (and a node whose record
+    // exists but names no baked bone) keeps the old path and cost. Qt's
+    // copy-on-write detaches on the document side if a command rewrites it;
+    // the worker only reads.
+    mBakedBones = (aBakedWeights && !aBakedWeights->bakedBones.isEmpty())
+        ? aBakedWeights->bakedBones : QVector<SkinWeights::BakedBone>();
 
     // allocate work buffer
     mWorks.reset(new WorkAttribute[mVertexCount]);
@@ -209,10 +219,9 @@ void BoneInfluenceMap::makeBoneList(const QList<Bone2*>& aTopBones) {
 
             if (bone && mBoneList.params.size() < mMaxBoneCount) {
                 BoneParam param;
-                param.hasParent = (bool)(bone->parent());
-
-                if (param.hasParent) {
-                    param.hasRange = bone->hasValidRange();
+                param.boneId = bone->boneId();
+                param.hasEnvelope = bone->hasInfluenceEnvelope();
+                if (param.hasEnvelope) {
                     param.shape = bone->shape();
                 }
                 mBoneList.params.push_back(param);
@@ -232,6 +241,10 @@ void BoneInfluenceMap::build() {
     if (isBuildCanceled())
         return;
 
+    // The authored snapshot was only needed by writeWeights(); the next build
+    // takes its own.
+    mBakedBones.clear();
+
     // write vertex attribute
     writeVertexAttribute();
     if (isBuildCanceled())
@@ -250,19 +263,45 @@ void BoneInfluenceMap::transformVertices() {
 void BoneInfluenceMap::writeWeights() {
     // Bone order is the order in which weights reach a vertex, and
     // tryPushBoneWeight() keeps the first slot on a tie, so this loop order is
-    // part of the stored result.
+    // part of the stored result. The baked branch keeps it too: it walks the
+    // same params in the same order and pushes the same floats the envelope
+    // pushed when the bake was taken. That is why a bake is bit-identical to
+    // the live field at the bake frame.
     const int boneCount = mBoneList.params.size();
     for (int i = 0; i < boneCount; ++i) {
         const BoneParam& param = mBoneList.params[i];
-        if (!param.hasParent || !param.hasRange)
-            continue;
+        const SkinWeights::BakedBone* baked =
+            SkinWeights::BakedBone::findById(mBakedBones, param.boneId);
 
-        // calculate weights
-        for (int k = 0; k < mVertexCount; ++k) {
-            const float weight = param.shape.influence(mWorks[k].vertex);
+        if (baked) {
+            // The record IS the whole field: a vertex with no entry is exactly
+            // 0 and the envelope must not be consulted. The entries are sorted
+            // by vertex, so the cursor is shared with the vertex loop.
+            const QVector<SkinWeights::Entry>& entries = baked->entries;
+            int cursor = 0;
+            for (int k = 0; k < mVertexCount; ++k) {
+                while (cursor < entries.size() && entries[cursor].vertex < quint32(k)) {
+                    ++cursor;
+                }
+                const float weight =
+                    (cursor < entries.size() && entries[cursor].vertex == quint32(k))
+                    ? entries[cursor].weight : 0.0f;
 
-            if (weight >= FLT_EPSILON) {
-                mWorks[k].tryPushBoneWeight(i, weight);
+                if (weight >= FLT_EPSILON) {
+                    mWorks[k].tryPushBoneWeight(i, weight);
+                }
+            }
+        } else {
+            if (!param.hasEnvelope)
+                continue;
+
+            // calculate weights
+            for (int k = 0; k < mVertexCount; ++k) {
+                const float weight = param.shape.influence(mWorks[k].vertex);
+
+                if (weight >= FLT_EPSILON) {
+                    mWorks[k].tryPushBoneWeight(i, weight);
+                }
             }
         }
 
@@ -439,7 +478,7 @@ void BoneInfluenceMap::waitBuilding() const {
 }
 
 //-------------------------------------------------------------------------------------------------
-BoneInfluenceMap::BoneParam::BoneParam(): hasParent(false), hasRange(false), shape() {}
+BoneInfluenceMap::BoneParam::BoneParam(): boneId(0), hasEnvelope(false), shape() {}
 
 //-------------------------------------------------------------------------------------------------
 void BoneInfluenceMap::WorkAttribute::clear() { count = 0; }

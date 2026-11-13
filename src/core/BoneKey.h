@@ -85,6 +85,12 @@ public:
     // rewrite influences of unique roots specified
     void updateCaches(Project& aProject, ObjectNode& aOwner, const QVector<ObjectNode*>& aUniqueRoots);
 
+    // The nodes this key actually skins at aTime: the same subtree, cache-owner
+    // and rigid-binding rules resetCaches uses, without building a cache list.
+    // The bake evaluates exactly this set, so the state a bake writes is the
+    // state the build reads.
+    void collectInfluenceTargets(const TimeInfo& aTime, ObjectNode& aOwner, QVector<ObjectNode*>& aTargets);
+
     virtual TimeKeyType type() const { return TimeKeyType_Bone; }
     virtual bool canHoldChild() const { return true; }
     virtual TimeKey* createClone(); ///@note a new key have to reset caches.
@@ -92,7 +98,7 @@ public:
     virtual bool deserialize(Deserializer& aIn);
 
 private:
-    void resetCacheListRecursive(const TimeInfo& aTime, ObjectNode& aNode, CacheList& aNewList);
+    void collectInfluenceTargetsRecursive(const TimeInfo& aTime, ObjectNode& aNode, QVector<ObjectNode*>& aTargets);
     void updateCaches(Project& aProject, const QList<Cache*>& aTargets);
     Cache* popCache(ObjectNode& aNode);
     void destroyCaches();
