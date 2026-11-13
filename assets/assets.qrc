@@ -62,6 +62,10 @@
     <file>icons/ph/images.svg</file>
     <file>icons/ph/image.svg</file>
     <file>icons/ph/link.svg</file>
+    <file>icons/ph/sidebar-bottom.svg</file>
+    <file>icons/ph/sidebar-left.svg</file>
+    <file>icons/ph/sidebar-right.svg</file>
+    <file>icons/ph/sidebar-top.svg</file>
     <file>icons/ph/magnifying-glass.svg</file>
     <file>icons/ph/minus-bold.svg</file>
     <file>icons/ph/minus.svg</file>

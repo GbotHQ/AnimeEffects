@@ -35,6 +35,12 @@ const QHash<QString, IconRole>& roleTable() {
         {QStringLiteral("close_pressed"), IconRole::Accent},
         {QStringLiteral("x"), IconRole::Muted}, // phosphor x (popover close)
         {QStringLiteral("x_hover"), IconRole::Text},
+        // layout toggles (MainWindow's top-right row): quiet at rest, and the
+        // -active tint marks the slot/panel that is showing
+        {QStringLiteral("sidebar-left"), IconRole::Muted},
+        {QStringLiteral("sidebar-right"), IconRole::Muted},
+        {QStringLiteral("sidebar-top"), IconRole::Muted},
+        {QStringLiteral("sidebar-bottom"), IconRole::Muted},
         {QStringLiteral("hand"), IconRole::Text},
         {QStringLiteral("dialog_cancel"), IconRole::Text},
         {QStringLiteral("dialog_close"), IconRole::Text},
@@ -154,6 +160,8 @@ const QSet<QString>& activeVariantNames() {
         "plus-bold", "minus-bold", "navigation-arrow", "link", "broadcast",
         "paint-brush", "paint-envelope", "envelope", "eraser", "pencil-simple", "hardness-1", "hardness-2",
         "hardness-3", "crosshair",
+        // layout toggles: the checked state means "this slot is showing"
+        "sidebar-left", "sidebar-right", "sidebar-top", "sidebar-bottom",
     };
     return s;
 }

@@ -2140,3 +2140,25 @@ target_link_libraries(render_probe PRIVATE
     Qt6::Svg Qt6::Xml Qt6::Concurrent Qt6::Multimedia
     cmnd core ctrl gl img thr util pugixml
 )
+
+# THE DOCK SLOT MODEL AND THE DROP RULE: one derivation of "what is an area" (DockSlots)
+# and the rule the drop preview and the drop itself share (DockDropOverlay). A real
+# QMainWindow with real DockPanels, offscreen: slots, hidden-vs-empty, a tab group as
+# one slot, the empty-area place, and the target at a point. See dock_slots.cpp.
+add_executable(dock_slots
+    dock_slots.cpp
+    ../src/gui/DockDropOverlay.cpp ../src/gui/DockDropOverlay.h
+    ../src/gui/DockMetrics.h
+    ../src/gui/DockPanel.cpp ../src/gui/DockPanel.h
+    ../src/gui/DockSlots.cpp ../src/gui/DockSlots.h
+    ../src/gui/DockTabBar.cpp ../src/gui/DockTabBar.h
+)
+target_include_directories(dock_slots PRIVATE .. ../src)
+target_compile_definitions(dock_slots PRIVATE
+    AE_MAJOR_VERSION=1
+    AE_MINOR_VERSION=7
+    AE_MICRO_VERSION=1
+)
+target_link_libraries(dock_slots PRIVATE
+    Qt6::Core Qt6::Gui Qt6::Widgets
+)
