@@ -1,7 +1,5 @@
 #include "gui/qml/ToolViewModel.h"
 
-#include "gui/qml/FilterNames.h"
-
 #include <QCoreApplication>
 #include <QVariantMap>
 
@@ -26,7 +24,6 @@ QVariantMap entry(const QString& aLabel, const QString& aIcon) {
 const core::TimeKeyType kMaskLanes[] = {
     core::TimeKeyType_HSV, core::TimeKeyType_Blur, core::TimeKeyType_Wave};
 const int kMaskLaneCount = 3;
-const int kMaskLayerTarget = kMaskLaneCount; // the fourth target: the node's own matte
 
 // The dock's strings that ALREADY have catalog entries keep their ORIGINAL contexts.
 // A context is a catalog key: re-spelling "Add bones" in QML would ship English until
@@ -175,6 +172,7 @@ void ToolBrushModel::adjustHardness(int aSteps) {
 // ToolViewModel
 //-------------------------------------------------------------------------------------------------
 ToolViewModel::ToolViewModel(QObject* aParent): QObject(aParent) {
+    mMaskEmptyText = tr("Select a layer to paint a mask.");
     mBrush = new ToolBrushModel(this);
     // an EDIT of the brush is an edit of the active tool's param (a retarget is not)
     connect(mBrush, &ToolBrushModel::edited, this, &ToolViewModel::changed);
@@ -271,13 +269,11 @@ QString ToolViewModel::title() const {
     case ctrl::ToolType_FFD:
         return QCoreApplication::translate("gui::tool::FFDPanel", "FFD");
     case ctrl::ToolType_Mask:
-        // A card named the field, so the heading IS the field's own name ("Wave Deform
-        // amount", and "Layer mask" for the matte - which is both the kind and the
-        // name). Picked from the toolbox the field is still a QUESTION, so the heading
-        // names the KIND and the chooser sits under it.
-        if (mMaskPinned)
-            return mMask.isLayerMask() ? tr("Layer mask") : maskFieldLabel();
-        return tr("Filter mask");
+        // The heading names the TOOL; the Target row below it is the field's own
+        // chooser (and shows the current field as its value). A card entry simply
+        // preselects that target - it must not turn the label into a caption plus a
+        // separate disclosure, which is the control this replaced.
+        return tr("Mask");
     default:
         return QString();
     }
@@ -663,61 +659,81 @@ void ToolViewModel::setWeight(double aValue) {
 //-------------------------------------------------------------------------------------------------
 QVariantList ToolViewModel::maskFields() const {
     QVariantList out;
-    for (int i = 0; i < kMaskLaneCount; ++i) {
-        const QString lane = filterDisplayName(kMaskLanes[i]);
-        // A translatable FORMAT per channel, never name + separator + name: word order is
-        // not the same in every language, and a bare separator is what makes a label read
-        // as machine-assembled.
-        out.append(entry(tr("%1 amount").arg(lane), QString()));
-        out.append(entry(tr("%1 time offset").arg(lane), QString()));
+    for (int i = 0; i < mMaskFieldEntries.size(); ++i) {
+        const MaskField& field = mMaskFieldEntries.at(i);
+        QVariantMap map;
+        map.insert(QStringLiteral("label"), field.label);
+        map.insert(QStringLiteral("value"), i);
+        out.append(map);
     }
-    out.append(entry(tr("Layer mask"), QString()));
     return out;
 }
 
 int ToolViewModel::maskFieldIndex() const {
-    if (mMask.isLayerMask())
-        return kMaskLayerTarget * 2; // the matte sits after the six filter fields
-    for (int i = 0; i < kMaskLaneCount; ++i) {
-        if (kMaskLanes[i] == mMask.lane)
-            return i * 2 + int(mMask.channel);
+    return findMaskField(mMask.kind, mMask.lane, mMask.channel);
+}
+
+int ToolViewModel::findMaskField(ctrl::MaskTargetKind aKind, core::TimeKeyType aLane,
+                                 core::FilterMaskChannel aChannel) const {
+    for (int i = 0; i < mMaskFieldEntries.size(); ++i) {
+        const MaskField& field = mMaskFieldEntries.at(i);
+        if (field.kind != aKind)
+            continue;
+        if (aKind == ctrl::MaskTargetKind_LayerMask || (field.lane == aLane && field.channel == aChannel))
+            return i;
     }
-    return kMaskLayerTarget * 2;
+    return -1;
 }
 
 QString ToolViewModel::maskFieldLabel() const {
-    const QVariantList fields = maskFields();
     const int index = maskFieldIndex();
-    if (index < 0 || index >= fields.size())
-        return QString();
-    return fields.at(index).toMap().value(QStringLiteral("label")).toString();
+    return (0 <= index && index < mMaskFieldEntries.size()) ? mMaskFieldEntries.at(index).label
+                                                           : QString();
+}
+
+QString ToolViewModel::maskEmptyText() const {
+    if (!maskPaintable() && mMaskEmptyText.isEmpty() && !mMaskFieldEntries.isEmpty())
+        return tr("Choose a paint target.");
+    return mMaskEmptyText;
 }
 
 void ToolViewModel::setMaskField(int aIndex) {
-    if (aIndex < 0 || aIndex > kMaskLayerTarget * 2 || aIndex == maskFieldIndex())
+    if (aIndex < 0 || aIndex >= mMaskFieldEntries.size() || aIndex == maskFieldIndex())
         return;
-    if (aIndex == kMaskLayerTarget * 2) {
-        // the node's own matte: no lane, no channel, and a neutral of reveal-all
+    selectMaskField(aIndex, true);
+}
+
+void ToolViewModel::selectMaskField(int aIndex, bool aNotify) {
+    if (aIndex < 0 || aIndex >= mMaskFieldEntries.size())
+        return;
+    const MaskField& field = mMaskFieldEntries.at(aIndex);
+    if (field.kind == ctrl::MaskTargetKind_LayerMask) {
         mMask.setKind(ctrl::MaskTargetKind_LayerMask);
     } else {
         // setKind FIRST: coming back from the matte, the kind change is what makes the
-        // next stroke read a filter input at all. MaskParam only touches the value when
-        // the kind or the channel actually changes, exactly as the widget did.
+        // next stroke read a filter input at all.
         mMask.setKind(ctrl::MaskTargetKind_FilterInput);
-        mMask.lane = kMaskLanes[aIndex / 2];
-        // the channel seeds the useful value for its own mask (amount -> 0, offset -> 1)
-        mMask.setChannel(core::FilterMaskChannel(aIndex % 2));
+        mMask.lane = field.lane;
+        // The channel seeds the useful value for its own mask (amount -> 0, offset -> 1).
+        mMask.setChannel(field.channel);
     }
-    emit stateChanged();   // the heading and the caption follow the target
-    emit maskChanged();    // setKind / setChannel may have reset the value
+    if (!aNotify)
+        return;
+    emit stateChanged();
+    emit maskChanged();
     emit changed();
 }
 
-void ToolViewModel::unpinMaskTarget() {
-    if (!mMaskPinned)
+void ToolViewModel::setMaskFields(const QVector<MaskField>& aFields, const QString& aEmptyText) {
+    if (mMaskFieldEntries == aFields && mMaskEmptyText == aEmptyText)
         return;
-    mMaskPinned = false;
-    emit stateChanged();
+    mMaskFieldEntries = aFields;
+    mMaskEmptyText = aEmptyText;
+    // A target that disappeared (or became unavailable) must not leave the brush
+    // aimed at a field the list no longer contains. Pick the first paintable one.
+    if (maskFieldIndex() < 0 && !mMaskFieldEntries.isEmpty())
+        selectMaskField(0, false);
+    emit maskChanged();
 }
 
 void ToolViewModel::setMaskValue(double aValue) {
@@ -748,11 +764,7 @@ void ToolViewModel::beginFilterMaskPaint(core::TimeKeyType aLane, core::FilterMa
         }
     }
     mMask.setChannel(aChannel);
-    // activate() CLEARS the pin (a toolbox entry asks the question), so the card entry
-    // sets it after the switch - which is also the order the user sees: the panel appears
-    // already naming the field.
     activate(int(ctrl::ToolType_Mask));
-    mMaskPinned = true;
     emit stateChanged();
     emit maskChanged();
     emit changed();
@@ -761,7 +773,6 @@ void ToolViewModel::beginFilterMaskPaint(core::TimeKeyType aLane, core::FilterMa
 void ToolViewModel::beginLayerMaskPaint() {
     mMask.setKind(ctrl::MaskTargetKind_LayerMask);
     activate(int(ctrl::ToolType_Mask));
-    mMaskPinned = true;
     emit stateChanged();
     emit maskChanged();
     emit changed();
@@ -871,10 +882,6 @@ void ToolViewModel::activate(int aType) {
         return;
     const ctrl::ToolType old = mTool;
     mTool = type;
-    // Picking the Mask tool from the toolbox ASKS which field, so the card's pin is
-    // dropped - a card entry re-pins it after this call (see beginFilterMaskPaint).
-    if (type == ctrl::ToolType_Mask)
-        mMaskPinned = false;
     retargetBrush();
     // The host finalizes the OLD tool before it switches the driver (see the signal's
     // own note); everything this model derives from the tool is already up to date, so

@@ -22,6 +22,20 @@
 
 namespace gui {
 
+// One field the Mask tool may paint, derived by the HOST from the current node and
+// frame. The model owns selection and labels; it deliberately does not own the
+// document walk, so it can be tested (and reused) without linking the project.
+struct MaskField {
+    ctrl::MaskTargetKind kind = ctrl::MaskTargetKind_FilterInput;
+    core::TimeKeyType lane = core::TimeKeyType_TERM;
+    core::FilterMaskChannel channel = core::FilterMaskChannel_Amount;
+    QString label;
+    bool operator==(const MaskField& aRhs) const {
+        return kind == aRhs.kind && lane == aRhs.lane && channel == aRhs.channel
+            && label == aRhs.label;
+    }
+};
+
 // THE SHARED BRUSH, as one Qt Quick object that RETARGETS with the tool.
 //
 // The brush is one model in ctrl (ctrl/Brush.h): size, hardness, flow, opacity, the
@@ -249,21 +263,16 @@ class ToolViewModel: public QObject {
     Q_PROPERTY(QString weightLabel READ weightLabel CONSTANT)
 
     // ---- Mask ----------------------------------------------------------------
-    // ONE field chooser. A mask is addressed as (filter lane, channel) or as the node's
-    // own matte, so the seven addressable fields are one list: two selectors (a lane and
-    // then a channel) asked the same question twice, and the pair only ever named one
-    // field. The labels are built with a translatable format, not concatenated with a
-    // separator ("Wave Deform amount", never "Wave Deform · amount").
-    Q_PROPERTY(QVariantList maskFields READ maskFields CONSTANT)
+    // ONE derived chooser. A mask is addressed as (filter lane, channel) or as the node's
+    // own matte. The list is NOT a fixed catalog: it is rebuilt from the current node and
+    // frame, so a lane the layer does not have, a disabled filter, a time-offset mask no
+    // filter consumes, or a layer mask with no key at this frame is never offered. When
+    // nothing can be painted, maskEmptyText says why.
+    Q_PROPERTY(QVariantList maskFields READ maskFields NOTIFY maskChanged)
     Q_PROPERTY(int maskFieldIndex READ maskFieldIndex NOTIFY maskChanged)
-    // The current field's own name ("Wave Deform amount", "Layer mask"): what the chooser
-    // shows as its value.
     Q_PROPERTY(QString maskFieldLabel READ maskFieldLabel NOTIFY maskChanged)
-    // True when a card sent the tool here (a filter's "Paint mask", the mask card's own
-    // Paint). The field is then a FACT rather than a question, so the panel shows the
-    // caption plus a disclosure and does not ask; picking the Mask tool from the toolbox
-    // opens the chooser instead.
-    Q_PROPERTY(bool maskPinned READ maskPinned NOTIFY stateChanged)
+    Q_PROPERTY(bool maskPaintable READ maskPaintable NOTIFY maskChanged)
+    Q_PROPERTY(QString maskEmptyText READ maskEmptyText NOTIFY maskChanged)
     // What the brush paints TOWARD, 0..1 (shown as a percentage). A stamp moves a texel
     // toward this, so one value both reduces an amount mask and restores it.
     Q_PROPERTY(double maskValue READ maskValue WRITE setMaskValue NOTIFY maskChanged)
@@ -387,14 +396,19 @@ public:
     int maskFieldIndex() const;
     Q_INVOKABLE void setMaskField(int aIndex);
     QString maskFieldLabel() const;
-    bool maskPinned() const { return mMaskPinned; }
+    bool maskPaintable() const { return maskFieldIndex() >= 0; }
+    QString maskEmptyText() const;
     // The Mask tool is up AND its target is a LAYER's own matte (not a filter lane's input):
     // the card that offers "Paint this layer's matte" is only redundant in that case.
     bool maskPaintingLayerMask() const {
         return mTool == ctrl::ToolType_Mask && mMask.kind == ctrl::MaskTargetKind_LayerMask;
     }
-    // The caption's disclosure: open the chooser for a field a card chose.
-    Q_INVOKABLE void unpinMaskTarget();
+    bool maskToolActive() const { return mTool == ctrl::ToolType_Mask; }
+    core::TimeKeyType maskLane() const { return mMask.lane; }
+    core::FilterMaskChannel maskChannel() const { return mMask.channel; }
+    // The host's derived target set and the explanation to show when it is empty.
+    // Idempotent: it only notifies when the list or the explanation actually moves.
+    void setMaskFields(const QVector<MaskField>& aFields, const QString& aEmptyText);
     double maskValue() const { return double(mMask.value); }
     void setMaskValue(double aValue);
     // THE mask keyboard verb: swap the paint value between the two ends, the way every
@@ -502,10 +516,15 @@ private:
     ctrl::BoneParam mBone;
     ctrl::PoseParam mPose;
     ctrl::MeshParam mMesh;
+    int findMaskField(ctrl::MaskTargetKind aKind, core::TimeKeyType aLane,
+                      core::FilterMaskChannel aChannel) const;
+    void selectMaskField(int aIndex, bool aNotify);
+
     ctrl::MaskParam mMask;
+    QVector<MaskField> mMaskFieldEntries;
+    QString mMaskEmptyText;
 
     ToolBrushModel* mBrush = nullptr;
-    bool mMaskPinned = false;
     ctrl::bone::WeightState mWeights;
 };
 

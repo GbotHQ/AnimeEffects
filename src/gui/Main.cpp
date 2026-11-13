@@ -16,6 +16,8 @@
 #include <QtConcurrent>
 #include <QApplication>
 #include <QQuickStyle>
+#include <QStyleHints>
+#include "gui/qml/QmlTheme.h"
 
 // This MSVC debugger is not useful and only serves to pain me in the ways it unexpectedly fails,
 // I'm sure it worked wonderfully before, but it sure doesn't anymore
@@ -153,6 +155,11 @@ int entryPoint(int argc, char* argv[]) {
     // background/contentItem with the app's own, so the style contributes
     // behaviour and defaults, not paint.
     QQuickStyle::setStyle(QStringLiteral("Basic"));
+    // One tooltip delay for both toolkits: the QML AeToolTip reads QmlTheme's token,
+    // and QWidget's QToolTip reads this platform hint.
+    QGuiApplication::styleHints()->setToolTipWakeUpDelay(
+        std::chrono::milliseconds(gui::QmlTheme::kToolTipDelayMs)
+    );
 
     // application path
     #if defined(Q_OS_DARWIN)

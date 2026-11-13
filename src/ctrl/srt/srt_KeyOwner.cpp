@@ -15,6 +15,9 @@ namespace srt {
         ownsMoveKey(),
         ownsRotateKey(),
         ownsScaleKey(),
+        moveIsDefault(),
+        rotateIsDefault(),
+        scaleIsDefault(),
         parentMtx(),
         invParentMtx(),
         invParentSRMtx(),
@@ -53,16 +56,19 @@ namespace srt {
         if (moveKey && ownsMoveKey)
             delete moveKey;
         ownsMoveKey = false;
+        moveIsDefault = false;
         moveKey = nullptr;
 
         if (rotateKey && ownsRotateKey)
             delete rotateKey;
         ownsRotateKey = false;
+        rotateIsDefault = false;
         rotateKey = nullptr;
 
         if (scaleKey && ownsScaleKey)
             delete scaleKey;
         ownsScaleKey = false;
+        scaleIsDefault = false;
         scaleKey = nullptr;
     }
 

@@ -5,6 +5,7 @@
 #include <memory>
 #include <QMap>
 #include <QPair>
+#include <QSize>
 #include <QScopedPointer>
 #include <QVector>
 #include "cmnd/Vector.h"
@@ -96,6 +97,9 @@ public:
 
     TimeKeyExpans& current() { return *mCurrent; }
     const TimeKeyExpans& current() const { return *mCurrent; }
+    // The current area texture size, exposed without making every caller include
+    // TimeKeyExpans (a header that drags Project.h and the image-IO headers with it).
+    QSize currentAreaTextureSize() const;
 
     TimeKeyExpans& working() { return *mWorking; }
     const TimeKeyExpans& working() const { return *mWorking; }

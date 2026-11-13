@@ -205,7 +205,9 @@ int main(int argc, char** argv) {
     // (one item per row) and the reflow is a POLISH pass. The live window gets that
     // from its frame loop; this test has to drain it explicitly, or every measured
     // rect is the pre-resize layout (measured: the toolbox read as one column).
-    for (int i = 0; i < 4; ++i) {
+    root->setWidth(dockWidth - 1);
+    root->setWidth(dockWidth);
+    for (int i = 0; i < 12; ++i) {
         QCoreApplication::processEvents();
         window.update();
     }
@@ -241,6 +243,18 @@ int main(int argc, char** argv) {
     check(boneButton && press(boneButton), "the bone editor's button accepts a press");
     QCoreApplication::processEvents();
     check(model.tool() == int(ctrl::ToolType_Bone), "pressing it selects the tool in the model");
+    {
+        int checked = 0;
+        for (QQuickItem* button : toolButtons) {
+            if (button->property("checked").toBool())
+                ++checked;
+        }
+        check(checked == 1, QStringLiteral("exactly one toolbox button is checked (%1)").arg(checked));
+    }
+    for (int i = 0; i < 4; ++i) {
+        QCoreApplication::processEvents();
+        window.update();
+    }
     // The panel heading names the tool and is a HEADING, not a second button with the
     // same word: that is what keeps a screen reader (and a probe) able to tell them apart.
     check(control(root, QStringLiteral("Bone editor"), QAccessible::Heading) != nullptr,
@@ -344,8 +358,11 @@ int main(int argc, char** argv) {
         QCoreApplication::processEvents();
         check(model.modeIndex() == 6, "and writes the weights mode (the seventh row entry)");
         check(model.modeName() == QStringLiteral("Paint weights"), "the heading names the weights mode");
-        // Back to the envelope brush for the shared brush rows the rest of this gate reads.
-        check(press(paintInfl), "Envelope brush can be pressed again");
+        // Back to the envelope brush for the shared brush rows the rest of this gate
+        // reads. The panel is rebuilt when the row set changes, so this is a fresh
+        // button, not the pointer from the previous mode.
+        QQuickItem* paintInflAgain = control(root, QStringLiteral("Envelope brush"), QAccessible::Button);
+        check(paintInflAgain && press(paintInflAgain), "Envelope brush can be pressed again");
         QCoreApplication::processEvents();
         check(model.modeIndex() == int(ctrl::BoneEditMode_PaintInfl), "and restores the envelope mode");
 
@@ -381,7 +398,7 @@ int main(int argc, char** argv) {
               QStringLiteral("and stores it as a fraction (%1)").arg(model.brush()->hardness()));
     }
 
-    // ---- the mask: two combos, one of which disappears -------------------------
+    // ---- the mask: a derived Target row, or an explained empty state -------------
     QQuickItem* maskButton = control(root, QStringLiteral("Mask paint"), QAccessible::Button);
     check(maskButton && press(maskButton), "the mask tool's button accepts a press");
     QCoreApplication::processEvents();
@@ -390,50 +407,62 @@ int main(int argc, char** argv) {
     // multiplies its stamp by brush.opacity). It is not a brush row for the bone, pose or
     // FFD brushes, which never read it - the reported "why is there no opacity?".
     check(model.opacityVisible(), "the mask brush offers its Opacity row");
-    check(control(root, QStringLiteral("Filter mask"), QAccessible::Heading) != nullptr,
-          "the heading says the panel edits a FILTER mask");
-    // A combo reports its VALUE as its name (Qt's own rule), which is exactly what makes
-    // "which mask am I painting" readable without hovering. ONE chooser, one label: the
-    // field names itself ("Wave Deform amount"), not a lane and then a channel.
-    check(visibleControl(root, QStringLiteral("Wave Deform amount"), QAccessible::ComboBox) != nullptr,
-          "the field chooser reads 'Wave Deform amount'");
-    check(visibleControl(root, QStringLiteral("Amount"), QAccessible::ComboBox) == nullptr,
-          "and there is no second, channel chooser any more");
+    check(control(root, QStringLiteral("Mask"), QAccessible::Heading) != nullptr,
+          "the heading names the TOOL, not a field caption");
+    // With no document context the chooser cannot invent a target. The panel must not
+    // draw a brush that would silently no-op: it says what is missing instead.
+    check(visibleControl(root, QStringLiteral("Select a layer to paint a mask."),
+                         QAccessible::StaticText) != nullptr,
+          "no context: the empty state explains the missing layer");
+    check(visibleControl(root, QStringLiteral("Wave Deform amount"), QAccessible::ComboBox) == nullptr,
+          "and no field is offered before there is a target");
+    check(visibleControl(root, QStringLiteral("Size"), QAccessible::SpinBox) == nullptr,
+          "the brush rows are hidden while nothing is paintable");
 
-    // the same row, chosen through the list: the matte
-    model.setMaskField(6);
-    QCoreApplication::processEvents();
-    check(visibleControl(root, QStringLiteral("Filter mask"), QAccessible::Heading) != nullptr,
-          "unpinned, the heading still names the KIND (the chooser names the field)");
-    check(visibleControl(root, QStringLiteral("Layer mask"), QAccessible::ComboBox) != nullptr,
-          "and the chooser names it");
-
-    // ---- ENTERED FROM A CARD the field is a caption, not a question -------------
-    model.beginLayerMaskPaint();
-    QCoreApplication::processEvents();
-    check(model.maskPinned(), "a card entry pins the field");
-    check(visibleControl(root, QStringLiteral("Layer mask"), QAccessible::ComboBox) == nullptr,
-          "the chooser is GONE: nobody asked a question the card already answered");
-    // ...and the HEADING is the field's name now, so no caption row is needed either: one
-    // row of chrome (the heading) carries the name and the field's own two actions.
-    check(visibleControl(root, QStringLiteral("Layer mask"), QAccessible::Heading) != nullptr,
-          "the heading names the field");
-    QQuickItem* change = visibleControl(root, QStringLiteral("Change what is painted"), QAccessible::Button);
-    check(change != nullptr, "and its disclosure is there");
-    if (change) {
-        check(press(change), "the disclosure accepts a press");
+    // The host derives the real target set. The panel must show the one Target
+    // control, the Value row and the brush, and the list must contain only the
+    // fields the host says are paintable.
+    QVector<gui::MaskField> fields;
+    fields.append(gui::MaskField{ctrl::MaskTargetKind_FilterInput, core::TimeKeyType_HSV,
+                                 core::FilterMaskChannel_Amount, QStringLiteral("HSV amount")});
+    fields.append(gui::MaskField{ctrl::MaskTargetKind_FilterInput, core::TimeKeyType_Wave,
+                                 core::FilterMaskChannel_Amount, QStringLiteral("Wave Deform amount")});
+    fields.append(gui::MaskField{ctrl::MaskTargetKind_FilterInput, core::TimeKeyType_Wave,
+                                 core::FilterMaskChannel_TimeOffset,
+                                 QStringLiteral("Wave Deform time offset")});
+    fields.append(gui::MaskField{ctrl::MaskTargetKind_LayerMask, core::TimeKeyType_TERM,
+                                 core::FilterMaskChannel_Amount, QStringLiteral("Layer mask")});
+    model.setMaskFields(fields, QString());
+    for (int i = 0; i < 8; ++i) {
         QCoreApplication::processEvents();
-        check(!model.maskPinned(), "which re-opens the chooser");
-        check(visibleControl(root, QStringLiteral("Layer mask"), QAccessible::ComboBox) != nullptr,
-              "and the chooser is back");
+        window.update();
     }
+    check(visibleControl(root, QStringLiteral("Wave Deform amount"), QAccessible::ComboBox) != nullptr,
+          "a real target set shows the one Target chooser");
+    check(visibleControl(root, QStringLiteral("Value"), QAccessible::SpinBox) != nullptr,
+          "and the value row is offered");
+    check(visibleControl(root, QStringLiteral("Size"), QAccessible::SpinBox) != nullptr,
+          "and the brush is offered");
 
-    // the field's own utility is a QUIET text action, not the panel's primary button
+    // A card entry selects the matte; the control stays one Target row.
+    model.beginLayerMaskPaint();
+    for (int i = 0; i < 4; ++i) {
+        QCoreApplication::processEvents();
+        window.update();
+    }
+    check(model.maskParam().isLayerMask(), "a card entry selects the matte");
+    check(visibleControl(root, QStringLiteral("Layer mask"), QAccessible::ComboBox) != nullptr,
+          "and the Target control names it");
+    check(visibleControl(root, QStringLiteral("Mask"), QAccessible::Heading) != nullptr,
+          "while the heading still names the tool");
+
+    // the field's own utility is a QUIET text action, and cannot be used with no target
     QQuickItem* clearButton = visibleControl(root, QStringLiteral("Clear"), QAccessible::Button);
-    check(clearButton != nullptr, "the field row carries a Clear action");
+    check(clearButton != nullptr, "the mask panel carries a Clear action");
     if (clearButton) {
-        check(press(clearButton), "it accepts a press");
-        check(clearRequested == 1, "and asks the host to clear the field");
+        check(clearButton->isEnabled(), "Clear is enabled with a paintable target");
+        check(press(clearButton), "the action is pressable");
+        check(clearRequested == 1, "and it asks the host to clear the field");
     }
 
     // ---- the view strip speaks the bound keys ---------------------------------
@@ -513,11 +542,29 @@ int main(int argc, char** argv) {
         // The shot is the panel a UI change is about, not whatever the last assertion
         // happened to leave up. Default to weights; AE_TOOLS_PANEL_SHOT_MODE=envelope
         // selects the envelope brush, where its range badge is the thing under review.
-        model.activate(ctrl::ToolType_Bone);
-        model.setMode(qgetenv("AE_TOOLS_PANEL_SHOT_MODE") == "envelope"
-                          ? ctrl::BoneEditMode_PaintInfl
-                          : ctrl::BoneEditMode_PaintWeights);
-        for (int i = 0; i < 4; ++i) {
+        const QByteArray shotMode = qgetenv("AE_TOOLS_PANEL_SHOT_MODE");
+        if (shotMode == "mask") {
+            QVector<gui::MaskField> fields;
+            fields.append(gui::MaskField{ctrl::MaskTargetKind_FilterInput, core::TimeKeyType_HSV,
+                                         core::FilterMaskChannel_Amount,
+                                         QStringLiteral("HSV amount")});
+            fields.append(gui::MaskField{ctrl::MaskTargetKind_FilterInput, core::TimeKeyType_Wave,
+                                         core::FilterMaskChannel_Amount,
+                                         QStringLiteral("Wave Deform amount")});
+            fields.append(gui::MaskField{ctrl::MaskTargetKind_FilterInput, core::TimeKeyType_Wave,
+                                         core::FilterMaskChannel_TimeOffset,
+                                         QStringLiteral("Wave Deform time offset")});
+            fields.append(gui::MaskField{ctrl::MaskTargetKind_LayerMask, core::TimeKeyType_TERM,
+                                         core::FilterMaskChannel_Amount,
+                                         QStringLiteral("Layer mask")});
+            model.activate(ctrl::ToolType_Mask);
+            model.setMaskFields(fields, QString());
+        } else {
+            model.activate(ctrl::ToolType_Bone);
+            model.setMode(shotMode == "envelope" ? ctrl::BoneEditMode_PaintInfl
+                                                 : ctrl::BoneEditMode_PaintWeights);
+        }
+        for (int i = 0; i < 8; ++i) {
             QCoreApplication::processEvents();
             window.update();
         }

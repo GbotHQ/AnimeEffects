@@ -12,6 +12,18 @@ Rectangle {
 
     color: theme.base
 
+    // THE MESH SPACING PREVIEW. Hover arms the overlay after the same delay as
+    // the field's tooltip; a scrub or a text edit shows it immediately. It hides
+    // immediately when none of hover/edit/scrub holds: this is a live view of the
+    // control, not a message, so it must not inherit the tooltip's 10 s timeout.
+    property bool meshPreviewArmed: false
+    function refreshMeshPreview() {
+        const field = meshSpacingField;
+        const active = inspector.image.visible && field.enabled
+                    && (field.editing || field.scrubbing
+                        || (root.meshPreviewArmed && field.hovered));
+        inspector.setMeshPreviewActive(active);
+    }
     ScrollView {
         id: scroll
         anchors.fill: parent
@@ -131,9 +143,11 @@ Rectangle {
                     textFont: uiFont
                                 checked: inspector.move.smooth
                     onToggled: inspector.move.setSmooth(checked)
-                    ToolTip.visible: hovered
-                    ToolTip.delay: 500
-                    ToolTip.text: inspector.smoothTooltip
+                    AeToolTip {
+                        ownerItem: smoothPath
+                        text: inspector.smoothTooltip
+                        shown: smoothPath.hovered
+                    }
                 }
             }
             Item { width: 1; height: inspector.move.visible ? 4 : 0 }
@@ -282,6 +296,7 @@ Rectangle {
                 label: inspector.meshCellLabel
                 keyState: ""
                 InspectorNumberField {
+                    id: meshSpacingField
                     Layout.fillWidth: true
                     value: inspector.image.cellSize
                     from: inspector.imageCellMin
@@ -290,9 +305,11 @@ Rectangle {
                     decimals: 0
                     label: inspector.meshCellLabel
                     prefixIcon: "grid-four"
-                    ToolTip.visible: hovered
-                    ToolTip.delay: 500
-                    ToolTip.text: inspector.meshCellTooltip
+                    AeToolTip {
+                        ownerItem: meshSpacingField
+                        text: inspector.meshCellTooltip
+                        shown: meshSpacingField.hovered
+                    }
                     onValueEdited: (value) => inspector.image.setCellSize(Math.round(value))
                 }
             }
@@ -338,4 +355,59 @@ Rectangle {
             Item { width: 1; height: 12 }
         }
     }
+
+    Timer {
+        id: meshPreviewTimer
+        interval: theme.toolTipDelay
+        repeat: false
+        onTriggered: {
+            root.meshPreviewArmed = true;
+            root.refreshMeshPreview();
+        }
+    }
+    Connections {
+        target: meshSpacingField
+        function onHoveredChanged() {
+            if (meshSpacingField.hovered) {
+                if (meshSpacingField.editing || meshSpacingField.scrubbing) {
+                    root.meshPreviewArmed = true;
+                    root.refreshMeshPreview();
+                } else {
+                    meshPreviewTimer.restart();
+                }
+            } else {
+                meshPreviewTimer.stop();
+                root.meshPreviewArmed = false;
+                root.refreshMeshPreview();
+            }
+        }
+        function onScrubbingChanged() {
+            if (meshSpacingField.scrubbing) {
+                root.meshPreviewArmed = true;
+                meshPreviewTimer.stop();
+            }
+            root.refreshMeshPreview();
+        }
+        function onEditingChanged() {
+            if (meshSpacingField.editing) {
+                root.meshPreviewArmed = true;
+                meshPreviewTimer.stop();
+            }
+            root.refreshMeshPreview();
+        }
+    }
+    Connections {
+        // A target change is the inspector's `changed`; the field itself can stay
+        // alive across nodes, so the preview must follow the row's visibility.
+        target: inspector
+        function onChanged() {
+            if (!inspector.image.visible) {
+                meshPreviewTimer.stop();
+                root.meshPreviewArmed = false;
+            }
+            root.refreshMeshPreview();
+        }
+    }
+    Component.onDestruction: inspector.setMeshPreviewActive(false)
+
 }

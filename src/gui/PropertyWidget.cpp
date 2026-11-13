@@ -75,6 +75,10 @@ PropertyWidget::PropertyWidget(ViaPoint& aViaPoint, QWidget* aParent, GUIResourc
     });
     // ...and the mask card's Paint asks for the node's own matte
     mModel->onLayerMaskPaintRequested.connect([this]() { onLayerMaskPaintRequested(); });
+    // ...and the mesh-spacing field's hover/scrub/edit preview reaches the viewport
+    mModel->onMeshPreviewRequested.connect(
+        [this](core::ObjectNode* aNode, bool aActive) { onMeshPreviewRequested(aNode, aActive); }
+    );
 
     mQuick = new KeyForwardingQuickWidget(this);
     mQuick->setResizeMode(QQuickWidget::SizeRootObjectToView);
@@ -145,6 +149,10 @@ void PropertyWidget::setProject(core::Project* aProject) {
 
 void PropertyWidget::updateAllProperties() {
     mModel->refresh();
+    // An image replacement or a tree restructure can change the mask's content
+    // rect (and therefore whether a target is paintable); rebuild the Tools
+    // panel's derived list too.
+    onMaskTargetsChanged();
 }
 
 void PropertyWidget::onSelectionChanged(core::ObjectNode* aRepresentNode) { mModel->setTarget(aRepresentNode); }
@@ -162,17 +170,24 @@ void PropertyWidget::onKeyUpdated(core::TimeLineEvent& aEvent, bool) {
     for (const core::TimeLineEvent::Target& target : aEvent.targets()) {
         if (target.pos.type() == core::TimeKeyType_Mask) {
             mModel->refresh();
+            onMaskTargetsChanged();
             return;
         }
     }
     mModel->refreshKeys();
+    onMaskTargetsChanged();
 }
 
 void PropertyWidget::onFrameUpdated() { mModel->refreshFrame(); }
 
 void PropertyWidget::onPlayBackStateChanged(bool aIsActive) { mModel->setPlaybackActive(aIsActive); }
 
-void PropertyWidget::setMaskPaintActive(bool aActive) { mModel->setMaskPaintActive(aActive); }
+void PropertyWidget::setMaskPaintState(
+    core::ObjectNode* aNode, bool aLayerMask, bool aFilterInput, core::TimeKeyType aLane,
+    core::FilterMaskChannel aChannel
+) {
+    mModel->setMaskPaintState(aNode, aLayerMask, aFilterInput, aLane, aChannel);
+}
 
 void PropertyWidget::invertMask() {
     if (mModel)

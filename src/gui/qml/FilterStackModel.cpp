@@ -69,7 +69,7 @@ void FilterRowModel::refresh() {
 
     const QColor keyColor = theme::keyTypeColor(theme::Colors::current(), mType);
     const QVariantList before{mEnabled, mKeyState, mKeyColor, mSummary, mSummarySegments, mHasAmountMask,
-                              mHasTimeMask, mHue,
+                              mHasTimeMask, mAmountPaintActive, mTimePaintActive, mHue,
                               mSaturation, mValue, mAbsolute, mAmount, mDirectional, mBlurX,
                               mBlurY, mBlurAngle,
                               mWave.strength(), mWave.wavelength(), mWave.angleDeg(), mWave.phase(),
@@ -150,9 +150,13 @@ void FilterRowModel::refresh() {
     mHasTimeMask = hasTarget && ctrl::TimeLineUtil::hasFilterMask(
         *mOwner.target(), mType, core::FilterMaskChannel_TimeOffset
     );
+    mAmountPaintActive = mOwner.maskPaintIsFilter() && mOwner.maskPaintLane() == int(mType)
+        && mOwner.maskPaintChannel() == int(core::FilterMaskChannel_Amount);
+    mTimePaintActive = mOwner.maskPaintIsFilter() && mOwner.maskPaintLane() == int(mType)
+        && mOwner.maskPaintChannel() == int(core::FilterMaskChannel_TimeOffset);
 
     const QVariantList after{mEnabled, mKeyState, mKeyColor, mSummary, mSummarySegments, mHasAmountMask,
-                             mHasTimeMask, mHue,
+                             mHasTimeMask, mAmountPaintActive, mTimePaintActive, mHue,
                              mSaturation, mValue, mAbsolute, mAmount, mDirectional, mBlurX,
                              mBlurY, mBlurAngle,
                              mWave.strength(), mWave.wavelength(), mWave.angleDeg(), mWave.phase(),
@@ -160,6 +164,18 @@ void FilterRowModel::refresh() {
                              mWave.dualScale(), int(mWave.deform())};
     if (before != after)
         emit changed();
+}
+
+void FilterRowModel::refreshMaskPaintState() {
+    const bool amount = mOwner.maskPaintIsFilter() && mOwner.maskPaintLane() == int(mType)
+        && mOwner.maskPaintChannel() == int(core::FilterMaskChannel_Amount);
+    const bool time = mOwner.maskPaintIsFilter() && mOwner.maskPaintLane() == int(mType)
+        && mOwner.maskPaintChannel() == int(core::FilterMaskChannel_TimeOffset);
+    if (amount == mAmountPaintActive && time == mTimePaintActive)
+        return;
+    mAmountPaintActive = amount;
+    mTimePaintActive = time;
+    emit changed();
 }
 
 void FilterRowModel::refreshTheme() {
@@ -498,6 +514,11 @@ void FilterStackModel::refresh() {
         row->refresh();
         row->setExpanded(mExpanded.contains(core::TimeKeyType(row->type())));
     }
+}
+
+void FilterStackModel::refreshMaskPaintState() {
+    for (FilterRowModel* row : mRows)
+        row->refreshMaskPaintState();
 }
 
 void FilterStackModel::refreshTheme() {

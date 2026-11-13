@@ -148,6 +148,8 @@ void TimeLine::removeFilterMask(TimeKeyType aType, FilterMaskChannel aChannel) {
         mFilterMasks.at(aType).at(aChannel).reset();
 }
 
+QSize TimeLine::currentAreaTextureSize() const { return mCurrent->areaTextureSize(); }
+
 bool TimeLine::filterEnabled(TimeKeyType aType) const {
     if (!isFilterType(aType))
         return false;

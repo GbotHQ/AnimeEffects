@@ -333,6 +333,10 @@ endforeach()
 # compiled into ctrl by name).
 list(APPEND AE_I18N_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/../ctrl/ExportTargetStrings.h
+    # The tools host derives the mask chooser's empty-state explanations with
+    # QCoreApplication::translate("gui::ToolViewModel", ...); lupdate only sees files
+    # in this list, and the GUI target is not one of AE_I18N_LIBRARIES.
+    ${CMAKE_CURRENT_SOURCE_DIR}/ToolWidget.cpp
 )
 list(REMOVE_DUPLICATES AE_I18N_SOURCES)
 

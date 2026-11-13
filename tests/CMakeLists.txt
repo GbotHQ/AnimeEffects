@@ -1070,6 +1070,24 @@ target_link_libraries(attribute_observable PRIVATE
 # Model 2 at the accessor layer: static properties edit their default key, and
 # animated properties edit/create a key at the playhead. The unified Inspector
 # depends on this split; see key_accessor_model2.cpp.
+# The Transform tool's key policy (tested with the real SRTEditor/MoveMode): a
+# static channel edits its default key, an animated one auto-keys at the playhead,
+# and a checked "Create ... key" box forces exactly that channel. See srt_keys.cpp.
+add_executable(srt_keys srt_keys.cpp)
+target_include_directories(srt_keys PRIVATE .. ../src)
+target_compile_definitions(srt_keys PRIVATE
+    AE_MAJOR_VERSION=1
+    AE_MINOR_VERSION=7
+    AE_MICRO_VERSION=1
+    USE_GL_CORE_PROFILE
+)
+target_link_libraries(srt_keys PRIVATE
+    Qt6::Core Qt6::Core5Compat Qt6::Widgets
+    Qt6::Gui Qt6::OpenGL Qt6::OpenGLWidgets
+    Qt6::Svg Qt6::Xml Qt6::Concurrent Qt6::Multimedia
+    cmnd core ctrl gl img thr util pugixml
+)
+
 add_executable(key_accessor_model2
     key_accessor_model2.cpp
     ../src/gui/prop/prop_KeyAccessor.cpp)
@@ -1127,6 +1145,24 @@ target_compile_definitions(tool_view_model PRIVATE
 )
 target_link_libraries(tool_view_model PRIVATE
     Qt6::Core Qt6::Gui Qt6::OpenGL
+)
+
+# AeComboBox's popup geometry: the optional scrollbar lane is reserved only when
+# the list actually scrolls, and it is flush with the popup's inner edge. See
+# combo_geometry.cpp.
+add_executable(combo_geometry
+    combo_geometry.cpp
+    ../src/gui/qml/QmlTheme.cpp
+    ../src/gui/theme/Icons.cpp
+)
+target_include_directories(combo_geometry PRIVATE .. ../src ../src/gui)
+target_compile_definitions(combo_geometry PRIVATE
+    AE_ICON_SRC="${CMAKE_SOURCE_DIR}/assets/icons"
+    AE_QML_DIR="${CMAKE_SOURCE_DIR}/src/gui/qml"
+    USE_GL_CORE_PROFILE
+)
+target_link_libraries(combo_geometry PRIVATE
+    Qt6::Core Qt6::Gui Qt6::Qml Qt6::Quick Qt6::QuickControls2 Qt6::Widgets
 )
 
 # The Tools dock's SCENE: loads the REAL ToolsPanel.qml and drives its controls through

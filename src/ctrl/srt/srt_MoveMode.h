@@ -36,7 +36,8 @@ namespace srt {
         void assignRotateKey(core::RotateKey::Data& aNewData);
         void assignScaleKey(core::ScaleKey::Data& aNewData);
 
-        void setAssignNotifier(cmnd::ScopedMacro& aMacro, core::TimeKeyType aKeyType, bool aPushKey);
+        void setAssignNotifier(cmnd::ScopedMacro& aMacro, core::TimeKeyType aKeyType, bool aPushKey,
+                               bool aDefaultKey);
         void notifyAssignModification(core::TimeKeyType aKeyType);
 
         core::Project& mProject;

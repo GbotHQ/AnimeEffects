@@ -43,6 +43,7 @@ Item {
     width: parent ? parent.width : 0
 
     Text {
+        id: labelText
         x: 12
         width: 76
         anchors.verticalCenter: parent.verticalCenter
@@ -53,9 +54,11 @@ Item {
         Accessible.role: Accessible.StaticText
         Accessible.name: root.label
         HoverHandler { id: labelHover }
-        ToolTip.visible: labelHover.hovered && root.tip !== ""
-        ToolTip.delay: 500
-        ToolTip.text: root.tip
+        AeToolTip {
+            ownerItem: labelText
+            text: root.tip
+            shown: labelHover.hovered && root.tip !== ""
+        }
     }
 
     InspectorNumberField {

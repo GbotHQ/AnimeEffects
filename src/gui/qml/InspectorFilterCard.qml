@@ -618,9 +618,12 @@ Item {
                         size: 20
                         iconSize: 16
                         iconName: "paint-brush"
-                        label: filterRow.paintMaskLabel
+                        label: filterRow.amountPaintActive ? qsTr("Painting this mask")
+                                                           : filterRow.paintMaskLabel
                         showTip: true
-                        opacity: root.headerHovered ? 1.0 : 0.75
+                        enabled: filterRow.enabled && !filterRow.amountPaintActive
+                        opacity: filterRow.amountPaintActive ? 1.0
+                               : (root.headerHovered ? 0.95 : 0.75)
                         onClicked: filterRow.paintMask(0)
                     }
                     AeIconButton {
@@ -651,9 +654,12 @@ Item {
                         size: 20
                         iconSize: 16
                         iconName: "paint-brush"
-                        label: filterRow.paintTimeMaskLabel
+                        label: filterRow.timePaintActive ? qsTr("Painting this mask")
+                                                        : filterRow.paintTimeMaskLabel
                         showTip: true
-                        opacity: root.headerHovered ? 1.0 : 0.75
+                        enabled: filterRow.enabled && !filterRow.timePaintActive
+                        opacity: filterRow.timePaintActive ? 1.0
+                               : (root.headerHovered ? 0.95 : 0.75)
                         onClicked: filterRow.paintMask(1)
                     }
                     AeIconButton {

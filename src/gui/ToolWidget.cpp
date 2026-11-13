@@ -2,9 +2,14 @@
 
 #include "gui/KeyCommandMap.h"
 #include "gui/QmlHost.h"
+#include "gui/qml/FilterNames.h"
 #include "gui/qml/QmlTheme.h"
 #include "gui/qml/ToolViewModel.h"
 #include "gui/theme/Colors.h"
+
+#include "core/MaskKey.h"
+#include "core/TimeKeyExpans.h"
+#include "ctrl/TimeLineUtil.h"
 
 #include <QQuickWidget>
 #include <QQmlContext>
@@ -171,6 +176,7 @@ void ToolWidget::setDriver(ctrl::Driver* aDriver) {
     mDriver = aDriver;
     mDriverTool = ctrl::ToolType_TERM;
     mModel->setDriverActive(aDriver != nullptr);
+    refreshMaskTargets();
 
     if (mDriver) {
         // Connected before setTool: creating the Bone editor already announces
@@ -182,9 +188,100 @@ void ToolWidget::setDriver(ctrl::Driver* aDriver) {
         mDriver->setTool(mDriverTool);
         pushParam();
         syncWeightsState();
+        refreshMaskTargets();
     } else {
         mModel->setWeightsState(ctrl::bone::WeightState());
     }
+}
+
+void ToolWidget::onSelectionChanged(core::ObjectNode*) { refreshMaskTargets(); }
+
+void ToolWidget::onFrameUpdated() { refreshMaskTargets(); }
+
+void ToolWidget::refreshMaskTargets() {
+    core::Project* project = mViaPoint.project();
+    core::ObjectNode* target = mDriver ? mDriver->currentTarget() : nullptr;
+    core::TimeLine* line = target ? target->timeLine() : nullptr;
+    const int frame = project ? project->animator().currentFrame().get() : 0;
+    const QSize canvas = project ? project->attribute().imageSize() : QSize();
+
+    QVector<MaskField> fields;
+    QString empty = QCoreApplication::translate(
+        "gui::ToolViewModel", "Select a layer to paint a mask."
+    );
+    if (target && line) {
+        const bool hasContent = target->type() == core::ObjectType_Layer
+                                    ? !line->current().areaTextureSize().isEmpty()
+                                    : !canvas.isEmpty();
+        if (!hasContent) {
+            empty = QCoreApplication::translate(
+                "gui::ToolViewModel", "This layer has no image or canvas to mask."
+            );
+        } else {
+            bool hasFilter = false;
+            bool hasEnabledFilter = false;
+            for (const core::FilterEntry& entry : line->filters()) {
+                if (!core::isFilterType(entry.type))
+                    continue;
+                hasFilter = true;
+                if (!entry.enabled)
+                    continue;
+                hasEnabledFilter = true;
+                const QString lane = filterDisplayName(entry.type);
+                if (lane.isEmpty())
+                    continue;
+                MaskField amount;
+                amount.kind = ctrl::MaskTargetKind_FilterInput;
+                amount.lane = entry.type;
+                amount.channel = core::FilterMaskChannel_Amount;
+                amount.label = QCoreApplication::translate("gui::ToolViewModel", "%1 amount").arg(lane);
+                fields.append(amount);
+                // The value is generic; the CONSUMER is not. Wave is the only filter
+                // that reads a time-offset field today (LayerNode/FolderNode).
+                if (entry.type == core::TimeKeyType_Wave) {
+                    MaskField offset = amount;
+                    offset.channel = core::FilterMaskChannel_TimeOffset;
+                    offset.label = QCoreApplication::translate("gui::ToolViewModel", "%1 time offset").arg(lane);
+                    fields.append(offset);
+                }
+            }
+
+            // A matte is paintable only where a key exists to write (the default key,
+            // or a key at this frame). Between keys the field is blended and read-only.
+            if (core::MaskKey* key = ctrl::TimeLineUtil::maskKeyForPaint(*target, frame)) {
+                if (key->data().isValid()) {
+                    MaskField matte;
+                    matte.kind = ctrl::MaskTargetKind_LayerMask;
+                    matte.lane = core::TimeKeyType_TERM;
+                    matte.channel = core::FilterMaskChannel_Amount;
+                    matte.label = QCoreApplication::translate("gui::ToolViewModel", "Layer mask");
+                    fields.append(matte);
+                }
+            }
+
+            if (!fields.isEmpty()) {
+                empty.clear();
+            } else if (line->defaultKey(core::TimeKeyType_Mask)
+                       || !line->map(core::TimeKeyType_Mask).isEmpty()) {
+                empty = QCoreApplication::translate(
+                    "gui::ToolViewModel", "Key the mask at this frame to paint it."
+                );
+            } else if (hasFilter && !hasEnabledFilter) {
+                empty = QCoreApplication::translate(
+                    "gui::ToolViewModel", "Enable a filter to paint its mask."
+                );
+            } else if (hasFilter) {
+                empty = QCoreApplication::translate(
+                    "gui::ToolViewModel", "There is no mask to paint on this layer at this frame."
+                );
+            } else {
+                empty = QCoreApplication::translate(
+                    "gui::ToolViewModel", "Add a filter or a mask in Properties first."
+                );
+            }
+        }
+    }
+    mModel->setMaskFields(fields, empty);
 }
 
 void ToolWidget::syncWeightsState() {
@@ -269,6 +366,16 @@ void ToolWidget::beginMaskPaint(core::TimeKeyType aLane, core::FilterMaskChannel
 
 bool ToolWidget::maskPaintingLayerMask() const {
     return mModel ? mModel->maskPaintingLayerMask() : false;
+}
+
+bool ToolWidget::maskToolActive() const { return mModel && mModel->maskToolActive(); }
+
+core::TimeKeyType ToolWidget::maskLane() const {
+    return mModel ? mModel->maskLane() : core::TimeKeyType_TERM;
+}
+
+core::FilterMaskChannel ToolWidget::maskChannel() const {
+    return mModel ? mModel->maskChannel() : core::FilterMaskChannel_Amount;
 }
 
 void ToolWidget::beginLayerMaskPaint() {

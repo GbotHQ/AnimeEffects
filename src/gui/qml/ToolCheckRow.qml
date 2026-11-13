@@ -38,8 +38,10 @@ Item {
         // the tooltip is the CHECK BOX's, which spans the row, so hovering anywhere along
         // it explains the toggle (the widget put the tooltip on the box alone, which left
         // a wide dead strip beside it)
-        ToolTip.visible: box.hovered && root.tip !== ""
-        ToolTip.delay: 500
-        ToolTip.text: root.tip
+        AeToolTip {
+            ownerItem: box
+            text: root.tip
+            shown: box.hovered && root.tip !== ""
+        }
     }
 }

@@ -25,6 +25,7 @@
 #include <QTextStream>
 #include <QVariantList>
 #include <QVariantMap>
+#include <QVector>
 
 #include <cmath>
 
@@ -364,54 +365,107 @@ int main(int argc, char** argv) {
 
     // ---- mask ------------------------------------------------------------------
     model.activate(int(ctrl::ToolType_Mask));
-    check(model.title() == QStringLiteral("Filter mask"), QStringLiteral("mask: opens on a filter mask"));
-    // ONE field chooser: the six filter inputs and the matte, named with a translatable
-    // format ("<filter> amount"), never two selectors or a separator-joined label.
-    check(describe(model.maskFields())
-              == QStringLiteral("HSV amount, HSV time offset, Blur amount, Blur time offset, "
-                                "Wave Deform amount, Wave Deform time offset, Layer mask"),
-          QStringLiteral("mask: seven addressable fields: %1").arg(describe(model.maskFields())));
-    check(model.maskFieldIndex() == 4, QStringLiteral("mask: the default field is Wave Deform amount (%1)")
-                                           .arg(model.maskFieldIndex()));
-    check(model.maskFieldLabel() == QStringLiteral("Wave Deform amount"),
-          QStringLiteral("mask: and it names itself: %1").arg(model.maskFieldLabel()));
-    check(!model.maskPinned(), QStringLiteral("mask: picked from the toolbox, the field is a QUESTION"));
+    check(model.title() == QStringLiteral("Mask"), QStringLiteral("mask: the heading names the tool"));
+    // The chooser is host-fed: the host derives it from the node/frame, the model
+    // owns selection and labels. With no fields nothing is paintable and the empty
+    // state says why; a field the document cannot paint is never offered.
+    check(model.maskFields().isEmpty(), QStringLiteral("mask: no host fields, no choices"));
+    check(!model.maskPaintable(), QStringLiteral("mask: and nothing is paintable"));
+    check(model.maskFieldIndex() == -1, QStringLiteral("mask: no field is selected"));
+    check(model.maskFieldLabel().isEmpty(), QStringLiteral("mask: and no label is invented"));
+    check(model.maskEmptyText() == QStringLiteral("Select a layer to paint a mask."),
+          QStringLiteral("mask: the empty state names the missing context (%1)").arg(model.maskEmptyText()));
     // MaskEditor.cpp:319 DOES read brush.opacity (`amount * opacity`), so this row is
     // reachable and must be offered - it used to be hidden while working.
     check(model.brushVisible() && model.opacityVisible(),
           QStringLiteral("mask: the brush is up WITH its Opacity row (MaskEditor reads it)"));
 
+    QVector<gui::MaskField> fields;
+    fields.append(gui::MaskField{ctrl::MaskTargetKind_FilterInput, core::TimeKeyType_HSV,
+                                 core::FilterMaskChannel_Amount, QStringLiteral("HSV amount")});
+    fields.append(gui::MaskField{ctrl::MaskTargetKind_FilterInput, core::TimeKeyType_Wave,
+                                 core::FilterMaskChannel_Amount, QStringLiteral("Wave Deform amount")});
+    fields.append(gui::MaskField{ctrl::MaskTargetKind_FilterInput, core::TimeKeyType_Wave,
+                                 core::FilterMaskChannel_TimeOffset,
+                                 QStringLiteral("Wave Deform time offset")});
+    model.setMaskFields(fields, QString());
+    check(describe(model.maskFields())
+              == QStringLiteral("HSV amount, Wave Deform amount, Wave Deform time offset"),
+          QStringLiteral("mask: the host's derived list is the chooser: %1")
+              .arg(describe(model.maskFields())));
+    check(model.maskPaintable() && model.maskEmptyText().isEmpty(),
+          QStringLiteral("mask: a non-empty list is paintable and has no empty text"));
+    check(model.maskFieldIndex() == 1 && model.maskFieldLabel() == QStringLiteral("Wave Deform amount"),
+          QStringLiteral("mask: the current valid field keeps its place (%1)")
+              .arg(model.maskFieldLabel()));
+    check(model.maskParam().lane == core::TimeKeyType_Wave
+              && model.maskParam().channel == core::FilterMaskChannel_Amount,
+          QStringLiteral("mask: still Wave amount"));
+
     model.setMaskValue(0.42);
     check(near(model.maskParam().value, 0.42), QStringLiteral("mask: the value writes the param"));
-    check(model.maskParam().kind == ctrl::MaskTargetKind_FilterInput
-              && model.maskParam().lane == core::TimeKeyType_Wave,
-          QStringLiteral("mask: still Wave, still a filter input"));
 
-    // the SAME list addresses a channel change: index 5 is Wave Deform's time offset
-    model.setMaskField(5);
+    model.setMaskField(2);
     check(model.maskParam().channel == core::FilterMaskChannel_TimeOffset,
-          QStringLiteral("mask: field 5 is a channel change"));
+          QStringLiteral("mask: choosing the time-offset row changes the channel"));
     check(near(model.maskParam().value, 1.0),
           QStringLiteral("mask: a time offset mask starts at 1 (add the delay), not 0 (%1)")
               .arg(model.maskParam().value));
-    model.setMaskField(4);
+    check(model.maskFieldIndex() == 2, QStringLiteral("mask: and the chooser follows"));
+    model.setMaskField(1);
     check(near(model.maskParam().value, 0.0),
-          QStringLiteral("mask: and an amount mask starts at 0 (reduce the effect)"));
+          QStringLiteral("mask: an amount mask starts at 0 (reduce the effect)"));
 
-    model.setMaskField(6);
-    check(model.maskParam().isLayerMask(), QStringLiteral("mask: field 6 is the layer's own matte"));
-    // UNPINNED the heading names the KIND and the chooser carries the field; a card entry
-    // pins it and the heading becomes the field's own name (asserted further down).
-    check(model.title() == QStringLiteral("Filter mask"),
-          QStringLiteral("mask: unpinned, the heading names the kind (%1)").arg(model.title()));
-    check(model.maskFieldLabel() == QStringLiteral("Layer mask"), QStringLiteral("mask: the label names it"));
+    fields.append(gui::MaskField{ctrl::MaskTargetKind_LayerMask, core::TimeKeyType_TERM,
+                                 core::FilterMaskChannel_Amount, QStringLiteral("Layer mask")});
+    model.setMaskFields(fields, QString());
+    model.setMaskField(3);
+    check(model.maskParam().isLayerMask(), QStringLiteral("mask: the matte is the last addressable field"));
     check(near(model.maskParam().value, 0.0), QStringLiteral("mask: a matte starts at 0 (hide)"));
-    model.setMaskField(6);
-    check(stateCount >= 1, QStringLiteral("mask: re-picking the same field is harmless"));
+
+    // A list that no longer contains the current field must not leave the brush aimed
+    // at it: the model takes the first remaining target.
+    QVector<gui::MaskField> onlyAmount;
+    onlyAmount.append(fields.first());
+    model.setMaskFields(onlyAmount, QString());
+    check(model.maskFieldIndex() == 0 && !model.maskParam().isLayerMask()
+              && model.maskParam().lane == core::TimeKeyType_HSV,
+          QStringLiteral("mask: a vanished target falls back to the first paintable field"));
+
+    // The host explains an empty list (missing filter, disabled filter, unkeyed matte).
+    model.setMaskFields({}, QStringLiteral("Enable a filter to paint its mask."));
+    check(!model.maskPaintable() && model.maskFields().isEmpty(),
+          QStringLiteral("mask: an empty derived list is not paintable"));
+    check(model.maskEmptyText() == QStringLiteral("Enable a filter to paint its mask."),
+          QStringLiteral("mask: the host's reason is the visible explanation (%1)")
+              .arg(model.maskEmptyText()));
     model.setMaskField(0);
-    check(model.maskParam().lane == core::TimeKeyType_HSV && !model.maskParam().isLayerMask(),
-          QStringLiteral("mask: back to an HSV filter input"));
-    check(model.title() == QStringLiteral("Filter mask"), QStringLiteral("mask: heading follows"));
+    check(model.maskFields().isEmpty(), QStringLiteral("mask: choosing from an empty list is a no-op"));
+
+    // The card entries select the right lane/channel and seed the channel's useful
+    // value even when the host has no target list yet.
+    model.activate(int(ctrl::ToolType_SRT));
+    model.beginFilterMaskPaint(core::TimeKeyType_Blur, core::FilterMaskChannel_TimeOffset);
+    check(model.tool() == int(ctrl::ToolType_Mask), QStringLiteral("beginFilterMaskPaint switches the tool"));
+    check(model.maskParam().lane == core::TimeKeyType_Blur
+              && model.maskParam().channel == core::FilterMaskChannel_TimeOffset
+              && !model.maskParam().isLayerMask(),
+          QStringLiteral("mask: beginFilterMaskPaint selects Blur time offset"));
+    check(near(model.maskParam().value, 1.0),
+          QStringLiteral("mask: a time offset mask starts at 1 (add the delay), not 0 (%1)")
+              .arg(model.maskParam().value));
+    check(model.title() == QStringLiteral("Mask"),
+          QStringLiteral("mask: a card entry keeps the one Target control (%1)").arg(model.title()));
+
+    model.activate(int(ctrl::ToolType_SRT));
+    model.beginLayerMaskPaint();
+    check(model.maskParam().isLayerMask(), QStringLiteral("mask: the mask card's Paint selects the matte"));
+    check(near(model.maskParam().value, 0.0), QStringLiteral("mask: a matte starts at 0 (hide)"));
+    check(model.title() == QStringLiteral("Mask"),
+          QStringLiteral("mask: and the heading still names the tool (%1)").arg(model.title()));
+    model.requestClearMask();
+    check(clearCount == 1, QStringLiteral("mask: Clear asks the host"));
+    check(!model.maskValueHint().isEmpty(), QStringLiteral("mask: the eyedropper hint exists"));
 
     // ---- the value: the keyboard swap is the painter's X ----------------------
     model.setMaskValue(0.0);
@@ -425,35 +479,6 @@ int main(int argc, char** argv) {
     check(near(model.maskParam().value, 1.0),
           QStringLiteral("swap: an in-between value goes to the FAR end, not to a mirrored "
                          "number (%1)").arg(model.maskParam().value));
-
-    // a filter card's "paint mask" and the card's own Paint: both name what is painted,
-    // PIN it (the card chose it, so the panel must not ask) and switch the tool
-    model.activate(int(ctrl::ToolType_SRT)); // leave the mask tool first
-    model.beginFilterMaskPaint(core::TimeKeyType_Blur, core::FilterMaskChannel_TimeOffset);
-    check(model.tool() == int(ctrl::ToolType_Mask), QStringLiteral("beginFilterMaskPaint switches the tool"));
-    check(model.maskParam().lane == core::TimeKeyType_Blur
-              && model.maskParam().channel == core::FilterMaskChannel_TimeOffset
-              && !model.maskParam().isLayerMask(),
-          QStringLiteral("mask: beginFilterMaskPaint selects Blur time offset"));
-    check(model.maskPinned(), QStringLiteral("mask: and PINS it (the card answered the question)"));
-    check(model.title() == QStringLiteral("Blur time offset"),
-          QStringLiteral("mask: pinned, the HEADING is the field's name: %1").arg(model.title()));
-    model.unpinMaskTarget();
-    check(!model.maskPinned(), QStringLiteral("mask: the caption's disclosure re-opens the chooser"));
-
-    model.activate(int(ctrl::ToolType_SRT));
-    model.beginLayerMaskPaint();
-    check(model.maskParam().isLayerMask() && model.maskPinned(),
-          QStringLiteral("mask: the mask card's Paint pins the matte too"));
-    check(model.title() == QStringLiteral("Layer mask"),
-          QStringLiteral("mask: and the matte names itself (%1)").arg(model.title()));
-    // a TOOLBOX entry clears the pin: picking the tool means asking which field
-    model.activate(int(ctrl::ToolType_SRT));
-    model.activate(int(ctrl::ToolType_Mask));
-    check(!model.maskPinned(), QStringLiteral("mask: entering from the toolbox asks the question again"));
-    model.requestClearMask();
-    check(clearCount == 1, QStringLiteral("mask: Clear asks the host"));
-    check(!model.maskValueHint().isEmpty(), QStringLiteral("mask: the eyedropper hint exists"));
 
     // ---- tool memory -----------------------------------------------------------
     model.activate(int(ctrl::ToolType_SRT));

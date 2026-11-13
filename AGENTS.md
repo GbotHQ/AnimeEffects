@@ -633,6 +633,17 @@ ninja -C build 'src/gui/update_translations:Debug'   # the :Debug / :Release suf
 ## Qt Quick scenes
 
 - **A `Repeater`'s delegates are not in the root's QObject tree** — walk `childItems()` too.
+- **A `Column`/`Flow` does NOT re-run its layout when a child that was invisible at build time becomes
+  visible**: the child keeps the y it had (0) and its own nested Column can keep `implicitHeight` 0.
+  A panel whose row set changes must be built lazily (the Tools dock's active panel is a `Loader`,
+  rebuilt from a structural `panelKey`) or use explicit heights; adding a sub-pixel width nudge does
+  NOT fix the inner Column. Measured while migrating the mask target chooser.
+- **Tooltips: one token.** `QmlTheme::kToolTipDelayMs` / `kToolTipTimeoutMs` feed `AeToolTip` and are
+  mirrored into `QStyleHints`; stock `QtQuick.Controls.ToolTip` uses the Basic palette and is
+  unstyled, so no QML call site uses it.
+- **A numeric field's wheel belongs to the field only while its text editor has focus**
+  (`ScrubSpinBox`'s `WheelHandler` gates on `editInput.activeFocus`); outside edit the wheel must
+  reach the enclosing `ScrollView`, or a long form cannot be scrolled from over its fields.
 - **`parentItem` is a C++ getter**: in QML it is `undefined`; walk the item tree with `.parent`.
 - **QML bindings cannot track `mapToItem`**; and there is no `mapToScene` — use `mapToItem(null, ...)`.
 - **A called `Q_INVOKABLE` registers no binding dependency** (use the property form).

@@ -491,32 +491,32 @@
 <context>
     <name>AnimeEffects.Properties</name>
     <message>
-        <location filename="../../src/gui/qml/PropertiesPanel.qml" line="77"/>
+        <location filename="../../src/gui/qml/PropertiesPanel.qml" line="89"/>
         <source>Position X</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/PropertiesPanel.qml" line="88"/>
+        <location filename="../../src/gui/qml/PropertiesPanel.qml" line="100"/>
         <source>Position Y</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/PropertiesPanel.qml" line="177"/>
+        <location filename="../../src/gui/qml/PropertiesPanel.qml" line="191"/>
         <source>Scale X</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/PropertiesPanel.qml" line="188"/>
+        <location filename="../../src/gui/qml/PropertiesPanel.qml" line="202"/>
         <source>Scale Y</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/PropertiesPanel.qml" line="263"/>
+        <location filename="../../src/gui/qml/PropertiesPanel.qml" line="277"/>
         <source>Image center X</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/PropertiesPanel.qml" line="274"/>
+        <location filename="../../src/gui/qml/PropertiesPanel.qml" line="288"/>
         <source>Image center Y</source>
         <translation type="unfinished"></translation>
     </message>
@@ -546,7 +546,7 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/InspectorNumberField.qml" line="53"/>
+        <location filename="../../src/gui/qml/InspectorNumberField.qml" line="58"/>
         <source>Degrees</source>
         <translation type="unfinished"></translation>
     </message>
@@ -651,6 +651,12 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <location filename="../../src/gui/qml/InspectorFilterCard.qml" line="621"/>
+        <location filename="../../src/gui/qml/InspectorFilterCard.qml" line="657"/>
+        <source>Painting this mask</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <location filename="../../src/gui/qml/InspectorMaskCard.qml" line="39"/>
         <location filename="../../src/gui/qml/InspectorMaskCard.qml" line="53"/>
         <source>Mask</source>
@@ -695,103 +701,108 @@
 <context>
     <name>AnimeEffects.Tools</name>
     <message>
-        <location filename="../../src/gui/qml/ToolsPanel.qml" line="131"/>
-        <source>Change what is painted</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <location filename="../../src/gui/qml/ToolsPanel.qml" line="136"/>
+        <location filename="../../src/gui/qml/ToolsPanel.qml" line="163"/>
         <source>Clear</source>
         <translation type="unfinished">Limpiar</translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ToolsPanel.qml" line="137"/>
+        <location filename="../../src/gui/qml/ToolsPanel.qml" line="164"/>
         <source>Clear the field being painted (one undo step)</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ToolsPanel.qml" line="188"/>
+        <location filename="../../src/gui/qml/ToolsPanel.qml" line="198"/>
         <source>Weights</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ToolsPanel.qml" line="220"/>
+        <location filename="../../src/gui/qml/ToolsPanel.qml" line="230"/>
         <source>Mesh changed since bake</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ToolsPanel.qml" line="264"/>
+        <location filename="../../src/gui/qml/ToolsPanel.qml" line="276"/>
         <source>Bake</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ToolsPanel.qml" line="264"/>
+        <location filename="../../src/gui/qml/ToolsPanel.qml" line="276"/>
         <source>Rebake</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ToolsPanel.qml" line="274"/>
+        <location filename="../../src/gui/qml/ToolsPanel.qml" line="286"/>
         <source>Evaluate the selected bone&apos;s live envelope once, so the brush can paint it</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ToolsPanel.qml" line="275"/>
+        <location filename="../../src/gui/qml/ToolsPanel.qml" line="287"/>
         <source>Replace the selected bone&apos;s authored field with the current envelope (one undo step)</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ToolsPanel.qml" line="287"/>
+        <location filename="../../src/gui/qml/ToolsPanel.qml" line="299"/>
         <source>Rebake All</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ToolsPanel.qml" line="290"/>
+        <location filename="../../src/gui/qml/ToolsPanel.qml" line="302"/>
         <source>Revert to Envelope</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ToolsPanel.qml" line="292"/>
+        <location filename="../../src/gui/qml/ToolsPanel.qml" line="304"/>
         <source>Clear Weights</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ToolsPanel.qml" line="296"/>
+        <location filename="../../src/gui/qml/ToolsPanel.qml" line="308"/>
         <source>More weight actions</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ToolsPanel.qml" line="306"/>
+        <location filename="../../src/gui/qml/ToolsPanel.qml" line="318"/>
         <source>Paint</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ToolsPanel.qml" line="315"/>
+        <location filename="../../src/gui/qml/ToolsPanel.qml" line="327"/>
         <source>Paint mode</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ToolsPanel.qml" line="327"/>
+        <location filename="../../src/gui/qml/ToolsPanel.qml" line="339"/>
         <source>Right-click a bone to target it; the brush edits only that bone</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ToolsPanel.qml" line="160"/>
-        <location filename="../../src/gui/qml/ToolsPanel.qml" line="407"/>
+        <location filename="../../src/gui/qml/ToolsPanel.qml" line="396"/>
+        <source>Target</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../../src/gui/qml/ToolsPanel.qml" line="403"/>
+        <source>Mask target</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../../src/gui/qml/ToolsPanel.qml" line="425"/>
+        <location filename="../../src/gui/qml/ToolBrushSection.qml" line="51"/>
         <source>Value</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ToolsPanel.qml" line="161"/>
+        <location filename="../../src/gui/qml/ToolBrushSection.qml" line="52"/>
         <source>The envelope range the brush moves toward; Flow limits each stamp</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ToolsPanel.qml" line="432"/>
+        <location filename="../../src/gui/qml/ToolsPanel.qml" line="451"/>
         <source>Show weights</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ToolsPanel.qml" line="433"/>
+        <location filename="../../src/gui/qml/ToolsPanel.qml" line="452"/>
         <source>Colour the layers this bone deforms by its influence weight</source>
         <translation type="unfinished"></translation>
     </message>
@@ -806,47 +817,47 @@
         <translation type="unfinished">Desactivado</translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ToolBrushSection.qml" line="24"/>
+        <location filename="../../src/gui/qml/ToolBrushSection.qml" line="25"/>
         <source>Brush</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ToolBrushSection.qml" line="28"/>
+        <location filename="../../src/gui/qml/ToolBrushSection.qml" line="29"/>
         <source>Size</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ToolBrushSection.qml" line="38"/>
+        <location filename="../../src/gui/qml/ToolBrushSection.qml" line="39"/>
         <source>Hardness</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ToolBrushSection.qml" line="49"/>
+        <location filename="../../src/gui/qml/ToolBrushSection.qml" line="61"/>
         <source>Flow</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ToolBrushSection.qml" line="60"/>
+        <location filename="../../src/gui/qml/ToolBrushSection.qml" line="72"/>
         <source>Opacity</source>
         <translation type="unfinished">Opacidad</translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ToolBrushSection.qml" line="73"/>
+        <location filename="../../src/gui/qml/ToolBrushSection.qml" line="85"/>
         <source>Pressure size</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ToolBrushSection.qml" line="74"/>
+        <location filename="../../src/gui/qml/ToolBrushSection.qml" line="86"/>
         <source>A tablet pen&apos;s pressure scales the brush size</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ToolBrushSection.qml" line="79"/>
+        <location filename="../../src/gui/qml/ToolBrushSection.qml" line="91"/>
         <source>Pressure flow</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ToolBrushSection.qml" line="80"/>
+        <location filename="../../src/gui/qml/ToolBrushSection.qml" line="92"/>
         <source>A tablet pen&apos;s pressure scales what a stamp deposits</source>
         <translation type="unfinished"></translation>
     </message>
@@ -1160,22 +1171,22 @@
         <translation>girar un hueso de una clave de posado</translation>
     </message>
     <message>
-        <location filename="../../src/ctrl/srt/srt_CentroidMode.cpp" line="112"/>
+        <location filename="../../src/ctrl/srt/srt_CentroidMode.cpp" line="115"/>
         <source>update centroid of a moving key</source>
         <translation>actualizar centroide de una clave en movimiento</translation>
     </message>
     <message>
-        <location filename="../../src/ctrl/srt/srt_MoveMode.cpp" line="175"/>
+        <location filename="../../src/ctrl/srt/srt_MoveMode.cpp" line="180"/>
         <source>update a moving key</source>
         <translation>actualizar una clave en movimiento</translation>
     </message>
     <message>
-        <location filename="../../src/ctrl/srt/srt_MoveMode.cpp" line="213"/>
+        <location filename="../../src/ctrl/srt/srt_MoveMode.cpp" line="220"/>
         <source>update a rotation key</source>
         <translation>actualizar una clave de rotación</translation>
     </message>
     <message>
-        <location filename="../../src/ctrl/srt/srt_MoveMode.cpp" line="247"/>
+        <location filename="../../src/ctrl/srt/srt_MoveMode.cpp" line="256"/>
         <source>update a scaling key</source>
         <translation>actualizar una clave de escalado</translation>
     </message>
@@ -3699,60 +3710,60 @@ Tampoco se pudo abrir el codificador %2 (%3).</translation>
         <translation type="vanished">requiere %1</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainWindow.cpp" line="1548"/>
-        <location filename="../../src/gui/MainWindow.cpp" line="1611"/>
-        <location filename="../../src/gui/MainWindow.cpp" line="1711"/>
-        <location filename="../../src/gui/MainWindow.cpp" line="1756"/>
-        <location filename="../../src/gui/MainWindow.cpp" line="1806"/>
-        <location filename="../../src/gui/MainWindow.cpp" line="1833"/>
-        <location filename="../../src/gui/MainWindow.cpp" line="1864"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="1572"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="1635"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="1735"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="1780"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="1830"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="1857"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="1888"/>
         <source>Export Error</source>
         <translation>Error al exportar</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainWindow.cpp" line="1549"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="1573"/>
         <source>Unknown export destination: %1</source>
         <translation>Destino de exportación desconocido: %1</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainWindow.cpp" line="1640"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="1664"/>
         <source>File exists</source>
         <translation>El archivo ya existe</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainWindow.cpp" line="1641"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="1665"/>
         <source>The file &quot;%1&quot; already exists. Overwrite?</source>
         <translation>El archivo “%1” ya existe. ¿Desea sobrescribirlo?</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainWindow.cpp" line="1712"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="1736"/>
         <source>%1 caps the file size, which means encoding it more than once, and that needs all %2 frames in memory (~%3 MB). Export fewer frames, or choose a destination without a size limit.</source>
         <translation>%1 limita el tamaño del archivo, lo que obliga a codificarlo más de una vez, y eso necesita los %2 fotogramas en memoria (~%3 MB). Exporte menos fotogramas o elija un destino sin límite de tamaño.</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainWindow.cpp" line="1730"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="1754"/>
         <source>Fitting under %1&apos;s %2 KB limit...</source>
         <translation>Ajustando por debajo del límite de %2 KB de %1...</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainWindow.cpp" line="1743"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="1767"/>
         <source>Export Canceled</source>
         <translation>Exportación cancelada</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainWindow.cpp" line="1744"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="1768"/>
         <source>The export was stopped while fitting under %1&apos;s size limit. The file already written is the last attempt, and may exceed the limit.</source>
         <translation>La exportación se detuvo mientras se ajustaba al límite de tamaño de %1. El archivo ya escrito es el último intento y puede superar el límite.</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainWindow.cpp" line="1757"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="1781"/>
         <source>%1 caps the file at %2 KB and even the smallest setting did not fit it (%3 KB).
 %4</source>
         <translation>%1 limita el archivo a %2 KB y ni siquiera el ajuste más pequeño logró encajarlo (%3 KB).
 %4</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainWindow.cpp" line="1765"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="1789"/>
         <source>Fitted to %1 bytes in %2 attempts (%3x%4).</source>
         <translation>Ajustado a %1 bytes en %2 intentos (%3x%4).</translation>
     </message>
@@ -3927,7 +3938,7 @@ Tampoco se pudo abrir el codificador %2 (%3).</translation>
     </message>
     <message>
         <location filename="../../src/ctrl/PoseEditor.cpp" line="90"/>
-        <location filename="../../src/ctrl/SRTEditor.cpp" line="80"/>
+        <location filename="../../src/ctrl/SRTEditor.cpp" line="110"/>
         <source>An object with invalid posture was given.</source>
         <translation>Se ha dado un objeto con una postura no válida.</translation>
     </message>
@@ -3937,13 +3948,13 @@ Tampoco se pudo abrir el codificador %2 (%3).</translation>
         <translation>No hay huesos en la capa seleccionada que puedan ser presentados.</translation>
     </message>
     <message>
-        <location filename="../../src/ctrl/SRTEditor.cpp" line="30"/>
+        <location filename="../../src/ctrl/SRTEditor.cpp" line="50"/>
         <source>The transformed object has one or more bones bound to it, SRT keys may not work as expected.</source>
         <translation>El objeto transformado tiene uno o más huesos vinculados a él, es posible que las claves SRT no funcionen como se espera.</translation>
     </message>
     <message>
-        <location filename="../../src/ctrl/SRTEditor.cpp" line="31"/>
-        <location filename="../../src/ctrl/SRTEditor.cpp" line="128"/>
+        <location filename="../../src/ctrl/SRTEditor.cpp" line="51"/>
+        <location filename="../../src/ctrl/SRTEditor.cpp" line="158"/>
         <source>SRT Editor : </source>
         <translation>Editor de SRT: </translation>
     </message>
@@ -5522,17 +5533,17 @@ Comprobar generación de paletas FFmpeg ...</translation>
 <context>
     <name>gui::MainDisplayWidget</name>
     <message>
-        <location filename="../../src/gui/MainDisplayWidget.cpp" line="398"/>
+        <location filename="../../src/gui/MainDisplayWidget.cpp" line="401"/>
         <source>Incoming handle</source>
         <translation>Tirador entrante</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainDisplayWidget.cpp" line="398"/>
+        <location filename="../../src/gui/MainDisplayWidget.cpp" line="401"/>
         <source>Outgoing handle</source>
         <translation>Tirador saliente</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainDisplayWidget.cpp" line="444"/>
+        <location filename="../../src/gui/MainDisplayWidget.cpp" line="447"/>
         <source>Fit graph</source>
         <translation>Ajustar gráfica</translation>
     </message>
@@ -5904,37 +5915,37 @@ Si olvidamos incluirte, avísanos o abre un PR.</translation>
         <translation type="vanished">Dock de herramienta</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainWindow.cpp" line="723"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="747"/>
         <source>Theme changed</source>
         <translation>Tema cambiado</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainWindow.cpp" line="725"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="749"/>
         <source>There may be visual artifacts after changing themes, we recommend you restart the application.</source>
         <translation>Puede haber artefactos visuales después de cambiar de tema, le recomendamos reiniciar la aplicación.</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainWindow.cpp" line="947"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="971"/>
         <source> has been modified. Save changes?</source>
         <translation> ha sido modificado. ¿Guardar cambios?</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainWindow.cpp" line="949"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="973"/>
         <source>Some projects have been modified. Save changes?</source>
         <translation>Algunos proyectos han sido modificados. ¿Guardar cambios?</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainWindow.cpp" line="957"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="981"/>
         <source>Save Changes</source>
         <translation>Guardar Cambios</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainWindow.cpp" line="958"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="982"/>
         <source>Discard Changes</source>
         <translation>Descartar cambios</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainWindow.cpp" line="959"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="983"/>
         <source>Cancel</source>
         <translation>Cancelar</translation>
     </message>
@@ -5947,45 +5958,45 @@ Si olvidamos incluirte, avísanos o abre un PR.</translation>
         <translation type="vanished">Rehacer: </translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainWindow.cpp" line="1100"/>
-        <location filename="../../src/gui/MainWindow.cpp" line="1177"/>
-        <location filename="../../src/gui/MainWindow.cpp" line="1208"/>
-        <location filename="../../src/gui/MainWindow.cpp" line="1279"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="1124"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="1201"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="1232"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="1303"/>
         <source>Loading Error</source>
         <translation>Error al cargar</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainWindow.cpp" line="1153"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="1177"/>
         <source>Open File</source>
         <translation>Abrir archivo</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainWindow.cpp" line="1293"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="1317"/>
         <source>Save File</source>
         <translation>Guardar archivo</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainWindow.cpp" line="1942"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="1966"/>
         <source>Exported %1 (%2 KB)</source>
         <translation>Exportado %1 (%2 KB)</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainWindow.cpp" line="1952"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="1976"/>
         <source> (%1 of %2 KB allowed for %3)</source>
         <translation> (%1 de %2 KB permitidos para %3)</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainWindow.cpp" line="1957"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="1981"/>
         <source>; OVER THE LIMIT, it will be rejected</source>
         <translation>; POR ENCIMA DEL LÍMITE, se rechazará</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainWindow.cpp" line="1996"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="2020"/>
         <source>All files (*)</source>
         <translation>Todos los archivos (*)</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainWindow.cpp" line="1997"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="2021"/>
         <source>%1 files (*.%2)</source>
         <translation>Archivos %1 (*.%2)</translation>
     </message>
@@ -6059,12 +6070,12 @@ En la siguiente pantalla puedes indicarle a AnimeEffects que lo descargue e inst
         <translation>Herramientas</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainWindow.cpp" line="1228"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="1252"/>
         <source>Recover unsaved project?</source>
         <translation>¿Recuperar proyecto sin guardar?</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainWindow.cpp" line="1229"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="1253"/>
         <source>AnimeEffects found an unsaved project from a previous session:
 %1
 
@@ -6155,8 +6166,8 @@ Open it?</source>
         <translation type="vanished">Imagen etiquetada</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainWindow.cpp" line="1990"/>
-        <location filename="../../src/gui/MainWindow.cpp" line="2069"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="2014"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="2093"/>
         <source>Export Folder</source>
         <translation>Exportar carpeta</translation>
     </message>
@@ -6173,7 +6184,7 @@ Open it?</source>
         <translation type="vanished">Error al exportar</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainWindow.cpp" line="1998"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="2022"/>
         <source>Export File</source>
         <translation>Exportar archivo</translation>
     </message>
@@ -6990,73 +7001,113 @@ El registro está disponible a continuación.</translation>
 <context>
     <name>gui::ToolViewModel</name>
     <message>
-        <location filename="../../src/gui/qml/ToolViewModel.cpp" line="279"/>
-        <location filename="../../src/gui/qml/ToolViewModel.cpp" line="674"/>
+        <location filename="../../src/gui/ToolWidget.cpp" line="209"/>
+        <location filename="../../src/gui/qml/ToolViewModel.cpp" line="175"/>
+        <source>Select a layer to paint a mask.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../../src/gui/ToolWidget.cpp" line="217"/>
+        <source>This layer has no image or canvas to mask.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../../src/gui/ToolWidget.cpp" line="237"/>
+        <source>%1 amount</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../../src/gui/ToolWidget.cpp" line="244"/>
+        <source>%1 time offset</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../../src/gui/ToolWidget.cpp" line="257"/>
         <source>Layer mask</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ToolViewModel.cpp" line="280"/>
-        <source>Filter mask</source>
+        <location filename="../../src/gui/ToolWidget.cpp" line="266"/>
+        <source>Key the mask at this frame to paint it.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ToolViewModel.cpp" line="444"/>
+        <location filename="../../src/gui/ToolWidget.cpp" line="270"/>
+        <source>Enable a filter to paint its mask.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../../src/gui/ToolWidget.cpp" line="274"/>
+        <source>There is no mask to paint on this layer at this frame.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../../src/gui/ToolWidget.cpp" line="278"/>
+        <source>Add a filter or a mask in Properties first.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../../src/gui/qml/ToolViewModel.cpp" line="276"/>
+        <source>Mask</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../../src/gui/qml/ToolViewModel.cpp" line="440"/>
         <source>No bone key</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ToolViewModel.cpp" line="445"/>
+        <location filename="../../src/gui/qml/ToolViewModel.cpp" line="441"/>
         <source>Select a bone</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ToolViewModel.cpp" line="446"/>
+        <location filename="../../src/gui/qml/ToolViewModel.cpp" line="442"/>
         <source>No mesh here</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ToolViewModel.cpp" line="447"/>
+        <location filename="../../src/gui/qml/ToolViewModel.cpp" line="443"/>
         <source>Envelope</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ToolViewModel.cpp" line="451"/>
+        <location filename="../../src/gui/qml/ToolViewModel.cpp" line="447"/>
         <source>Baked</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ToolViewModel.cpp" line="452"/>
+        <location filename="../../src/gui/qml/ToolViewModel.cpp" line="448"/>
         <source>Partly baked</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ToolViewModel.cpp" line="474"/>
+        <location filename="../../src/gui/qml/ToolViewModel.cpp" line="470"/>
         <source>Create a bone key at this frame to paint weights.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ToolViewModel.cpp" line="476"/>
+        <location filename="../../src/gui/qml/ToolViewModel.cpp" line="472"/>
         <source>Right-click a bone to target it. Left is always the stroke.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ToolViewModel.cpp" line="478"/>
+        <location filename="../../src/gui/qml/ToolViewModel.cpp" line="474"/>
         <source>The key skins no mesh at this frame.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ToolViewModel.cpp" line="480"/>
+        <location filename="../../src/gui/qml/ToolViewModel.cpp" line="476"/>
         <source>This bone&apos;s weights are live. Bake evaluates its envelope once, then the brush edits the result.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ToolViewModel.cpp" line="482"/>
+        <location filename="../../src/gui/qml/ToolViewModel.cpp" line="478"/>
         <source>The field is authored (%1). Rebake replaces it from the envelope.</source>
         <translation type="unfinished"></translation>
     </message>
     <message numerus="yes">
-        <location filename="../../src/gui/qml/ToolViewModel.cpp" line="485"/>
+        <location filename="../../src/gui/qml/ToolViewModel.cpp" line="481"/>
         <source>%n layer(s) still use the live envelope; the brush paints the baked ones.</source>
         <translation type="unfinished">
             <numerusform></numerusform>
@@ -7064,7 +7115,7 @@ El registro está disponible a continuación.</translation>
         </translation>
     </message>
     <message numerus="yes">
-        <location filename="../../src/gui/qml/ToolViewModel.cpp" line="492"/>
+        <location filename="../../src/gui/qml/ToolViewModel.cpp" line="488"/>
         <source>%n vertex(s)</source>
         <translation type="unfinished">
             <numerusform></numerusform>
@@ -7072,42 +7123,37 @@ El registro está disponible a continuación.</translation>
         </translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ToolViewModel.cpp" line="546"/>
+        <location filename="../../src/gui/qml/ToolViewModel.cpp" line="542"/>
         <source>Add</source>
         <translation type="unfinished">Añadir</translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ToolViewModel.cpp" line="547"/>
+        <location filename="../../src/gui/qml/ToolViewModel.cpp" line="543"/>
         <source>Subtract</source>
         <translation type="unfinished">Restar</translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ToolViewModel.cpp" line="548"/>
+        <location filename="../../src/gui/qml/ToolViewModel.cpp" line="544"/>
         <source>Replace</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ToolViewModel.cpp" line="671"/>
-        <source>%1 amount</source>
+        <location filename="../../src/gui/qml/ToolViewModel.cpp" line="696"/>
+        <source>Choose a paint target.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ToolViewModel.cpp" line="672"/>
-        <source>%1 time offset</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <location filename="../../src/gui/qml/ToolViewModel.cpp" line="827"/>
+        <location filename="../../src/gui/qml/ToolViewModel.cpp" line="838"/>
         <source>Brush size (%1 / %2)</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ToolViewModel.cpp" line="831"/>
+        <location filename="../../src/gui/qml/ToolViewModel.cpp" line="842"/>
         <source>Brush hardness (%1 / %2)</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ToolViewModel.cpp" line="996"/>
+        <location filename="../../src/gui/qml/ToolViewModel.cpp" line="1003"/>
         <source>Alt + click samples the value under the pointer; %1 swaps between 0% and 100%</source>
         <translation type="unfinished"></translation>
     </message>
@@ -7115,37 +7161,37 @@ El registro está disponible a continuación.</translation>
 <context>
     <name>gui::ToolWidget</name>
     <message>
-        <location filename="../../src/gui/qml/ToolViewModel.cpp" line="802"/>
+        <location filename="../../src/gui/qml/ToolViewModel.cpp" line="813"/>
         <source>View Settings</source>
         <translation>Ver ajustes</translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ToolViewModel.cpp" line="805"/>
+        <location filename="../../src/gui/qml/ToolViewModel.cpp" line="816"/>
         <source>Show mesh</source>
         <translation>Mostrar malla</translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ToolViewModel.cpp" line="808"/>
+        <location filename="../../src/gui/qml/ToolViewModel.cpp" line="819"/>
         <source>Do not draw outside the frame</source>
         <translation>No dibujar fuera del marco</translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ToolViewModel.cpp" line="811"/>
+        <location filename="../../src/gui/qml/ToolViewModel.cpp" line="822"/>
         <source>Rotate the canvas counterclockwise (%1)</source>
         <translation>Rota el lienzo en sentido contrario a las agujas del reloj (%1)</translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ToolViewModel.cpp" line="815"/>
+        <location filename="../../src/gui/qml/ToolViewModel.cpp" line="826"/>
         <source>Reset rotation of the canvas (%1)</source>
         <translation>Restablecer rotación del lienzo (%1)</translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ToolViewModel.cpp" line="819"/>
+        <location filename="../../src/gui/qml/ToolViewModel.cpp" line="830"/>
         <source>Rotate the canvas clockwise (%1)</source>
         <translation>Rota el lienzo en sentido de las agujas del reloj (%1)</translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ToolViewModel.cpp" line="823"/>
+        <location filename="../../src/gui/qml/ToolViewModel.cpp" line="834"/>
         <source>Flip canvas</source>
         <translation>Voltear lienzo</translation>
     </message>
@@ -7387,147 +7433,147 @@ El registro está disponible a continuación.</translation>
 <context>
     <name>gui::prop::FilterStackPanel</name>
     <message>
-        <location filename="../../src/gui/qml/FilterStackModel.h" line="105"/>
+        <location filename="../../src/gui/qml/FilterStackModel.h" line="109"/>
         <source>Hue</source>
         <translation type="unfinished">Tono</translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/FilterStackModel.h" line="106"/>
+        <location filename="../../src/gui/qml/FilterStackModel.h" line="110"/>
         <source>Saturation</source>
         <translation type="unfinished">Saturación</translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/FilterStackModel.h" line="107"/>
+        <location filename="../../src/gui/qml/FilterStackModel.h" line="111"/>
         <source>Value</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/FilterStackModel.h" line="108"/>
+        <location filename="../../src/gui/qml/FilterStackModel.h" line="112"/>
         <source>Color</source>
         <translation type="unfinished">Color</translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/FilterStackModel.h" line="109"/>
+        <location filename="../../src/gui/qml/FilterStackModel.h" line="113"/>
         <source>Absolute</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/FilterStackModel.h" line="110"/>
+        <location filename="../../src/gui/qml/FilterStackModel.h" line="114"/>
         <source>Amount</source>
         <translation type="unfinished">Cantidad</translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/FilterStackModel.h" line="111"/>
+        <location filename="../../src/gui/qml/FilterStackModel.h" line="115"/>
         <source>Mode</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/FilterStackModel.h" line="112"/>
+        <location filename="../../src/gui/qml/FilterStackModel.h" line="116"/>
         <source>Directional</source>
         <translation type="unfinished">Direccional</translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/FilterStackModel.h" line="113"/>
+        <location filename="../../src/gui/qml/FilterStackModel.h" line="117"/>
         <source>Blur X</source>
         <translation type="unfinished">Desenfoque X</translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/FilterStackModel.h" line="114"/>
+        <location filename="../../src/gui/qml/FilterStackModel.h" line="118"/>
         <source>Blur Y</source>
         <translation type="unfinished">Desenfoque Y</translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/FilterStackModel.h" line="115"/>
+        <location filename="../../src/gui/qml/FilterStackModel.h" line="119"/>
         <source>Angle</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/FilterStackModel.h" line="116"/>
+        <location filename="../../src/gui/qml/FilterStackModel.h" line="120"/>
         <source>Strength</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/FilterStackModel.h" line="117"/>
+        <location filename="../../src/gui/qml/FilterStackModel.h" line="121"/>
         <source>Wavelength</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/FilterStackModel.h" line="118"/>
+        <location filename="../../src/gui/qml/FilterStackModel.h" line="122"/>
         <source>Direction</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/FilterStackModel.h" line="119"/>
+        <location filename="../../src/gui/qml/FilterStackModel.h" line="123"/>
         <source>Phase</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/FilterStackModel.h" line="120"/>
+        <location filename="../../src/gui/qml/FilterStackModel.h" line="124"/>
         <source>Dual wave</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/FilterStackModel.h" line="121"/>
+        <location filename="../../src/gui/qml/FilterStackModel.h" line="125"/>
         <source>Speed</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/FilterStackModel.h" line="122"/>
+        <location filename="../../src/gui/qml/FilterStackModel.h" line="126"/>
         <source>Crest</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/FilterStackModel.h" line="123"/>
+        <location filename="../../src/gui/qml/FilterStackModel.h" line="127"/>
         <source>Dual direction</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/FilterStackModel.h" line="124"/>
+        <location filename="../../src/gui/qml/FilterStackModel.h" line="128"/>
         <source>Dual scale</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/FilterStackModel.h" line="125"/>
+        <location filename="../../src/gui/qml/FilterStackModel.h" line="129"/>
         <source>Deform</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/FilterStackModel.h" line="126"/>
+        <location filename="../../src/gui/qml/FilterStackModel.h" line="130"/>
         <source>Ripple</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/FilterStackModel.h" line="127"/>
+        <location filename="../../src/gui/qml/FilterStackModel.h" line="131"/>
         <source>Sway</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/FilterStackModel.h" line="128"/>
+        <location filename="../../src/gui/qml/FilterStackModel.h" line="132"/>
         <source>Mask</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/FilterStackModel.h" line="129"/>
+        <location filename="../../src/gui/qml/FilterStackModel.h" line="133"/>
         <source>Time mask</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/FilterStackModel.h" line="130"/>
+        <location filename="../../src/gui/qml/FilterStackModel.h" line="134"/>
         <source>Paint mask</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/FilterStackModel.h" line="131"/>
+        <location filename="../../src/gui/qml/FilterStackModel.h" line="135"/>
         <source>Clear mask</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/FilterStackModel.h" line="133"/>
+        <location filename="../../src/gui/qml/FilterStackModel.h" line="137"/>
         <source>Paint time offset mask</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/FilterStackModel.h" line="136"/>
+        <location filename="../../src/gui/qml/FilterStackModel.h" line="140"/>
         <source>Clear time offset mask</source>
         <translation type="unfinished"></translation>
     </message>
@@ -7591,13 +7637,13 @@ El registro está disponible a continuación.</translation>
         <translation>Centro :</translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/InspectorViewModel.cpp" line="160"/>
-        <source>Mesh cell</source>
+        <location filename="../../src/gui/qml/InspectorViewModel.cpp" line="163"/>
+        <source>Mesh spacing</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/InspectorViewModel.cpp" line="163"/>
-        <source>Pixel size of each image mesh cell.</source>
+        <location filename="../../src/gui/qml/InspectorViewModel.cpp" line="166"/>
+        <source>Distance between mesh vertices, in pixels. Smaller values create a denser mesh.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -7867,37 +7913,37 @@ El registro está disponible a continuación.</translation>
 <context>
     <name>gui::tool::BonePanel</name>
     <message>
-        <location filename="../../src/gui/qml/ToolViewModel.cpp" line="266"/>
+        <location filename="../../src/gui/qml/ToolViewModel.cpp" line="264"/>
         <source>Bone editor</source>
         <translation>Editor de huesos</translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ToolViewModel.cpp" line="293"/>
+        <location filename="../../src/gui/qml/ToolViewModel.cpp" line="289"/>
         <source>Add bones</source>
         <translation>Añadir huesos</translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ToolViewModel.cpp" line="294"/>
+        <location filename="../../src/gui/qml/ToolViewModel.cpp" line="290"/>
         <source>Remove bones</source>
         <translation>Eliminar huesos</translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ToolViewModel.cpp" line="295"/>
+        <location filename="../../src/gui/qml/ToolViewModel.cpp" line="291"/>
         <source>Move joints</source>
         <translation>Mover articulaciones</translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ToolViewModel.cpp" line="296"/>
+        <location filename="../../src/gui/qml/ToolViewModel.cpp" line="292"/>
         <source>Bind bone to node</source>
         <translation>Vincular hueso al nodo</translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ToolViewModel.cpp" line="297"/>
+        <location filename="../../src/gui/qml/ToolViewModel.cpp" line="293"/>
         <source>Adjust envelope</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ToolViewModel.cpp" line="298"/>
+        <location filename="../../src/gui/qml/ToolViewModel.cpp" line="294"/>
         <source>Envelope brush</source>
         <translation type="unfinished"></translation>
     </message>
@@ -7914,7 +7960,7 @@ El registro está disponible a continuación.</translation>
         <translation type="vanished">Borra influencia</translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ToolViewModel.cpp" line="299"/>
+        <location filename="../../src/gui/qml/ToolViewModel.cpp" line="295"/>
         <source>Paint weights</source>
         <translation type="unfinished"></translation>
     </message>
@@ -7930,22 +7976,22 @@ El registro está disponible a continuación.</translation>
 <context>
     <name>gui::tool::FFDPanel</name>
     <message>
-        <location filename="../../src/gui/qml/ToolViewModel.cpp" line="272"/>
+        <location filename="../../src/gui/qml/ToolViewModel.cpp" line="270"/>
         <source>FFD</source>
         <translation>FFD</translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ToolViewModel.cpp" line="315"/>
+        <location filename="../../src/gui/qml/ToolViewModel.cpp" line="311"/>
         <source>Move vertex</source>
         <translation>Mover vértice</translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ToolViewModel.cpp" line="316"/>
+        <location filename="../../src/gui/qml/ToolViewModel.cpp" line="312"/>
         <source>Deform mesh</source>
         <translation>Deformar malla</translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ToolViewModel.cpp" line="317"/>
+        <location filename="../../src/gui/qml/ToolViewModel.cpp" line="313"/>
         <source>Erase deformations</source>
         <translation>Borrar deformaciones</translation>
     </message>
@@ -7970,7 +8016,7 @@ El registro está disponible a continuación.</translation>
         <translation type="vanished">Presión</translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ToolViewModel.cpp" line="986"/>
+        <location filename="../../src/gui/qml/ToolViewModel.cpp" line="993"/>
         <source>Blur</source>
         <translation>Desenfoque</translation>
     </message>
@@ -7978,22 +8024,22 @@ El registro está disponible a continuación.</translation>
 <context>
     <name>gui::tool::MeshPanel</name>
     <message>
-        <location filename="../../src/gui/qml/ToolViewModel.cpp" line="270"/>
+        <location filename="../../src/gui/qml/ToolViewModel.cpp" line="268"/>
         <source>Mesh editor</source>
         <translation>Editor de Mesh</translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ToolViewModel.cpp" line="309"/>
+        <location filename="../../src/gui/qml/ToolViewModel.cpp" line="305"/>
         <source>Add vertex</source>
         <translation>Añadir vértice</translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ToolViewModel.cpp" line="310"/>
+        <location filename="../../src/gui/qml/ToolViewModel.cpp" line="306"/>
         <source>Delete vertex</source>
         <translation>Eliminar vértice</translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ToolViewModel.cpp" line="311"/>
+        <location filename="../../src/gui/qml/ToolViewModel.cpp" line="307"/>
         <source>Split polygon</source>
         <translation>Dividir polígono</translation>
     </message>
@@ -8005,37 +8051,37 @@ El registro está disponible a continuación.</translation>
         <translation type="vanished">Caja de herramientas</translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ToolViewModel.cpp" line="237"/>
+        <location filename="../../src/gui/qml/ToolViewModel.cpp" line="235"/>
         <source>Pan tool</source>
         <translation>Herramienta de desplazamiento</translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ToolViewModel.cpp" line="238"/>
+        <location filename="../../src/gui/qml/ToolViewModel.cpp" line="236"/>
         <source>Transform</source>
         <translation>Transformar</translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ToolViewModel.cpp" line="239"/>
+        <location filename="../../src/gui/qml/ToolViewModel.cpp" line="237"/>
         <source>Bone editor</source>
         <translation>Editor de huesos</translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ToolViewModel.cpp" line="240"/>
+        <location filename="../../src/gui/qml/ToolViewModel.cpp" line="238"/>
         <source>Pose editor</source>
         <translation>Editor de pose</translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ToolViewModel.cpp" line="241"/>
+        <location filename="../../src/gui/qml/ToolViewModel.cpp" line="239"/>
         <source>Mesh editor</source>
         <translation>Editor de Mesh</translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ToolViewModel.cpp" line="242"/>
+        <location filename="../../src/gui/qml/ToolViewModel.cpp" line="240"/>
         <source>Free-form deformation</source>
         <translation>Deformación libre</translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ToolViewModel.cpp" line="243"/>
+        <location filename="../../src/gui/qml/ToolViewModel.cpp" line="241"/>
         <source>Mask paint</source>
         <translation type="unfinished"></translation>
     </message>
@@ -8043,27 +8089,27 @@ El registro está disponible a continuación.</translation>
 <context>
     <name>gui::tool::PosePanel</name>
     <message>
-        <location filename="../../src/gui/qml/ToolViewModel.cpp" line="268"/>
+        <location filename="../../src/gui/qml/ToolViewModel.cpp" line="266"/>
         <source>Pose editor</source>
         <translation>Editor de pose</translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ToolViewModel.cpp" line="303"/>
+        <location filename="../../src/gui/qml/ToolViewModel.cpp" line="299"/>
         <source>Move bone</source>
         <translation>Mover hueso</translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ToolViewModel.cpp" line="304"/>
+        <location filename="../../src/gui/qml/ToolViewModel.cpp" line="300"/>
         <source>Pull bones</source>
         <translation>Tirar huesos</translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ToolViewModel.cpp" line="305"/>
+        <location filename="../../src/gui/qml/ToolViewModel.cpp" line="301"/>
         <source>Erase bone pose</source>
         <translation>Borrar pose de hueso</translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ToolViewModel.cpp" line="990"/>
+        <location filename="../../src/gui/qml/ToolViewModel.cpp" line="997"/>
         <source>Weight</source>
         <translation>Peso</translation>
     </message>
@@ -8079,53 +8125,53 @@ El registro está disponible a continuación.</translation>
 <context>
     <name>gui::tool::SRTPanel</name>
     <message>
-        <location filename="../../src/gui/qml/ToolViewModel.cpp" line="264"/>
-        <location filename="../../src/gui/qml/ToolViewModel.cpp" line="289"/>
+        <location filename="../../src/gui/qml/ToolViewModel.cpp" line="262"/>
+        <location filename="../../src/gui/qml/ToolViewModel.cpp" line="285"/>
         <source>Transform</source>
         <translation>Transformar</translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ToolViewModel.cpp" line="290"/>
+        <location filename="../../src/gui/qml/ToolViewModel.cpp" line="286"/>
         <source>Move Centroid</source>
         <translation>Mover centroide</translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ToolViewModel.cpp" line="955"/>
+        <location filename="../../src/gui/qml/ToolViewModel.cpp" line="962"/>
         <source>Create move key</source>
         <translation>Crear clave de movimiento</translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ToolViewModel.cpp" line="956"/>
+        <location filename="../../src/gui/qml/ToolViewModel.cpp" line="963"/>
         <source>The transformation will create a move key regardless of its type.</source>
         <translation>La transformación creará una clave de movimiento independientemente de su tipo.</translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ToolViewModel.cpp" line="958"/>
+        <location filename="../../src/gui/qml/ToolViewModel.cpp" line="965"/>
         <source>Create rotate key</source>
         <translation>Crear clave de rotación</translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ToolViewModel.cpp" line="959"/>
+        <location filename="../../src/gui/qml/ToolViewModel.cpp" line="966"/>
         <source>The transformation will create a rotate key regardless of its type.</source>
         <translation>La transformación creará una clave de rotación independientemente de su tipo.</translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ToolViewModel.cpp" line="961"/>
+        <location filename="../../src/gui/qml/ToolViewModel.cpp" line="968"/>
         <source>Create scale key</source>
         <translation>Crear la clave de escala</translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ToolViewModel.cpp" line="962"/>
+        <location filename="../../src/gui/qml/ToolViewModel.cpp" line="969"/>
         <source>The transformation will create a scale key regardless of its type.</source>
         <translation>La transformación creará una clave de escala independientemente de su tipo.</translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ToolViewModel.cpp" line="964"/>
+        <location filename="../../src/gui/qml/ToolViewModel.cpp" line="971"/>
         <source>Adjust centroid position</source>
         <translation>Ajustar posición centralizada</translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ToolViewModel.cpp" line="965"/>
+        <location filename="../../src/gui/qml/ToolViewModel.cpp" line="972"/>
         <source>Move the centroid in relation to the image, the opposite will be true when not toggled.</source>
         <translation>Mueva el centroide en relación a la imagen, lo contrario será cierto cuando no se active.</translation>
     </message>

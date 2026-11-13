@@ -317,7 +317,15 @@ MainWindow::MainWindow(ctrl::System& aSystem, GUIResources& aResources, LocalePa
         // disables it. The host is the only place that knows the tool AND its mask target, and
         // the target can move without the tool moving (a filter card's Paint).
         const auto updateMaskPaintState = [this, &prop]() {
-            prop.setMaskPaintActive(mTool && mTool->maskPaintingLayerMask());
+            auto* driver = mDriverHolder->driver();
+            core::ObjectNode* node = driver ? driver->currentTarget() : nullptr;
+            const bool active = mTool && mTool->maskToolActive();
+            prop.setMaskPaintState(
+                node, active && mTool->maskPaintingLayerMask(),
+                active && !mTool->maskPaintingLayerMask(),
+                mTool ? mTool->maskLane() : core::TimeKeyType_TERM,
+                mTool ? mTool->maskChannel() : core::FilterMaskChannel_Amount
+            );
         };
         tool.onToolChanged.connect([updateMaskPaintState](ctrl::ToolType) { updateMaskPaintState(); });
         tool.onMaskTargetChanged.connect(updateMaskPaintState);
@@ -332,6 +340,13 @@ MainWindow::MainWindow(ctrl::System& aSystem, GUIResources& aResources, LocalePa
             if (mTool)
                 mTool->beginLayerMaskPaint();
         });
+        // The Properties mesh-spacing field's transient wireframe preview. The
+        // viewport owns the target; the field only says when it wants it.
+        prop.onMeshPreviewRequested.connect(
+            [&disp](core::ObjectNode* aNode, bool aActive) {
+                disp.setMeshPreviewTarget(aActive ? aNode : nullptr);
+            }
+        );
         disp.onBrushDragAdjusted.connect([this](int aSizeSteps, int aHardnessSteps) {
             if (mTool)
                 mTool->adjustBrush(aSizeSteps, aHardnessSteps);
@@ -359,6 +374,13 @@ MainWindow::MainWindow(ctrl::System& aSystem, GUIResources& aResources, LocalePa
         objTree.onSelectionChanged.connect(&driver, &DriverHolder::onSelectionChanged);
         objTree.onSelectionChanged.connect(mProperty, &PropertyWidget::onSelectionChanged);
         objTree.onSelectionChanged.connect(&timeLine, &TimeLineWidget::onSelectionChanged);
+        // AFTER DriverHolder: the tools model derives its mask chooser from the
+        // driver's target, which the first connection above has just moved.
+        objTree.onSelectionChanged.connect(mTool, &ToolWidget::onSelectionChanged);
+        objTree.onSelectionChanged.connect([updateMaskPaintState](core::ObjectNode*) {
+            updateMaskPaintState();
+        });
+        prop.onMaskTargetsChanged.connect(mTool, &ToolWidget::refreshMaskTargets);
 
         // The graph works on every selected layer, but the signal above only
         // carries a representative node (null when the selection is empty or
@@ -372,6 +394,7 @@ MainWindow::MainWindow(ctrl::System& aSystem, GUIResources& aResources, LocalePa
         // the selection, so hand it the current one (possibly empty).
         if (auto* drv = mDriverHolder->driver())
             drv->setGraphTargets(mTarget->objectTreeWidget().selectedNodes());
+        updateMaskPaintState();
 
         // The tree's rows ARE the lanes (gui/AnimationRow.h): one row list, one height rule.
         // TargetWidget already pushes them on every change; this covers the case where a
@@ -391,6 +414,7 @@ MainWindow::MainWindow(ctrl::System& aSystem, GUIResources& aResources, LocalePa
 
         timeLine.onFrameUpdated.connect(&driver, &DriverHolder::onFrameUpdated);
         timeLine.onFrameUpdated.connect(&prop, &PropertyWidget::onFrameUpdated);
+        timeLine.onFrameUpdated.connect(mTool, &ToolWidget::onFrameUpdated);
         timeLine.onPlayBackStateChanged.connect(&prop, &PropertyWidget::onPlayBackStateChanged);
 
         menu.onProjectAttributeUpdated.connect(&disp, &MainDisplayWidget::onProjectAttributeUpdated);

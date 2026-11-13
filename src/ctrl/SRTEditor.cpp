@@ -16,14 +16,34 @@ SRTEditor::SRTEditor(Project& aProject, UILogger& aUILogger):
 SRTEditor::~SRTEditor() { finalize(); }
 
 bool SRTEditor::initializeKey(TimeLine& aLine, QString* aMessage) {
-    const TimeLine::MapType& moveMap = aLine.map(TimeKeyType_Move);
-    const TimeLine::MapType& rotateMap = aLine.map(TimeKeyType_Rotate);
-    const TimeLine::MapType& scaleMap = aLine.map(TimeKeyType_Scale);
     TimeKeyExpans& current = aLine.current();
     const int frame = mProject.animator().currentFrame().get();
 
+    // A PROPERTY WITH NO EXPLICIT KEYS IS STATIC. Editing it writes the DEFAULT key,
+    // exactly as the inspector's KeyAccessor::editFrame does; only an animated channel
+    // (or a checked "Create ... key" box) gets a new key at the playhead. The old code
+    // treated every missing frame key as owned and pushed it on the first drag, which
+    // is the "it creates a key for no reason" report.
+    const auto keyFor = [&](TimeKeyType aType, bool aForce, bool& aOwns, bool& aIsDefault) -> TimeKey* {
+        const TimeLine::MapType& map = aLine.map(aType);
+        const bool atFrame = map.contains(frame);
+        const bool animated = !map.isEmpty();
+        aIsDefault = false;
+        aOwns = !atFrame && (animated || aForce);
+        if (atFrame)
+            return map.value(frame);
+        if (aOwns)
+            return nullptr; // the caller seeds its typed key from the current transform
+        aIsDefault = true;
+        switch (aType) {
+        case TimeKeyType_Move: return getOrCreateDefaultKey<MoveKey, TimeKeyType_Move>(aLine);
+        case TimeKeyType_Rotate: return getOrCreateDefaultKey<RotateKey, TimeKeyType_Rotate>(aLine);
+        case TimeKeyType_Scale: return getOrCreateDefaultKey<ScaleKey, TimeKeyType_Scale>(aLine);
+        default: return nullptr;
+        }
+    };
+
     // moveKey
-    mKeyOwner.ownsMoveKey = !moveMap.contains(frame);
     mKeyOwner.isBound = aLine.current().bone().isUnderOfBinding() || aLine.working().bone().isUnderOfBinding();
     if (mKeyOwner.isBound) {
         if (aMessage) {
@@ -32,42 +52,52 @@ bool SRTEditor::initializeKey(TimeLine& aLine, QString* aMessage) {
         }
     }
 
-    if (mKeyOwner.ownsMoveKey) {
-        mKeyOwner.moveKey = new MoveKey();
-        const util::Easing::Param aParam = util::Easing::defaultParam();
-        for (int component = 0; component < MoveKey::kComponents; ++component) {
-            mKeyOwner.moveKey->data().easing(component) = aParam;
+    {
+        TimeKey* base = keyFor(TimeKeyType_Move, mParam.necessarilyMove, mKeyOwner.ownsMoveKey,
+                               mKeyOwner.moveIsDefault);
+        if (mKeyOwner.ownsMoveKey) {
+            mKeyOwner.moveKey = new MoveKey();
+            const util::Easing::Param aParam = util::Easing::defaultParam();
+            for (int component = 0; component < MoveKey::kComponents; ++component) {
+                mKeyOwner.moveKey->data().easing(component) = aParam;
+            }
+            mKeyOwner.moveKey->setPos(current.srt().pos());
+            mKeyOwner.moveKey->setCentroid(current.srt().centroid());
+        } else {
+            mKeyOwner.moveKey = static_cast<MoveKey*>(base);
         }
-        mKeyOwner.moveKey->setPos(current.srt().pos());
-        mKeyOwner.moveKey->setCentroid(current.srt().centroid());
-    } else {
-        mKeyOwner.moveKey = dynamic_cast<MoveKey*>(moveMap.value(frame));
     }
 
     // rotateKey
-    mKeyOwner.ownsRotateKey = !rotateMap.contains(frame);
-    if (mKeyOwner.ownsRotateKey) {
-        mKeyOwner.rotateKey = new RotateKey();
-        const util::Easing::Param aParam = util::Easing::defaultParam();
-        for (int component = 0; component < RotateKey::kComponents; ++component) {
-            mKeyOwner.rotateKey->data().easing(component) = aParam;
+    {
+        TimeKey* base = keyFor(TimeKeyType_Rotate, mParam.necessarilyRotate, mKeyOwner.ownsRotateKey,
+                               mKeyOwner.rotateIsDefault);
+        if (mKeyOwner.ownsRotateKey) {
+            mKeyOwner.rotateKey = new RotateKey();
+            const util::Easing::Param aParam = util::Easing::defaultParam();
+            for (int component = 0; component < RotateKey::kComponents; ++component) {
+                mKeyOwner.rotateKey->data().easing(component) = aParam;
+            }
+            mKeyOwner.rotateKey->setRotate(current.srt().rotate());
+        } else {
+            mKeyOwner.rotateKey = static_cast<RotateKey*>(base);
         }
-        mKeyOwner.rotateKey->setRotate(current.srt().rotate());
-    } else {
-        mKeyOwner.rotateKey = dynamic_cast<RotateKey*>(rotateMap.value(frame));
     }
 
     // scaleKey
-    mKeyOwner.ownsScaleKey = !scaleMap.contains(frame);
-    if (mKeyOwner.ownsScaleKey) {
-        mKeyOwner.scaleKey = new ScaleKey();
-        const util::Easing::Param aParam = util::Easing::defaultParam();
-        for (int component = 0; component < ScaleKey::kComponents; ++component) {
-            mKeyOwner.scaleKey->data().easing(component) = aParam;
+    {
+        TimeKey* base = keyFor(TimeKeyType_Scale, mParam.necessarilyScale, mKeyOwner.ownsScaleKey,
+                               mKeyOwner.scaleIsDefault);
+        if (mKeyOwner.ownsScaleKey) {
+            mKeyOwner.scaleKey = new ScaleKey();
+            const util::Easing::Param aParam = util::Easing::defaultParam();
+            for (int component = 0; component < ScaleKey::kComponents; ++component) {
+                mKeyOwner.scaleKey->data().easing(component) = aParam;
+            }
+            mKeyOwner.scaleKey->setScale(current.srt().scale());
+        } else {
+            mKeyOwner.scaleKey = static_cast<ScaleKey*>(base);
         }
-        mKeyOwner.scaleKey->setScale(current.srt().scale());
-    } else {
-        mKeyOwner.scaleKey = dynamic_cast<ScaleKey*>(scaleMap.value(frame));
     }
 
     // check validity
@@ -136,7 +166,12 @@ void SRTEditor::updateParam(const SRTParam& aParam) {
     const SRTParam prev = mParam;
     mParam = aParam;
 
-    if (prev.mode != mParam.mode) {
+    // The three create-key toggles decide whether a missing frame key is an owned
+    // key or the static default, so changing one while the tool is up must rebuild
+    // the key state. A mode change already rebuilt it.
+    if (prev.mode != mParam.mode || prev.necessarilyMove != mParam.necessarilyMove
+        || prev.necessarilyRotate != mParam.necessarilyRotate
+        || prev.necessarilyScale != mParam.necessarilyScale) {
         resetCurrentTarget();
     }
 

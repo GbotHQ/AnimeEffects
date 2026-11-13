@@ -294,7 +294,9 @@ void CentroidMover::redo()
     }
 
     void CentroidMover::exec() {
-        mKey = (MoveKey*)mTarget.timeLine()->timeKey(TimeKeyType_Move, mFrame);
+        mKey = (MoveKey*)(mFrame == TimeLine::kDefaultKeyIndex
+                              ? mTarget.timeLine()->defaultKey(TimeKeyType_Move)
+                              : mTarget.timeLine()->timeKey(TimeKeyType_Move, mFrame));
         XC_PTR_ASSERT(mKey);
         mPrevPosition = mKey->pos();
         mPrevCentroid = mKey->centroid();

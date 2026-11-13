@@ -113,6 +113,8 @@ int run() {
     CHECK(inspector.opacity()->opacity() == 0.75);
     CHECK(inspector.move()->keyState() == QStringLiteral("static"));
     CHECK(inspector.move()->keyEnabled());
+    CHECK(inspector.meshCellLabel() == QStringLiteral("Mesh spacing"));
+    CHECK(inspector.meshCellTooltip().contains(QStringLiteral("Distance between mesh vertices")));
 
     // A static edit writes the default and creates no key.
     inspector.move()->setX(11.0);
@@ -136,6 +138,28 @@ int run() {
     inspector.move()->toggleKey();
     CHECK(inspector.move()->keyState() == QStringLiteral("static"));
     CHECK(!line.hasTimeKey(core::TimeKeyType_Move, 10));
+
+    // The mesh-spacing field's transient preview reaches the viewport host with the
+    // inspected node and clears when the selection moves.
+    {
+        int previewEvents = 0;
+        core::ObjectNode* previewNode = nullptr;
+        bool previewActive = false;
+        auto slot = inspector.onMeshPreviewRequested.connect(
+            [&](core::ObjectNode* aNode, bool aActive) {
+                ++previewEvents;
+                previewNode = aNode;
+                previewActive = aActive;
+            }
+        );
+        inspector.setMeshPreviewActive(true);
+        CHECK(previewEvents == 1 && previewNode == &folder && previewActive);
+        core::FolderNode other(QStringLiteral("other preview"));
+        inspector.setTarget(&other);
+        CHECK(previewEvents == 2 && previewNode == nullptr && !previewActive);
+        inspector.onMeshPreviewRequested.disconnect(slot);
+        inspector.setTarget(&folder);
+    }
     CHECK(moveDefault(line).pos() == QVector2D(11.0f, 200.0f));
 
     // Rotation is degrees in the model and radians in the document.
@@ -208,6 +232,26 @@ int run() {
     inspector.filters()->addFilter(core::TimeKeyType_Blur);
     CHECK(inspector.filters()->rows().size() == 2);
     CHECK(inspector.filters()->rowAt(1)->kind() == QStringLiteral("blur"));
+
+    // The card's Paint state is per FIELD and per NODE: only the lane/channel the
+    // tool is actually painting on this node disables that row.
+    inspector.setMaskPaintState(&folder, false, true, core::TimeKeyType_HSV,
+                                core::FilterMaskChannel_Amount);
+    CHECK(inspector.maskPaintIsFilter());
+    CHECK(inspector.filters()->rowAt(0)->amountPaintActive());
+    CHECK(!inspector.filters()->rowAt(0)->timePaintActive());
+    inspector.setMaskPaintState(&folder, false, true, core::TimeKeyType_HSV,
+                                core::FilterMaskChannel_TimeOffset);
+    CHECK(inspector.filters()->rowAt(0)->timePaintActive());
+    CHECK(!inspector.filters()->rowAt(0)->amountPaintActive());
+    inspector.setMaskPaintState(&folder, true, false, core::TimeKeyType_TERM,
+                                core::FilterMaskChannel_Amount);
+    CHECK(inspector.maskPaintActive());
+    CHECK(!inspector.filters()->rowAt(0)->amountPaintActive());
+    core::FolderNode other(QStringLiteral("other"));
+    inspector.setMaskPaintState(&other, true, false, core::TimeKeyType_TERM,
+                                core::FilterMaskChannel_Amount);
+    CHECK(!inspector.maskPaintActive() && !inspector.filters()->rowAt(0)->amountPaintActive());
 
     // Expansion is a SET keyed by TYPE, not one slot. The second add opens its
     // own card and leaves the first card's state alone (it was collapsed just

@@ -25,6 +25,11 @@ Item {
     // prefix at all).
     property bool reservePrefix: true
     readonly property bool hovered: fieldHover.hovered
+    // The field's two non-hover active states, for a live preview (the mesh
+    // overlay): a scrub keeps the pointer grabbed, so it stays true even when
+    // the pointer leaves the field's rectangle mid-drag.
+    readonly property bool scrubbing: field.scrubbing
+    readonly property bool editing: field.editing
     signal valueEdited(real value)
 
     implicitHeight: 23

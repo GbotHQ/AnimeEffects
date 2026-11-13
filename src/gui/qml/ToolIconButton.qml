@@ -62,11 +62,23 @@ Item {
         // no other way to know which of seven identical squares is current).
         border.width: root.activeFocus ? 1 : 0
         border.color: theme.focus
+        // HOVER KEEPS THE CHECKED FILL'S HUE. The old cascade used `activeHover`
+        // for every checked button, so the ONE accent tool lost its accent and
+        // turned neutral gray the moment the pointer entered it. The state is
+        // still visible under the pointer - it just stays an accent for the
+        // accent button and neutral for the rest.
         color: {
             if (!root.enabled) return "transparent";
-            if (mouse.pressed) return root.checked ? theme.activeHover : theme.hairline;
-            if (mouse.containsMouse) return root.checked ? theme.activeHover : theme.hairline;
-            if (root.checked) return root.accent ? theme.accent : theme.active;
+            if (root.checked) {
+                if (root.accent) {
+                    if (mouse.pressed || mouse.containsMouse) return theme.accentHover;
+                    return theme.accent;
+                }
+                if (mouse.pressed || mouse.containsMouse) return theme.activeHover;
+                return theme.active;
+            }
+            if (mouse.pressed) return theme.active;
+            if (mouse.containsMouse) return theme.raisedHover;
             return "transparent";
         }
     }
@@ -105,9 +117,11 @@ Item {
         cursorShape: Qt.PointingHandCursor
         onClicked: root.clicked()
     }
-    ToolTip.visible: mouse.containsMouse && root.enabled && root.label !== ""
-    ToolTip.delay: 500
-    ToolTip.text: root.label
+    AeToolTip {
+        ownerItem: root
+        text: root.label
+        shown: mouse.containsMouse && root.enabled && root.label !== ""
+    }
 
     // Tab reaches the dock's buttons; Space and Return act, as AeIconButton's do.
     activeFocusOnTab: true
