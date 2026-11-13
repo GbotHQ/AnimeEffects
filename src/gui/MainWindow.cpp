@@ -14,11 +14,20 @@
 #include "gui/CommandLogView.h"
 #include "gui/qml/ExportViewModel.h"
 #include "gui/DestinationPicker.h"
+#include "gui/DockDropOverlay.h"
+#include "gui/DockMetrics.h"
+#include "gui/DockPanel.h"
 #include "gui/DockSash.h"
+#include "gui/DockSlots.h"
+#include "gui/DockTabBar.h"
 #include "gui/NewProjectDialog.h"
 #include "gui/ProjectHook.h"
 #include "gui/menu/menu_ProgressReporter.h"
 #include "util/NetworkUtil.h"
+#include <QHBoxLayout>
+#include <QTabBar>
+#include <QTimer>
+#include <QToolButton>
 #include <set>
 #include <utility>
 #include "media/FFmpegHelpers.h"
@@ -98,6 +107,7 @@ MainWindow::MainWindow(ctrl::System& aSystem, GUIResources& aResources, LocalePa
     mProjectTabBar(),
     mTarget(),
     mProperty(),
+    mDockAnimationWidget(),
     mTool(),
     mResourceDialog(),
     mCurrent(),
@@ -117,9 +127,30 @@ MainWindow::MainWindow(ctrl::System& aSystem, GUIResources& aResources, LocalePa
         this->setWindowIcon(QIcon("../src/AnimeEffects.ico"));
         this->setMouseTracking(true);
         this->setFocusPolicy(Qt::NoFocus);
-        this->setAcceptDrops(false);
+        // Qt's own dock drag is a drag-and-drop, so the window has to accept
+        // drops for it to have a target at all: with drops off the drag runs
+        // with a "no drop" cursor and nothing ever docks. QMainWindow turns
+        // this on itself; the line here used to turn it off. Foreign drags are
+        // still ignored - the dock overlay only accepts this app's panel MIME
+        // type, and there is no other drop handler on this window.
+        this->setAcceptDrops(true);
         this->setTabShape(QTabWidget::Rounded);
-        this->setDockOptions(AnimatedDocks);
+        // AllowTabbedDocks is the piece of Qt's docking this app actually wants:
+        // two panels sharing an area become tabs at the top of that area, and
+        // that tab strip is the same title UI a lone panel shows as its header -
+        // minimal, in the same visual language as the project tabs (the theme's
+        // QTabBar rules already carry the rest/hover/selected dressing). The
+        // default is AnimatedDocks|AllowTabbedDocks; this line used to drop the
+        // tabbing half.
+        // AllowNestedDocks is what lets an area hold two columns: without it a
+        // dock area is a single row, so a second dock added to an occupied side
+        // area is *appended to that area's stack* rather than taking the slice
+        // beside the canvas that the drop promised. Qt's warning about nesting
+        // (more ways to place a dropped dock) does not apply: the drop rules are
+        // ours (DockDropOverlay), and this only widens what they can express.
+        this->setDockOptions(QMainWindow::AnimatedDocks | QMainWindow::AllowTabbedDocks
+                             | QMainWindow::AllowNestedDocks);
+        this->setTabPosition(Qt::AllDockWidgetAreas, QTabWidget::North);
         this->setCorner(Qt::BottomRightCorner, Qt::RightDockWidgetArea);
     }
 
@@ -194,12 +225,19 @@ MainWindow::MainWindow(ctrl::System& aSystem, GUIResources& aResources, LocalePa
 
     // create targeting widget
     {
-        auto* dockWidget = new QDockWidget(this);
+        auto* dockWidget = new gui::DockPanel(this);
         dockWidget->setObjectName("animationDock");
         dockWidget->setWindowTitle(tr("Animation"));
-        dockWidget->setFeatures(QDockWidget::DockWidgetFloatable | QDockWidget::DockWidgetMovable);
+        // Closable is not for a close button: Qt hides its buttons as soon as a
+        // title bar widget exists. It is required for toggleViewAction(), which
+        // Qt leaves disabled on a dock that cannot close - and that action is
+        // how a hidden panel gets back (see the Panels menu below).
+        dockWidget->setFeatures(QDockWidget::DockWidgetFloatable
+                                | QDockWidget::DockWidgetMovable
+                                | QDockWidget::DockWidgetClosable);
         dockWidget->setAllowedAreas(Qt::BottomDockWidgetArea | Qt::TopDockWidgetArea);
         this->addDockWidget(Qt::BottomDockWidgetArea, dockWidget);
+        mDockAnimationWidget = dockWidget;
 
         // 296 rather than the 256 this dock used before the header bar: the bar
         // is 40px of fixed height above the surface, and the design's own budget
@@ -220,20 +258,22 @@ MainWindow::MainWindow(ctrl::System& aSystem, GUIResources& aResources, LocalePa
 
     // create property widget
     {
-        auto* dockWidget = new QDockWidget(this);
+        auto* dockWidget = new gui::DockPanel(this);
         dockWidget->setObjectName("propertiesDock");
         dockWidget->setWindowTitle(tr("Properties"));
-        dockWidget->setFeatures(QDockWidget::DockWidgetFloatable | QDockWidget::DockWidgetMovable);
+        dockWidget->setFeatures(QDockWidget::DockWidgetFloatable
+                                | QDockWidget::DockWidgetMovable
+                                | QDockWidget::DockWidgetClosable);
         dockWidget->setAllowedAreas(Qt::LeftDockWidgetArea | Qt::RightDockWidgetArea);
         this->addDockWidget(Qt::RightDockWidgetArea, dockWidget);
 
         mDockPropertyWidget = dockWidget;
 
-        // Panel width budget: min = default = 320 (everything fits; the
-        // fields cap at 70% of the column), max = 2x min - a wider dock
-        // would just stretch empty space.
-        dockWidget->setMinimumWidth(320);
-        dockWidget->setMaximumWidth(640);
+        // No size range is set here: the panel's range is its *area's*, applied by
+        // applyPanelMetrics, which clears and re-applies it when the panel changes
+        // area or floats. The 320/640 that used to sit here was overwritten at the
+        // first pass and only misled: every slot is 200..640 wide (DockMetrics.h),
+        // and the rank of panels in it cannot change that.
 
 #if 0
         mProperty = new PropertyWidget(mViaPoint, splitter, &mGUIResources, mLocaleParam);
@@ -266,10 +306,12 @@ MainWindow::MainWindow(ctrl::System& aSystem, GUIResources& aResources, LocalePa
 
     // create tool widget
     {
-        auto* dockWidget = new QDockWidget(this);
+        auto* dockWidget = new gui::DockPanel(this);
         dockWidget->setObjectName("toolsDock");
         dockWidget->setWindowTitle(tr("Tools"));
-        dockWidget->setFeatures(QDockWidget::DockWidgetFloatable | QDockWidget::DockWidgetMovable);
+        dockWidget->setFeatures(QDockWidget::DockWidgetFloatable
+                                | QDockWidget::DockWidgetMovable
+                                | QDockWidget::DockWidgetClosable);
         this->addDockWidget(Qt::LeftDockWidgetArea, dockWidget);
 
         mDockToolWidget = dockWidget;
@@ -284,10 +326,146 @@ MainWindow::MainWindow(ctrl::System& aSystem, GUIResources& aResources, LocalePa
         mViaPoint.setResourceDialog(mResourceDialog);
     }
 
+    // panels are hidden from their own header menu, so the menu bar has to be
+    // able to bring them back: one checkable action per panel, in the order they
+    // sit in the window (left, right, bottom). The action's checked state follows
+    // the dock's visibility on its own.
+    {
+        QMenu* panelsMenu = mMainMenuBar->viewMenu;
+        for (QDockWidget* dock : {mDockToolWidget, mDockPropertyWidget, mDockAnimationWidget}) {
+            QAction* action = dock->toggleViewAction();
+            panelsMenu->addAction(action);
+        }
+    }
+
+    // A grouped panel hides its own header, because the group's tab strip is its
+    // title row - and the header's context menu goes into hiding with it. The tab
+    // is that panel's title UI in this state, so the menu moves to the tab; the
+    // tab bars themselves are Qt's, so they are found and adopted rather than
+    // built (see updateDockTabMenus).
+    this->installEventFilter(this);
+
+    // The drop side of the dock gesture: one overlay over the window that
+    // decides the target, draws it, and performs it (see DockDropOverlay).
+    mDockDropOverlay = new DockDropOverlay(this);
+    mDockDropOverlay->onDropped = [this](QDockWidget* aPanel, const DockDropTarget& aTarget) {
+        applyDockDrop(aPanel, aTarget);
+    };
+
+    // One size range for every panel, and one set of allowed areas: a tab group
+    // can only be as narrow as its strictest member and as wide as its most-capped
+    // one, and a panel that is only allowed in one area can never be tabbed with a
+    // panel that lives on another side. See DockMetrics.h.
+    int order = 0;
+    for (QDockWidget* dock : {mDockToolWidget, mDockPropertyWidget, mDockAnimationWidget}) {
+        dock->setAllowedAreas(Qt::AllDockWidgetAreas);
+        // The tab order of a group: creation order, fixed, so a tab does not jump
+        // to the front when it is activated (the strip reads this).
+        dock->setProperty("aeDockOrder", order++);
+        if (auto* panel = qobject_cast<DockPanel*>(dock)) panel->setMainWindow(this);
+        // Every title row understands the same gestures, whether it is this panel's
+        // own (one tab) or Qt's bar for a group it joins.
+        if (auto* titleBar = qobject_cast<QTabBar*>(dock->titleBarWidget()))
+            new DockTabBarFilter(titleBar, this);
+        applyPanelMetrics(dock);
+        // the range depends on the area, so it is re-applied whenever the panel
+        // changes area or floats; the chrome and the slot buttons follow the same
+        // moves (a tabified/hidden panel is still a member of its slot). The
+        // chrome pass is deferred: a drop sends these signals while the drag is
+        // still in flight, and moving a title row mid-drag ends the drag.
+        connect(dock, &QDockWidget::dockLocationChanged, this,
+                [this, dock](Qt::DockWidgetArea) {
+                    clearDockOpeningFloors();
+                    applyPanelMetrics(dock);
+                    scheduleDockChromeSync();
+                });
+        connect(dock, &QDockWidget::topLevelChanged, this,
+                [this, dock](bool) {
+                    clearDockOpeningFloors();
+                    applyPanelMetrics(dock);
+                    scheduleDockChromeSync();
+                });
+        connect(dock, &QDockWidget::visibilityChanged, this,
+                [this](bool) { scheduleDockChromeSync(); });
+    }
+
+    // THE PANELS' OPENING SIZES. applyPanelMetrics keeps the content's hint from
+    // constraining the slot (the area owns the range), so Qt opens every panel at
+    // its area's MINIMUM: a 200px Properties panel with clipped fields and a
+    // 160px timeline. These explicit minimums are the former design sizes: they
+    // shape the first layout pass only, and are dropped the moment the user first
+    // resizes or re-docks a panel, because from then on the range is DockMetrics'
+    // (a floor that stayed would make 200px slots unreachable).
+    if (mDockToolWidget) mDockToolWidget->setMinimumWidth(236);
+    if (mDockPropertyWidget) mDockPropertyWidget->setMinimumWidth(320);
+    if (mDockAnimationWidget) mDockAnimationWidget->setMinimumHeight(296);
+    mDockOpeningFloors = true;
+
+    // Layout toggles in the menu bar's top-right corner, where VS Code keeps
+    // them - one per *slot*, not one per panel. A slot is a place a panel can be
+    // (left side, right side, bottom), it exists whether or not anything is in it,
+    // and its glyph is the slot's shape and never changes: a button whose picture
+    // followed a panel around the window was describing the panel, which the tab
+    // already does. A slot with nothing in it is simply empty, and its button says
+    // so by being disabled.
+    {
+        auto* row = new QWidget(mMainMenuBar);
+        auto* rowLayout = new QHBoxLayout(row);
+        rowLayout->setContentsMargins(0, 0, 6, 0);
+        rowLayout->setSpacing(2);
+
+        struct Slot {
+            Qt::DockWidgetArea area;
+            const char* glyph;
+            const char* name;
+        };
+        static const Slot kSlots[] = {
+            {Qt::LeftDockWidgetArea, "sidebar-left", QT_TR_NOOP("left side")},
+            {Qt::RightDockWidgetArea, "sidebar-right", QT_TR_NOOP("right side")},
+            {Qt::BottomDockWidgetArea, "sidebar-bottom", QT_TR_NOOP("bottom")},
+        };
+
+        for (const Slot& slot : kSlots) {
+            auto* button = new QToolButton(row);
+            button->setObjectName(QStringLiteral("dockToggle"));
+            button->setFocusPolicy(Qt::NoFocus);
+            button->setAutoRaise(true);
+            button->setCheckable(true);
+            button->setIconSize(QSize(18, 18));
+            button->setIcon(mGUIResources.icon(QString::fromLatin1(slot.glyph)));
+
+            connect(button, &QToolButton::clicked, this, [this, slot]() {
+                // whatever is in the slot, shown or hidden: one button, one slot
+                QVector<QDockWidget*> inSlot;
+                bool anyVisible = false;
+                for (QDockWidget* dock : {mDockToolWidget, mDockPropertyWidget, mDockAnimationWidget}) {
+                    if (dockWidgetArea(dock) != slot.area) continue;
+                    inSlot.push_back(dock);
+                    anyVisible = anyVisible || dock->isVisible();
+                }
+                for (QDockWidget* dock : inSlot)
+                    dock->setVisible(!anyVisible);
+                updateLayoutButtons();
+            });
+
+            // tr() the *fragment* here, from the QT_TR_NOOP above, so the whole
+            // tooltip is in one language rather than English inside a translated
+            // sentence.
+            mLayoutButtons.push_back(
+                    {button, slot.area, QString::fromLatin1(slot.glyph), tr(slot.name)});
+            rowLayout->addWidget(button);
+        }
+
+        mMainMenuBar->setCornerWidget(row, Qt::TopRightCorner);
+        updateLayoutButtons();
+    }
+
     // dock-edge sashes: 12px invisible hitboxes + 1px hairlines over the
     // zero-width native separators (see standard.ssa); resizes docks through
     // QMainWindow::resizeDocks
-    new gui::DockSash(this);
+    auto* dockSash = new gui::DockSash(this);
+    connect(dockSash, &gui::DockSash::resizeStarted,
+            this, &MainWindow::clearDockOpeningFloors);
 
     // create driver holder
     { mDriverHolder.reset(new DriverHolder(mViaPoint)); }
@@ -731,6 +909,12 @@ void MainWindow::onThemeUpdated(theme::Theme& aTheme) {
         this->setStyleSheet(fontOption + standard);
     }
 
+    // The layout toggles hold QIcons built from the previous theme's tinted
+    // files. The icon map is reloaded before this signal, so re-reading it is
+    // what makes the checked/unchecked pair follow a theme switch.
+    for (const LayoutButton& entry : mLayoutButtons)
+        entry.button->setIcon(mGUIResources.icon(entry.glyph));
+
     mDockPropertyWidget->setStyleSheet(aTheme.loadStylesheet("propertywidget.ssa"));
     if (mProperty) mProperty->refreshTheme();
     // The log's colours are per-run formats, not QSS: a stylesheet change cannot
@@ -1042,10 +1226,10 @@ void MainWindow::onDockToggle() // For some reason it does not work without this
         mDockToolWidget->hide();
     }
 
-    if (mTarget->isHidden()) {
-        mTarget->show();
-    } else if (!mTarget->isHidden()) {
-        mTarget->hide();
+    if (mDockAnimationWidget->isHidden()) {
+        mDockAnimationWidget->show();
+    } else if (!mDockAnimationWidget->isHidden()) {
+        mDockAnimationWidget->hide();
     }
 }
 
@@ -2428,6 +2612,342 @@ void MainWindow::onMoveFrameTriggered(bool moveRight) {
     core::Frame dest = mTarget->currentFrame();
     dest.add(frameDest);
     mTarget->timeLineWidget().setFrame(dest);
+}
+
+/// The panel a tab title names, if any.
+///
+/// Qt's dock tab bar owns no mapping back to the docks, and the titles are the
+/// panel names, so matching by title is the available answer. The three titles
+/// are distinct, and a dock's title is set once at construction.
+QDockWidget* MainWindow::dockForTabTitle(const QString& aTitle) const {
+    for (QDockWidget* dock : {mDockToolWidget, mDockPropertyWidget, mDockAnimationWidget}) {
+        if (dock && dock->windowTitle() == aTitle) return dock;
+    }
+    return nullptr;
+}
+
+/// Adopts Qt's own bar for a tab group, once.
+///
+/// A group's bar is the group's title row - that is Qt's model - and taking it
+/// out (to give the room to each panel's own title bar) leaves the layout
+/// reserving its height regardless (measured: a 32px band above the group). So
+/// one QSS rule dresses both this bar and a lone panel's title row (both are
+/// QTabBars named dockTabBar), and one filter gives both the same gestures.
+void MainWindow::updateDockTabMenus() {
+    QWidget* central = centralWidget();
+    for (QTabBar* bar : findChildren<QTabBar*>()) {
+        if (bar->count() < 2)
+            continue;
+        // A lone panel's title row is one of ours: it already carries its name
+        // and its filter, and it is not a slot's rail. Adopting it again would
+        // install a second filter and make the same press start two gestures.
+        if (qobject_cast<DockTabBar*>(bar) != nullptr)
+            continue;
+        // The project tab bar is a QTabBar too, and it lives inside the canvas.
+        // Without this a project saved as "Animation.anie" would be adopted as a
+        // panel rail and re-dressed with the dock rule.
+        if (central && central->isAncestorOf(bar))
+            continue;
+
+        // A rail belongs to the slot rather than to any panel in it, so it says
+        // which area it is the chrome of - the slot model reads this to include
+        // the rail in the slot's extent (without it the seam stopped at the tabs).
+        // Refreshed on every pass, including for bars adopted earlier: moving a
+        // whole tab group to another area keeps the bar, so the area it named
+        // would otherwise stay the old one and the new slot's seam would stop at
+        // its tabs.
+        QDockWidget* first = dockForTabTitle(bar->tabText(0));
+        if (bar->property("aeDockTabBar").toBool()) {
+            bar->setProperty("aeDockArea", first ? int(this->dockWidgetArea(first)) : -1);
+            continue;
+        }
+
+        bool allPanels = true;
+        for (int i = 0; i < bar->count(); ++i) {
+            if (!dockForTabTitle(bar->tabText(i))) {
+                allPanels = false;
+                break;
+            }
+        }
+        if (!allPanels) continue;
+
+        bar->setProperty("aeDockTabBar", true);
+        bar->setObjectName(QStringLiteral("dockTabBar"));
+        bar->setProperty("aeDockArea", first ? int(this->dockWidgetArea(first)) : -1);
+        // Naming it is not enough: a style sheet rule is matched when the widget
+        // is polished, so a bar that Qt creates mid-session (a group made by
+        // dragging a panel onto another) kept Qt's own look while the same bar at
+        // startup was dressed - measured, the group created by a drop showed the
+        // generic tab rules until the next theme change.
+        bar->style()->unpolish(bar);
+        bar->style()->polish(bar);
+        bar->update();
+        new DockTabBarFilter(bar, this);
+    }
+}
+
+bool MainWindow::eventFilter(QObject* aObject, QEvent* aEvent) {
+    // The dock tab bars are created and destroyed by the layout as panels are
+    // tabified and split apart again, so adoption is driven from the layout
+    // events rather than from the one place that tabifies today.
+    if (aObject == this) {
+        switch (aEvent->type()) {
+        case QEvent::LayoutRequest:
+        case QEvent::ChildAdded:
+        case QEvent::ChildRemoved:
+            scheduleDockChromeSync();
+            break;
+        default:
+            break;
+        }
+    }
+    return QMainWindow::eventFilter(aObject, aEvent);
+}
+
+/// One deferred chrome pass at a time. The pass re-polishes Qt's tab bars and
+/// changes title-row heights, both of which can emit the layout events that would
+/// ask for another pass; coalescing also keeps a drop's own signals from running
+/// it while the drag is still in flight.
+void MainWindow::scheduleDockChromeSync() {
+    if (mDockSyncQueued) return;
+    mDockSyncQueued = true;
+    QTimer::singleShot(0, this, [this]() {
+        mDockSyncQueued = false;
+        updateDockTabMenus();
+        updateTitleRows();
+        updateLayoutButtons();
+    });
+}
+
+void MainWindow::clearDockOpeningFloors() {
+    if (!mDockOpeningFloors) return;
+    mDockOpeningFloors = false;
+    for (QDockWidget* dock : {mDockToolWidget, mDockPropertyWidget, mDockAnimationWidget}) {
+        if (dock) applyPanelMetrics(dock);
+    }
+}
+
+/// The size range a panel is held to is the *area's*, not its own: a side area
+/// is a width-constrained full-height column, a top/bottom area is a
+/// height-constrained full-width row, and a floating panel is a window that the
+/// compositor sizes. Applying both ranges everywhere is what gave the bottom
+/// panel a 640px maximum width.
+void MainWindow::applyPanelMetrics(QDockWidget* aDock) {
+    if (!aDock) return;
+    const Qt::DockWidgetArea area = this->dockWidgetArea(aDock);
+    const bool floating = aDock->isFloating();
+    const bool side = (area == Qt::LeftDockWidgetArea || area == Qt::RightDockWidgetArea);
+
+    // clear first: the panel may have just left the other kind of area
+    aDock->setMinimumSize(0, 0);
+    aDock->setMaximumSize(QWIDGETSIZE_MAX, QWIDGETSIZE_MAX);
+    if (floating) return;
+
+    // A slot has one size range, and the panels in it must not be able to widen
+    // that range through their contents. Setting the dock's minimum is not enough:
+    // a widget's effective minimum is max(its explicit minimum, its
+    // minimumSizeHint) - qSmartMinSize - so an explicit 200 only raises a floor the
+    // content can still set. Measured, one panel per area: the animation panel's
+    // content reported a 278px minimum width, so any slot holding that panel could
+    // never be dragged below 278 however the slot's own range was set, which is
+    // exactly "the slot min/max seems to be based on the tabs in it".
+    //
+    // Ignoring the content's size hint is Qt's way of saying the hint must not
+    // constrain the sizes at all: a docked panel is a tiled pane, its range comes
+    // from the area (below) and the layout, and its content is expected to fit
+    // itself or be clipped. Leaving one axis to the content is what lets a panel
+    // drag a floor into the window's own minimum - an 800px-wide timeline would
+    // stop the window from ever being narrowed.
+    if (QWidget* content = aDock->widget())
+        content->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Ignored);
+
+    if (side) {
+        aDock->setMinimumWidth(dockMetrics::kMinWidth);
+        aDock->setMaximumWidth(dockMetrics::kMaxWidth);
+    } else if (area != Qt::NoDockWidgetArea) {
+        aDock->setMinimumHeight(dockMetrics::kMinHeight);
+        aDock->setMaximumHeight(dockMetrics::kMaxHeight);
+    }
+}
+
+/// Performs the drop the overlay resolved. The overlay and this function are the
+/// two halves of one decision - what the preview drew is what this does - which
+/// is why the target is passed through rather than recomputed.
+void MainWindow::applyDockDrop(QDockWidget* aPanel, const DockDropTarget& aTarget) {
+    if (!aPanel || aTarget.kind == DockDropKind::None) return;
+
+    // the panel stops being a window before it is re-docked, so the floating
+    // chrome (translucent attributes, edge bands) is torn down first
+    if (auto* panel = qobject_cast<DockPanel*>(aPanel)) panel->setPanelFloating(false);
+    aPanel->show();
+
+    placeDock(aPanel, aTarget);
+    applyPanelMetrics(aPanel);
+    scheduleDockChromeSync();
+}
+
+/// The placement alone: which area, split or tab a target asks for. Shared by
+/// every drop kind; the preview's rectangle is derived from the same slot model
+/// and area rule (DockDropOverlay::targetRect), so the two describe one decision.
+void MainWindow::placeDock(QDockWidget* aPanel, const DockDropTarget& aTarget) {
+    if (!aPanel || aTarget.kind == DockDropKind::None) return;
+
+    switch (aTarget.kind) {
+    case DockDropKind::Tabify: {
+        if (!aTarget.group) return;
+        // in the target area first, so this arranges two docks of one area
+        // rather than pulling the group towards the panel's remembered area
+        addDockWidget(aTarget.area, aPanel);
+        tabifyDockWidget(aTarget.group, aPanel);
+        aPanel->raise();
+        break;
+    }
+    case DockDropKind::Split: {
+        if (!aTarget.group) return;
+        // Both docks have to be in the target's area before the split:
+        // splitDockWidget arranges two docks *within one area*, so a panel that
+        // has just come back from floating (and therefore landed in whatever
+        // area it remembered) would be split over there instead of where the
+        // drop pointed. Docking it into the target area first, then splitting,
+        // puts the arrangement where the preview drew it.
+        addDockWidget(aTarget.area, aPanel);
+        // Qt's orientation is about where the *second* dock goes: Horizontal
+        // puts it to the right of the first, Vertical below it. The preview
+        // drew the half the panel would take, so the orientation and the order
+        // follow from which half that was.
+        const QRect group = aTarget.group->geometry();
+        const bool leftHalf = aTarget.rect.center().x() < group.center().x();
+        const bool topHalf = aTarget.rect.center().y() < group.center().y();
+        const bool horizontal = qAbs(aTarget.rect.center().x() - group.center().x())
+                              > qAbs(aTarget.rect.center().y() - group.center().y());
+        if (horizontal) {
+            if (leftHalf) splitDockWidget(aPanel, aTarget.group, Qt::Horizontal);
+            else splitDockWidget(aTarget.group, aPanel, Qt::Horizontal);
+        } else {
+            if (topHalf) splitDockWidget(aPanel, aTarget.group, Qt::Vertical);
+            else splitDockWidget(aTarget.group, aPanel, Qt::Vertical);
+        }
+        break;
+    }
+    case DockDropKind::Area: {
+        // A slice of the target area, on the canvas side of whatever is already
+        // there. Plain addDockWidget would append the panel to the end of that
+        // area's stack instead - measured: a canvas-left drop with the sidebar
+        // occupied landed as a 153px strip at the bottom of the sidebar, while
+        // the preview had drawn a full-height column beside the canvas. The
+        // split is what puts the panel where the preview drew it, and the
+        // preview is computed from this same rule (see DockDropOverlay).
+        QDockWidget* anchor = innermostDock(aTarget.area, aPanel);
+        if (!anchor) {
+            addDockWidget(aTarget.area, aPanel);
+        } else {
+            // The panel has to be in the target area before the split, for the
+            // same reason as the Split case: splitDockWidget arranges two docks
+            // within one area, and a panel that has just come back from floating
+            // lands in the area it remembers - measured: a canvas-bottom drop
+            // over the animation panel moved the *animation panel* into the right
+            // column instead.
+            addDockWidget(aTarget.area, aPanel);
+            if (aTarget.area == Qt::LeftDockWidgetArea) {
+                splitDockWidget(anchor, aPanel, Qt::Horizontal);   // panel to its right
+            } else if (aTarget.area == Qt::RightDockWidgetArea) {
+                splitDockWidget(aPanel, anchor, Qt::Horizontal);   // panel to its left
+            } else if (aTarget.area == Qt::TopDockWidgetArea) {
+                splitDockWidget(anchor, aPanel, Qt::Vertical);     // panel below it
+            } else {
+                splitDockWidget(aPanel, anchor, Qt::Vertical);     // panel above it
+            }
+        }
+        break;
+    }
+    default:
+        break;
+    }
+}
+
+/// The dock in an area that sits closest to the central widget: the one a new
+/// panel has to be split against to land between it and the canvas. This is the
+/// anchor both the drop and the preview work from.
+QDockWidget* MainWindow::innermostDock(Qt::DockWidgetArea aArea, QDockWidget* aSkip) const {
+    QDockWidget* best = nullptr;
+    for (QDockWidget* dock : findChildren<QDockWidget*>()) {
+        if (dock == aSkip || dock->property("aeDockPreview").toBool()) continue;
+        if (!dock->isVisible() || dock->isFloating()) continue;
+        if (this->dockWidgetArea(dock) != aArea) continue;
+        if (!best) {
+            best = dock;
+            continue;
+        }
+        switch (aArea) {
+        case Qt::LeftDockWidgetArea:  if (dock->x() > best->x()) best = dock; break;
+        case Qt::RightDockWidgetArea: if (dock->x() < best->x()) best = dock; break;
+        case Qt::TopDockWidgetArea:   if (dock->y() > best->y()) best = dock; break;
+        default:                      if (dock->y() < best->y()) best = dock; break;
+        }
+    }
+    return best;
+}
+
+/// Shows each panel's own title row only while that panel is alone in its area.
+///
+/// A grouped panel's titles are the group's tab bar - that is Qt's model, and it
+/// gives a tabbed dock's title bar space as well if it is left visible, which is
+/// the two rows a group used to show. Both rows are the same widget class dressed
+/// by the same rule (DockTabBar), so which one draws is a question of *where*,
+/// not of what: one tab when alone, the group's tabs when stacked.
+void MainWindow::updateTitleRows() {
+    for (QDockWidget* dock : {mDockToolWidget, mDockPropertyWidget, mDockAnimationWidget}) {
+        QWidget* row = dock ? dock->titleBarWidget() : nullptr;
+        if (!row) continue;
+        auto* panel = qobject_cast<DockPanel*>(dock);
+
+        // A floating panel is its own window and always shows its own row. A docked
+        // panel shows it unless it shares a *tab group*, because then the group's
+        // rail holds the titles. Sharing an area is not sharing a group: two panels
+        // split above each other in one area have no rail at all, so asking the slot
+        // (which is one per area) hid both of their rows and left the area with no
+        // titles anywhere - measured, docking Properties above the timeline made
+        // "Properties" and "Animation" disappear, since the bottom area then held
+        // two panels and neither was tabbed.
+        const bool sharedGroup = panel && panel->isTabGrouped();
+        const bool ownRow = dock->isFloating() || !sharedGroup;
+
+        row->setVisible(ownRow);
+        if (ownRow) {
+            row->setMinimumHeight(0);
+            row->setMaximumHeight(QWIDGETSIZE_MAX);
+        } else {
+            // Not merely hidden: a hidden title row still reserves its height
+            // inside the dock, which is the 32px band that appeared under a rail
+            // (measured: titleBar 256x32 visible=0, widget top=32) and never under
+            // a lone panel, where that row *is* the title.
+            row->setFixedHeight(0);
+        }
+    }
+}
+
+/// Synchronises the slot buttons with the layout: enabled while the slot holds
+/// anything, lit while any panel in it is showing. Driven from the layout events
+/// rather than from each dock's visibility signal, because what the button
+/// describes is the *slot*, which no single panel owns.
+void MainWindow::updateLayoutButtons() {
+    for (const LayoutButton& entry : mLayoutButtons) {
+        QVector<QDockWidget*> inSlot;
+        bool anyVisible = false;
+        for (QDockWidget* dock : {mDockToolWidget, mDockPropertyWidget, mDockAnimationWidget}) {
+            if (!dock || dockWidgetArea(dock) != entry.area) continue;
+            inSlot.push_back(dock);
+            anyVisible = anyVisible || dock->isVisible();
+        }
+        entry.button->setEnabled(!inSlot.isEmpty());
+        entry.button->setChecked(anyVisible);
+        // An icon-only button has no text for assistive technology to read, so
+        // the slot's name goes in the accessible name as well as the tooltip.
+        entry.button->setAccessibleName(tr("Show or hide the %1").arg(entry.name));
+        entry.button->setToolTip(inSlot.isEmpty()
+                ? tr("Nothing is docked on the %1").arg(entry.name)
+                : tr("Show or hide the %1").arg(entry.name));
+    }
 }
 
 } // namespace gui

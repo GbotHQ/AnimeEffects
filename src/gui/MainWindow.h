@@ -28,11 +28,15 @@
 #include "res/res_ResourceUpdater.h"
 #include "ctrl/ExportParams.h"
 
+class QDockWidget;
+class QToolButton;
 
 namespace gui {
 
 class ExportDialog;
 class ExportViewModel;
+struct DockDropTarget;
+class DockDropOverlay;
 
 class MainWindow: public QMainWindow {
     Q_OBJECT
@@ -97,9 +101,13 @@ public:
     void onRedoTriggered();
 
 private:
-    virtual void keyPressEvent(QKeyEvent* aEvent);
-    virtual void keyReleaseEvent(QKeyEvent* aEvent);
-    virtual void closeEvent(QCloseEvent* aEvent);
+    virtual void keyPressEvent(QKeyEvent* aEvent) override;
+    virtual void keyReleaseEvent(QKeyEvent* aEvent) override;
+    virtual void closeEvent(QCloseEvent* aEvent) override;
+    // Docks are added, split, tabified and torn down by the layout itself, so
+    // the panel chrome (tab rows, menus, slot buttons) is re-synchronised from
+    // the layout events rather than from each operation that could change it.
+    bool eventFilter(QObject* aObject, QEvent* aEvent) override;
 
     void resetProjectRefs(core::Project* aProject);
     // A successful load can still carry limitations (the importer's degraded
@@ -122,6 +130,36 @@ private:
     // on a theme change (onThemeUpdated) and after a project-attribute command (the
     // menu's onProjectAttributeUpdated fan-out), so the rule is written once.
     void applyViewportBackground();
+
+    // The dock layout's own bookkeeping. Docking itself stays Qt's (areas,
+    // splitters, tabify, resizeDocks); these functions keep the app's chrome and
+    // the drop gesture's promises in step with it.
+    /// Applies the area's size range (DockMetrics.h) to a panel.
+    void applyPanelMetrics(QDockWidget* aDock);
+    /// Performs the docking a drop asked for (declared in DockDropOverlay.h).
+    void applyDockDrop(QDockWidget* aPanel, const DockDropTarget& aTarget);
+    /// The placement alone, shared by every drop kind.
+    void placeDock(QDockWidget* aPanel, const DockDropTarget& aTarget);
+    /// The dock in an area closest to the central widget (the split anchor).
+    QDockWidget* innermostDock(Qt::DockWidgetArea aArea, QDockWidget* aSkip) const;
+    /// Adopts Qt's own bar for a tab group: names it for the theme, gives it the
+    /// panel menu/gestures, and records the area its slot belongs to.
+    void updateDockTabMenus();
+    /// Shows each panel's own title row only while the panel is alone in its area.
+    void updateTitleRows();
+    /// Synchronises the slot buttons with the layout.
+    void updateLayoutButtons();
+    /// Queues one chrome re-sync for after the current event. Never called
+    /// directly from a dock signal: a drop arrives while the drag is still in
+    /// flight, and moving a title row then breaks the drag (measured: the drag
+    /// ended in a leave with action=0 once the sync ran on every preview).
+    void scheduleDockChromeSync();
+    /// Drops the opening-size floors (see the constructor): they exist only so
+    /// the panels open at their design sizes instead of their area minimum, and
+    /// must not stop a slot from ever reaching DockMetrics' range.
+    void clearDockOpeningFloors();
+    /// The panel a tab title names, if any.
+    QDockWidget* dockForTabTitle(const QString& aTitle) const;
 
     // The colour that decision resolves to. applyViewportBackground() shows it in
     // the canvas; the export carries it too (the artifact's background when
@@ -169,9 +207,26 @@ private:
     QVector<core::Project*> mProjects;
     TargetWidget* mTarget;
     PropertyWidget* mProperty;
+    /// One entry per layout toggle: the button, the slot it stands for, and the
+    /// slot's translated name for its tooltip.
+    struct LayoutButton {
+        QToolButton* button;
+        Qt::DockWidgetArea area;
+        QString glyph;
+        QString name;
+    };
+    QVector<LayoutButton> mLayoutButtons;
+
+    DockDropOverlay* mDockDropOverlay = nullptr;
+    QDockWidget* mDockAnimationWidget;
     QDockWidget* mDockPropertyWidget;
     ToolWidget* mTool;
     QDockWidget* mDockToolWidget;
+    /// One deferred chrome re-sync at a time: the sync itself changes widget
+    /// properties, which can emit the layout events that asked for it.
+    bool mDockSyncQueued = false;
+    /// True while the panels still carry their opening-size minimums.
+    bool mDockOpeningFloors = false;
     ResourceDialog* mResourceDialog;
     QScopedPointer<DriverHolder> mDriverHolder;
     core::Project* mCurrent;

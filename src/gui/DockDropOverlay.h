@@ -38,10 +38,11 @@ void beginDockPanelDrag(QDockWidget* aPanel, QWidget* aSource,
  * drawn at the rect the layout would give the panel, which is truthful and
  * useless: at this app's sizes it is a sliver a few pixels wide, it appears
  * only once the cursor is already over it, and its leave path can miss, leaving
- * it stuck on screen. What is here instead is one function that both decides
- * the target and produces the rectangle to draw, so the preview cannot disagree
- * with the drop, drawn large enough to aim at, shown for the whole drag rather
- * than only once the cursor is inside, and cleared the moment the drag leaves.
+ * it stuck on screen. What is here instead is one resolver that decides the
+ * target and a rectangle for the preview derived from the SAME slot model and
+ * placement rule the drop follows (MainWindow::placeDock), drawn large enough to
+ * aim at, shown for the whole drag rather than only once the cursor is inside,
+ * and cleared the moment the drag leaves.
  *
  * The overlay is a child of the main window covering it, shown only while a
  * drag is in flight. That is also what makes it the drop target: a drag is

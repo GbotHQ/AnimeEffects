@@ -262,6 +262,10 @@ MainMenuBar::MainMenuBar(MainWindow& aMainWindow, ViaPoint& aViaPoint, GUIResour
         editMenu->addAction(assets);
     }
 
+    // Filled by MainWindow once the panels are constructed: the panels own their
+    // show/hide actions, and a hidden panel has no other way back.
+    viewMenu = new QMenu(tr("Panels"), this);
+
     auto preferenceMenu = new QMenu(tr("Preferences"), this);
     {
         auto general = new QAction(tr("Settings"), this);
@@ -518,6 +522,7 @@ MainMenuBar::MainMenuBar(MainWindow& aMainWindow, ViaPoint& aViaPoint, GUIResour
 
     this->addAction(fileMenu->menuAction());
     this->addAction(editMenu->menuAction());
+    this->addAction(viewMenu->menuAction());
     this->addAction(preferenceMenu->menuAction());
     this->addAction(helpMenu->menuAction());
     QSettings settings;

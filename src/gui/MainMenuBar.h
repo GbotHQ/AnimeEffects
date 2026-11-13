@@ -31,6 +31,9 @@ public:
     util::Signaler<void()> onProjectAttributeUpdated;
     util::Signaler<void()> onTimeFormatChanged;
     QString system_info = "Unknown";
+    /// The Panels menu: one checkable action per dock, filled by MainWindow once
+    /// the panels exist, because a hidden panel has no other way back.
+    QMenu* viewMenu = nullptr;
 
 private:
     QScopedPointer<QProcess> mProcess;
