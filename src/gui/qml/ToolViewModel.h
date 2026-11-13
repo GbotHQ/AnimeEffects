@@ -18,7 +18,6 @@
 #include "ctrl/PoseParam.h"
 #include "ctrl/SRTParam.h"
 #include "ctrl/ToolType.h"
-#include "gui/MainViewSetting.h"
 
 namespace gui {
 
@@ -125,9 +124,6 @@ private:
 // application's key map rather than assuming the defaults.
 class ToolKeyHints {
 public:
-    QString rotateCounterClockwise;
-    QString resetRotation;
-    QString rotateClockwise;
     QString brushSizeDecrease;
     QString brushSizeIncrease;
     QString brushHardnessDecrease;
@@ -140,11 +136,11 @@ public:
 // gui::InspectorViewModel on the other side of the dock.
 //
 // WHAT IT OWNS. One ctrl param object per tool (the same structs the widget panels
-// held as members), the current tool, and the view toggles. It owns NO widget, no
-// driver and no project: the host (gui::ToolWidget) hands it a MainViewSetting to
-// write through and answers its requests with its driver. That is what lets
-// tests/tool_view_model.cpp ask every question the dock can answer without a window,
-// and it is the split the inspector took.
+// held as members) and the current tool. It owns NO widget, no
+// driver and no project: the host (gui::ToolWidget) answers its requests with its
+// driver. That is what lets tests/tool_view_model.cpp ask every question the dock can
+// answer without a window, and it is the split the inspector took. The window's view
+// settings moved to gui::ViewSettingsModel when they left this dock for the header.
 //
 // WHAT IT DECIDES, and why here rather than in the QML:
 //   * which rows a tool shows (brush, blur, weight, the SRT key checkboxes, the mask
@@ -282,22 +278,6 @@ class ToolViewModel: public QObject {
     // 0..1, and the field shows them as 0..100.
     Q_PROPERTY(double percentMax READ percentMax CONSTANT)
 
-    // ---- View settings -------------------------------------------------------
-    Q_PROPERTY(bool showMesh READ showMesh WRITE setShowMesh NOTIFY viewChanged)
-    Q_PROPERTY(bool cutOutsideFrame READ cutOutsideFrame WRITE setCutOutsideFrame NOTIFY viewChanged)
-    Q_PROPERTY(bool flipCanvas READ flipCanvas WRITE setFlipCanvas NOTIFY viewChanged)
-    Q_PROPERTY(QString viewTitle READ viewTitle NOTIFY viewChanged)
-    // EVERY hover text in the dock, with the live key binding folded in where the action
-    // has one. They all notify together because they are all rebuilt from one key map:
-    // a rebound key re-spells every tooltip at once. NOTHING here is drawn as visible
-    // text - the dock has no hint lines, by the reported "too busy" verdict (a shortcut
-    // spelled out under the controls is noise; inside a tooltip it costs no layout).
-    Q_PROPERTY(QString showMeshTip READ showMeshTip NOTIFY keyHintsChanged)
-    Q_PROPERTY(QString cutOutsideFrameTip READ cutOutsideFrameTip NOTIFY keyHintsChanged)
-    Q_PROPERTY(QString rotateCounterClockwiseTip READ rotateCounterClockwiseTip NOTIFY keyHintsChanged)
-    Q_PROPERTY(QString resetRotationTip READ resetRotationTip NOTIFY keyHintsChanged)
-    Q_PROPERTY(QString rotateClockwiseTip READ rotateClockwiseTip NOTIFY keyHintsChanged)
-    Q_PROPERTY(QString flipCanvasTip READ flipCanvasTip NOTIFY keyHintsChanged)
     // The brush's two notches, for the Size and Hardness rows' tooltips.
     Q_PROPERTY(QString sizeKeyTip READ sizeKeyTip NOTIFY keyHintsChanged)
     Q_PROPERTY(QString hardnessKeyTip READ hardnessKeyTip NOTIFY keyHintsChanged)
@@ -306,7 +286,6 @@ public:
     explicit ToolViewModel(QObject* aParent = nullptr);
 
     // The host wires these in; nothing here reaches a driver or a project through them.
-    void setViewSetting(MainViewSetting* aSetting);
     void setDriverActive(bool aActive);
     void setKeyHints(const ToolKeyHints& aHints);
 
@@ -418,19 +397,6 @@ public:
     QString maskValueHint() const;
     double percentMax() const { return 100.0; }
 
-    bool showMesh() const;
-    bool cutOutsideFrame() const;
-    bool flipCanvas() const;
-    void setShowMesh(bool aValue);
-    void setCutOutsideFrame(bool aValue);
-    void setFlipCanvas(bool aValue);
-    QString viewTitle() const;
-    QString showMeshTip() const;
-    QString cutOutsideFrameTip() const;
-    QString rotateCounterClockwiseTip() const;
-    QString resetRotationTip() const;
-    QString rotateClockwiseTip() const;
-    QString flipCanvasTip() const;
     QString sizeKeyTip() const;
     QString hardnessKeyTip() const;
 
@@ -457,9 +423,6 @@ public:
     Q_INVOKABLE void sampleMaskValue(double aValue);
     // "Clear mask" - the host owns the driver, so this is a request.
     Q_INVOKABLE void requestClearMask();
-    Q_INVOKABLE void rotateCounterClockwise();
-    Q_INVOKABLE void resetRotation();
-    Q_INVOKABLE void rotateClockwise();
     // A filter card's "paint mask" (InspectorViewModel::onMaskPaintRequested) and the
     // card's own Paint: select what is painted, PIN it (the card named it) and switch to
     // the Mask tool in one step, so no caller has to remember the order.
@@ -491,8 +454,6 @@ signals:
     void weightsChanged();
     // one of the four state actions was asked for (the host owns the driver)
     void weightsActionRequested(int aAction);
-    void viewChanged();
-    void viewSettingsChanged();
     void driverActiveChanged();
     // every tooltip (they all read the same key map)
     void keyHintsChanged();
@@ -506,7 +467,6 @@ private:
 
     ctrl::ToolType mTool = ctrl::ToolType_TERM;
     bool mDriverActive = false;
-    MainViewSetting* mViewSetting = nullptr;
     ToolKeyHints mKeyHints;
 
     // One param object per tool, exactly as the widget panels held them: switching

@@ -48,7 +48,6 @@ ToolWidget::ToolWidget(ViaPoint& aViaPoint,
     setSizePolicy(QSizePolicy::MinimumExpanding, QSizePolicy::MinimumExpanding);
 
     mModel = new ToolViewModel(this);
-    mModel->setViewSetting(&mViaPoint.mainViewSetting());
     // Ctrl+I with the Mask tool in hand asks for the matte's edit; the properties dock owns it
     mModel->onInvertMaskRequested.connect([this]() { onInvertMaskRequested(); });
     mTheme = new QmlTheme(this);
@@ -61,9 +60,6 @@ ToolWidget::ToolWidget(ViaPoint& aViaPoint,
         auto* key = aKeyCommandMap.get(QString::fromLatin1(aName));
         return key ? key->binding.text() : QString();
     };
-    hints.rotateCounterClockwise = text("RotateCanvas15AntiClockwise");
-    hints.resetRotation = text("ResetCanvasAngle");
-    hints.rotateClockwise = text("RotateCanvas15Clockwise");
     hints.brushSizeDecrease = text("BrushSizeDecrease");
     hints.brushSizeIncrease = text("BrushSizeIncrease");
     hints.brushHardnessDecrease = text("BrushHardnessDecrease");
@@ -100,7 +96,6 @@ ToolWidget::ToolWidget(ViaPoint& aViaPoint,
     // Mask tool that is already up), so the "already painting this matte" state has its own signal
     connect(mModel, &ToolViewModel::maskChanged, this, [this]() { onMaskTargetChanged(); });
     connect(mModel, &ToolViewModel::changed, this, &ToolWidget::onParamUpdated);
-    connect(mModel, &ToolViewModel::viewSettingsChanged, this, [this]() { onViewSettingChanged(viewSetting()); });
     connect(mModel, &ToolViewModel::clearMaskRequested, this, [this]() {
         if (mDriver)
             mDriver->clearMask();
@@ -349,7 +344,14 @@ void ToolWidget::showHideMesh(bool aShow) {
         return;
     if (aShow)
         meshFromFunction = true;
-    mModel->setShowMesh(aShow);
+    // The view setting is the window's state now (ViewSettingsModel), but this
+    // convenience belongs to the FFD tool: it turns the mesh on when the tool is
+    // picked and off again when it leaves. Write the one setting, then announce it
+    // through the same signal the viewport has always consumed.
+    if (viewSetting().showLayerMesh == aShow)
+        return;
+    viewSetting().showLayerMesh = aShow;
+    onViewSettingChanged(viewSetting());
 }
 
 void ToolWidget::beginMaskPaint(core::TimeKeyType aLane, core::FilterMaskChannel aChannel) {

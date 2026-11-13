@@ -12,12 +12,14 @@ import QtQuick.Layouts
 //   1. the TOOLBOX - the dock's primary control, directly under the dock's own title.
 //      It carries no heading, because the QDockWidget already says "Tools" (the widget
 //      version's "Toolbox" group title was a QGroupBox artifact);
-//   2. the VIEW strip - one fixed row of viewport settings, under its own heading. It
-//      sits ABOVE the tool panel on purpose: everything above the panel is fixed, so
-//      switching tools cannot move it, and the panel (which changes height with the
-//      tool, and is the tallest block by far) takes the rest;
-//   3. the ACTIVE TOOL's panel: its heading names the tool and the trailing word names
+//   2. the ACTIVE TOOL's panel: its heading names the tool and the trailing word names
 //      the mode, then the mode row, the tool's own rows, and the shared brush.
+//
+// The view settings that used to sit between those two blocks are WINDOW state, not
+// tool state: Show mesh, the cut-outside-frame mask, the canvas rotations and Flip
+// canvas describe the viewport, not the tool in hand. They live in the window header
+// now (qml/HeaderBar.qml), so they are reachable without opening the Tools dock and
+// cannot move when the tool changes. The dock is the TOOL.
 //
 // The whole content is a ScrollView: the mask tool's panel (target, channel, value,
 // four brush rows, two switches, Clear) is taller than a dock on a small window, and the
@@ -86,56 +88,7 @@ Rectangle {
                 }
             }
 
-            Item { width: 1; height: 8 }
-
-            // ---- 2. the view strip ------------------------------------------
-            ToolHeading { title: toolModel.viewTitle }
-            Flow {
-                id: viewFlow
-                x: 12
-                width: parent.width - 24
-                spacing: 2
-                // the two toggles that change how the ARTWORK is drawn
-                ToolIconButton {
-                    iconName: "cube"
-                    label: toolModel.showMeshTip
-                    checkable: true
-                    checked: toolModel.showMesh
-                    onClicked: toolModel.showMesh = !toolModel.showMesh
-                }
-                ToolIconButton {
-                    iconName: "image"
-                    label: toolModel.cutOutsideFrameTip
-                    checkable: true
-                    checked: toolModel.cutOutsideFrame
-                    onClicked: toolModel.cutOutsideFrame = !toolModel.cutOutsideFrame
-                }
-                // the three canvas rotations: TRIGGERS, not states
-                ToolIconButton {
-                    iconName: "arrow-counter-clockwise"
-                    label: toolModel.rotateCounterClockwiseTip
-                    onClicked: toolModel.rotateCounterClockwise()
-                }
-                ToolIconButton {
-                    iconName: "dot-outline"
-                    label: toolModel.resetRotationTip
-                    onClicked: toolModel.resetRotation()
-                }
-                ToolIconButton {
-                    iconName: "arrow-clockwise"
-                    label: toolModel.rotateClockwiseTip
-                    onClicked: toolModel.rotateClockwise()
-                }
-                ToolIconButton {
-                    iconName: "flip-horizontal"
-                    label: toolModel.flipCanvasTip
-                    checkable: true
-                    checked: toolModel.flipCanvas
-                    onClicked: toolModel.flipCanvas = !toolModel.flipCanvas
-                }
-            }
-
-            Item { width: 1; height: 6 }
+            Item { width: 1; height: 10 }
 
             // THE PANEL IS CREATED WHEN A TOOL IS PICKED, not hidden and shown:
             // a Column does not re-run its layout when an invisible child appears,
@@ -150,7 +103,7 @@ Rectangle {
                 sourceComponent: Component {
                     Column {
                         width: toolPanelLoader.width
-                    // ---- 3. the active tool's panel ---------------------------------
+                    // ---- 2. the active tool's panel ---------------------------------
                     ToolHeading {
                         visible: toolModel.panelVisible
                         title: toolModel.title

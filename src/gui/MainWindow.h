@@ -29,7 +29,6 @@
 #include "ctrl/ExportParams.h"
 
 class QDockWidget;
-class QToolButton;
 
 namespace gui {
 
@@ -37,6 +36,8 @@ class ExportDialog;
 class ExportViewModel;
 struct DockDropTarget;
 class DockDropOverlay;
+class HeaderBar;
+class MenuCommand;
 
 class MainWindow: public QMainWindow {
     Q_OBJECT
@@ -147,6 +148,8 @@ private:
     void updateDockTabMenus();
     /// Shows each panel's own title row only while the panel is alone in its area.
     void updateTitleRows();
+    /// A slot button's request; the window performs the dock toggles.
+    void onDockSlotToggleRequested(int aArea);
     /// Synchronises the slot buttons with the layout.
     void updateLayoutButtons();
     /// Queues one chrome re-sync for after the current event. Never called
@@ -207,15 +210,24 @@ private:
     QVector<core::Project*> mProjects;
     TargetWidget* mTarget;
     PropertyWidget* mProperty;
-    /// One entry per layout toggle: the button, the slot it stands for, and the
-    /// slot's translated name for its tooltip.
-    struct LayoutButton {
-        QToolButton* button;
+    /// One entry per layout toggle: the slot it stands for, its glyph and the
+    /// slot's translated name. The button itself is QML (qml/HeaderBar.qml); the
+    /// window only feeds the slot model and performs the toggle.
+    struct LayoutSlot {
         Qt::DockWidgetArea area;
         QString glyph;
         QString name;
     };
-    QVector<LayoutButton> mLayoutButtons;
+    QVector<LayoutSlot> mLayoutSlots;
+    HeaderBar* mHeaderBar = nullptr;
+    /// The Panels menu's three toggles, paired with the dock each one shows or
+    /// hides. The commands are created once, after the docks; updateLayoutButtons
+    /// reads the docks' visibility back into them.
+    struct PanelToggle {
+        QDockWidget* dock;
+        MenuCommand* command;
+    };
+    QVector<PanelToggle> mPanelToggles;
 
     DockDropOverlay* mDockDropOverlay = nullptr;
     QDockWidget* mDockAnimationWidget;

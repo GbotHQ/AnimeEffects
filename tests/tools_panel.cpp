@@ -42,7 +42,6 @@
 #include <QVariantList>
 #include <QVariantMap>
 
-#include "gui/MainViewSetting.h"
 #include "gui/qml/QmlFormAccessibility.h"
 #include "gui/qml/QmlTheme.h"
 #include "gui/qml/ToolViewModel.h"
@@ -153,14 +152,9 @@ int main(int argc, char** argv) {
     theme::tintIcons(QStringLiteral(AE_ICON_SRC), iconDir.path(), theme::Colors::current());
     theme::setIconDir(iconDir.path());
 
-    gui::MainViewSetting view;
     gui::ToolViewModel model;
-    model.setViewSetting(&view);
     model.setDriverActive(true);
     gui::ToolKeyHints hints;
-    hints.rotateCounterClockwise = QStringLiteral("Alt+Q");
-    hints.resetRotation = QStringLiteral("F1");
-    hints.rotateClockwise = QStringLiteral("Alt+E");
     hints.brushSizeDecrease = QStringLiteral("[");
     hints.brushSizeIncrease = QStringLiteral("]");
     hints.brushHardnessDecrease = QStringLiteral("Shift+[");
@@ -538,26 +532,6 @@ int main(int argc, char** argv) {
         check(clearButton->isEnabled(), "Clear is enabled with a paintable target");
         check(press(clearButton), "the action is pressable");
         check(clearRequested == 1, "and it asks the host to clear the field");
-    }
-
-    // ---- the view strip speaks the bound keys ---------------------------------
-    QQuickItem* rotateCcw = nullptr;
-    {
-        // the rotation button's NAME carries the live binding
-        QList<QQuickItem*> all;
-        collectItems(root, all);
-        for (QQuickItem* item : all) {
-            QAccessibleInterface* iface = accessible(item);
-            if (!iface || iface->role() != QAccessible::Button)
-                continue;
-            if (iface->text(QAccessible::Name).contains(QStringLiteral("Alt+Q")))
-                rotateCcw = item;
-        }
-    }
-    check(rotateCcw != nullptr, "the rotation button's name carries the live binding (Alt+Q)");
-    if (rotateCcw) {
-        check(press(rotateCcw), "and it is pressable");
-        check(!view.rotateViewACW, "the rotation flag is lowered again after the trigger");
     }
 
     // ---- the panel scrolls ----------------------------------------------------

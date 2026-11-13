@@ -179,11 +179,6 @@ ToolViewModel::ToolViewModel(QObject* aParent): QObject(aParent) {
     retargetBrush();
 }
 
-void ToolViewModel::setViewSetting(MainViewSetting* aSetting) {
-    mViewSetting = aSetting;
-    emit viewChanged();
-}
-
 void ToolViewModel::setDriverActive(bool aActive) {
     if (mDriverActive == aActive)
         return;
@@ -778,62 +773,6 @@ void ToolViewModel::beginLayerMaskPaint() {
     emit changed();
 }
 
-//-------------------------------------------------------------------------------------------------
-// view settings
-//-------------------------------------------------------------------------------------------------
-bool ToolViewModel::showMesh() const { return mViewSetting && mViewSetting->showLayerMesh; }
-bool ToolViewModel::cutOutsideFrame() const { return mViewSetting && mViewSetting->cutImagesByTheFrame; }
-bool ToolViewModel::flipCanvas() const { return mViewSetting && mViewSetting->flipCanvas; }
-
-void ToolViewModel::setShowMesh(bool aValue) {
-    if (!mViewSetting || mViewSetting->showLayerMesh == aValue)
-        return;
-    mViewSetting->showLayerMesh = aValue;
-    emit viewChanged();
-    emit viewSettingsChanged();
-}
-
-void ToolViewModel::setCutOutsideFrame(bool aValue) {
-    if (!mViewSetting || mViewSetting->cutImagesByTheFrame == aValue)
-        return;
-    mViewSetting->cutImagesByTheFrame = aValue;
-    emit viewChanged();
-    emit viewSettingsChanged();
-}
-
-void ToolViewModel::setFlipCanvas(bool aValue) {
-    if (!mViewSetting || mViewSetting->flipCanvas == aValue)
-        return;
-    mViewSetting->flipCanvas = aValue;
-    emit viewChanged();
-    emit viewSettingsChanged();
-}
-
-QString ToolViewModel::viewTitle() const {
-    return QCoreApplication::translate("gui::ToolWidget", "View Settings");
-}
-QString ToolViewModel::showMeshTip() const {
-    return QCoreApplication::translate("gui::ToolWidget", "Show mesh");
-}
-QString ToolViewModel::cutOutsideFrameTip() const {
-    return QCoreApplication::translate("gui::ToolWidget", "Do not draw outside the frame");
-}
-QString ToolViewModel::rotateCounterClockwiseTip() const {
-    return QCoreApplication::translate("gui::ToolWidget", "Rotate the canvas counterclockwise (%1)")
-        .arg(mKeyHints.rotateCounterClockwise);
-}
-QString ToolViewModel::resetRotationTip() const {
-    return QCoreApplication::translate("gui::ToolWidget", "Reset rotation of the canvas (%1)")
-        .arg(mKeyHints.resetRotation);
-}
-QString ToolViewModel::rotateClockwiseTip() const {
-    return QCoreApplication::translate("gui::ToolWidget", "Rotate the canvas clockwise (%1)")
-        .arg(mKeyHints.rotateClockwise);
-}
-QString ToolViewModel::flipCanvasTip() const {
-    return QCoreApplication::translate("gui::ToolWidget", "Flip canvas");
-}
-
 QString ToolViewModel::sizeKeyTip() const {
     return tr("Brush size (%1 / %2)").arg(mKeyHints.brushSizeDecrease, mKeyHints.brushSizeIncrease);
 }
@@ -841,34 +780,6 @@ QString ToolViewModel::sizeKeyTip() const {
 QString ToolViewModel::hardnessKeyTip() const {
     return tr("Brush hardness (%1 / %2)")
         .arg(mKeyHints.brushHardnessDecrease, mKeyHints.brushHardnessIncrease);
-}
-
-// The three rotation verbs are TRIGGERS, not states: the setting is a flag the main
-// view consumes on the same call (MainDisplayWidget::onViewSettingChanged), which is
-// why it is raised, announced and lowered again - the deleted ViewPanel did exactly
-// this and a latched flag would rotate on every later view change.
-void ToolViewModel::rotateCounterClockwise() {
-    if (!mViewSetting)
-        return;
-    mViewSetting->rotateViewACW = true;
-    emit viewSettingsChanged();
-    mViewSetting->rotateViewACW = false;
-}
-
-void ToolViewModel::resetRotation() {
-    if (!mViewSetting)
-        return;
-    mViewSetting->resetRotateView = true;
-    emit viewSettingsChanged();
-    mViewSetting->resetRotateView = false;
-}
-
-void ToolViewModel::rotateClockwise() {
-    if (!mViewSetting)
-        return;
-    mViewSetting->rotateViewCW = true;
-    emit viewSettingsChanged();
-    mViewSetting->rotateViewCW = false;
 }
 
 //-------------------------------------------------------------------------------------------------

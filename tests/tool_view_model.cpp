@@ -29,7 +29,6 @@
 
 #include <cmath>
 
-#include "gui/MainViewSetting.h"
 #include "gui/qml/ToolViewModel.h"
 
 namespace {
@@ -56,9 +55,7 @@ bool near(double aLhs, double aRhs) { return std::fabs(aLhs - aRhs) < 1.0e-5; }
 int main(int argc, char** argv) {
     QCoreApplication app(argc, argv);
 
-    gui::MainViewSetting view;
     gui::ToolViewModel model;
-    model.setViewSetting(&view);
 
     // ---- signal bookkeeping ----------------------------------------------------
     int toolChangedCount = 0;
@@ -67,8 +64,6 @@ int main(int argc, char** argv) {
     int changedCount = 0;
     int stateCount = 0;
     int modeCount = 0;
-    int viewCount = 0;
-    int viewSettingsCount = 0;
     int clearCount = 0;
     int driverCount = 0;
     QObject::connect(&model, &gui::ToolViewModel::toolChanged, [&](int aOld, int aNew) {
@@ -79,8 +74,6 @@ int main(int argc, char** argv) {
     QObject::connect(&model, &gui::ToolViewModel::changed, [&]() { ++changedCount; });
     QObject::connect(&model, &gui::ToolViewModel::stateChanged, [&]() { ++stateCount; });
     QObject::connect(&model, &gui::ToolViewModel::modeChanged, [&]() { ++modeCount; });
-    QObject::connect(&model, &gui::ToolViewModel::viewChanged, [&]() { ++viewCount; });
-    QObject::connect(&model, &gui::ToolViewModel::viewSettingsChanged, [&]() { ++viewSettingsCount; });
     QObject::connect(&model, &gui::ToolViewModel::clearMaskRequested, [&]() { ++clearCount; });
     QObject::connect(&model, &gui::ToolViewModel::driverActiveChanged, [&]() { ++driverCount; });
 
@@ -497,66 +490,17 @@ int main(int argc, char** argv) {
     check(lastOld == int(ctrl::ToolType_Mask) && lastNew == int(ctrl::ToolType_SRT),
           QStringLiteral("the last change still carried its (old, new) pair"));
 
-    // ---- view settings ---------------------------------------------------------
-    {
-        // the three ROTATION verbs are triggers: the flag is up while the signal runs and
-        // down again afterwards (a latched flag would rotate on every later view change)
-        bool sawAcw = false;
-        bool sawReset = false;
-        bool sawCw = false;
-        QObject::connect(&model, &gui::ToolViewModel::viewSettingsChanged, [&]() {
-            sawAcw = sawAcw || view.rotateViewACW;
-            sawReset = sawReset || view.resetRotateView;
-            sawCw = sawCw || view.rotateViewCW;
-        });
-        model.rotateCounterClockwise();
-        model.resetRotation();
-        model.rotateClockwise();
-        check(sawAcw && sawReset && sawCw, QStringLiteral("view: each rotation verb raises its flag"));
-        check(!view.rotateViewACW && !view.resetRotateView && !view.rotateViewCW,
-              QStringLiteral("view: and lowers it again"));
-    }
-    model.setShowMesh(true);
-    check(view.showLayerMesh && model.showMesh(), QStringLiteral("view: Show mesh writes the setting"));
-    const int afterMesh = viewSettingsCount;
-    model.setShowMesh(true);
-    check(viewSettingsCount == afterMesh, QStringLiteral("view: writing the same value notifies nothing"));
-    model.setCutOutsideFrame(true);
-    model.setFlipCanvas(true);
-    check(view.cutImagesByTheFrame && view.flipCanvas,
-          QStringLiteral("view: the other two toggles write their settings"));
-    check(!model.viewTitle().isEmpty() && !model.showMeshTip().isEmpty()
-              && !model.cutOutsideFrameTip().isEmpty() && !model.flipCanvasTip().isEmpty(),
-          QStringLiteral("view: every strip action has its words"));
-
     // ---- the key hints the dock speaks -----------------------------------------
     gui::ToolKeyHints hints;
-    hints.rotateCounterClockwise = QStringLiteral("Alt+Q");
-    hints.resetRotation = QStringLiteral("F1");
-    hints.rotateClockwise = QStringLiteral("Alt+E");
     hints.brushSizeDecrease = QStringLiteral("[");
     hints.brushSizeIncrease = QStringLiteral("]");
     hints.brushHardnessDecrease = QStringLiteral("Shift+[");
     hints.brushHardnessIncrease = QStringLiteral("Shift+]");
     model.setKeyHints(hints);
-    check(model.rotateCounterClockwiseTip().contains(QStringLiteral("Alt+Q")),
-          QStringLiteral("the rotation tooltip names the inspired binding: %1")
-              .arg(model.rotateCounterClockwiseTip()));
-    check(model.resetRotationTip().contains(QStringLiteral("F1")), QStringLiteral("reset: F1"));
-    check(model.rotateClockwiseTip().contains(QStringLiteral("Alt+E")), QStringLiteral("clockwise: Alt+E"));
     check(model.sizeKeyTip().contains(QStringLiteral("[")) && model.sizeKeyTip().contains(QStringLiteral("]")),
           QStringLiteral("the Size row's tooltip names both notches: %1").arg(model.sizeKeyTip()));
     check(model.hardnessKeyTip().contains(QStringLiteral("Shift+]")),
           QStringLiteral("the Hardness row's tooltip names the shifted pair: %1").arg(model.hardnessKeyTip()));
-
-    // ---- a link-free view setting is a no-op, not a crash -----------------------
-    {
-        gui::ToolViewModel offline;
-        offline.setShowMesh(true);
-        offline.rotateClockwise();
-        offline.adjustBrush(+1, +1);
-        check(!offline.showMesh(), QStringLiteral("a model with no view setting answers safely"));
-    }
 
     if (failures) {
         QTextStream(stdout) << "FAILED " << failures << " check(s)\n";

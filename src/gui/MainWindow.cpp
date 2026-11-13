@@ -12,7 +12,11 @@
 #include "gui/ExportFacts.h"
 #include "gui/ExportDialog.h"
 #include "gui/CommandLogView.h"
+#include "gui/HeaderBar.h"
 #include "gui/qml/ExportViewModel.h"
+#include "gui/qml/DockSlotsModel.h"
+#include "gui/qml/MenuCommand.h"
+#include "gui/qml/ViewSettingsModel.h"
 #include "gui/DestinationPicker.h"
 #include "gui/DockDropOverlay.h"
 #include "gui/DockMetrics.h"
@@ -24,10 +28,8 @@
 #include "gui/ProjectHook.h"
 #include "gui/menu/menu_ProgressReporter.h"
 #include "util/NetworkUtil.h"
-#include <QHBoxLayout>
 #include <QTabBar>
 #include <QTimer>
-#include <QToolButton>
 #include <set>
 #include <utility>
 #include "media/FFmpegHelpers.h"
@@ -182,11 +184,12 @@ MainWindow::MainWindow(ctrl::System& aSystem, GUIResources& aResources, LocalePa
         mViaPoint.setKeyCommandInvoker(mKeyCommandInvoker.data());
     }
 
-    // create main menu bar
+    // The menu bar's command registry. The header scene is created AFTER the docks
+    // and their Panels commands, because its Actions bind to a complete registry on
+    // load; MainMenuBar itself owns no widget.
     {
         mMainMenuBar = new MainMenuBar(*this, mViaPoint, mGUIResources, this);
         mViaPoint.setMainMenuBar(mMainMenuBar);
-        this->setMenuBar(mMainMenuBar);
     }
     // initialize timer
     {
@@ -327,14 +330,21 @@ MainWindow::MainWindow(ctrl::System& aSystem, GUIResources& aResources, LocalePa
     }
 
     // panels are hidden from their own header menu, so the menu bar has to be
-    // able to bring them back: one checkable action per panel, in the order they
-    // sit in the window (left, right, bottom). The action's checked state follows
-    // the dock's visibility on its own.
+    // able to bring them back: one checkable command per panel, in the order they
+    // sit in the window (left, right, bottom). The command's checked state is read
+    // back from the dock after every layout pass, never assumed from the click.
     {
-        QMenu* panelsMenu = mMainMenuBar->viewMenu;
         for (QDockWidget* dock : {mDockToolWidget, mDockPropertyWidget, mDockAnimationWidget}) {
-            QAction* action = dock->toggleViewAction();
-            panelsMenu->addAction(action);
+            const QString id = QStringLiteral("panel")
+                               + (dock == mDockToolWidget ? QStringLiteral("Tools")
+                                 : dock == mDockPropertyWidget ? QStringLiteral("Properties")
+                                                               : QStringLiteral("Animation"));
+            MenuCommand* command = mMainMenuBar->addCommand(id, dock->windowTitle(), {}, true);
+            connect(command, &MenuCommand::triggered, this, [this, dock]() {
+                dock->setVisible(!dock->isVisible());
+                updateLayoutButtons();
+            });
+            mPanelToggles.push_back({dock, command});
         }
     }
 
@@ -401,19 +411,31 @@ MainWindow::MainWindow(ctrl::System& aSystem, GUIResources& aResources, LocalePa
     if (mDockAnimationWidget) mDockAnimationWidget->setMinimumHeight(296);
     mDockOpeningFloors = true;
 
-    // Layout toggles in the menu bar's top-right corner, where VS Code keeps
-    // them - one per *slot*, not one per panel. A slot is a place a panel can be
-    // (left side, right side, bottom), it exists whether or not anything is in it,
-    // and its glyph is the slot's shape and never changes: a button whose picture
-    // followed a panel around the window was describing the panel, which the tab
-    // already does. A slot with nothing in it is simply empty, and its button says
-    // so by being disabled.
+    // The header itself: one Qt Quick scene for the menu bar, the view settings and
+    // the slot toggles. It is created here, after the Panels commands, so the QML
+    // Actions bind to a complete command registry the first time they evaluate.
     {
-        auto* row = new QWidget(mMainMenuBar);
-        auto* rowLayout = new QHBoxLayout(row);
-        rowLayout->setContentsMargins(0, 0, 6, 0);
-        rowLayout->setSpacing(2);
+        mHeaderBar = new HeaderBar(*mMainMenuBar, mViaPoint, *mKeyCommandMap, mLocaleParam, this);
+        this->setMenuWidget(mHeaderBar);
+        connect(mHeaderBar, &HeaderBar::dockSlotToggleRequested,
+                this, &MainWindow::onDockSlotToggleRequested);
+        connect(mHeaderBar, &HeaderBar::viewSettingChanged, this, [this]() {
+            if (mMainDisplay)
+                mMainDisplay->onViewSettingChanged(mViaPoint.mainViewSetting());
+        });
+    }
 
+    // Layout toggles in the header, where VS Code keeps them - one per *slot*, not
+    // one per panel. A slot is a place a panel can be (left side, right side, bottom),
+    // it exists whether or not anything is in it, and its glyph is the slot's shape
+    // and never changes: a button whose picture followed a panel around the window was
+    // describing the panel, which the tab already does. A slot with nothing in it is
+    // simply empty, and its button says so by being disabled.
+    //
+    // The buttons themselves are HeaderSlotButton instances in qml/HeaderBar.qml;
+    // this window owns only the model's contents and the toggle. The labels stay here
+    // because their context is the window's, where the docking code lives.
+    {
         struct Slot {
             Qt::DockWidgetArea area;
             const char* glyph;
@@ -425,38 +447,15 @@ MainWindow::MainWindow(ctrl::System& aSystem, GUIResources& aResources, LocalePa
             {Qt::BottomDockWidgetArea, "sidebar-bottom", QT_TR_NOOP("bottom")},
         };
 
+        QVector<DockSlotSpec> specs;
         for (const Slot& slot : kSlots) {
-            auto* button = new QToolButton(row);
-            button->setObjectName(QStringLiteral("dockToggle"));
-            button->setFocusPolicy(Qt::NoFocus);
-            button->setAutoRaise(true);
-            button->setCheckable(true);
-            button->setIconSize(QSize(18, 18));
-            button->setIcon(mGUIResources.icon(QString::fromLatin1(slot.glyph)));
-
-            connect(button, &QToolButton::clicked, this, [this, slot]() {
-                // whatever is in the slot, shown or hidden: one button, one slot
-                QVector<QDockWidget*> inSlot;
-                bool anyVisible = false;
-                for (QDockWidget* dock : {mDockToolWidget, mDockPropertyWidget, mDockAnimationWidget}) {
-                    if (dockWidgetArea(dock) != slot.area) continue;
-                    inSlot.push_back(dock);
-                    anyVisible = anyVisible || dock->isVisible();
-                }
-                for (QDockWidget* dock : inSlot)
-                    dock->setVisible(!anyVisible);
-                updateLayoutButtons();
-            });
-
-            // tr() the *fragment* here, from the QT_TR_NOOP above, so the whole
-            // tooltip is in one language rather than English inside a translated
-            // sentence.
-            mLayoutButtons.push_back(
-                    {button, slot.area, QString::fromLatin1(slot.glyph), tr(slot.name)});
-            rowLayout->addWidget(button);
+            // tr() the *fragment* from the QT_TR_NOOP above, so the whole tooltip is
+            // in one language rather than English inside a translated sentence.
+            const QString name = tr(slot.name);
+            specs.push_back({slot.area, QString::fromLatin1(slot.glyph), tr("Show or hide the %1").arg(name)});
+            mLayoutSlots.push_back({slot.area, QString::fromLatin1(slot.glyph), name});
         }
-
-        mMainMenuBar->setCornerWidget(row, Qt::TopRightCorner);
+        mHeaderBar->dockSlots()->setSlots(specs);
         updateLayoutButtons();
     }
 
@@ -547,7 +546,16 @@ MainWindow::MainWindow(ctrl::System& aSystem, GUIResources& aResources, LocalePa
                 mProperty->invertMask();
         });
         tool.onFinalizeTool.connect(&disp, &MainDisplayWidget::onFinalizeTool);
-        tool.onViewSettingChanged.connect(&disp, &MainDisplayWidget::onViewSettingChanged);
+        // The FFD tool's autoshow-mesh convenience writes the same view setting the
+        // header's buttons write; both end at the viewport's one consumer. The
+        // header's Show mesh button is a binding to ViewSettingsModel, so a direct
+        // write from the tool also has to re-announce the setting or the button
+        // would keep the old check state.
+        tool.onViewSettingChanged.connect([this, &disp](const MainViewSetting& aSetting) {
+            if (mHeaderBar)
+                mHeaderBar->viewSettings()->refresh();
+            disp.onViewSettingChanged(aSetting);
+        });
 
         objTree.onSelectionChanged.connect(&driver, &DriverHolder::onSelectionChanged);
         objTree.onSelectionChanged.connect(mProperty, &PropertyWidget::onSelectionChanged);
@@ -909,11 +917,9 @@ void MainWindow::onThemeUpdated(theme::Theme& aTheme) {
         this->setStyleSheet(fontOption + standard);
     }
 
-    // The layout toggles hold QIcons built from the previous theme's tinted
-    // files. The icon map is reloaded before this signal, so re-reading it is
-    // what makes the checked/unchecked pair follow a theme switch.
-    for (const LayoutButton& entry : mLayoutButtons)
-        entry.button->setIcon(mGUIResources.icon(entry.glyph));
+    // The header scene re-reads the palette and reloads its tinted glyphs from the
+    // generation in QmlTheme::iconUrl.
+    if (mHeaderBar) mHeaderBar->refreshTheme();
 
     mDockPropertyWidget->setStyleSheet(aTheme.loadStylesheet("propertywidget.ssa"));
     if (mProperty) mProperty->refreshTheme();
@@ -2931,7 +2937,14 @@ void MainWindow::updateTitleRows() {
 /// rather than from each dock's visibility signal, because what the button
 /// describes is the *slot*, which no single panel owns.
 void MainWindow::updateLayoutButtons() {
-    for (const LayoutButton& entry : mLayoutButtons) {
+    if (!mHeaderBar)
+        return;
+    // The Panels rows describe the same docks as the slot buttons, but one dock at a
+    // time: a panel hidden inside a visible slot leaves the slot lit and its own row
+    // unchecked.
+    for (const PanelToggle& entry : mPanelToggles)
+        entry.command->setChecked(entry.dock && entry.dock->isVisible());
+    for (const LayoutSlot& entry : mLayoutSlots) {
         QVector<QDockWidget*> inSlot;
         bool anyVisible = false;
         for (QDockWidget* dock : {mDockToolWidget, mDockPropertyWidget, mDockAnimationWidget}) {
@@ -2939,15 +2952,35 @@ void MainWindow::updateLayoutButtons() {
             inSlot.push_back(dock);
             anyVisible = anyVisible || dock->isVisible();
         }
-        entry.button->setEnabled(!inSlot.isEmpty());
-        entry.button->setChecked(anyVisible);
         // An icon-only button has no text for assistive technology to read, so
-        // the slot's name goes in the accessible name as well as the tooltip.
-        entry.button->setAccessibleName(tr("Show or hide the %1").arg(entry.name));
-        entry.button->setToolTip(inSlot.isEmpty()
-                ? tr("Nothing is docked on the %1").arg(entry.name)
-                : tr("Show or hide the %1").arg(entry.name));
+        // the slot's name goes in the accessible name as well as the tooltip. The
+        // tooltip is the state-sensitive half: an empty slot explains why the button
+        // is disabled instead of repeating "Show or hide".
+        mHeaderBar->dockSlots()->setSlotState(
+            entry.area,
+            anyVisible,
+            !inSlot.isEmpty(),
+            tr("Show or hide the %1").arg(entry.name),
+            inSlot.isEmpty() ? tr("Nothing is docked on the %1").arg(entry.name)
+                             : tr("Show or hide the %1").arg(entry.name));
     }
+}
+
+/// The slot button's request: whatever is in the slot, shown or hidden, one button
+/// and one slot. The checked state is not assumed here; updateLayoutButtons reads it
+/// back from the docks after the visibility change.
+void MainWindow::onDockSlotToggleRequested(int aArea) {
+    const auto area = Qt::DockWidgetArea(aArea);
+    QVector<QDockWidget*> inSlot;
+    bool anyVisible = false;
+    for (QDockWidget* dock : {mDockToolWidget, mDockPropertyWidget, mDockAnimationWidget}) {
+        if (!dock || dockWidgetArea(dock) != area) continue;
+        inSlot.push_back(dock);
+        anyVisible = anyVisible || dock->isVisible();
+    }
+    for (QDockWidget* dock : inSlot)
+        dock->setVisible(!anyVisible);
+    updateLayoutButtons();
 }
 
 } // namespace gui

@@ -489,6 +489,19 @@
     </message>
 </context>
 <context>
+    <name>AnimeEffects.Header</name>
+    <message>
+        <location filename="../../src/gui/qml/HeaderSlotButton.qml" line="65"/>
+        <source>On</source>
+        <translation type="unfinished">开</translation>
+    </message>
+    <message>
+        <location filename="../../src/gui/qml/HeaderSlotButton.qml" line="65"/>
+        <source>Off</source>
+        <translation type="unfinished">关</translation>
+    </message>
+</context>
+<context>
     <name>AnimeEffects.Properties</name>
     <message>
         <location filename="../../src/gui/qml/PropertiesPanel.qml" line="89"/>
@@ -701,92 +714,92 @@
 <context>
     <name>AnimeEffects.Tools</name>
     <message>
-        <location filename="../../src/gui/qml/ToolsPanel.qml" line="163"/>
+        <location filename="../../src/gui/qml/ToolsPanel.qml" line="116"/>
         <source>Clear</source>
         <translation type="unfinished">清除</translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ToolsPanel.qml" line="164"/>
+        <location filename="../../src/gui/qml/ToolsPanel.qml" line="117"/>
         <source>Clear the field being painted (one undo step)</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ToolsPanel.qml" line="198"/>
+        <location filename="../../src/gui/qml/ToolsPanel.qml" line="151"/>
         <source>Weights</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ToolsPanel.qml" line="230"/>
+        <location filename="../../src/gui/qml/ToolsPanel.qml" line="183"/>
         <source>Mesh changed since bake</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ToolsPanel.qml" line="276"/>
+        <location filename="../../src/gui/qml/ToolsPanel.qml" line="229"/>
         <source>Bake</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ToolsPanel.qml" line="276"/>
+        <location filename="../../src/gui/qml/ToolsPanel.qml" line="229"/>
         <source>Rebake</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ToolsPanel.qml" line="286"/>
+        <location filename="../../src/gui/qml/ToolsPanel.qml" line="239"/>
         <source>Evaluate the selected bone&apos;s live envelope once, so the brush can paint it</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ToolsPanel.qml" line="287"/>
+        <location filename="../../src/gui/qml/ToolsPanel.qml" line="240"/>
         <source>Replace the selected bone&apos;s authored field with the current envelope (one undo step)</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ToolsPanel.qml" line="299"/>
+        <location filename="../../src/gui/qml/ToolsPanel.qml" line="252"/>
         <source>Rebake All</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ToolsPanel.qml" line="302"/>
+        <location filename="../../src/gui/qml/ToolsPanel.qml" line="255"/>
         <source>Revert to Envelope</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ToolsPanel.qml" line="304"/>
+        <location filename="../../src/gui/qml/ToolsPanel.qml" line="257"/>
         <source>Clear Weights</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ToolsPanel.qml" line="308"/>
+        <location filename="../../src/gui/qml/ToolsPanel.qml" line="261"/>
         <source>More weight actions</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ToolsPanel.qml" line="318"/>
+        <location filename="../../src/gui/qml/ToolsPanel.qml" line="271"/>
         <source>Paint</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ToolsPanel.qml" line="327"/>
+        <location filename="../../src/gui/qml/ToolsPanel.qml" line="280"/>
         <source>Paint mode</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ToolsPanel.qml" line="339"/>
+        <location filename="../../src/gui/qml/ToolsPanel.qml" line="292"/>
         <source>Right-click a bone to target it; the brush edits only that bone</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ToolsPanel.qml" line="396"/>
+        <location filename="../../src/gui/qml/ToolsPanel.qml" line="349"/>
         <source>Target</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ToolsPanel.qml" line="408"/>
+        <location filename="../../src/gui/qml/ToolsPanel.qml" line="361"/>
         <source>Mask target</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ToolsPanel.qml" line="430"/>
+        <location filename="../../src/gui/qml/ToolsPanel.qml" line="383"/>
         <location filename="../../src/gui/qml/ToolBrushSection.qml" line="51"/>
         <source>Value</source>
         <translation type="unfinished"></translation>
@@ -797,22 +810,22 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ToolsPanel.qml" line="456"/>
+        <location filename="../../src/gui/qml/ToolsPanel.qml" line="409"/>
         <source>Show weights</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ToolsPanel.qml" line="457"/>
+        <location filename="../../src/gui/qml/ToolsPanel.qml" line="410"/>
         <source>Colour the layers this bone deforms by its influence weight</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ToolIconButton.qml" line="54"/>
+        <location filename="../../src/gui/qml/ToolIconButton.qml" line="60"/>
         <source>On</source>
         <translation type="unfinished">开</translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ToolIconButton.qml" line="54"/>
+        <location filename="../../src/gui/qml/ToolIconButton.qml" line="60"/>
         <source>Off</source>
         <translation type="unfinished">关</translation>
     </message>
@@ -1534,7 +1547,7 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainMenuBar.cpp" line="581"/>
+        <location filename="../../src/gui/MainMenuBar.cpp" line="464"/>
         <source>Change the canvas size</source>
         <translation>修改画布尺寸</translation>
     </message>
@@ -1543,22 +1556,22 @@
         <translation type="vanished">修改最大帧数</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainMenuBar.cpp" line="602"/>
+        <location filename="../../src/gui/MainMenuBar.cpp" line="484"/>
         <source>Change the frame range</source>
         <translation>更改帧范围</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainMenuBar.cpp" line="623"/>
+        <location filename="../../src/gui/MainMenuBar.cpp" line="504"/>
         <source>Change loop settings</source>
         <translation>修改循环设置</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainMenuBar.cpp" line="645"/>
+        <location filename="../../src/gui/MainMenuBar.cpp" line="525"/>
         <source>Change the FPS</source>
         <translation>修改帧率FPS</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainMenuBar.cpp" line="673"/>
+        <location filename="../../src/gui/MainMenuBar.cpp" line="553"/>
         <source>Change the viewport background</source>
         <translation>修改视口背景</translation>
     </message>
@@ -3484,6 +3497,191 @@ The %2 encoder could not be opened either (%3).</source>
     </message>
 </context>
 <context>
+    <name>MainMenuBar</name>
+    <message>
+        <source>New project</source>
+        <translation type="obsolete">新建项目</translation>
+    </message>
+    <message>
+        <source>Open project</source>
+        <translation type="obsolete">打开项目</translation>
+    </message>
+    <message>
+        <source>Save project</source>
+        <translation type="obsolete">保存项目</translation>
+    </message>
+    <message>
+        <source>Save project as</source>
+        <translation type="obsolete">另存为</translation>
+    </message>
+    <message>
+        <source>Export project as</source>
+        <translation type="obsolete">导出项目为</translation>
+    </message>
+    <message>
+        <source>Quickly export as...</source>
+        <translation type="obsolete">快速导出为...</translation>
+    </message>
+    <message>
+        <source>Export again</source>
+        <translation type="obsolete">再次导出</translation>
+    </message>
+    <message>
+        <source>Close project</source>
+        <translation type="obsolete">关闭项目</translation>
+    </message>
+    <message>
+        <source>No other projects</source>
+        <translation type="obsolete">没有其他项目</translation>
+    </message>
+    <message>
+        <source>Undo</source>
+        <translation type="obsolete">撤销</translation>
+    </message>
+    <message>
+        <source>Redo</source>
+        <translation type="obsolete">重置</translation>
+    </message>
+    <message>
+        <source>Project settings</source>
+        <translation type="obsolete">项目设置</translation>
+    </message>
+    <message>
+        <source>Assets</source>
+        <translation type="obsolete">素材</translation>
+    </message>
+    <message>
+        <source>Settings</source>
+        <translation type="obsolete">设置</translation>
+    </message>
+    <message>
+        <source>Keybindings</source>
+        <translation type="obsolete">快捷键</translation>
+    </message>
+    <message>
+        <source>About AnimeEffects</source>
+        <translation type="obsolete">关于AnimeEffects</translation>
+    </message>
+    <message>
+        <source>### AnimeEffects for </source>
+        <translation type="obsolete">### AnimeEffects 适用于 </translation>
+    </message>
+    <message>
+        <source> version </source>
+        <translation type="obsolete">版本</translation>
+    </message>
+    <message>
+        <source>An easy to use 2D animation software maintained by the [AnimeEffectsDevs](https://github.com/AnimeEffectsDevs).&lt;br /&gt;Licensed under the GPL v3.0 and powered by various open source libraries.</source>
+        <translation type="obsolete">一款由 [AnimeEffectsDevs] 维护的易于使用的2D动画软件。(https://github.com/AnimeEffectsDevs).&lt;br /&gt;根据GPL v3.0许可证授权，并由多种开源库提供支持。</translation>
+    </message>
+    <message>
+        <source>&lt;br /&gt;&lt;br /&gt;Video/audio encoding uses the FFmpeg libraries (https://ffmpeg.org), which are licensed under the GNU Lesser GPL v2.1+ (or GPL, depending on the build). Their corresponding source is available as required by that license.</source>
+        <translation type="obsolete">&lt;br /&gt;&lt;br /&gt;视频/音频编码使用 FFmpeg 库（https://ffmpeg.org），这些库按 GNU Lesser GPL v2.1+（视构建方式也可能为 GPL）授权。我们按照该许可的要求提供其对应源代码。</translation>
+    </message>
+    <message>
+        <source>&lt;br /&gt;&lt;br /&gt;Contributors:&lt;br /&gt;[Hidefuku](https://github.com/hidefuku), [Yukusai](https://github.com/p-yukusai), [Gambot](https://github.com/GbotHQ), [Arrangemonk](https://github.com/Arrangemonk), [OneByStudio](https://onebystudio.com), [Larpon](https://github.com/larpon), [Herace](https://github.com/herace), [Aodaruma](https://github.com/Aodaruma), [Azagaya](https://github.com/azagaya), [FoxyHawk](https://github.com/FoxyHawk), [Nanashia](https://github.com/Nanashia), [Henrich](https://github.com/henrich), [mcddx330](https://github.com/mcddx330), [Freddii](https://github.com/freddii), [Aki017](https://github.com/aki017), [PicoHz](https://github.com/picoHz), [Peter9811](https://github.com/peter9811), [GES233](https://github.com/GES233), [h-banii](https://github.com/h-banii), [henrich](https://github.com/henrich), [Nanashia](https://github.com/Nanashia).
+If we forgot to include you please let us know or open a PR!</source>
+        <translation type="obsolete">&lt;br /&gt;&lt;br /&gt;贡献者：&lt;br /&gt;[Hidefuku](https://github.com/hidefuku), [Yukusai](https://github.com/p-yukusai), [Gambot](https://github.com/GbotHQ), [Arrangemonk](https://github.com/Arrangemonk), [OneByStudio](https://onebystudio.com), [Larpon](https://github.com/larpon), [Herace](https://github.com/herace), [Aodaruma](https://github.com/Aodaruma), [Azagaya](https://github.com/azagaya), [FoxyHawk](https://github.com/FoxyHawk), [Nanashia](https://github.com/Nanashia), [Henrich](https://github.com/henrich), [mcddx330](https://github.com/mcddx330), [Freddii](https://github.com/freddii), [Aki017](https://github.com/aki017), [PicoHz](https://github.com/picoHz), [Peter9811](https://github.com/peter9811), [GES233](https://github.com/GES233), [h-banii](https://github.com/h-banii), [henrich](https://github.com/henrich), [Nanashia](https://github.com/Nanashia).
+如有遗漏，请告知我们或提交 PR！</translation>
+    </message>
+    <message>
+        <source>About us</source>
+        <translation type="obsolete">关于我们</translation>
+    </message>
+    <message>
+        <source>Check for updates</source>
+        <translation type="obsolete">检查更新</translation>
+    </message>
+    <message>
+        <source>System telemetry</source>
+        <translation type="obsolete">系统遥测</translation>
+    </message>
+    <message>
+        <source>Version: </source>
+        <translation type="obsolete">版本: </translation>
+    </message>
+    <message>
+        <source>Format version: </source>
+        <translation type="obsolete">格式版本： </translation>
+    </message>
+    <message>
+        <source>Platform: </source>
+        <translation type="obsolete">平台: </translation>
+    </message>
+    <message>
+        <source>Build ABI: </source>
+        <translation type="obsolete">生成 ABI： </translation>
+    </message>
+    <message>
+        <source>CPU vendor: </source>
+        <translation type="obsolete">CPU 供应商： </translation>
+    </message>
+    <message>
+        <source>CPU architecture: </source>
+        <translation type="obsolete">CPU 结构： </translation>
+    </message>
+    <message>
+        <source>CPU threads: </source>
+        <translation type="obsolete">CPU 线程： </translation>
+    </message>
+    <message>
+        <source>System RAM:</source>
+        <translation type="obsolete">系统 RAM</translation>
+    </message>
+    <message>
+        <source>System </source>
+        <translation type="obsolete">系统 </translation>
+    </message>
+    <message>
+        <source>Current GPU: </source>
+        <translation type="obsolete">当前 GPU: </translation>
+    </message>
+    <message>
+        <source>GPU Vendor: </source>
+        <translation type="obsolete">GPU 厂商: </translation>
+    </message>
+    <message>
+        <source>Max VRAM: </source>
+        <translation type="obsolete">最大显存：</translation>
+    </message>
+    <message>
+        <source>OpenGL version: </source>
+        <translation type="obsolete">OpenGL 版本： </translation>
+    </message>
+    <message>
+        <source>Qt Version: </source>
+        <translation type="obsolete">Qt 版本: </translation>
+    </message>
+    <message>
+        <source>System locale: </source>
+        <translation type="obsolete">系统本地化： </translation>
+    </message>
+    <message>
+        <source>Location Has Unicode: </source>
+        <translation type="obsolete">位置包含 Unicode 字符：</translation>
+    </message>
+    <message>
+        <source>Location Is Writable: </source>
+        <translation type="obsolete">位置可写： </translation>
+    </message>
+    <message>
+        <source>libav licence: </source>
+        <translation type="obsolete">libav 许可证： </translation>
+    </message>
+    <message>
+        <source>libav configuration: </source>
+        <translation type="obsolete">libav 配置： </translation>
+    </message>
+    <message>
+        <source>System specs successfully copied to the clipboard</source>
+        <translation type="obsolete">系统规格已成功复制到剪贴板。</translation>
+    </message>
+    <message>
+        <source>Donate</source>
+        <translation type="obsolete">捐赠</translation>
+    </message>
+</context>
+<context>
     <name>MainWindow</name>
     <message>
         <location filename="../../src/gui/ExportFacts.cpp" line="31"/>
@@ -3658,6 +3856,120 @@ The %2 encoder could not be opened either (%3).</source>
         <source>, </source>
         <translation>、</translation>
     </message>
+    <message>
+        <source>Animation</source>
+        <translation type="obsolete">动画</translation>
+    </message>
+    <message>
+        <source>Properties</source>
+        <translation type="obsolete">属性</translation>
+    </message>
+    <message>
+        <source>Tools</source>
+        <translation type="obsolete">工具</translation>
+    </message>
+    <message>
+        <source>left side</source>
+        <translation type="obsolete">左侧</translation>
+    </message>
+    <message>
+        <source>right side</source>
+        <translation type="obsolete">右侧</translation>
+    </message>
+    <message>
+        <source>bottom</source>
+        <translation type="obsolete">底部</translation>
+    </message>
+    <message>
+        <source>Show or hide the %1</source>
+        <translation type="obsolete">显示或隐藏%1</translation>
+    </message>
+    <message>
+        <source>Theme changed</source>
+        <translation type="obsolete">主题已更改</translation>
+    </message>
+    <message>
+        <source>There may be visual artifacts after changing themes, we recommend you restart the application.</source>
+        <translation type="obsolete">更换主题后可能会出现视觉障碍，建议重新启动应用程序。</translation>
+    </message>
+    <message>
+        <source> has been modified. Save changes?</source>
+        <translation type="obsolete"> 已改动。保存变动？</translation>
+    </message>
+    <message>
+        <source>Some projects have been modified. Save changes?</source>
+        <translation type="obsolete">一些项目已被修改。保存修改？</translation>
+    </message>
+    <message>
+        <source>Save Changes</source>
+        <translation type="obsolete">保存更改</translation>
+    </message>
+    <message>
+        <source>Discard Changes</source>
+        <translation type="obsolete">放弃修改</translation>
+    </message>
+    <message>
+        <source>Cancel</source>
+        <translation type="obsolete">取消</translation>
+    </message>
+    <message>
+        <source>Loading Error</source>
+        <translation type="obsolete">加载错误</translation>
+    </message>
+    <message>
+        <source>Open File</source>
+        <translation type="obsolete">打开文件</translation>
+    </message>
+    <message>
+        <source>Recover unsaved project?</source>
+        <translation type="obsolete">恢复未保存的项目？</translation>
+    </message>
+    <message>
+        <source>AnimeEffects found an unsaved project from a previous session:
+%1
+
+Open it?</source>
+        <translation type="obsolete">AnimeEffects 找到了上一个会话的未保存项目：
+%1
+
+要打开它吗？</translation>
+    </message>
+    <message>
+        <source>Save File</source>
+        <translation type="obsolete">保存文件</translation>
+    </message>
+    <message>
+        <source>Exported %1 (%2 KB)</source>
+        <translation type="obsolete">已导出 %1（%2 KB）</translation>
+    </message>
+    <message>
+        <source> (%1 of %2 KB allowed for %3)</source>
+        <translation type="obsolete"> （%1，%3 的上限为 %2 KB）</translation>
+    </message>
+    <message>
+        <source>; OVER THE LIMIT, it will be rejected</source>
+        <translation type="obsolete">；已超出上限，将被拒收</translation>
+    </message>
+    <message>
+        <source>Export Folder</source>
+        <translation type="obsolete">导出文件</translation>
+    </message>
+    <message>
+        <source>All files (*)</source>
+        <translation type="obsolete">所有文件 (*)</translation>
+    </message>
+    <message>
+        <source>%1 files (*.%2)</source>
+        <translation type="obsolete">%1 文件 (*.%2)</translation>
+    </message>
+    <message>
+        <source>Export File</source>
+        <translation type="obsolete">导出文件</translation>
+    </message>
+    <message>
+        <source>Nothing is docked on the %1</source>
+        <translation type="obsolete">%1上没有停靠的面板</translation>
+    </message>
 </context>
 <context>
     <name>NetworkCheckForUpdate</name>
@@ -3775,60 +4087,60 @@ The %2 encoder could not be opened either (%3).</source>
         <translation type="vanished">需要 %1</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainWindow.cpp" line="1756"/>
-        <location filename="../../src/gui/MainWindow.cpp" line="1819"/>
-        <location filename="../../src/gui/MainWindow.cpp" line="1919"/>
-        <location filename="../../src/gui/MainWindow.cpp" line="1964"/>
-        <location filename="../../src/gui/MainWindow.cpp" line="2014"/>
-        <location filename="../../src/gui/MainWindow.cpp" line="2041"/>
-        <location filename="../../src/gui/MainWindow.cpp" line="2072"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="1754"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="1817"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="1917"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="1962"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="2012"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="2039"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="2070"/>
         <source>Export Error</source>
         <translation>导出错误</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainWindow.cpp" line="1757"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="1755"/>
         <source>Unknown export destination: %1</source>
         <translation>未知的导出目的地：%1</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainWindow.cpp" line="1848"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="1846"/>
         <source>File exists</source>
         <translation>文件已存在</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainWindow.cpp" line="1849"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="1847"/>
         <source>The file &quot;%1&quot; already exists. Overwrite?</source>
         <translation>文件“%1”已存在。要覆盖吗？</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainWindow.cpp" line="1920"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="1918"/>
         <source>%1 caps the file size, which means encoding it more than once, and that needs all %2 frames in memory (~%3 MB). Export fewer frames, or choose a destination without a size limit.</source>
         <translation>%1限制了文件大小，这意味着需要多次编码，而这需要把全部%2帧都放在内存中（约%3 MB）。请减少导出帧数，或选择没有体积限制的目的地。</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainWindow.cpp" line="1938"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="1936"/>
         <source>Fitting under %1&apos;s %2 KB limit...</source>
         <translation>正在适配%1的%2 KB上限...</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainWindow.cpp" line="1951"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="1949"/>
         <source>Export Canceled</source>
         <translation>导出已取消</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainWindow.cpp" line="1952"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="1950"/>
         <source>The export was stopped while fitting under %1&apos;s size limit. The file already written is the last attempt, and may exceed the limit.</source>
         <translation>在适配%1的体积上限时导出被中止。已写入的文件是最后一次尝试的结果，可能超出该上限。</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainWindow.cpp" line="1965"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="1963"/>
         <source>%1 caps the file at %2 KB and even the smallest setting did not fit it (%3 KB).
 %4</source>
         <translation>%1把文件限制在%2 KB以内，而即使最小的设置也放不进（%3 KB）。
 %4</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainWindow.cpp" line="1973"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="1971"/>
         <source>Fitted to %1 bytes in %2 attempts (%3x%4).</source>
         <translation>经过%2次尝试后适配到%1字节（%3x%4）。</translation>
     </message>
@@ -4072,6 +4384,33 @@ The %2 encoder could not be opened either (%3).</source>
         <location filename="../../src/ctrl/bone/bone_PaintWeightsMode.cpp" line="518"/>
         <source>There is no bone key at this frame.</source>
         <translation type="unfinished"></translation>
+    </message>
+</context>
+<context>
+    <name>ViewSettingsModel</name>
+    <message>
+        <source>Show mesh</source>
+        <translation type="obsolete">显示网格</translation>
+    </message>
+    <message>
+        <source>Do not draw outside the frame</source>
+        <translation type="obsolete">不在框外绘制</translation>
+    </message>
+    <message>
+        <source>Rotate the canvas counterclockwise (%1)</source>
+        <translation type="obsolete">逆时针旋转画布 (%1)</translation>
+    </message>
+    <message>
+        <source>Reset rotation of the canvas (%1)</source>
+        <translation type="obsolete">重置画布的旋转 (%1)</translation>
+    </message>
+    <message>
+        <source>Rotate the canvas clockwise (%1)</source>
+        <translation type="obsolete">顺时针旋转画布 (%1)</translation>
+    </message>
+    <message>
+        <source>Flip canvas</source>
+        <translation type="obsolete">翻转画布</translation>
     </message>
 </context>
 <context>
@@ -5621,47 +5960,47 @@ Check FFmpeg palette generation 🗸</source>
 <context>
     <name>gui::MainMenuBar</name>
     <message>
-        <location filename="../../src/gui/MainMenuBar.cpp" line="92"/>
+        <location filename="../../src/gui/MainMenuBar.h" line="85"/>
         <source>File</source>
         <translation>文件</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainMenuBar.cpp" line="94"/>
+        <location filename="../../src/gui/MainMenuBar.cpp" line="106"/>
         <source>New project</source>
         <translation>新建项目</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainMenuBar.cpp" line="95"/>
+        <location filename="../../src/gui/MainMenuBar.cpp" line="107"/>
         <source>Open project</source>
         <translation>打开项目</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainMenuBar.cpp" line="96"/>
+        <location filename="../../src/gui/MainMenuBar.h" line="90"/>
         <source>Open recent</source>
         <translation>打开最近</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainMenuBar.cpp" line="122"/>
+        <location filename="../../src/gui/MainMenuBar.cpp" line="149"/>
         <source>No other projects</source>
         <translation>没有其他项目</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainMenuBar.cpp" line="179"/>
+        <location filename="../../src/gui/MainMenuBar.cpp" line="109"/>
         <source>Save project</source>
         <translation>保存项目</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainMenuBar.cpp" line="180"/>
+        <location filename="../../src/gui/MainMenuBar.cpp" line="110"/>
         <source>Save project as</source>
         <translation>另存为</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainMenuBar.cpp" line="181"/>
+        <location filename="../../src/gui/MainMenuBar.cpp" line="128"/>
         <source>Close project</source>
         <translation>关闭项目</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainMenuBar.cpp" line="182"/>
+        <location filename="../../src/gui/MainMenuBar.cpp" line="113"/>
         <source>Export project as</source>
         <translation>导出项目为</translation>
     </message>
@@ -5714,32 +6053,32 @@ Check FFmpeg palette generation 🗸</source>
         <translation type="vanished">AVI</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainMenuBar.cpp" line="237"/>
+        <location filename="../../src/gui/MainMenuBar.h" line="86"/>
         <source>Edit</source>
         <translation>编辑</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainMenuBar.cpp" line="239"/>
+        <location filename="../../src/gui/MainMenuBar.cpp" line="158"/>
         <source>Undo</source>
         <translation>撤销</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainMenuBar.cpp" line="240"/>
+        <location filename="../../src/gui/MainMenuBar.cpp" line="160"/>
         <source>Redo</source>
         <translation>重置</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainMenuBar.cpp" line="242"/>
+        <location filename="../../src/gui/MainMenuBar.cpp" line="164"/>
         <source>Assets</source>
         <translation>素材</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainMenuBar.cpp" line="269"/>
+        <location filename="../../src/gui/MainMenuBar.h" line="88"/>
         <source>Preferences</source>
         <translation>偏好设置</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainMenuBar.cpp" line="271"/>
+        <location filename="../../src/gui/MainMenuBar.cpp" line="174"/>
         <source>Settings</source>
         <translation>设置</translation>
     </message>
@@ -5752,37 +6091,37 @@ Check FFmpeg palette generation 🗸</source>
         <translation type="vanished">鼠标设置</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainMenuBar.cpp" line="272"/>
+        <location filename="../../src/gui/MainMenuBar.cpp" line="189"/>
         <source>Keybindings</source>
         <translation>快捷键</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainMenuBar.cpp" line="300"/>
+        <location filename="../../src/gui/MainMenuBar.h" line="89"/>
         <source>Help</source>
         <translation>帮助</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainMenuBar.cpp" line="302"/>
+        <location filename="../../src/gui/MainMenuBar.cpp" line="196"/>
         <source>About AnimeEffects</source>
         <translation>关于AnimeEffects</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainMenuBar.cpp" line="311"/>
+        <location filename="../../src/gui/MainMenuBar.cpp" line="203"/>
         <source>### AnimeEffects for </source>
         <translation>### AnimeEffects 适用于 </translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainMenuBar.cpp" line="311"/>
+        <location filename="../../src/gui/MainMenuBar.cpp" line="203"/>
         <source> version </source>
         <translation>版本</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainMenuBar.cpp" line="312"/>
+        <location filename="../../src/gui/MainMenuBar.cpp" line="204"/>
         <source>An easy to use 2D animation software maintained by the [AnimeEffectsDevs](https://github.com/AnimeEffectsDevs).&lt;br /&gt;Licensed under the GPL v3.0 and powered by various open source libraries.</source>
         <translation>一款由 [AnimeEffectsDevs] 维护的易于使用的2D动画软件。(https://github.com/AnimeEffectsDevs).&lt;br /&gt;根据GPL v3.0许可证授权，并由多种开源库提供支持。</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainMenuBar.cpp" line="320"/>
+        <location filename="../../src/gui/MainMenuBar.cpp" line="211"/>
         <source>&lt;br /&gt;&lt;br /&gt;Contributors:&lt;br /&gt;[Hidefuku](https://github.com/hidefuku), [Yukusai](https://github.com/p-yukusai), [Gambot](https://github.com/GbotHQ), [Arrangemonk](https://github.com/Arrangemonk), [OneByStudio](https://onebystudio.com), [Larpon](https://github.com/larpon), [Herace](https://github.com/herace), [Aodaruma](https://github.com/Aodaruma), [Azagaya](https://github.com/azagaya), [FoxyHawk](https://github.com/FoxyHawk), [Nanashia](https://github.com/Nanashia), [Henrich](https://github.com/henrich), [mcddx330](https://github.com/mcddx330), [Freddii](https://github.com/freddii), [Aki017](https://github.com/aki017), [PicoHz](https://github.com/picoHz), [Peter9811](https://github.com/peter9811), [GES233](https://github.com/GES233), [h-banii](https://github.com/h-banii), [henrich](https://github.com/henrich), [Nanashia](https://github.com/Nanashia).
 If we forgot to include you please let us know or open a PR!</source>
         <translation>&lt;br /&gt;&lt;br /&gt;贡献者：&lt;br /&gt;[Hidefuku](https://github.com/hidefuku), [Yukusai](https://github.com/p-yukusai), [Gambot](https://github.com/GbotHQ), [Arrangemonk](https://github.com/Arrangemonk), [OneByStudio](https://onebystudio.com), [Larpon](https://github.com/larpon), [Herace](https://github.com/herace), [Aodaruma](https://github.com/Aodaruma), [Azagaya](https://github.com/azagaya), [FoxyHawk](https://github.com/FoxyHawk), [Nanashia](https://github.com/Nanashia), [Henrich](https://github.com/henrich), [mcddx330](https://github.com/mcddx330), [Freddii](https://github.com/freddii), [Aki017](https://github.com/aki017), [PicoHz](https://github.com/picoHz), [Peter9811](https://github.com/peter9811), [GES233](https://github.com/GES233), [h-banii](https://github.com/h-banii), [henrich](https://github.com/henrich), [Nanashia](https://github.com/Nanashia).
@@ -5793,48 +6132,48 @@ If we forgot to include you please let us know or open a PR!</source>
         <translation type="vanished">&lt;br /&gt;&lt;br /&gt;贡献者：&lt;br /&gt;[Hidefuku](https://github.com/hidefuku), [Yukusai](https://github.com/p-yukusai), [Gambot](https://github.com/GbotHQ), [Arrangemonk](https://github.com/Arrangemonk), [OneByStudio](https://onebystudio.com), [Larpon](https://github.com/larpon), [Herace](https://github.com/herace), [Aodaruma](https://github.com/Aodaruma), [Azagaya](https://github.com/azagaya), [FoxyHawk](https://github.com/FoxyHawk), [Nanashia](https://github.com/Nanashia), [Henrich](https://github.com/henrich), [mcddx330](https://github.com/mcddx330), [Freddii](https://github.com/freddii), [aki017](https://github.com/aki017), [picoHz](https://github.com/picoHz).</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainMenuBar.cpp" line="349"/>
+        <location filename="../../src/gui/MainMenuBar.cpp" line="239"/>
         <source>About us</source>
         <translation>关于我们</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainMenuBar.cpp" line="355"/>
+        <location filename="../../src/gui/MainMenuBar.cpp" line="244"/>
         <source>Check for updates</source>
         <translation>检查更新</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainMenuBar.cpp" line="360"/>
-        <location filename="../../src/gui/MainMenuBar.cpp" line="505"/>
+        <location filename="../../src/gui/MainMenuBar.cpp" line="248"/>
+        <location filename="../../src/gui/MainMenuBar.cpp" line="386"/>
         <source>System telemetry</source>
         <translation>系统遥测</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainMenuBar.cpp" line="400"/>
+        <location filename="../../src/gui/MainMenuBar.cpp" line="285"/>
         <source>Version: </source>
         <translation>版本: </translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainMenuBar.cpp" line="401"/>
+        <location filename="../../src/gui/MainMenuBar.cpp" line="286"/>
         <source>Format version: </source>
         <translation>格式版本： </translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainMenuBar.cpp" line="402"/>
+        <location filename="../../src/gui/MainMenuBar.cpp" line="287"/>
         <source>Platform: </source>
         <translation>平台: </translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainMenuBar.cpp" line="403"/>
+        <location filename="../../src/gui/MainMenuBar.cpp" line="288"/>
         <source>Build ABI: </source>
         <translation>生成 ABI： </translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainMenuBar.cpp" line="428"/>
+        <location filename="../../src/gui/MainMenuBar.cpp" line="311"/>
         <source>CPU vendor: </source>
         <translation>CPU 供应商： </translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainMenuBar.cpp" line="429"/>
+        <location filename="../../src/gui/MainMenuBar.cpp" line="312"/>
         <source>CPU architecture: </source>
         <translation>CPU 结构： </translation>
     </message>
@@ -5843,87 +6182,87 @@ If we forgot to include you please let us know or open a PR!</source>
         <translation type="vanished">CPU 核心： </translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainMenuBar.cpp" line="196"/>
+        <location filename="../../src/gui/MainMenuBar.cpp" line="118"/>
         <source>Quickly export as...</source>
         <translation>快速导出为...</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainMenuBar.cpp" line="212"/>
+        <location filename="../../src/gui/MainMenuBar.cpp" line="123"/>
         <source>Export again</source>
         <translation>再次导出</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainMenuBar.cpp" line="267"/>
+        <location filename="../../src/gui/MainMenuBar.h" line="87"/>
         <source>Panels</source>
         <translation>面板</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainMenuBar.cpp" line="315"/>
+        <location filename="../../src/gui/MainMenuBar.cpp" line="207"/>
         <source>&lt;br /&gt;&lt;br /&gt;Video/audio encoding uses the FFmpeg libraries (https://ffmpeg.org), which are licensed under the GNU Lesser GPL v2.1+ (or GPL, depending on the build). Their corresponding source is available as required by that license.</source>
         <translation>&lt;br /&gt;&lt;br /&gt;视频/音频编码使用 FFmpeg 库（https://ffmpeg.org），这些库按 GNU Lesser GPL v2.1+（视构建方式也可能为 GPL）授权。我们按照该许可的要求提供其对应源代码。</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainMenuBar.cpp" line="430"/>
+        <location filename="../../src/gui/MainMenuBar.cpp" line="313"/>
         <source>CPU threads: </source>
         <translation>CPU 线程： </translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainMenuBar.cpp" line="434"/>
+        <location filename="../../src/gui/MainMenuBar.cpp" line="317"/>
         <source>System RAM:</source>
         <translation>系统 RAM</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainMenuBar.cpp" line="436"/>
+        <location filename="../../src/gui/MainMenuBar.cpp" line="319"/>
         <source>System </source>
         <translation>系统 </translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainMenuBar.cpp" line="438"/>
+        <location filename="../../src/gui/MainMenuBar.cpp" line="321"/>
         <source>Current GPU: </source>
         <translation>当前 GPU: </translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainMenuBar.cpp" line="471"/>
+        <location filename="../../src/gui/MainMenuBar.cpp" line="355"/>
         <source>GPU Vendor: </source>
         <translation>GPU 厂商: </translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainMenuBar.cpp" line="472"/>
+        <location filename="../../src/gui/MainMenuBar.cpp" line="356"/>
         <source>Max VRAM: </source>
         <translation>最大显存：</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainMenuBar.cpp" line="473"/>
+        <location filename="../../src/gui/MainMenuBar.cpp" line="357"/>
         <source>OpenGL version: </source>
         <translation>OpenGL 版本： </translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainMenuBar.cpp" line="474"/>
+        <location filename="../../src/gui/MainMenuBar.cpp" line="358"/>
         <source>Qt Version: </source>
         <translation>Qt 版本: </translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainMenuBar.cpp" line="475"/>
+        <location filename="../../src/gui/MainMenuBar.cpp" line="359"/>
         <source>System locale: </source>
         <translation>系统本地化： </translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainMenuBar.cpp" line="480"/>
+        <location filename="../../src/gui/MainMenuBar.cpp" line="364"/>
         <source>Location Has Unicode: </source>
         <translation>位置包含 Unicode 字符：</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainMenuBar.cpp" line="493"/>
+        <location filename="../../src/gui/MainMenuBar.cpp" line="376"/>
         <source>Location Is Writable: </source>
         <translation>位置可写： </translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainMenuBar.cpp" line="499"/>
+        <location filename="../../src/gui/MainMenuBar.cpp" line="380"/>
         <source>libav licence: </source>
         <translation>libav 许可证： </translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainMenuBar.cpp" line="500"/>
+        <location filename="../../src/gui/MainMenuBar.cpp" line="381"/>
         <source>libav configuration: </source>
         <translation>libav 配置： </translation>
     </message>
@@ -5932,17 +6271,17 @@ If we forgot to include you please let us know or open a PR!</source>
         <translation type="vanished">FFmpeg 达标类型：</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainMenuBar.cpp" line="501"/>
+        <location filename="../../src/gui/MainMenuBar.cpp" line="382"/>
         <source>System specs successfully copied to the clipboard</source>
         <translation>系统规格已成功复制到剪贴板。</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainMenuBar.cpp" line="516"/>
+        <location filename="../../src/gui/MainMenuBar.cpp" line="400"/>
         <source>Donate</source>
         <translation>捐赠</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainMenuBar.cpp" line="241"/>
+        <location filename="../../src/gui/MainMenuBar.cpp" line="161"/>
         <source>Project settings</source>
         <translation>项目设置</translation>
     </message>
@@ -5966,37 +6305,37 @@ If we forgot to include you please let us know or open a PR!</source>
         <translation type="vanished">工具库</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainWindow.cpp" line="931"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="929"/>
         <source>Theme changed</source>
         <translation>主题已更改</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainWindow.cpp" line="933"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="931"/>
         <source>There may be visual artifacts after changing themes, we recommend you restart the application.</source>
         <translation>更换主题后可能会出现视觉障碍，建议重新启动应用程序。</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainWindow.cpp" line="1155"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="1153"/>
         <source> has been modified. Save changes?</source>
         <translation> 已改动。保存变动？</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainWindow.cpp" line="1157"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="1155"/>
         <source>Some projects have been modified. Save changes?</source>
         <translation>一些项目已被修改。保存修改？</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainWindow.cpp" line="1165"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="1163"/>
         <source>Save Changes</source>
         <translation>保存更改</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainWindow.cpp" line="1166"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="1164"/>
         <source>Discard Changes</source>
         <translation>放弃修改</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainWindow.cpp" line="1167"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="1165"/>
         <source>Cancel</source>
         <translation>取消</translation>
     </message>
@@ -6009,56 +6348,57 @@ If we forgot to include you please let us know or open a PR!</source>
         <translation type="vanished">重置 : </translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainWindow.cpp" line="1308"/>
-        <location filename="../../src/gui/MainWindow.cpp" line="1385"/>
-        <location filename="../../src/gui/MainWindow.cpp" line="1416"/>
-        <location filename="../../src/gui/MainWindow.cpp" line="1487"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="1306"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="1383"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="1414"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="1485"/>
         <source>Loading Error</source>
         <translation>加载错误</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainWindow.cpp" line="1361"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="1359"/>
         <source>Open File</source>
         <translation>打开文件</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainWindow.cpp" line="1501"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="1499"/>
         <source>Save File</source>
         <translation>保存文件</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainWindow.cpp" line="2150"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="2148"/>
         <source>Exported %1 (%2 KB)</source>
         <translation>已导出 %1（%2 KB）</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainWindow.cpp" line="2160"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="2158"/>
         <source> (%1 of %2 KB allowed for %3)</source>
         <translation> （%1，%3 的上限为 %2 KB）</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainWindow.cpp" line="2165"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="2163"/>
         <source>; OVER THE LIMIT, it will be rejected</source>
         <translation>；已超出上限，将被拒收</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainWindow.cpp" line="2204"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="2202"/>
         <source>All files (*)</source>
         <translation>所有文件 (*)</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainWindow.cpp" line="2205"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="2203"/>
         <source>%1 files (*.%2)</source>
         <translation>%1 文件 (*.%2)</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainWindow.cpp" line="2948"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="2956"/>
         <source>Nothing is docked on the %1</source>
         <translation>%1上没有停靠的面板</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainWindow.cpp" line="2946"/>
-        <location filename="../../src/gui/MainWindow.cpp" line="2949"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="454"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="2955"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="2957"/>
         <source>Show or hide the %1</source>
         <translation>显示或隐藏%1</translation>
     </message>
@@ -6117,42 +6457,42 @@ In the following screen you can instruct AnimeEffects to download and install it
         <translation type="vanished">FFmpeg 无法生成调色板，请进行故障排查。</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainWindow.cpp" line="230"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="232"/>
         <source>Animation</source>
         <translation>动画</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainWindow.cpp" line="263"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="265"/>
         <source>Properties</source>
         <translation>属性</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainWindow.cpp" line="311"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="313"/>
         <source>Tools</source>
         <translation>工具</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainWindow.cpp" line="423"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="444"/>
         <source>left side</source>
         <translation>左侧</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainWindow.cpp" line="424"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="445"/>
         <source>right side</source>
         <translation>右侧</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainWindow.cpp" line="425"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="446"/>
         <source>bottom</source>
         <translation>底部</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainWindow.cpp" line="1436"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="1434"/>
         <source>Recover unsaved project?</source>
         <translation>恢复未保存的项目？</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainWindow.cpp" line="1437"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="1435"/>
         <source>AnimeEffects found an unsaved project from a previous session:
 %1
 
@@ -6243,8 +6583,8 @@ Open it?</source>
         <translation type="vanished">标签图片</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainWindow.cpp" line="2198"/>
-        <location filename="../../src/gui/MainWindow.cpp" line="2277"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="2196"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="2275"/>
         <source>Export Folder</source>
         <translation>导出文件</translation>
     </message>
@@ -6261,7 +6601,7 @@ Open it?</source>
         <translation type="vanished">导出错误</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainWindow.cpp" line="2206"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="2204"/>
         <source>Export File</source>
         <translation>导出文件</translation>
     </message>
@@ -7076,157 +7416,157 @@ The log is available below.</source>
 <context>
     <name>gui::ToolViewModel</name>
     <message>
-        <location filename="../../src/gui/ToolWidget.cpp" line="209"/>
+        <location filename="../../src/gui/ToolWidget.cpp" line="204"/>
         <location filename="../../src/gui/qml/ToolViewModel.cpp" line="175"/>
         <source>Select a layer to paint a mask.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../../src/gui/ToolWidget.cpp" line="217"/>
+        <location filename="../../src/gui/ToolWidget.cpp" line="212"/>
         <source>This layer has no image or canvas to mask.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../../src/gui/ToolWidget.cpp" line="237"/>
+        <location filename="../../src/gui/ToolWidget.cpp" line="232"/>
         <source>%1 amount</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../../src/gui/ToolWidget.cpp" line="244"/>
+        <location filename="../../src/gui/ToolWidget.cpp" line="239"/>
         <source>%1 time offset</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../../src/gui/ToolWidget.cpp" line="257"/>
+        <location filename="../../src/gui/ToolWidget.cpp" line="252"/>
         <source>Layer mask</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../../src/gui/ToolWidget.cpp" line="266"/>
+        <location filename="../../src/gui/ToolWidget.cpp" line="261"/>
         <source>Key the mask at this frame to paint it.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../../src/gui/ToolWidget.cpp" line="270"/>
+        <location filename="../../src/gui/ToolWidget.cpp" line="265"/>
         <source>Enable a filter to paint its mask.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../../src/gui/ToolWidget.cpp" line="274"/>
+        <location filename="../../src/gui/ToolWidget.cpp" line="269"/>
         <source>There is no mask to paint on this layer at this frame.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../../src/gui/ToolWidget.cpp" line="278"/>
+        <location filename="../../src/gui/ToolWidget.cpp" line="273"/>
         <source>Add a filter or a mask in Properties first.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ToolViewModel.cpp" line="276"/>
+        <location filename="../../src/gui/qml/ToolViewModel.cpp" line="271"/>
         <source>Mask</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ToolViewModel.cpp" line="440"/>
+        <location filename="../../src/gui/qml/ToolViewModel.cpp" line="435"/>
         <source>No bone key</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ToolViewModel.cpp" line="441"/>
+        <location filename="../../src/gui/qml/ToolViewModel.cpp" line="436"/>
         <source>Select a bone</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ToolViewModel.cpp" line="442"/>
+        <location filename="../../src/gui/qml/ToolViewModel.cpp" line="437"/>
         <source>No mesh here</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ToolViewModel.cpp" line="443"/>
+        <location filename="../../src/gui/qml/ToolViewModel.cpp" line="438"/>
         <source>Envelope</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ToolViewModel.cpp" line="447"/>
+        <location filename="../../src/gui/qml/ToolViewModel.cpp" line="442"/>
         <source>Baked</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ToolViewModel.cpp" line="448"/>
+        <location filename="../../src/gui/qml/ToolViewModel.cpp" line="443"/>
         <source>Partly baked</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ToolViewModel.cpp" line="470"/>
+        <location filename="../../src/gui/qml/ToolViewModel.cpp" line="465"/>
         <source>Create a bone key at this frame to paint weights.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ToolViewModel.cpp" line="472"/>
+        <location filename="../../src/gui/qml/ToolViewModel.cpp" line="467"/>
         <source>Right-click a bone to target it. Left is always the stroke.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ToolViewModel.cpp" line="474"/>
+        <location filename="../../src/gui/qml/ToolViewModel.cpp" line="469"/>
         <source>The key skins no mesh at this frame.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ToolViewModel.cpp" line="476"/>
+        <location filename="../../src/gui/qml/ToolViewModel.cpp" line="471"/>
         <source>This bone&apos;s weights are live. Bake evaluates its envelope once, then the brush edits the result.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ToolViewModel.cpp" line="478"/>
+        <location filename="../../src/gui/qml/ToolViewModel.cpp" line="473"/>
         <source>The field is authored (%1). Rebake replaces it from the envelope.</source>
         <translation type="unfinished"></translation>
     </message>
     <message numerus="yes">
-        <location filename="../../src/gui/qml/ToolViewModel.cpp" line="481"/>
+        <location filename="../../src/gui/qml/ToolViewModel.cpp" line="476"/>
         <source>%n layer(s) still use the live envelope; the brush paints the baked ones.</source>
         <translation type="unfinished">
             <numerusform></numerusform>
         </translation>
     </message>
     <message numerus="yes">
-        <location filename="../../src/gui/qml/ToolViewModel.cpp" line="488"/>
+        <location filename="../../src/gui/qml/ToolViewModel.cpp" line="483"/>
         <source>%n vertex(s)</source>
         <translation type="unfinished">
             <numerusform></numerusform>
         </translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ToolViewModel.cpp" line="542"/>
+        <location filename="../../src/gui/qml/ToolViewModel.cpp" line="537"/>
         <source>Add</source>
         <translation type="unfinished">新增</translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ToolViewModel.cpp" line="543"/>
+        <location filename="../../src/gui/qml/ToolViewModel.cpp" line="538"/>
         <source>Subtract</source>
         <translation type="unfinished">扣减</translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ToolViewModel.cpp" line="544"/>
+        <location filename="../../src/gui/qml/ToolViewModel.cpp" line="539"/>
         <source>Replace</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ToolViewModel.cpp" line="696"/>
+        <location filename="../../src/gui/qml/ToolViewModel.cpp" line="691"/>
         <source>Choose a paint target.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ToolViewModel.cpp" line="838"/>
+        <location filename="../../src/gui/qml/ToolViewModel.cpp" line="777"/>
         <source>Brush size (%1 / %2)</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ToolViewModel.cpp" line="842"/>
+        <location filename="../../src/gui/qml/ToolViewModel.cpp" line="781"/>
         <source>Brush hardness (%1 / %2)</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ToolViewModel.cpp" line="1003"/>
+        <location filename="../../src/gui/qml/ToolViewModel.cpp" line="914"/>
         <source>Alt + click samples the value under the pointer; %1 swaps between 0% and 100%</source>
         <translation type="unfinished"></translation>
     </message>
@@ -7234,39 +7574,32 @@ The log is available below.</source>
 <context>
     <name>gui::ToolWidget</name>
     <message>
-        <location filename="../../src/gui/qml/ToolViewModel.cpp" line="813"/>
         <source>View Settings</source>
-        <translation>查看设置</translation>
+        <translation type="vanished">查看设置</translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ToolViewModel.cpp" line="816"/>
         <source>Show mesh</source>
-        <translation>显示网格</translation>
+        <translation type="vanished">显示网格</translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ToolViewModel.cpp" line="819"/>
         <source>Do not draw outside the frame</source>
-        <translation>不在框外绘制</translation>
+        <translation type="vanished">不在框外绘制</translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ToolViewModel.cpp" line="822"/>
         <source>Rotate the canvas counterclockwise (%1)</source>
-        <translation>逆时针旋转画布 (%1)</translation>
+        <translation type="vanished">逆时针旋转画布 (%1)</translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ToolViewModel.cpp" line="826"/>
         <source>Reset rotation of the canvas (%1)</source>
-        <translation>重置画布的旋转 (%1)</translation>
+        <translation type="vanished">重置画布的旋转 (%1)</translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ToolViewModel.cpp" line="830"/>
         <source>Rotate the canvas clockwise (%1)</source>
-        <translation>顺时针旋转画布 (%1)</translation>
+        <translation type="vanished">顺时针旋转画布 (%1)</translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ToolViewModel.cpp" line="834"/>
         <source>Flip canvas</source>
-        <translation>翻转画布</translation>
+        <translation type="vanished">翻转画布</translation>
     </message>
     <message>
         <source>Show animation graph</source>
@@ -7302,6 +7635,39 @@ The log is available below.</source>
     <message>
         <source>Bit rate (Kbps)</source>
         <translation type="vanished">比特率 （Kbps）</translation>
+    </message>
+</context>
+<context>
+    <name>gui::ViewSettingsModel</name>
+    <message>
+        <location filename="../../src/gui/qml/ViewSettingsModel.cpp" line="47"/>
+        <source>Show mesh</source>
+        <translation>显示网格</translation>
+    </message>
+    <message>
+        <location filename="../../src/gui/qml/ViewSettingsModel.cpp" line="51"/>
+        <source>Do not draw outside the frame</source>
+        <translation>不在框外绘制</translation>
+    </message>
+    <message>
+        <location filename="../../src/gui/qml/ViewSettingsModel.cpp" line="55"/>
+        <source>Rotate the canvas counterclockwise (%1)</source>
+        <translation>逆时针旋转画布 (%1)</translation>
+    </message>
+    <message>
+        <location filename="../../src/gui/qml/ViewSettingsModel.cpp" line="59"/>
+        <source>Reset rotation of the canvas (%1)</source>
+        <translation>重置画布的旋转 (%1)</translation>
+    </message>
+    <message>
+        <location filename="../../src/gui/qml/ViewSettingsModel.cpp" line="63"/>
+        <source>Rotate the canvas clockwise (%1)</source>
+        <translation>顺时针旋转画布 (%1)</translation>
+    </message>
+    <message>
+        <location filename="../../src/gui/qml/ViewSettingsModel.cpp" line="67"/>
+        <source>Flip canvas</source>
+        <translation>翻转画布</translation>
     </message>
 </context>
 <context>
@@ -7986,37 +8352,37 @@ The log is available below.</source>
 <context>
     <name>gui::tool::BonePanel</name>
     <message>
-        <location filename="../../src/gui/qml/ToolViewModel.cpp" line="264"/>
+        <location filename="../../src/gui/qml/ToolViewModel.cpp" line="259"/>
         <source>Bone editor</source>
         <translation>骨骼编辑</translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ToolViewModel.cpp" line="289"/>
+        <location filename="../../src/gui/qml/ToolViewModel.cpp" line="284"/>
         <source>Add bones</source>
         <translation>添加骨骼</translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ToolViewModel.cpp" line="290"/>
+        <location filename="../../src/gui/qml/ToolViewModel.cpp" line="285"/>
         <source>Remove bones</source>
         <translation>移除骨骼</translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ToolViewModel.cpp" line="291"/>
+        <location filename="../../src/gui/qml/ToolViewModel.cpp" line="286"/>
         <source>Move joints</source>
         <translation>移动关节</translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ToolViewModel.cpp" line="292"/>
+        <location filename="../../src/gui/qml/ToolViewModel.cpp" line="287"/>
         <source>Bind bone to node</source>
         <translation>骨骼绑定</translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ToolViewModel.cpp" line="293"/>
+        <location filename="../../src/gui/qml/ToolViewModel.cpp" line="288"/>
         <source>Adjust envelope</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ToolViewModel.cpp" line="294"/>
+        <location filename="../../src/gui/qml/ToolViewModel.cpp" line="289"/>
         <source>Envelope brush</source>
         <translation type="unfinished"></translation>
     </message>
@@ -8033,7 +8399,7 @@ The log is available below.</source>
         <translation type="vanished">擦除影响</translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ToolViewModel.cpp" line="295"/>
+        <location filename="../../src/gui/qml/ToolViewModel.cpp" line="290"/>
         <source>Paint weights</source>
         <translation type="unfinished"></translation>
     </message>
@@ -8049,22 +8415,22 @@ The log is available below.</source>
 <context>
     <name>gui::tool::FFDPanel</name>
     <message>
-        <location filename="../../src/gui/qml/ToolViewModel.cpp" line="270"/>
+        <location filename="../../src/gui/qml/ToolViewModel.cpp" line="265"/>
         <source>FFD</source>
         <translation>自由变形</translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ToolViewModel.cpp" line="311"/>
+        <location filename="../../src/gui/qml/ToolViewModel.cpp" line="306"/>
         <source>Move vertex</source>
         <translation>移动顶点</translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ToolViewModel.cpp" line="312"/>
+        <location filename="../../src/gui/qml/ToolViewModel.cpp" line="307"/>
         <source>Deform mesh</source>
         <translation>变形网格</translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ToolViewModel.cpp" line="313"/>
+        <location filename="../../src/gui/qml/ToolViewModel.cpp" line="308"/>
         <source>Erase deformations</source>
         <translation>擦除变形</translation>
     </message>
@@ -8089,7 +8455,7 @@ The log is available below.</source>
         <translation type="vanished">圧力</translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ToolViewModel.cpp" line="993"/>
+        <location filename="../../src/gui/qml/ToolViewModel.cpp" line="904"/>
         <source>Blur</source>
         <translation>模糊</translation>
     </message>
@@ -8097,22 +8463,22 @@ The log is available below.</source>
 <context>
     <name>gui::tool::MeshPanel</name>
     <message>
-        <location filename="../../src/gui/qml/ToolViewModel.cpp" line="268"/>
+        <location filename="../../src/gui/qml/ToolViewModel.cpp" line="263"/>
         <source>Mesh editor</source>
         <translation>网格编辑</translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ToolViewModel.cpp" line="305"/>
+        <location filename="../../src/gui/qml/ToolViewModel.cpp" line="300"/>
         <source>Add vertex</source>
         <translation>添加顶点</translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ToolViewModel.cpp" line="306"/>
+        <location filename="../../src/gui/qml/ToolViewModel.cpp" line="301"/>
         <source>Delete vertex</source>
         <translation>删除顶点</translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ToolViewModel.cpp" line="307"/>
+        <location filename="../../src/gui/qml/ToolViewModel.cpp" line="302"/>
         <source>Split polygon</source>
         <translation>拆分多边形</translation>
     </message>
@@ -8124,37 +8490,37 @@ The log is available below.</source>
         <translation type="vanished">工具箱</translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ToolViewModel.cpp" line="235"/>
+        <location filename="../../src/gui/qml/ToolViewModel.cpp" line="230"/>
         <source>Pan tool</source>
         <translation>平移工具</translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ToolViewModel.cpp" line="236"/>
+        <location filename="../../src/gui/qml/ToolViewModel.cpp" line="231"/>
         <source>Transform</source>
         <translation>变换</translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ToolViewModel.cpp" line="237"/>
+        <location filename="../../src/gui/qml/ToolViewModel.cpp" line="232"/>
         <source>Bone editor</source>
         <translation>骨骼编辑</translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ToolViewModel.cpp" line="238"/>
+        <location filename="../../src/gui/qml/ToolViewModel.cpp" line="233"/>
         <source>Pose editor</source>
         <translation>姿势编辑</translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ToolViewModel.cpp" line="239"/>
+        <location filename="../../src/gui/qml/ToolViewModel.cpp" line="234"/>
         <source>Mesh editor</source>
         <translation>网格编辑</translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ToolViewModel.cpp" line="240"/>
+        <location filename="../../src/gui/qml/ToolViewModel.cpp" line="235"/>
         <source>Free-form deformation</source>
         <translation>自由变形（FFD）</translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ToolViewModel.cpp" line="241"/>
+        <location filename="../../src/gui/qml/ToolViewModel.cpp" line="236"/>
         <source>Mask paint</source>
         <translation type="unfinished"></translation>
     </message>
@@ -8162,27 +8528,27 @@ The log is available below.</source>
 <context>
     <name>gui::tool::PosePanel</name>
     <message>
-        <location filename="../../src/gui/qml/ToolViewModel.cpp" line="266"/>
+        <location filename="../../src/gui/qml/ToolViewModel.cpp" line="261"/>
         <source>Pose editor</source>
         <translation>姿势编辑</translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ToolViewModel.cpp" line="299"/>
+        <location filename="../../src/gui/qml/ToolViewModel.cpp" line="294"/>
         <source>Move bone</source>
         <translation>移动骨骼</translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ToolViewModel.cpp" line="300"/>
+        <location filename="../../src/gui/qml/ToolViewModel.cpp" line="295"/>
         <source>Pull bones</source>
         <translation>拉动骨骼</translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ToolViewModel.cpp" line="301"/>
+        <location filename="../../src/gui/qml/ToolViewModel.cpp" line="296"/>
         <source>Erase bone pose</source>
         <translation>擦除姿势</translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ToolViewModel.cpp" line="997"/>
+        <location filename="../../src/gui/qml/ToolViewModel.cpp" line="908"/>
         <source>Weight</source>
         <translation>权重</translation>
     </message>
@@ -8198,53 +8564,53 @@ The log is available below.</source>
 <context>
     <name>gui::tool::SRTPanel</name>
     <message>
-        <location filename="../../src/gui/qml/ToolViewModel.cpp" line="262"/>
-        <location filename="../../src/gui/qml/ToolViewModel.cpp" line="285"/>
+        <location filename="../../src/gui/qml/ToolViewModel.cpp" line="257"/>
+        <location filename="../../src/gui/qml/ToolViewModel.cpp" line="280"/>
         <source>Transform</source>
         <translation>变换</translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ToolViewModel.cpp" line="286"/>
+        <location filename="../../src/gui/qml/ToolViewModel.cpp" line="281"/>
         <source>Move Centroid</source>
         <translation>移动中心点</translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ToolViewModel.cpp" line="962"/>
+        <location filename="../../src/gui/qml/ToolViewModel.cpp" line="873"/>
         <source>Create move key</source>
         <translation>创建移动关键帧</translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ToolViewModel.cpp" line="963"/>
+        <location filename="../../src/gui/qml/ToolViewModel.cpp" line="874"/>
         <source>The transformation will create a move key regardless of its type.</source>
         <translation>自动创建移动K帧，无论其类型如何。</translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ToolViewModel.cpp" line="965"/>
+        <location filename="../../src/gui/qml/ToolViewModel.cpp" line="876"/>
         <source>Create rotate key</source>
         <translation>创建旋转关键帧</translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ToolViewModel.cpp" line="966"/>
+        <location filename="../../src/gui/qml/ToolViewModel.cpp" line="877"/>
         <source>The transformation will create a rotate key regardless of its type.</source>
         <translation>将创建一个旋转K帧，无论其类型如何。</translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ToolViewModel.cpp" line="968"/>
+        <location filename="../../src/gui/qml/ToolViewModel.cpp" line="879"/>
         <source>Create scale key</source>
         <translation>创建缩放关键帧</translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ToolViewModel.cpp" line="969"/>
+        <location filename="../../src/gui/qml/ToolViewModel.cpp" line="880"/>
         <source>The transformation will create a scale key regardless of its type.</source>
         <translation>将创建一个缩放K帧，无论其类型如何。</translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ToolViewModel.cpp" line="971"/>
+        <location filename="../../src/gui/qml/ToolViewModel.cpp" line="882"/>
         <source>Adjust centroid position</source>
         <translation>调整中点位置</translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ToolViewModel.cpp" line="972"/>
+        <location filename="../../src/gui/qml/ToolViewModel.cpp" line="883"/>
         <source>Move the centroid in relation to the image, the opposite will be true when not toggled.</source>
         <translation>移动中心点与图像的关系，不切换时，则相反。</translation>
     </message>

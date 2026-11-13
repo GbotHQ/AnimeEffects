@@ -489,6 +489,19 @@
     </message>
 </context>
 <context>
+    <name>AnimeEffects.Header</name>
+    <message>
+        <location filename="../../src/gui/qml/HeaderSlotButton.qml" line="65"/>
+        <source>On</source>
+        <translation type="unfinished">オン</translation>
+    </message>
+    <message>
+        <location filename="../../src/gui/qml/HeaderSlotButton.qml" line="65"/>
+        <source>Off</source>
+        <translation type="unfinished">オフ</translation>
+    </message>
+</context>
+<context>
     <name>AnimeEffects.Properties</name>
     <message>
         <location filename="../../src/gui/qml/PropertiesPanel.qml" line="89"/>
@@ -701,92 +714,92 @@
 <context>
     <name>AnimeEffects.Tools</name>
     <message>
-        <location filename="../../src/gui/qml/ToolsPanel.qml" line="163"/>
+        <location filename="../../src/gui/qml/ToolsPanel.qml" line="116"/>
         <source>Clear</source>
         <translation type="unfinished">クリア</translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ToolsPanel.qml" line="164"/>
+        <location filename="../../src/gui/qml/ToolsPanel.qml" line="117"/>
         <source>Clear the field being painted (one undo step)</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ToolsPanel.qml" line="198"/>
+        <location filename="../../src/gui/qml/ToolsPanel.qml" line="151"/>
         <source>Weights</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ToolsPanel.qml" line="230"/>
+        <location filename="../../src/gui/qml/ToolsPanel.qml" line="183"/>
         <source>Mesh changed since bake</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ToolsPanel.qml" line="276"/>
+        <location filename="../../src/gui/qml/ToolsPanel.qml" line="229"/>
         <source>Bake</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ToolsPanel.qml" line="276"/>
+        <location filename="../../src/gui/qml/ToolsPanel.qml" line="229"/>
         <source>Rebake</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ToolsPanel.qml" line="286"/>
+        <location filename="../../src/gui/qml/ToolsPanel.qml" line="239"/>
         <source>Evaluate the selected bone&apos;s live envelope once, so the brush can paint it</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ToolsPanel.qml" line="287"/>
+        <location filename="../../src/gui/qml/ToolsPanel.qml" line="240"/>
         <source>Replace the selected bone&apos;s authored field with the current envelope (one undo step)</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ToolsPanel.qml" line="299"/>
+        <location filename="../../src/gui/qml/ToolsPanel.qml" line="252"/>
         <source>Rebake All</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ToolsPanel.qml" line="302"/>
+        <location filename="../../src/gui/qml/ToolsPanel.qml" line="255"/>
         <source>Revert to Envelope</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ToolsPanel.qml" line="304"/>
+        <location filename="../../src/gui/qml/ToolsPanel.qml" line="257"/>
         <source>Clear Weights</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ToolsPanel.qml" line="308"/>
+        <location filename="../../src/gui/qml/ToolsPanel.qml" line="261"/>
         <source>More weight actions</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ToolsPanel.qml" line="318"/>
+        <location filename="../../src/gui/qml/ToolsPanel.qml" line="271"/>
         <source>Paint</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ToolsPanel.qml" line="327"/>
+        <location filename="../../src/gui/qml/ToolsPanel.qml" line="280"/>
         <source>Paint mode</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ToolsPanel.qml" line="339"/>
+        <location filename="../../src/gui/qml/ToolsPanel.qml" line="292"/>
         <source>Right-click a bone to target it; the brush edits only that bone</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ToolsPanel.qml" line="396"/>
+        <location filename="../../src/gui/qml/ToolsPanel.qml" line="349"/>
         <source>Target</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ToolsPanel.qml" line="408"/>
+        <location filename="../../src/gui/qml/ToolsPanel.qml" line="361"/>
         <source>Mask target</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ToolsPanel.qml" line="430"/>
+        <location filename="../../src/gui/qml/ToolsPanel.qml" line="383"/>
         <location filename="../../src/gui/qml/ToolBrushSection.qml" line="51"/>
         <source>Value</source>
         <translation type="unfinished"></translation>
@@ -797,22 +810,22 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ToolsPanel.qml" line="456"/>
+        <location filename="../../src/gui/qml/ToolsPanel.qml" line="409"/>
         <source>Show weights</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ToolsPanel.qml" line="457"/>
+        <location filename="../../src/gui/qml/ToolsPanel.qml" line="410"/>
         <source>Colour the layers this bone deforms by its influence weight</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ToolIconButton.qml" line="54"/>
+        <location filename="../../src/gui/qml/ToolIconButton.qml" line="60"/>
         <source>On</source>
         <translation type="unfinished">オン</translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ToolIconButton.qml" line="54"/>
+        <location filename="../../src/gui/qml/ToolIconButton.qml" line="60"/>
         <source>Off</source>
         <translation type="unfinished">オフ</translation>
     </message>
@@ -1534,7 +1547,7 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainMenuBar.cpp" line="581"/>
+        <location filename="../../src/gui/MainMenuBar.cpp" line="464"/>
         <source>Change the canvas size</source>
         <translation>キャンバスサイズを変更</translation>
     </message>
@@ -1543,22 +1556,22 @@
         <translation type="vanished">最大フレームを変更</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainMenuBar.cpp" line="602"/>
+        <location filename="../../src/gui/MainMenuBar.cpp" line="484"/>
         <source>Change the frame range</source>
         <translation>フレーム範囲を変更</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainMenuBar.cpp" line="623"/>
+        <location filename="../../src/gui/MainMenuBar.cpp" line="504"/>
         <source>Change loop settings</source>
         <translation>ループ設定を変更</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainMenuBar.cpp" line="645"/>
+        <location filename="../../src/gui/MainMenuBar.cpp" line="525"/>
         <source>Change the FPS</source>
         <translation>FPSを変更する</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainMenuBar.cpp" line="673"/>
+        <location filename="../../src/gui/MainMenuBar.cpp" line="553"/>
         <source>Change the viewport background</source>
         <translation>ビューポートの背景を変更</translation>
     </message>
@@ -3484,6 +3497,191 @@ The %2 encoder could not be opened either (%3).</source>
     </message>
 </context>
 <context>
+    <name>MainMenuBar</name>
+    <message>
+        <source>New project</source>
+        <translation type="obsolete">プロジェクトの新規作成</translation>
+    </message>
+    <message>
+        <source>Open project</source>
+        <translation type="obsolete">プロジェクトを開く</translation>
+    </message>
+    <message>
+        <source>Save project</source>
+        <translation type="obsolete">プロジェクトを保存</translation>
+    </message>
+    <message>
+        <source>Save project as</source>
+        <translation type="obsolete">名前を付けてプロジェクトを保存する</translation>
+    </message>
+    <message>
+        <source>Export project as</source>
+        <translation type="obsolete">プロジェクトを次のようにエクスポートします</translation>
+    </message>
+    <message>
+        <source>Quickly export as...</source>
+        <translation type="obsolete">すばやくエクスポート...</translation>
+    </message>
+    <message>
+        <source>Export again</source>
+        <translation type="obsolete">同じ設定で再エクスポート</translation>
+    </message>
+    <message>
+        <source>Close project</source>
+        <translation type="obsolete">プロジェクトを閉じる</translation>
+    </message>
+    <message>
+        <source>No other projects</source>
+        <translation type="obsolete">その他のプロジェクトはありません</translation>
+    </message>
+    <message>
+        <source>Undo</source>
+        <translation type="obsolete">元に戻す</translation>
+    </message>
+    <message>
+        <source>Redo</source>
+        <translation type="obsolete">やり直す</translation>
+    </message>
+    <message>
+        <source>Project settings</source>
+        <translation type="obsolete">プロジェクト設定</translation>
+    </message>
+    <message>
+        <source>Assets</source>
+        <translation type="obsolete">アセット</translation>
+    </message>
+    <message>
+        <source>Settings</source>
+        <translation type="obsolete">設定</translation>
+    </message>
+    <message>
+        <source>Keybindings</source>
+        <translation type="obsolete">キーバインド</translation>
+    </message>
+    <message>
+        <source>About AnimeEffects</source>
+        <translation type="obsolete">AnimeEffectsについて</translation>
+    </message>
+    <message>
+        <source>### AnimeEffects for </source>
+        <translation type="obsolete">### AnimeEffects 「</translation>
+    </message>
+    <message>
+        <source> version </source>
+        <translation type="obsolete">版」&#x3000;バージョン</translation>
+    </message>
+    <message>
+        <source>An easy to use 2D animation software maintained by the [AnimeEffectsDevs](https://github.com/AnimeEffectsDevs).&lt;br /&gt;Licensed under the GPL v3.0 and powered by various open source libraries.</source>
+        <translation type="obsolete">[AnimeEffectsDevs](https://github.com/AnimeEffectsDevs) が管理する使いやすい 2D アニメーション ソフトウェア.&lt;br /&gt;GPL v3.0 に基づいてライセンスされており、さまざまなオープンソース ライブラリを活用しています。</translation>
+    </message>
+    <message>
+        <source>&lt;br /&gt;&lt;br /&gt;Video/audio encoding uses the FFmpeg libraries (https://ffmpeg.org), which are licensed under the GNU Lesser GPL v2.1+ (or GPL, depending on the build). Their corresponding source is available as required by that license.</source>
+        <translation type="obsolete">&lt;br /&gt;&lt;br /&gt;映像と音声のエンコードには FFmpeg ライブラリ（https://ffmpeg.org）を使用しており、これらは GNU Lesser GPL v2.1+（ビルドによっては GPL）の下でライセンスされています。対応するソースコードは、そのライセンスの要求に従って入手できます。</translation>
+    </message>
+    <message>
+        <source>&lt;br /&gt;&lt;br /&gt;Contributors:&lt;br /&gt;[Hidefuku](https://github.com/hidefuku), [Yukusai](https://github.com/p-yukusai), [Gambot](https://github.com/GbotHQ), [Arrangemonk](https://github.com/Arrangemonk), [OneByStudio](https://onebystudio.com), [Larpon](https://github.com/larpon), [Herace](https://github.com/herace), [Aodaruma](https://github.com/Aodaruma), [Azagaya](https://github.com/azagaya), [FoxyHawk](https://github.com/FoxyHawk), [Nanashia](https://github.com/Nanashia), [Henrich](https://github.com/henrich), [mcddx330](https://github.com/mcddx330), [Freddii](https://github.com/freddii), [Aki017](https://github.com/aki017), [PicoHz](https://github.com/picoHz), [Peter9811](https://github.com/peter9811), [GES233](https://github.com/GES233), [h-banii](https://github.com/h-banii), [henrich](https://github.com/henrich), [Nanashia](https://github.com/Nanashia).
+If we forgot to include you please let us know or open a PR!</source>
+        <translation type="obsolete">&lt;br /&gt;&lt;br /&gt;寄稿者:&lt;br /&gt;[Hidefuku](https://github.com/hidefuku), [Yukusai](https://github.com/p-yukusai), [Gambot](https://github.com/GbotHQ), [Arrangemonk](https://github.com/Arrangemonk), [OneByStudio](https://onebystudio.com), [Larpon](https://github.com/larpon), [Herace](https://github.com/herace), [Aodaruma](https://github.com/Aodaruma), [Azagaya](https://github.com/azagaya), [FoxyHawk](https://github.com/FoxyHawk), [Nanashia](https://github.com/Nanashia), [Henrich](https://github.com/henrich), [mcddx330](https://github.com/mcddx330), [Freddii](https://github.com/freddii), [Aki017](https://github.com/aki017), [PicoHz](https://github.com/picoHz), [Peter9811](https://github.com/peter9811), [GES233](https://github.com/GES233), [h-banii](https://github.com/h-banii), [henrich](https://github.com/henrich), [Nanashia](https://github.com/Nanashia).
+記載漏れがある場合はお知らせいただくか、PR を開いてください。</translation>
+    </message>
+    <message>
+        <source>About us</source>
+        <translation type="obsolete">私たちについて</translation>
+    </message>
+    <message>
+        <source>Check for updates</source>
+        <translation type="obsolete">アップデートをチェックする</translation>
+    </message>
+    <message>
+        <source>System telemetry</source>
+        <translation type="obsolete">システムテレメトリ</translation>
+    </message>
+    <message>
+        <source>Version: </source>
+        <translation type="obsolete">バージョン: </translation>
+    </message>
+    <message>
+        <source>Format version: </source>
+        <translation type="obsolete">バージョンをフォーマット: </translation>
+    </message>
+    <message>
+        <source>Platform: </source>
+        <translation type="obsolete">オーエス: </translation>
+    </message>
+    <message>
+        <source>Build ABI: </source>
+        <translation type="obsolete">ABIビルド: </translation>
+    </message>
+    <message>
+        <source>CPU vendor: </source>
+        <translation type="obsolete">CPU ベンダー: </translation>
+    </message>
+    <message>
+        <source>CPU architecture: </source>
+        <translation type="obsolete">CPU アーキテクチャ: </translation>
+    </message>
+    <message>
+        <source>CPU threads: </source>
+        <translation type="obsolete">CPU スレッド: </translation>
+    </message>
+    <message>
+        <source>System RAM:</source>
+        <translation type="obsolete">システム RAM:</translation>
+    </message>
+    <message>
+        <source>System </source>
+        <translation type="obsolete">システム </translation>
+    </message>
+    <message>
+        <source>Current GPU: </source>
+        <translation type="obsolete">カレントGPU: </translation>
+    </message>
+    <message>
+        <source>GPU Vendor: </source>
+        <translation type="obsolete">GPUベンダ: </translation>
+    </message>
+    <message>
+        <source>Max VRAM: </source>
+        <translation type="obsolete">最大VRAM: </translation>
+    </message>
+    <message>
+        <source>OpenGL version: </source>
+        <translation type="obsolete">OpenGL バージョン: </translation>
+    </message>
+    <message>
+        <source>Qt Version: </source>
+        <translation type="obsolete">Qtバージョン: </translation>
+    </message>
+    <message>
+        <source>System locale: </source>
+        <translation type="obsolete">システムのロケール: </translation>
+    </message>
+    <message>
+        <source>Location Has Unicode: </source>
+        <translation type="obsolete">場所はユニコードを持っています： </translation>
+    </message>
+    <message>
+        <source>Location Is Writable: </source>
+        <translation type="obsolete">場所は書き込み可能： </translation>
+    </message>
+    <message>
+        <source>libav licence: </source>
+        <translation type="obsolete">libav ライセンス: </translation>
+    </message>
+    <message>
+        <source>libav configuration: </source>
+        <translation type="obsolete">libav 設定: </translation>
+    </message>
+    <message>
+        <source>System specs successfully copied to the clipboard</source>
+        <translation type="obsolete">システム仕様がクリップボードにコピーされました</translation>
+    </message>
+    <message>
+        <source>Donate</source>
+        <translation type="obsolete">寄付する</translation>
+    </message>
+</context>
+<context>
     <name>MainWindow</name>
     <message>
         <location filename="../../src/gui/ExportFacts.cpp" line="31"/>
@@ -3658,6 +3856,120 @@ The %2 encoder could not be opened either (%3).</source>
         <source>, </source>
         <translation>、</translation>
     </message>
+    <message>
+        <source>Animation</source>
+        <translation type="obsolete">アニメーション</translation>
+    </message>
+    <message>
+        <source>Properties</source>
+        <translation type="obsolete">プロパティ</translation>
+    </message>
+    <message>
+        <source>Tools</source>
+        <translation type="obsolete">ツール</translation>
+    </message>
+    <message>
+        <source>left side</source>
+        <translation type="obsolete">左側</translation>
+    </message>
+    <message>
+        <source>right side</source>
+        <translation type="obsolete">右側</translation>
+    </message>
+    <message>
+        <source>bottom</source>
+        <translation type="obsolete">下部</translation>
+    </message>
+    <message>
+        <source>Show or hide the %1</source>
+        <translation type="obsolete">%1の表示/非表示</translation>
+    </message>
+    <message>
+        <source>Theme changed</source>
+        <translation type="obsolete">テーマ変更</translation>
+    </message>
+    <message>
+        <source>There may be visual artifacts after changing themes, we recommend you restart the application.</source>
+        <translation type="obsolete">テーマを変更した後、視覚的な不具合が発生する可能性があります。アプリケーションを再起動することをお勧めします。</translation>
+    </message>
+    <message>
+        <source> has been modified. Save changes?</source>
+        <translation type="obsolete"> は変更が加えられてます。変更を保存しますか？</translation>
+    </message>
+    <message>
+        <source>Some projects have been modified. Save changes?</source>
+        <translation type="obsolete">いくつかのプロジェクトは変更が加えられてます。変更を保存しますか？</translation>
+    </message>
+    <message>
+        <source>Save Changes</source>
+        <translation type="obsolete">変更を保存する</translation>
+    </message>
+    <message>
+        <source>Discard Changes</source>
+        <translation type="obsolete">変更を破棄する</translation>
+    </message>
+    <message>
+        <source>Cancel</source>
+        <translation type="obsolete">キャンセル</translation>
+    </message>
+    <message>
+        <source>Loading Error</source>
+        <translation type="obsolete">読み込みエラー</translation>
+    </message>
+    <message>
+        <source>Open File</source>
+        <translation type="obsolete">ファイルを開く</translation>
+    </message>
+    <message>
+        <source>Recover unsaved project?</source>
+        <translation type="obsolete">未保存のプロジェクトを復元しますか？</translation>
+    </message>
+    <message>
+        <source>AnimeEffects found an unsaved project from a previous session:
+%1
+
+Open it?</source>
+        <translation type="obsolete">AnimeEffects は以前のセッションの未保存プロジェクトを見つけました：
+%1
+
+開きますか？</translation>
+    </message>
+    <message>
+        <source>Save File</source>
+        <translation type="obsolete">ファイルを保存する</translation>
+    </message>
+    <message>
+        <source>Exported %1 (%2 KB)</source>
+        <translation type="obsolete">%1 をエクスポートしました（%2 KB）</translation>
+    </message>
+    <message>
+        <source> (%1 of %2 KB allowed for %3)</source>
+        <translation type="obsolete">（%3 に許される %2 KB のうち %1）</translation>
+    </message>
+    <message>
+        <source>; OVER THE LIMIT, it will be rejected</source>
+        <translation type="obsolete">。上限を超えているため拒否されます</translation>
+    </message>
+    <message>
+        <source>Export Folder</source>
+        <translation type="obsolete">出力フォルダ</translation>
+    </message>
+    <message>
+        <source>All files (*)</source>
+        <translation type="obsolete">すべてのファイル (*)</translation>
+    </message>
+    <message>
+        <source>%1 files (*.%2)</source>
+        <translation type="obsolete">%1 ファイル (*.%2)</translation>
+    </message>
+    <message>
+        <source>Export File</source>
+        <translation type="obsolete">出力ファイル</translation>
+    </message>
+    <message>
+        <source>Nothing is docked on the %1</source>
+        <translation type="obsolete">%1には何もドッキングされていません</translation>
+    </message>
 </context>
 <context>
     <name>NetworkCheckForUpdate</name>
@@ -3775,60 +4087,60 @@ The %2 encoder could not be opened either (%3).</source>
         <translation type="vanished">%1 が必要</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainWindow.cpp" line="1756"/>
-        <location filename="../../src/gui/MainWindow.cpp" line="1819"/>
-        <location filename="../../src/gui/MainWindow.cpp" line="1919"/>
-        <location filename="../../src/gui/MainWindow.cpp" line="1964"/>
-        <location filename="../../src/gui/MainWindow.cpp" line="2014"/>
-        <location filename="../../src/gui/MainWindow.cpp" line="2041"/>
-        <location filename="../../src/gui/MainWindow.cpp" line="2072"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="1754"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="1817"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="1917"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="1962"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="2012"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="2039"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="2070"/>
         <source>Export Error</source>
         <translation>エクスポートエラー</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainWindow.cpp" line="1757"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="1755"/>
         <source>Unknown export destination: %1</source>
         <translation>不明な出力先: %1</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainWindow.cpp" line="1848"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="1846"/>
         <source>File exists</source>
         <translation>ファイルが存在します</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainWindow.cpp" line="1849"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="1847"/>
         <source>The file &quot;%1&quot; already exists. Overwrite?</source>
         <translation>ファイル &quot;%1&quot; はすでに存在します。上書きしますか？</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainWindow.cpp" line="1920"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="1918"/>
         <source>%1 caps the file size, which means encoding it more than once, and that needs all %2 frames in memory (~%3 MB). Export fewer frames, or choose a destination without a size limit.</source>
         <translation>%1 はファイルサイズに上限を設けているため、エンコードを複数回行う必要があり、そのためには %2 フレームすべてをメモリに保持する必要があります（約 %3 MB）。フレーム数を減らすか、サイズ制限のない出力先を選んでください。</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainWindow.cpp" line="1938"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="1936"/>
         <source>Fitting under %1&apos;s %2 KB limit...</source>
         <translation>%1 の %2 KB の上限に収まるよう調整中...</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainWindow.cpp" line="1951"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="1949"/>
         <source>Export Canceled</source>
         <translation>エクスポート中止</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainWindow.cpp" line="1952"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="1950"/>
         <source>The export was stopped while fitting under %1&apos;s size limit. The file already written is the last attempt, and may exceed the limit.</source>
         <translation>%1 のサイズ上限に収める処理の途中でエクスポートが中止されました。すでに書き出されたファイルは最後の試行の結果であり、上限を超えている可能性があります。</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainWindow.cpp" line="1965"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="1963"/>
         <source>%1 caps the file at %2 KB and even the smallest setting did not fit it (%3 KB).
 %4</source>
         <translation>%1 はファイルを %2 KB に制限していますが、最小の設定でも収まりませんでした（%3 KB）。
 %4</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainWindow.cpp" line="1973"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="1971"/>
         <source>Fitted to %1 bytes in %2 attempts (%3x%4).</source>
         <translation>%1 バイトに収まりました（%2 回の試行、%3x%4）。</translation>
     </message>
@@ -4072,6 +4384,33 @@ The %2 encoder could not be opened either (%3).</source>
         <location filename="../../src/ctrl/bone/bone_PaintWeightsMode.cpp" line="518"/>
         <source>There is no bone key at this frame.</source>
         <translation type="unfinished"></translation>
+    </message>
+</context>
+<context>
+    <name>ViewSettingsModel</name>
+    <message>
+        <source>Show mesh</source>
+        <translation type="obsolete">メッシュを表示する</translation>
+    </message>
+    <message>
+        <source>Do not draw outside the frame</source>
+        <translation type="obsolete">額縁外の描画をしない</translation>
+    </message>
+    <message>
+        <source>Rotate the canvas counterclockwise (%1)</source>
+        <translation type="obsolete">キャンバスを反時計回りに15°回転させる (%1))</translation>
+    </message>
+    <message>
+        <source>Reset rotation of the canvas (%1)</source>
+        <translation type="obsolete">回転を初期化する (%1)</translation>
+    </message>
+    <message>
+        <source>Rotate the canvas clockwise (%1)</source>
+        <translation type="obsolete">キャンバスを時計回りに15°回転させる (%1)</translation>
+    </message>
+    <message>
+        <source>Flip canvas</source>
+        <translation type="obsolete">キャンバスを反転</translation>
     </message>
 </context>
 <context>
@@ -5631,27 +5970,27 @@ FFmpegのパレット生成の確認 ... 🗸</translation>
 <context>
     <name>gui::MainMenuBar</name>
     <message>
-        <location filename="../../src/gui/MainMenuBar.cpp" line="92"/>
+        <location filename="../../src/gui/MainMenuBar.h" line="85"/>
         <source>File</source>
         <translation>ファイル</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainMenuBar.cpp" line="94"/>
+        <location filename="../../src/gui/MainMenuBar.cpp" line="106"/>
         <source>New project</source>
         <translation>プロジェクトの新規作成</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainMenuBar.cpp" line="95"/>
+        <location filename="../../src/gui/MainMenuBar.cpp" line="107"/>
         <source>Open project</source>
         <translation>プロジェクトを開く</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainMenuBar.cpp" line="96"/>
+        <location filename="../../src/gui/MainMenuBar.h" line="90"/>
         <source>Open recent</source>
         <translation>最近のオープン</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainMenuBar.cpp" line="122"/>
+        <location filename="../../src/gui/MainMenuBar.cpp" line="149"/>
         <source>No other projects</source>
         <translation>その他のプロジェクトはありません</translation>
     </message>
@@ -5676,22 +6015,22 @@ FFmpegのパレット生成の確認 ... 🗸</translation>
         <translation type="vanished">(レガシー）エクスポート・プロジェクト・アズ...</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainMenuBar.cpp" line="179"/>
+        <location filename="../../src/gui/MainMenuBar.cpp" line="109"/>
         <source>Save project</source>
         <translation>プロジェクトを保存</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainMenuBar.cpp" line="180"/>
+        <location filename="../../src/gui/MainMenuBar.cpp" line="110"/>
         <source>Save project as</source>
         <translation>名前を付けてプロジェクトを保存する</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainMenuBar.cpp" line="181"/>
+        <location filename="../../src/gui/MainMenuBar.cpp" line="128"/>
         <source>Close project</source>
         <translation>プロジェクトを閉じる</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainMenuBar.cpp" line="182"/>
+        <location filename="../../src/gui/MainMenuBar.cpp" line="113"/>
         <source>Export project as</source>
         <translation>プロジェクトを次のようにエクスポートします</translation>
     </message>
@@ -5744,32 +6083,32 @@ FFmpegのパレット生成の確認 ... 🗸</translation>
         <translation type="vanished">AVIビデオ</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainMenuBar.cpp" line="237"/>
+        <location filename="../../src/gui/MainMenuBar.h" line="86"/>
         <source>Edit</source>
         <translation>編集</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainMenuBar.cpp" line="239"/>
+        <location filename="../../src/gui/MainMenuBar.cpp" line="158"/>
         <source>Undo</source>
         <translation>元に戻す</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainMenuBar.cpp" line="240"/>
+        <location filename="../../src/gui/MainMenuBar.cpp" line="160"/>
         <source>Redo</source>
         <translation>やり直す</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainMenuBar.cpp" line="242"/>
+        <location filename="../../src/gui/MainMenuBar.cpp" line="164"/>
         <source>Assets</source>
         <translation>アセット</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainMenuBar.cpp" line="269"/>
+        <location filename="../../src/gui/MainMenuBar.h" line="88"/>
         <source>Preferences</source>
         <translation>環境設定</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainMenuBar.cpp" line="271"/>
+        <location filename="../../src/gui/MainMenuBar.cpp" line="174"/>
         <source>Settings</source>
         <translation>設定</translation>
     </message>
@@ -5782,37 +6121,37 @@ FFmpegのパレット生成の確認 ... 🗸</translation>
         <translation type="vanished">マウス設定</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainMenuBar.cpp" line="272"/>
+        <location filename="../../src/gui/MainMenuBar.cpp" line="189"/>
         <source>Keybindings</source>
         <translation>キーバインド</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainMenuBar.cpp" line="300"/>
+        <location filename="../../src/gui/MainMenuBar.h" line="89"/>
         <source>Help</source>
         <translation>ヘルプ</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainMenuBar.cpp" line="302"/>
+        <location filename="../../src/gui/MainMenuBar.cpp" line="196"/>
         <source>About AnimeEffects</source>
         <translation>AnimeEffectsについて</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainMenuBar.cpp" line="311"/>
+        <location filename="../../src/gui/MainMenuBar.cpp" line="203"/>
         <source>### AnimeEffects for </source>
         <translation>### AnimeEffects 「</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainMenuBar.cpp" line="311"/>
+        <location filename="../../src/gui/MainMenuBar.cpp" line="203"/>
         <source> version </source>
         <translation>版」&#x3000;バージョン</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainMenuBar.cpp" line="312"/>
+        <location filename="../../src/gui/MainMenuBar.cpp" line="204"/>
         <source>An easy to use 2D animation software maintained by the [AnimeEffectsDevs](https://github.com/AnimeEffectsDevs).&lt;br /&gt;Licensed under the GPL v3.0 and powered by various open source libraries.</source>
         <translation>[AnimeEffectsDevs](https://github.com/AnimeEffectsDevs) が管理する使いやすい 2D アニメーション ソフトウェア.&lt;br /&gt;GPL v3.0 に基づいてライセンスされており、さまざまなオープンソース ライブラリを活用しています。</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainMenuBar.cpp" line="320"/>
+        <location filename="../../src/gui/MainMenuBar.cpp" line="211"/>
         <source>&lt;br /&gt;&lt;br /&gt;Contributors:&lt;br /&gt;[Hidefuku](https://github.com/hidefuku), [Yukusai](https://github.com/p-yukusai), [Gambot](https://github.com/GbotHQ), [Arrangemonk](https://github.com/Arrangemonk), [OneByStudio](https://onebystudio.com), [Larpon](https://github.com/larpon), [Herace](https://github.com/herace), [Aodaruma](https://github.com/Aodaruma), [Azagaya](https://github.com/azagaya), [FoxyHawk](https://github.com/FoxyHawk), [Nanashia](https://github.com/Nanashia), [Henrich](https://github.com/henrich), [mcddx330](https://github.com/mcddx330), [Freddii](https://github.com/freddii), [Aki017](https://github.com/aki017), [PicoHz](https://github.com/picoHz), [Peter9811](https://github.com/peter9811), [GES233](https://github.com/GES233), [h-banii](https://github.com/h-banii), [henrich](https://github.com/henrich), [Nanashia](https://github.com/Nanashia).
 If we forgot to include you please let us know or open a PR!</source>
         <translation>&lt;br /&gt;&lt;br /&gt;寄稿者:&lt;br /&gt;[Hidefuku](https://github.com/hidefuku), [Yukusai](https://github.com/p-yukusai), [Gambot](https://github.com/GbotHQ), [Arrangemonk](https://github.com/Arrangemonk), [OneByStudio](https://onebystudio.com), [Larpon](https://github.com/larpon), [Herace](https://github.com/herace), [Aodaruma](https://github.com/Aodaruma), [Azagaya](https://github.com/azagaya), [FoxyHawk](https://github.com/FoxyHawk), [Nanashia](https://github.com/Nanashia), [Henrich](https://github.com/henrich), [mcddx330](https://github.com/mcddx330), [Freddii](https://github.com/freddii), [Aki017](https://github.com/aki017), [PicoHz](https://github.com/picoHz), [Peter9811](https://github.com/peter9811), [GES233](https://github.com/GES233), [h-banii](https://github.com/h-banii), [henrich](https://github.com/henrich), [Nanashia](https://github.com/Nanashia).
@@ -5823,78 +6162,78 @@ If we forgot to include you please let us know or open a PR!</source>
         <translation type="vanished">&lt;br /&gt;&lt;br /&gt;寄稿者:&lt;br /&gt;[Hidefuku](https://github.com/hidefuku), [Yukusai](https://github.com/p-yukusai), [Gambot](https://github.com/GbotHQ), [Arrangemonk](https://github.com/Arrangemonk), [OneByStudio](https://onebystudio.com), [Larpon](https://github.com/larpon), [Herace](https://github.com/herace), [Aodaruma](https://github.com/Aodaruma), [Azagaya](https://github.com/azagaya), [FoxyHawk](https://github.com/FoxyHawk), [Nanashia](https://github.com/Nanashia), [Henrich](https://github.com/henrich), [mcddx330](https://github.com/mcddx330), [Freddii](https://github.com/freddii), [aki017](https://github.com/aki017), [picoHz](https://github.com/picoHz).</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainMenuBar.cpp" line="196"/>
+        <location filename="../../src/gui/MainMenuBar.cpp" line="118"/>
         <source>Quickly export as...</source>
         <translation>すばやくエクスポート...</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainMenuBar.cpp" line="212"/>
+        <location filename="../../src/gui/MainMenuBar.cpp" line="123"/>
         <source>Export again</source>
         <translation>同じ設定で再エクスポート</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainMenuBar.cpp" line="267"/>
+        <location filename="../../src/gui/MainMenuBar.h" line="87"/>
         <source>Panels</source>
         <translation>パネル</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainMenuBar.cpp" line="315"/>
+        <location filename="../../src/gui/MainMenuBar.cpp" line="207"/>
         <source>&lt;br /&gt;&lt;br /&gt;Video/audio encoding uses the FFmpeg libraries (https://ffmpeg.org), which are licensed under the GNU Lesser GPL v2.1+ (or GPL, depending on the build). Their corresponding source is available as required by that license.</source>
         <translation>&lt;br /&gt;&lt;br /&gt;映像と音声のエンコードには FFmpeg ライブラリ（https://ffmpeg.org）を使用しており、これらは GNU Lesser GPL v2.1+（ビルドによっては GPL）の下でライセンスされています。対応するソースコードは、そのライセンスの要求に従って入手できます。</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainMenuBar.cpp" line="349"/>
+        <location filename="../../src/gui/MainMenuBar.cpp" line="239"/>
         <source>About us</source>
         <translation>私たちについて</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainMenuBar.cpp" line="355"/>
+        <location filename="../../src/gui/MainMenuBar.cpp" line="244"/>
         <source>Check for updates</source>
         <translation>アップデートをチェックする</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainMenuBar.cpp" line="360"/>
-        <location filename="../../src/gui/MainMenuBar.cpp" line="505"/>
+        <location filename="../../src/gui/MainMenuBar.cpp" line="248"/>
+        <location filename="../../src/gui/MainMenuBar.cpp" line="386"/>
         <source>System telemetry</source>
         <translation>システムテレメトリ</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainMenuBar.cpp" line="400"/>
+        <location filename="../../src/gui/MainMenuBar.cpp" line="285"/>
         <source>Version: </source>
         <translation>バージョン: </translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainMenuBar.cpp" line="401"/>
+        <location filename="../../src/gui/MainMenuBar.cpp" line="286"/>
         <source>Format version: </source>
         <translation>バージョンをフォーマット: </translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainMenuBar.cpp" line="402"/>
+        <location filename="../../src/gui/MainMenuBar.cpp" line="287"/>
         <source>Platform: </source>
         <translation>オーエス: </translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainMenuBar.cpp" line="403"/>
+        <location filename="../../src/gui/MainMenuBar.cpp" line="288"/>
         <source>Build ABI: </source>
         <translation>ABIビルド: </translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainMenuBar.cpp" line="428"/>
+        <location filename="../../src/gui/MainMenuBar.cpp" line="311"/>
         <source>CPU vendor: </source>
         <translation>CPU ベンダー: </translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainMenuBar.cpp" line="429"/>
+        <location filename="../../src/gui/MainMenuBar.cpp" line="312"/>
         <source>CPU architecture: </source>
         <translation>CPU アーキテクチャ: </translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainMenuBar.cpp" line="499"/>
+        <location filename="../../src/gui/MainMenuBar.cpp" line="380"/>
         <source>libav licence: </source>
         <translation>libav ライセンス: </translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainMenuBar.cpp" line="500"/>
+        <location filename="../../src/gui/MainMenuBar.cpp" line="381"/>
         <source>libav configuration: </source>
         <translation>libav 設定: </translation>
     </message>
@@ -5903,32 +6242,32 @@ If we forgot to include you please let us know or open a PR!</source>
         <translation type="vanished">CPU コア: </translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainMenuBar.cpp" line="430"/>
+        <location filename="../../src/gui/MainMenuBar.cpp" line="313"/>
         <source>CPU threads: </source>
         <translation>CPU スレッド: </translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainMenuBar.cpp" line="434"/>
+        <location filename="../../src/gui/MainMenuBar.cpp" line="317"/>
         <source>System RAM:</source>
         <translation>システム RAM:</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainMenuBar.cpp" line="436"/>
+        <location filename="../../src/gui/MainMenuBar.cpp" line="319"/>
         <source>System </source>
         <translation>システム </translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainMenuBar.cpp" line="438"/>
+        <location filename="../../src/gui/MainMenuBar.cpp" line="321"/>
         <source>Current GPU: </source>
         <translation>カレントGPU: </translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainMenuBar.cpp" line="471"/>
+        <location filename="../../src/gui/MainMenuBar.cpp" line="355"/>
         <source>GPU Vendor: </source>
         <translation>GPUベンダ: </translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainMenuBar.cpp" line="472"/>
+        <location filename="../../src/gui/MainMenuBar.cpp" line="356"/>
         <source>Max VRAM: </source>
         <translation>最大VRAM: </translation>
     </message>
@@ -5937,27 +6276,27 @@ If we forgot to include you please let us know or open a PR!</source>
         <translation type="vanished">利用可能なVRAM: </translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainMenuBar.cpp" line="473"/>
+        <location filename="../../src/gui/MainMenuBar.cpp" line="357"/>
         <source>OpenGL version: </source>
         <translation>OpenGL バージョン: </translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainMenuBar.cpp" line="474"/>
+        <location filename="../../src/gui/MainMenuBar.cpp" line="358"/>
         <source>Qt Version: </source>
         <translation>Qtバージョン: </translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainMenuBar.cpp" line="475"/>
+        <location filename="../../src/gui/MainMenuBar.cpp" line="359"/>
         <source>System locale: </source>
         <translation>システムのロケール: </translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainMenuBar.cpp" line="480"/>
+        <location filename="../../src/gui/MainMenuBar.cpp" line="364"/>
         <source>Location Has Unicode: </source>
         <translation>場所はユニコードを持っています： </translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainMenuBar.cpp" line="493"/>
+        <location filename="../../src/gui/MainMenuBar.cpp" line="376"/>
         <source>Location Is Writable: </source>
         <translation>場所は書き込み可能： </translation>
     </message>
@@ -5966,17 +6305,17 @@ If we forgot to include you please let us know or open a PR!</source>
         <translation type="vanished">FFmpeg実行可能タイプ: </translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainMenuBar.cpp" line="501"/>
+        <location filename="../../src/gui/MainMenuBar.cpp" line="382"/>
         <source>System specs successfully copied to the clipboard</source>
         <translation>システム仕様がクリップボードにコピーされました</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainMenuBar.cpp" line="516"/>
+        <location filename="../../src/gui/MainMenuBar.cpp" line="400"/>
         <source>Donate</source>
         <translation>寄付する</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainMenuBar.cpp" line="241"/>
+        <location filename="../../src/gui/MainMenuBar.cpp" line="161"/>
         <source>Project settings</source>
         <translation>プロジェクト設定</translation>
     </message>
@@ -6000,37 +6339,37 @@ If we forgot to include you please let us know or open a PR!</source>
         <translation type="vanished">ツールドック</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainWindow.cpp" line="931"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="929"/>
         <source>Theme changed</source>
         <translation>テーマ変更</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainWindow.cpp" line="933"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="931"/>
         <source>There may be visual artifacts after changing themes, we recommend you restart the application.</source>
         <translation>テーマを変更した後、視覚的な不具合が発生する可能性があります。アプリケーションを再起動することをお勧めします。</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainWindow.cpp" line="1155"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="1153"/>
         <source> has been modified. Save changes?</source>
         <translation> は変更が加えられてます。変更を保存しますか？</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainWindow.cpp" line="1157"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="1155"/>
         <source>Some projects have been modified. Save changes?</source>
         <translation>いくつかのプロジェクトは変更が加えられてます。変更を保存しますか？</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainWindow.cpp" line="1165"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="1163"/>
         <source>Save Changes</source>
         <translation>変更を保存する</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainWindow.cpp" line="1166"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="1164"/>
         <source>Discard Changes</source>
         <translation>変更を破棄する</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainWindow.cpp" line="1167"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="1165"/>
         <source>Cancel</source>
         <translation>キャンセル</translation>
     </message>
@@ -6043,56 +6382,57 @@ If we forgot to include you please let us know or open a PR!</source>
         <translation type="vanished">やり直す : </translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainWindow.cpp" line="1308"/>
-        <location filename="../../src/gui/MainWindow.cpp" line="1385"/>
-        <location filename="../../src/gui/MainWindow.cpp" line="1416"/>
-        <location filename="../../src/gui/MainWindow.cpp" line="1487"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="1306"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="1383"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="1414"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="1485"/>
         <source>Loading Error</source>
         <translation>読み込みエラー</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainWindow.cpp" line="1361"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="1359"/>
         <source>Open File</source>
         <translation>ファイルを開く</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainWindow.cpp" line="1501"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="1499"/>
         <source>Save File</source>
         <translation>ファイルを保存する</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainWindow.cpp" line="2150"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="2148"/>
         <source>Exported %1 (%2 KB)</source>
         <translation>%1 をエクスポートしました（%2 KB）</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainWindow.cpp" line="2160"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="2158"/>
         <source> (%1 of %2 KB allowed for %3)</source>
         <translation>（%3 に許される %2 KB のうち %1）</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainWindow.cpp" line="2165"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="2163"/>
         <source>; OVER THE LIMIT, it will be rejected</source>
         <translation>。上限を超えているため拒否されます</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainWindow.cpp" line="2204"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="2202"/>
         <source>All files (*)</source>
         <translation>すべてのファイル (*)</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainWindow.cpp" line="2205"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="2203"/>
         <source>%1 files (*.%2)</source>
         <translation>%1 ファイル (*.%2)</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainWindow.cpp" line="2948"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="2956"/>
         <source>Nothing is docked on the %1</source>
         <translation>%1には何もドッキングされていません</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainWindow.cpp" line="2946"/>
-        <location filename="../../src/gui/MainWindow.cpp" line="2949"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="454"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="2955"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="2957"/>
         <source>Show or hide the %1</source>
         <translation>%1の表示/非表示</translation>
     </message>
@@ -6151,42 +6491,42 @@ In the following screen you can instruct AnimeEffects to download and install it
         <translation type="vanished">FFmpegはパレットを生成できませんでした、トラブルシューティングしてください。</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainWindow.cpp" line="230"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="232"/>
         <source>Animation</source>
         <translation>アニメーション</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainWindow.cpp" line="263"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="265"/>
         <source>Properties</source>
         <translation>プロパティ</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainWindow.cpp" line="311"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="313"/>
         <source>Tools</source>
         <translation>ツール</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainWindow.cpp" line="423"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="444"/>
         <source>left side</source>
         <translation>左側</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainWindow.cpp" line="424"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="445"/>
         <source>right side</source>
         <translation>右側</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainWindow.cpp" line="425"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="446"/>
         <source>bottom</source>
         <translation>下部</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainWindow.cpp" line="1436"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="1434"/>
         <source>Recover unsaved project?</source>
         <translation>未保存のプロジェクトを復元しますか？</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainWindow.cpp" line="1437"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="1435"/>
         <source>AnimeEffects found an unsaved project from a previous session:
 %1
 
@@ -6277,8 +6617,8 @@ Open it?</source>
         <translation type="vanished">タグ画像</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainWindow.cpp" line="2198"/>
-        <location filename="../../src/gui/MainWindow.cpp" line="2277"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="2196"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="2275"/>
         <source>Export Folder</source>
         <translation>出力フォルダ</translation>
     </message>
@@ -6295,7 +6635,7 @@ Open it?</source>
         <translation type="vanished">出力エラー</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainWindow.cpp" line="2206"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="2204"/>
         <source>Export File</source>
         <translation>出力ファイル</translation>
     </message>
@@ -7109,157 +7449,157 @@ The log is available below.</source>
 <context>
     <name>gui::ToolViewModel</name>
     <message>
-        <location filename="../../src/gui/ToolWidget.cpp" line="209"/>
+        <location filename="../../src/gui/ToolWidget.cpp" line="204"/>
         <location filename="../../src/gui/qml/ToolViewModel.cpp" line="175"/>
         <source>Select a layer to paint a mask.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../../src/gui/ToolWidget.cpp" line="217"/>
+        <location filename="../../src/gui/ToolWidget.cpp" line="212"/>
         <source>This layer has no image or canvas to mask.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../../src/gui/ToolWidget.cpp" line="237"/>
+        <location filename="../../src/gui/ToolWidget.cpp" line="232"/>
         <source>%1 amount</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../../src/gui/ToolWidget.cpp" line="244"/>
+        <location filename="../../src/gui/ToolWidget.cpp" line="239"/>
         <source>%1 time offset</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../../src/gui/ToolWidget.cpp" line="257"/>
+        <location filename="../../src/gui/ToolWidget.cpp" line="252"/>
         <source>Layer mask</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../../src/gui/ToolWidget.cpp" line="266"/>
+        <location filename="../../src/gui/ToolWidget.cpp" line="261"/>
         <source>Key the mask at this frame to paint it.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../../src/gui/ToolWidget.cpp" line="270"/>
+        <location filename="../../src/gui/ToolWidget.cpp" line="265"/>
         <source>Enable a filter to paint its mask.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../../src/gui/ToolWidget.cpp" line="274"/>
+        <location filename="../../src/gui/ToolWidget.cpp" line="269"/>
         <source>There is no mask to paint on this layer at this frame.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../../src/gui/ToolWidget.cpp" line="278"/>
+        <location filename="../../src/gui/ToolWidget.cpp" line="273"/>
         <source>Add a filter or a mask in Properties first.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ToolViewModel.cpp" line="276"/>
+        <location filename="../../src/gui/qml/ToolViewModel.cpp" line="271"/>
         <source>Mask</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ToolViewModel.cpp" line="440"/>
+        <location filename="../../src/gui/qml/ToolViewModel.cpp" line="435"/>
         <source>No bone key</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ToolViewModel.cpp" line="441"/>
+        <location filename="../../src/gui/qml/ToolViewModel.cpp" line="436"/>
         <source>Select a bone</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ToolViewModel.cpp" line="442"/>
+        <location filename="../../src/gui/qml/ToolViewModel.cpp" line="437"/>
         <source>No mesh here</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ToolViewModel.cpp" line="443"/>
+        <location filename="../../src/gui/qml/ToolViewModel.cpp" line="438"/>
         <source>Envelope</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ToolViewModel.cpp" line="447"/>
+        <location filename="../../src/gui/qml/ToolViewModel.cpp" line="442"/>
         <source>Baked</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ToolViewModel.cpp" line="448"/>
+        <location filename="../../src/gui/qml/ToolViewModel.cpp" line="443"/>
         <source>Partly baked</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ToolViewModel.cpp" line="470"/>
+        <location filename="../../src/gui/qml/ToolViewModel.cpp" line="465"/>
         <source>Create a bone key at this frame to paint weights.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ToolViewModel.cpp" line="472"/>
+        <location filename="../../src/gui/qml/ToolViewModel.cpp" line="467"/>
         <source>Right-click a bone to target it. Left is always the stroke.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ToolViewModel.cpp" line="474"/>
+        <location filename="../../src/gui/qml/ToolViewModel.cpp" line="469"/>
         <source>The key skins no mesh at this frame.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ToolViewModel.cpp" line="476"/>
+        <location filename="../../src/gui/qml/ToolViewModel.cpp" line="471"/>
         <source>This bone&apos;s weights are live. Bake evaluates its envelope once, then the brush edits the result.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ToolViewModel.cpp" line="478"/>
+        <location filename="../../src/gui/qml/ToolViewModel.cpp" line="473"/>
         <source>The field is authored (%1). Rebake replaces it from the envelope.</source>
         <translation type="unfinished"></translation>
     </message>
     <message numerus="yes">
-        <location filename="../../src/gui/qml/ToolViewModel.cpp" line="481"/>
+        <location filename="../../src/gui/qml/ToolViewModel.cpp" line="476"/>
         <source>%n layer(s) still use the live envelope; the brush paints the baked ones.</source>
         <translation type="unfinished">
             <numerusform></numerusform>
         </translation>
     </message>
     <message numerus="yes">
-        <location filename="../../src/gui/qml/ToolViewModel.cpp" line="488"/>
+        <location filename="../../src/gui/qml/ToolViewModel.cpp" line="483"/>
         <source>%n vertex(s)</source>
         <translation type="unfinished">
             <numerusform></numerusform>
         </translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ToolViewModel.cpp" line="542"/>
+        <location filename="../../src/gui/qml/ToolViewModel.cpp" line="537"/>
         <source>Add</source>
         <translation type="unfinished">追加</translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ToolViewModel.cpp" line="543"/>
+        <location filename="../../src/gui/qml/ToolViewModel.cpp" line="538"/>
         <source>Subtract</source>
         <translation type="unfinished">減算</translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ToolViewModel.cpp" line="544"/>
+        <location filename="../../src/gui/qml/ToolViewModel.cpp" line="539"/>
         <source>Replace</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ToolViewModel.cpp" line="696"/>
+        <location filename="../../src/gui/qml/ToolViewModel.cpp" line="691"/>
         <source>Choose a paint target.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ToolViewModel.cpp" line="838"/>
+        <location filename="../../src/gui/qml/ToolViewModel.cpp" line="777"/>
         <source>Brush size (%1 / %2)</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ToolViewModel.cpp" line="842"/>
+        <location filename="../../src/gui/qml/ToolViewModel.cpp" line="781"/>
         <source>Brush hardness (%1 / %2)</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ToolViewModel.cpp" line="1003"/>
+        <location filename="../../src/gui/qml/ToolViewModel.cpp" line="914"/>
         <source>Alt + click samples the value under the pointer; %1 swaps between 0% and 100%</source>
         <translation type="unfinished"></translation>
     </message>
@@ -7267,39 +7607,32 @@ The log is available below.</source>
 <context>
     <name>gui::ToolWidget</name>
     <message>
-        <location filename="../../src/gui/qml/ToolViewModel.cpp" line="813"/>
         <source>View Settings</source>
-        <translation>表示設定</translation>
+        <translation type="vanished">表示設定</translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ToolViewModel.cpp" line="816"/>
         <source>Show mesh</source>
-        <translation>メッシュを表示する</translation>
+        <translation type="vanished">メッシュを表示する</translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ToolViewModel.cpp" line="819"/>
         <source>Do not draw outside the frame</source>
-        <translation>額縁外の描画をしない</translation>
+        <translation type="vanished">額縁外の描画をしない</translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ToolViewModel.cpp" line="822"/>
         <source>Rotate the canvas counterclockwise (%1)</source>
-        <translation>キャンバスを反時計回りに15°回転させる (%1))</translation>
+        <translation type="vanished">キャンバスを反時計回りに15°回転させる (%1))</translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ToolViewModel.cpp" line="826"/>
         <source>Reset rotation of the canvas (%1)</source>
-        <translation>回転を初期化する (%1)</translation>
+        <translation type="vanished">回転を初期化する (%1)</translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ToolViewModel.cpp" line="830"/>
         <source>Rotate the canvas clockwise (%1)</source>
-        <translation>キャンバスを時計回りに15°回転させる (%1)</translation>
+        <translation type="vanished">キャンバスを時計回りに15°回転させる (%1)</translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ToolViewModel.cpp" line="834"/>
         <source>Flip canvas</source>
-        <translation>キャンバスを反転</translation>
+        <translation type="vanished">キャンバスを反転</translation>
     </message>
     <message>
         <source>Show animation graph</source>
@@ -7335,6 +7668,39 @@ The log is available below.</source>
     <message>
         <source>Bit rate (Kbps)</source>
         <translation type="vanished">ビットレート(Kbps)</translation>
+    </message>
+</context>
+<context>
+    <name>gui::ViewSettingsModel</name>
+    <message>
+        <location filename="../../src/gui/qml/ViewSettingsModel.cpp" line="47"/>
+        <source>Show mesh</source>
+        <translation>メッシュを表示する</translation>
+    </message>
+    <message>
+        <location filename="../../src/gui/qml/ViewSettingsModel.cpp" line="51"/>
+        <source>Do not draw outside the frame</source>
+        <translation>額縁外の描画をしない</translation>
+    </message>
+    <message>
+        <location filename="../../src/gui/qml/ViewSettingsModel.cpp" line="55"/>
+        <source>Rotate the canvas counterclockwise (%1)</source>
+        <translation>キャンバスを反時計回りに15°回転させる (%1)</translation>
+    </message>
+    <message>
+        <location filename="../../src/gui/qml/ViewSettingsModel.cpp" line="59"/>
+        <source>Reset rotation of the canvas (%1)</source>
+        <translation>回転を初期化する (%1)</translation>
+    </message>
+    <message>
+        <location filename="../../src/gui/qml/ViewSettingsModel.cpp" line="63"/>
+        <source>Rotate the canvas clockwise (%1)</source>
+        <translation>キャンバスを時計回りに15°回転させる (%1)</translation>
+    </message>
+    <message>
+        <location filename="../../src/gui/qml/ViewSettingsModel.cpp" line="67"/>
+        <source>Flip canvas</source>
+        <translation>キャンバスを反転</translation>
     </message>
 </context>
 <context>
@@ -8019,37 +8385,37 @@ The log is available below.</source>
 <context>
     <name>gui::tool::BonePanel</name>
     <message>
-        <location filename="../../src/gui/qml/ToolViewModel.cpp" line="264"/>
+        <location filename="../../src/gui/qml/ToolViewModel.cpp" line="259"/>
         <source>Bone editor</source>
         <translation>ボーンエディター</translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ToolViewModel.cpp" line="289"/>
+        <location filename="../../src/gui/qml/ToolViewModel.cpp" line="284"/>
         <source>Add bones</source>
         <translation>ボーンを追加する</translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ToolViewModel.cpp" line="290"/>
+        <location filename="../../src/gui/qml/ToolViewModel.cpp" line="285"/>
         <source>Remove bones</source>
         <translation>ボーンを取り除くする</translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ToolViewModel.cpp" line="291"/>
+        <location filename="../../src/gui/qml/ToolViewModel.cpp" line="286"/>
         <source>Move joints</source>
         <translation>関節を動かす</translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ToolViewModel.cpp" line="292"/>
+        <location filename="../../src/gui/qml/ToolViewModel.cpp" line="287"/>
         <source>Bind bone to node</source>
         <translation>ボーンをノードに結合する</translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ToolViewModel.cpp" line="293"/>
+        <location filename="../../src/gui/qml/ToolViewModel.cpp" line="288"/>
         <source>Adjust envelope</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ToolViewModel.cpp" line="294"/>
+        <location filename="../../src/gui/qml/ToolViewModel.cpp" line="289"/>
         <source>Envelope brush</source>
         <translation type="unfinished"></translation>
     </message>
@@ -8066,7 +8432,7 @@ The log is available below.</source>
         <translation type="vanished">影響力を消すする</translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ToolViewModel.cpp" line="295"/>
+        <location filename="../../src/gui/qml/ToolViewModel.cpp" line="290"/>
         <source>Paint weights</source>
         <translation type="unfinished"></translation>
     </message>
@@ -8082,22 +8448,22 @@ The log is available below.</source>
 <context>
     <name>gui::tool::FFDPanel</name>
     <message>
-        <location filename="../../src/gui/qml/ToolViewModel.cpp" line="270"/>
+        <location filename="../../src/gui/qml/ToolViewModel.cpp" line="265"/>
         <source>FFD</source>
         <translation>自由変形</translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ToolViewModel.cpp" line="311"/>
+        <location filename="../../src/gui/qml/ToolViewModel.cpp" line="306"/>
         <source>Move vertex</source>
         <translation>バーテックスを動かす</translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ToolViewModel.cpp" line="312"/>
+        <location filename="../../src/gui/qml/ToolViewModel.cpp" line="307"/>
         <source>Deform mesh</source>
         <translation>バーテックスを変形する</translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ToolViewModel.cpp" line="313"/>
+        <location filename="../../src/gui/qml/ToolViewModel.cpp" line="308"/>
         <source>Erase deformations</source>
         <translation>トランスフォームをイレーズ する</translation>
     </message>
@@ -8122,7 +8488,7 @@ The log is available below.</source>
         <translation type="vanished">圧力</translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ToolViewModel.cpp" line="993"/>
+        <location filename="../../src/gui/qml/ToolViewModel.cpp" line="904"/>
         <source>Blur</source>
         <translation>ぼかし</translation>
     </message>
@@ -8130,22 +8496,22 @@ The log is available below.</source>
 <context>
     <name>gui::tool::MeshPanel</name>
     <message>
-        <location filename="../../src/gui/qml/ToolViewModel.cpp" line="268"/>
+        <location filename="../../src/gui/qml/ToolViewModel.cpp" line="263"/>
         <source>Mesh editor</source>
         <translation>メッシュエディター</translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ToolViewModel.cpp" line="305"/>
+        <location filename="../../src/gui/qml/ToolViewModel.cpp" line="300"/>
         <source>Add vertex</source>
         <translation>頂点を追加する</translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ToolViewModel.cpp" line="306"/>
+        <location filename="../../src/gui/qml/ToolViewModel.cpp" line="301"/>
         <source>Delete vertex</source>
         <translation>頂点を削除する</translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ToolViewModel.cpp" line="307"/>
+        <location filename="../../src/gui/qml/ToolViewModel.cpp" line="302"/>
         <source>Split polygon</source>
         <translation>ポリゴンを切る</translation>
     </message>
@@ -8157,37 +8523,37 @@ The log is available below.</source>
         <translation type="vanished">ツール類</translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ToolViewModel.cpp" line="235"/>
+        <location filename="../../src/gui/qml/ToolViewModel.cpp" line="230"/>
         <source>Pan tool</source>
         <translation>パンニングツール</translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ToolViewModel.cpp" line="236"/>
+        <location filename="../../src/gui/qml/ToolViewModel.cpp" line="231"/>
         <source>Transform</source>
         <translation>変形</translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ToolViewModel.cpp" line="237"/>
+        <location filename="../../src/gui/qml/ToolViewModel.cpp" line="232"/>
         <source>Bone editor</source>
         <translation>ボーンエディター</translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ToolViewModel.cpp" line="238"/>
+        <location filename="../../src/gui/qml/ToolViewModel.cpp" line="233"/>
         <source>Pose editor</source>
         <translation>ポーズエディター</translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ToolViewModel.cpp" line="239"/>
+        <location filename="../../src/gui/qml/ToolViewModel.cpp" line="234"/>
         <source>Mesh editor</source>
         <translation>メッシュエディター</translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ToolViewModel.cpp" line="240"/>
+        <location filename="../../src/gui/qml/ToolViewModel.cpp" line="235"/>
         <source>Free-form deformation</source>
         <translation>自由な形状に変形させる</translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ToolViewModel.cpp" line="241"/>
+        <location filename="../../src/gui/qml/ToolViewModel.cpp" line="236"/>
         <source>Mask paint</source>
         <translation type="unfinished"></translation>
     </message>
@@ -8195,27 +8561,27 @@ The log is available below.</source>
 <context>
     <name>gui::tool::PosePanel</name>
     <message>
-        <location filename="../../src/gui/qml/ToolViewModel.cpp" line="266"/>
+        <location filename="../../src/gui/qml/ToolViewModel.cpp" line="261"/>
         <source>Pose editor</source>
         <translation>ポーズエディター</translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ToolViewModel.cpp" line="299"/>
+        <location filename="../../src/gui/qml/ToolViewModel.cpp" line="294"/>
         <source>Move bone</source>
         <translation>ボーンを移動する</translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ToolViewModel.cpp" line="300"/>
+        <location filename="../../src/gui/qml/ToolViewModel.cpp" line="295"/>
         <source>Pull bones</source>
         <translation>ボーンを引っ張る</translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ToolViewModel.cpp" line="301"/>
+        <location filename="../../src/gui/qml/ToolViewModel.cpp" line="296"/>
         <source>Erase bone pose</source>
         <translation>ポーズを消す</translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ToolViewModel.cpp" line="997"/>
+        <location filename="../../src/gui/qml/ToolViewModel.cpp" line="908"/>
         <source>Weight</source>
         <translation>重さ</translation>
     </message>
@@ -8231,53 +8597,53 @@ The log is available below.</source>
 <context>
     <name>gui::tool::SRTPanel</name>
     <message>
-        <location filename="../../src/gui/qml/ToolViewModel.cpp" line="262"/>
-        <location filename="../../src/gui/qml/ToolViewModel.cpp" line="285"/>
+        <location filename="../../src/gui/qml/ToolViewModel.cpp" line="257"/>
+        <location filename="../../src/gui/qml/ToolViewModel.cpp" line="280"/>
         <source>Transform</source>
         <translation>変形</translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ToolViewModel.cpp" line="286"/>
+        <location filename="../../src/gui/qml/ToolViewModel.cpp" line="281"/>
         <source>Move Centroid</source>
         <translation>重心を移動させる</translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ToolViewModel.cpp" line="962"/>
+        <location filename="../../src/gui/qml/ToolViewModel.cpp" line="873"/>
         <source>Create move key</source>
         <translation>強制ムーブキー</translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ToolViewModel.cpp" line="963"/>
+        <location filename="../../src/gui/qml/ToolViewModel.cpp" line="874"/>
         <source>The transformation will create a move key regardless of its type.</source>
         <translation>姿勢を修正した際に必ず移動キーを追加する。</translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ToolViewModel.cpp" line="965"/>
+        <location filename="../../src/gui/qml/ToolViewModel.cpp" line="876"/>
         <source>Create rotate key</source>
         <translation>必ず回転</translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ToolViewModel.cpp" line="966"/>
+        <location filename="../../src/gui/qml/ToolViewModel.cpp" line="877"/>
         <source>The transformation will create a rotate key regardless of its type.</source>
         <translation>姿勢を修正した際に必ず回転キーを追加する。</translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ToolViewModel.cpp" line="968"/>
+        <location filename="../../src/gui/qml/ToolViewModel.cpp" line="879"/>
         <source>Create scale key</source>
         <translation>必ず拡縮</translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ToolViewModel.cpp" line="969"/>
+        <location filename="../../src/gui/qml/ToolViewModel.cpp" line="880"/>
         <source>The transformation will create a scale key regardless of its type.</source>
         <translation>姿勢を修正した際に必ず拡縮キーを追加する。</translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ToolViewModel.cpp" line="971"/>
+        <location filename="../../src/gui/qml/ToolViewModel.cpp" line="882"/>
         <source>Adjust centroid position</source>
         <translation>セントロイド位置の調整</translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ToolViewModel.cpp" line="972"/>
+        <location filename="../../src/gui/qml/ToolViewModel.cpp" line="883"/>
         <source>Move the centroid in relation to the image, the opposite will be true when not toggled.</source>
         <translation>画像に対してセントロイドを移動させます。トグルしていない場合は、その逆となります。</translation>
     </message>

@@ -1147,6 +1147,45 @@ target_link_libraries(tool_view_model PRIVATE
     Qt6::Core Qt6::Gui Qt6::OpenGL
 )
 
+# The header's widget-free models: menu commands, the view settings that moved out
+# of the Tools dock, and the slot toggles. See header_model.cpp.
+add_executable(header_model
+    header_model.cpp
+    ../src/gui/qml/MenuCommand.cpp
+    ../src/gui/qml/ViewSettingsModel.cpp
+    ../src/gui/qml/DockSlotsModel.cpp)
+target_include_directories(header_model PRIVATE .. ../src)
+target_compile_definitions(header_model PRIVATE
+    AE_MAJOR_VERSION=1
+    AE_MINOR_VERSION=7
+    AE_MICRO_VERSION=1
+)
+target_link_libraries(header_model PRIVATE
+    Qt6::Core Qt6::Gui Qt6::Test
+)
+
+# The header SCENE: the MenuBar, its delegates and the Action<->MenuCommand bridge,
+# loaded offscreen with a fake registry. See header_scene.cpp.
+add_executable(header_scene
+    header_scene.cpp
+    ../src/gui/qml/MenuCommand.cpp
+    ../src/gui/qml/ViewSettingsModel.cpp
+    ../src/gui/qml/DockSlotsModel.cpp
+    ../src/gui/qml/QmlTheme.cpp
+    ../src/gui/theme/Icons.cpp)
+target_include_directories(header_scene PRIVATE .. ../src ../src/gui)
+target_compile_definitions(header_scene PRIVATE
+    AE_QML_DIR="${CMAKE_SOURCE_DIR}/src/gui/qml"
+    AE_ICON_SRC="${CMAKE_SOURCE_DIR}/assets/icons"
+    AE_MAJOR_VERSION=1
+    AE_MINOR_VERSION=7
+    AE_MICRO_VERSION=1
+    USE_GL_CORE_PROFILE
+)
+target_link_libraries(header_scene PRIVATE
+    Qt6::Core Qt6::Gui Qt6::Qml Qt6::Quick Qt6::QuickControls2 Qt6::Widgets Qt6::Test
+)
+
 # AeComboBox's popup geometry: the optional scrollbar lane is reserved only when
 # the list actually scrolls, and it is flush with the popup's inner edge. See
 # combo_geometry.cpp.

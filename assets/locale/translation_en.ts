@@ -74,7 +74,7 @@
 <context>
     <name>gui::ToolViewModel</name>
     <message numerus="yes">
-        <location filename="../../src/gui/qml/ToolViewModel.cpp" line="488"/>
+        <location filename="../../src/gui/qml/ToolViewModel.cpp" line="483"/>
         <source>%n vertex(s)</source>
         <translation>
             <numerusform>%n vertex</numerusform>
@@ -89,7 +89,7 @@
         </translation>
     </message>
     <message numerus="yes">
-        <location filename="../../src/gui/qml/ToolViewModel.cpp" line="481"/>
+        <location filename="../../src/gui/qml/ToolViewModel.cpp" line="476"/>
         <source>%n layer(s) still use the live envelope; the brush paints the baked ones.</source>
         <translation>
             <numerusform>%n layer still uses the live envelope; the brush paints the baked ones.</numerusform>

@@ -75,6 +75,9 @@ public:
     // the mask editor's TARGET changed (a filter card's Paint switches it without switching tools)
     util::Signaler<void()> onMaskTargetChanged;
     util::Signaler<void(ctrl::ToolType)> onFinalizeTool;
+    // The FFD tool's automatic show/hide of the mesh writes the window's view
+    // setting; the viewport consumes it through this signal, exactly as the header's
+    // own ViewSettingsModel does for the user's clicks.
     util::Signaler<void(const MainViewSetting&)> onViewSettingChanged;
 
 private:
