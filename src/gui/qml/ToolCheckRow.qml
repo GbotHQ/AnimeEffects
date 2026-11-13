@@ -20,7 +20,9 @@ Item {
     property bool value: false
     signal toggled(bool checked)
 
-    implicitHeight: 24
+    // The same 28px row as ToolRow/ToolSliderRow; the box keeps its own 22px
+    // control height and centres in it.
+    implicitHeight: 28
     width: parent ? parent.width : 0
 
     AeCheckBox {

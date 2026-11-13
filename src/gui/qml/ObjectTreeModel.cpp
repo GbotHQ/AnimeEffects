@@ -1314,8 +1314,8 @@ void ObjectTreeModel::addDefaultKeysToSelection() {
     const QVector<core::ObjectNode*> nodes = selectionInRowOrder();
     if (nodes.isEmpty())
         return;
-    // per node its own one-step action: adding defaults to three layers is three steps,
-    // which is what an undo of "I added keys to three layers" has to unwind anyway
+    // per node its own one-step action: adding frame-0 keys to three layers is three
+    // steps, which is what an undo of "I added keys to three layers" has to unwind anyway
     for (core::ObjectNode* node : nodes)
         ctrl::tree::addDefaultKeys(*mProject, *node);
 }

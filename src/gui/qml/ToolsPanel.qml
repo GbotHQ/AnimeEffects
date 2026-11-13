@@ -318,7 +318,7 @@ Rectangle {
                             label: qsTr("Paint")
                             AeComboBox {
                                 Layout.fillWidth: true
-                                height: 23
+                                Layout.preferredHeight: theme.toolFieldHeight
                                 textFont: uiFont
                                 options: toolModel.weightModes
                                 index: toolModel.weightPaintMode
@@ -395,8 +395,13 @@ Rectangle {
                             visible: toolModel.maskPickersVisible && toolModel.maskFields.length > 0
                             label: qsTr("Target")
                             AeComboBox {
+                                objectName: "maskTargetCombo"
                                 Layout.fillWidth: true
-                                height: 23
+                                // Use the row's own 24px field height. In a Layout,
+                                // `height` does not size the item: the combo kept its
+                                // 28px dialog implicit height and stood 5px taller than
+                                // the fields under it.
+                                Layout.preferredHeight: theme.toolFieldHeight
                                 textFont: uiFont
                                 options: toolModel.maskFields
                                 index: toolModel.maskFieldIndex

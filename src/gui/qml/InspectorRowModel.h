@@ -16,7 +16,7 @@ class InspectorViewModel;
 // One keyable property row. The row owns WHAT to show and HOW to write it; the
 // QML owns where it sits. Values are the same three-state model the widget
 // inspector used:
-//   static   - no explicit keys; edits write the default key
+//   static   - no explicit keys; edits write the base value
 //   animated - keys exist elsewhere; this frame is evaluated between them
 //   keyed    - this frame owns an explicit key
 class InspectorRowModel: public QObject {

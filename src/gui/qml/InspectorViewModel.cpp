@@ -274,7 +274,7 @@ QImage InspectorViewModel::maskThumbnail(const QSize& aRequested) const {
         return QImage();
 
     // The field the frame SHOWS: the key at the playhead when there is one,
-    // otherwise the default key. A blended frame's thumbnail is the blended field,
+    // otherwise the base value. A blended frame's thumbnail is the blended field,
     // which is what makes the card's between-keys state legible ("this is what you
     // are looking at, and it is read-only").
     const core::MaskKey* key = nullptr;

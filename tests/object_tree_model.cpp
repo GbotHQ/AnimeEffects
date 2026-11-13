@@ -473,7 +473,7 @@ int main(int argc, char** argv) {
         gui::ObjectTreeModel model;
         model.setProject(&fixture.project());
 
-        // add default keys: one undo removes every channel it made
+        // add frame-0 keys: one undo removes every channel it made
         ctrl::tree::addDefaultKeys(fixture.project(), *fixture.leaf());
         check(fixture.leaf()->timeLine()->validTypeCount() > 1,
               "add defaults animated several channels");

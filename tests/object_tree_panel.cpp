@@ -337,7 +337,7 @@ int main(int argc, char** argv) {
             check(std::abs(contentBefore - 22.0) < 0.5,
                   QStringLiteral("the list is scrolled to the model's offset (%1)").arg(contentBefore));
 
-            // THE REBUILD: default keys push Type_PushKey. On a CHILD the fixture left keyless, so
+            // THE REBUILD: frame-0 keys push Type_PushKey. On a CHILD the fixture left keyless, so
             // this phase's push is its own macro - the leaf's keys are the fixture's and must not
             // be undone below.
             ctrl::tree::addDefaultKeys(project, *innerA);
@@ -932,7 +932,7 @@ int main(int argc, char** argv) {
     check(!model.isAddAssetsOpen(), "with no resource trees there is nothing to choose from");
     check(model.assetTrees().isEmpty(), "and the list is empty");
 
-    // BOTH PHASES ABOVE CHANGE THE DOCUMENT (one macro each: default keys, then a mask), so they
+    // BOTH PHASES ABOVE CHANGE THE DOCUMENT (one macro each: frame-0 keys, then a mask), so they
     // hand it back - exactly those two, because the fixture's own setup commands are older than
     // them and the later checks (renames, restructures, drags) must see the document as it was.
     project.commandStack().undo();

@@ -211,6 +211,12 @@ int main(int argc, char** argv) {
         QCoreApplication::processEvents();
         window.update();
     }
+    // A Polish pass after the content has a height can arrive later than the first 12
+    // turns (the ScrollView's scrollbar changes what is available to reflow).
+    for (int i = 0; i < 60; ++i) {
+        QCoreApplication::processEvents();
+        window.update();
+    }
 
     // ---- the toolbox -----------------------------------------------------------
     const QVariantList tools = model.tools();
@@ -443,6 +449,75 @@ int main(int argc, char** argv) {
           "and the value row is offered");
     check(visibleControl(root, QStringLiteral("Size"), QAccessible::SpinBox) != nullptr,
           "and the brush is offered");
+    // The combo and the numeric field are the same control height. In a RowLayout
+    // `height` does not size an item; the combo used to keep its 28px dialog height
+    // while the fields under it were 23px.
+    {
+        QQuickItem* targetCombo = nullptr;
+        for (QQuickItem* item :
+             root->findChildren<QQuickItem*>(QStringLiteral("maskTargetCombo"))) {
+            if (item->isVisible()) {
+                targetCombo = item;
+                break;
+            }
+        }
+        QQuickItem* valueField = visibleControl(root, QStringLiteral("Value"),
+                                                QAccessible::SpinBox);
+        check(targetCombo != nullptr && valueField != nullptr,
+              "the Target combo and the Value field are both addressable");
+        if (targetCombo && valueField) {
+            check(qAbs(targetCombo->height() - theme.toolFieldHeight()) < 0.5,
+                  QStringLiteral("the Target combo uses the dock field height (%1)")
+                      .arg(targetCombo->height()));
+            check(qAbs(valueField->height() - theme.toolFieldHeight()) < 0.5,
+                  QStringLiteral("the Value field uses the same height (%1)")
+                      .arg(valueField->height()));
+            check(qAbs(targetCombo->height() - valueField->height()) < 0.5,
+                  "and the two fields are the same height");
+        }
+    }
+
+    // The mask rows and the brush rows must use ONE vertical rhythm. They are separate
+    // Columns (the brush rows are reusable), so a spacing added to only one is exactly how
+    // Target/Value ended up 6px apart while Size/Hardness stayed 2px apart.
+    {
+        const auto rowFor = [&](const QString& aLabel) -> QQuickItem* {
+            QList<QQuickItem*> allItems;
+            collectItems(root, allItems);
+            for (QQuickItem* item : allItems) {
+                if (!item->isVisible() || item->property("text").toString() != aLabel)
+                    continue;
+                return item->parentItem();
+            }
+            return nullptr;
+        };
+        QQuickItem* targetRow = rowFor(QStringLiteral("Target"));
+        QQuickItem* valueRow = rowFor(QStringLiteral("Value"));
+        QQuickItem* sizeRow = rowFor(QStringLiteral("Size"));
+        QQuickItem* hardnessRow = rowFor(QStringLiteral("Hardness"));
+        check(targetRow && valueRow && sizeRow && hardnessRow,
+              "the Target, Value, Size and Hardness rows are all addressable");
+        if (targetRow && valueRow && sizeRow && hardnessRow) {
+            const qreal targetTop = targetRow->mapToItem(root, 0, 0).y();
+            const qreal valueTop = valueRow->mapToItem(root, 0, 0).y();
+            const qreal sizeTop = sizeRow->mapToItem(root, 0, 0).y();
+            const qreal hardnessTop = hardnessRow->mapToItem(root, 0, 0).y();
+            check(qAbs(targetRow->height() - 28.0) < 0.5
+                      && qAbs(valueRow->height() - 28.0) < 0.5
+                      && qAbs(sizeRow->height() - 28.0) < 0.5
+                      && qAbs(hardnessRow->height() - 28.0) < 0.5,
+                  QStringLiteral("every row is 28px (Target %1, Value %2, Size %3, Hardness %4)")
+                      .arg(targetRow->height())
+                      .arg(valueRow->height())
+                      .arg(sizeRow->height())
+                      .arg(hardnessRow->height()));
+            check(qAbs((valueTop - targetTop) - (hardnessTop - sizeTop)) < 0.5,
+                  QStringLiteral("Target->Value uses the same row pitch as Size->Hardness "
+                                 "(%1 vs %2)")
+                      .arg(valueTop - targetTop)
+                      .arg(hardnessTop - sizeTop));
+        }
+    }
 
     // A card entry selects the matte; the control stays one Target row.
     model.beginLayerMaskPaint();
@@ -559,6 +634,10 @@ int main(int argc, char** argv) {
                                          QStringLiteral("Layer mask")});
             model.activate(ctrl::ToolType_Mask);
             model.setMaskFields(fields, QString());
+            for (int i = 0; i < 8; ++i) {
+                QCoreApplication::processEvents();
+                window.update();
+            }
         } else {
             model.activate(ctrl::ToolType_Bone);
             model.setMode(shotMode == "envelope" ? ctrl::BoneEditMode_PaintInfl

@@ -664,8 +664,8 @@ namespace TimeLineUtil {
             aTarget,
             aFrame,
             aNewData,
-            aFrame == TimeLine::kDefaultKeyIndex ? CmndName::tr("Update default movement key")
-                                                 : CmndName::tr("Update movement key")
+            aFrame == TimeLine::kDefaultKeyIndex ? CmndName::tr("Update position")
+                                                 : CmndName::tr("Update position key")
         );
     }
 
@@ -675,7 +675,7 @@ namespace TimeLineUtil {
             aTarget,
             aFrame,
             aNewData,
-            aFrame == TimeLine::kDefaultKeyIndex ? CmndName::tr("Update default rotation key")
+            aFrame == TimeLine::kDefaultKeyIndex ? CmndName::tr("Update rotation")
                                                  : CmndName::tr("Update rotation key")
         );
     }
@@ -686,8 +686,8 @@ namespace TimeLineUtil {
             aTarget,
             aFrame,
             aNewData,
-            aFrame == TimeLine::kDefaultKeyIndex ? CmndName::tr("Update default scaling key")
-                                                 : CmndName::tr("Update scaling key")
+            aFrame == TimeLine::kDefaultKeyIndex ? CmndName::tr("Update scale")
+                                                 : CmndName::tr("Update scale key")
         );
     }
 
@@ -697,7 +697,7 @@ namespace TimeLineUtil {
             aTarget,
             aFrame,
             aNewData,
-            aFrame == TimeLine::kDefaultKeyIndex ? CmndName::tr("Update default depth key")
+            aFrame == TimeLine::kDefaultKeyIndex ? CmndName::tr("Update depth")
                                                  : CmndName::tr("Update depth key")
         );
     }
@@ -708,7 +708,7 @@ namespace TimeLineUtil {
             aTarget,
             aFrame,
             aNewData,
-            aFrame == TimeLine::kDefaultKeyIndex ? CmndName::tr("Update default opacity key")
+            aFrame == TimeLine::kDefaultKeyIndex ? CmndName::tr("Update opacity")
                                                  : CmndName::tr("Update opacity key")
         );
     }
@@ -719,7 +719,7 @@ namespace TimeLineUtil {
             aTarget,
             aFrame,
             aNewData,
-            aFrame == TimeLine::kDefaultKeyIndex ? CmndName::tr("Update default HSV key")
+            aFrame == TimeLine::kDefaultKeyIndex ? CmndName::tr("Update HSV")
                                                  : CmndName::tr("Update HSV key")
         );
     }
@@ -730,7 +730,7 @@ namespace TimeLineUtil {
             aTarget,
             aFrame,
             aNewData,
-            aFrame == TimeLine::kDefaultKeyIndex ? CmndName::tr("Update default blur key")
+            aFrame == TimeLine::kDefaultKeyIndex ? CmndName::tr("Update blur")
                                                  : CmndName::tr("Update blur key")
         );
     }
@@ -741,7 +741,7 @@ namespace TimeLineUtil {
             aTarget,
             aFrame,
             aNewData,
-            aFrame == TimeLine::kDefaultKeyIndex ? CmndName::tr("Update default wave key")
+            aFrame == TimeLine::kDefaultKeyIndex ? CmndName::tr("Update wave")
                                                  : CmndName::tr("Update wave key")
         );
     }
@@ -752,7 +752,7 @@ namespace TimeLineUtil {
             aTarget,
             aFrame,
             aNewData,
-            aFrame == TimeLine::kDefaultKeyIndex ? CmndName::tr("Update default pose key")
+            aFrame == TimeLine::kDefaultKeyIndex ? CmndName::tr("Update pose")
                                                  : CmndName::tr("Update pose key")
         );
     }
@@ -763,7 +763,7 @@ namespace TimeLineUtil {
             aTarget,
             aFrame,
             aNewData,
-            aFrame == TimeLine::kDefaultKeyIndex ? CmndName::tr("Update default FFD key")
+            aFrame == TimeLine::kDefaultKeyIndex ? CmndName::tr("Update FFD")
                                                  : CmndName::tr("Update FFD key")
         );
     }
@@ -776,8 +776,8 @@ namespace TimeLineUtil {
             aProject,
             aTarget,
             aFrame,
-            aFrame == TimeLine::kDefaultKeyIndex ? CmndName::tr("Update default image resource key")
-                                                 : CmndName::tr("update image resource key"),
+            aFrame == TimeLine::kDefaultKeyIndex ? CmndName::tr("Update image")
+                                                 : CmndName::tr("Update image key"),
             [&](ImageKey* aKey) {
                 // image key
                 aProject.commandStack().push(ImageKeyUpdater::createResourceUpdater(
@@ -797,8 +797,8 @@ namespace TimeLineUtil {
             aProject,
             aTarget,
             aFrame,
-            aFrame == TimeLine::kDefaultKeyIndex ? CmndName::tr("Update the image's default offset key")
-                                                 : CmndName::tr("Update the image's offset key"),
+            aFrame == TimeLine::kDefaultKeyIndex ? CmndName::tr("Update image offset")
+                                                 : CmndName::tr("Update image offset key"),
             [&](ImageKey* aKey) {
                 auto prevOffset = aKey->data().imageOffset();
 
@@ -817,8 +817,8 @@ namespace TimeLineUtil {
             aProject,
             aTarget,
             aFrame,
-            aFrame == TimeLine::kDefaultKeyIndex ? CmndName::tr("Update the default mesh size key")
-                                                 : CmndName::tr("Update mesh size key"),
+            aFrame == TimeLine::kDefaultKeyIndex ? CmndName::tr("Update mesh spacing")
+                                                 : CmndName::tr("Update mesh spacing key"),
             [&](ImageKey* aKey) {
                 // image key
                 aProject.commandStack().push(ImageKeyUpdater::createGridMeshUpdater(
@@ -861,7 +861,7 @@ namespace TimeLineUtil {
 
     // The COMMAND half of pushNewKey, with no macro and no notifier: the caller owns
     // both, so it decides how many keys are one undo step and which event names them.
-    // "Add default keys" on a layer with six animated channels is one step, not six -
+    // "Add keys at frame 0" on a layer with six animated channels is one step, not six -
     // which is what the tree's own action had to be, and the per-key macro could not
     // express. The key's own type() is the map it lands in.
     void appendNewKey(
@@ -1194,14 +1194,14 @@ namespace TimeLineUtil {
         macro.grabListener(notifier);
         pushFilterStackCommand(aProject, line, next);
 
-        // A filter starts STATIC: values live on its default key, the row's key
+        // A filter starts STATIC: values live on its base value, the row's key
         // dot is hollow, and the timeline gains no keyframe until the dot is
         // pressed. This is the same model 2 rule the inspector's properties use.
         // A fresh filter starts at a DEFINED default, not at a stale default
         // left by an earlier add/remove cycle: HSV's and Blur's are their
         // identity (an adjustment at 0 / a radius at 0), a wave's is its own
         // visible preset because an inert wave would look broken on add. The
-        // default key is structural (not part of the add command's undo); the
+        // base value is structural (not part of the add command's undo); the
         // visible stack row and the explicit keys are what the command owns.
         const util::Easing::Param easing = util::Easing::defaultParam();
         if (aType == TimeKeyType_HSV) {

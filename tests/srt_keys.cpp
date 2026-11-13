@@ -4,7 +4,7 @@
 // on the first drag: a static object grew a Move key for no reason, and unchecking
 // all three "Create ... key" boxes changed nothing. The policy now matches the
 // inspector's model-2: a channel with an explicit key elsewhere auto-keys at the
-// playhead, a static channel edits the DEFAULT key, and a checked box forces an
+// playhead, a static channel edits the base value, and a checked box forces an
 // explicit key. This gate drives the real SRTEditor/MoveMode with a synthetic
 // cursor, so it pins the actual key maps and the undo command.
 #include <QApplication>
@@ -137,11 +137,11 @@ void testStaticEditsDefault() {
     check(f.line().map(core::TimeKeyType_Move).isEmpty(), "static: drag creates no explicit Move key");
     const QVector2D after = static_cast<const core::MoveKey*>(
         f.line().defaultKey(core::TimeKeyType_Move))->pos();
-    check(after != before, "static: the default Move key is what the drag edits");
+    check(after != before, "static: the base Move value is what the drag edits");
     f.project.commandStack().undo();
     const QVector2D undone = static_cast<const core::MoveKey*>(
         f.line().defaultKey(core::TimeKeyType_Move))->pos();
-    check(undone == before, "static: one undo restores the default key");
+    check(undone == before, "static: one undo restores the base value");
     f.project.commandStack().redo();
 }
 

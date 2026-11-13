@@ -18,7 +18,7 @@ namespace {
 // The mask card's THUMBNAIL. A QQuickImage caches by URL, so the model bumps a
 // revision the URL carries and the provider builds the matte on demand - no second
 // copy of the field is kept anywhere, and every state the document can reach (a
-// default key, a key at the playhead, a blended frame) shows what that frame holds.
+// base value, a key at the playhead, a blended frame) shows what that frame holds.
 class MaskThumbnailProvider: public QQuickImageProvider {
 public:
     explicit MaskThumbnailProvider(InspectorViewModel* aModel)

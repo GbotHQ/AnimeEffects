@@ -593,7 +593,7 @@ void addDefaultKeys(core::Project& aProject, core::ObjectNode& aNode) {
     if (!line)
         return;
 
-    cmnd::ScopedMacro macro(aProject.commandStack(), CmndName::tr("Add default keys"));
+    cmnd::ScopedMacro macro(aProject.commandStack(), CmndName::tr("Add keys at frame 0"));
     auto* notifier = new TimeLineUtil::Notifier(aProject);
     notifier->event().setType(core::TimeLineEvent::Type_PushKey);
     macro.grabListener(notifier);

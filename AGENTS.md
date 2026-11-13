@@ -641,6 +641,11 @@ ninja -C build 'src/gui/update_translations:Debug'   # the :Debug / :Release suf
 - **Tooltips: one token.** `QmlTheme::kToolTipDelayMs` / `kToolTipTimeoutMs` feed `AeToolTip` and are
   mirrored into `QStyleHints`; stock `QtQuick.Controls.ToolTip` uses the Basic palette and is
   unstyled, so no QML call site uses it.
+- **A child of a Layout is sized by `Layout.preferredHeight`, not `height`**: the mask Target
+  `AeComboBox` carried `height: 23` inside `ToolRow`'s `RowLayout`, the layout ignored it, and the
+  combo kept its 28px dialog implicit height while every numeric field was 23. The Tools dock has one
+  `theme.toolFieldHeight` (24) and 28px rows now; use the Layout property for any control inside
+  `ToolRow`.
 - **A numeric field's wheel belongs to the field only while its text editor has focus**
   (`ScrubSpinBox`'s `WheelHandler` gates on `editInput.activeFocus`); outside edit the wheel must
   reach the enclosing `ScrollView`, or a long form cannot be scrolled from over its fields.

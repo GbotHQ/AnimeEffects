@@ -781,28 +781,28 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ToolsPanel.qml" line="403"/>
+        <location filename="../../src/gui/qml/ToolsPanel.qml" line="408"/>
         <source>Mask target</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ToolsPanel.qml" line="425"/>
-        <location filename="../../src/gui/qml/ToolBrushSection.qml" line="51"/>
+        <location filename="../../src/gui/qml/ToolsPanel.qml" line="430"/>
+        <location filename="../../src/gui/qml/ToolBrushSection.qml" line="50"/>
         <source>Value</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ToolBrushSection.qml" line="52"/>
+        <location filename="../../src/gui/qml/ToolBrushSection.qml" line="51"/>
         <source>The envelope range the brush moves toward; Flow limits each stamp</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ToolsPanel.qml" line="451"/>
+        <location filename="../../src/gui/qml/ToolsPanel.qml" line="456"/>
         <source>Show weights</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ToolsPanel.qml" line="452"/>
+        <location filename="../../src/gui/qml/ToolsPanel.qml" line="457"/>
         <source>Colour the layers this bone deforms by its influence weight</source>
         <translation type="unfinished"></translation>
     </message>
@@ -817,47 +817,47 @@
         <translation type="unfinished">关</translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ToolBrushSection.qml" line="25"/>
+        <location filename="../../src/gui/qml/ToolBrushSection.qml" line="24"/>
         <source>Brush</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ToolBrushSection.qml" line="29"/>
+        <location filename="../../src/gui/qml/ToolBrushSection.qml" line="28"/>
         <source>Size</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ToolBrushSection.qml" line="39"/>
+        <location filename="../../src/gui/qml/ToolBrushSection.qml" line="38"/>
         <source>Hardness</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ToolBrushSection.qml" line="61"/>
+        <location filename="../../src/gui/qml/ToolBrushSection.qml" line="60"/>
         <source>Flow</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ToolBrushSection.qml" line="72"/>
+        <location filename="../../src/gui/qml/ToolBrushSection.qml" line="71"/>
         <source>Opacity</source>
         <translation type="unfinished">不透明度</translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ToolBrushSection.qml" line="85"/>
+        <location filename="../../src/gui/qml/ToolBrushSection.qml" line="84"/>
         <source>Pressure size</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ToolBrushSection.qml" line="86"/>
+        <location filename="../../src/gui/qml/ToolBrushSection.qml" line="85"/>
         <source>A tablet pen&apos;s pressure scales the brush size</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ToolBrushSection.qml" line="91"/>
+        <location filename="../../src/gui/qml/ToolBrushSection.qml" line="90"/>
         <source>Pressure flow</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ToolBrushSection.qml" line="92"/>
+        <location filename="../../src/gui/qml/ToolBrushSection.qml" line="91"/>
         <source>A tablet pen&apos;s pressure scales what a stamp deposits</source>
         <translation type="unfinished"></translation>
     </message>
@@ -1121,6 +1121,7 @@
         <translation>移动骨骼</translation>
     </message>
     <message>
+        <location filename="../../src/ctrl/TimeLineUtil.cpp" line="766"/>
         <location filename="../../src/ctrl/ffd/ffd_BrushMode.cpp" line="151"/>
         <source>Update FFD</source>
         <translation>更新自由变形（FFD）</translation>
@@ -1235,19 +1236,16 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../../src/ctrl/TimeLineUtil.cpp" line="667"/>
         <source>Update default movement key</source>
-        <translation>更新默认移动帧</translation>
+        <translation type="vanished">更新默认移动帧</translation>
     </message>
     <message>
-        <location filename="../../src/ctrl/TimeLineUtil.cpp" line="668"/>
         <source>Update movement key</source>
-        <translation>更新移动帧</translation>
+        <translation type="vanished">更新移动帧</translation>
     </message>
     <message>
-        <location filename="../../src/ctrl/TimeLineUtil.cpp" line="678"/>
         <source>Update default rotation key</source>
-        <translation>更新默认旋转帧</translation>
+        <translation type="vanished">更新默认旋转帧</translation>
     </message>
     <message>
         <location filename="../../src/ctrl/TimeLineUtil.cpp" line="679"/>
@@ -1255,19 +1253,16 @@
         <translation>更新旋转帧</translation>
     </message>
     <message>
-        <location filename="../../src/ctrl/TimeLineUtil.cpp" line="689"/>
         <source>Update default scaling key</source>
-        <translation>更新默认缩放帧</translation>
+        <translation type="vanished">更新默认缩放帧</translation>
     </message>
     <message>
-        <location filename="../../src/ctrl/TimeLineUtil.cpp" line="690"/>
         <source>Update scaling key</source>
-        <translation>更新缩放帧</translation>
+        <translation type="vanished">更新缩放帧</translation>
     </message>
     <message>
-        <location filename="../../src/ctrl/TimeLineUtil.cpp" line="700"/>
         <source>Update default depth key</source>
-        <translation>更新默认深度帧</translation>
+        <translation type="vanished">更新默认深度帧</translation>
     </message>
     <message>
         <location filename="../../src/ctrl/TimeLineUtil.cpp" line="701"/>
@@ -1275,9 +1270,8 @@
         <translation>更新深度帧</translation>
     </message>
     <message>
-        <location filename="../../src/ctrl/TimeLineUtil.cpp" line="711"/>
         <source>Update default opacity key</source>
-        <translation>更新默认不透明度帧</translation>
+        <translation type="vanished">更新默认不透明度帧</translation>
     </message>
     <message>
         <location filename="../../src/ctrl/TimeLineUtil.cpp" line="712"/>
@@ -1285,9 +1279,8 @@
         <translation>更新不透明度帧</translation>
     </message>
     <message>
-        <location filename="../../src/ctrl/TimeLineUtil.cpp" line="722"/>
         <source>Update default HSV key</source>
-        <translation>更新默认HSV帧</translation>
+        <translation type="vanished">更新默认HSV帧</translation>
     </message>
     <message>
         <location filename="../../src/ctrl/TimeLineUtil.cpp" line="723"/>
@@ -1295,9 +1288,8 @@
         <translation>更新HSV帧</translation>
     </message>
     <message>
-        <location filename="../../src/ctrl/TimeLineUtil.cpp" line="733"/>
         <source>Update default blur key</source>
-        <translation>更新默认模糊帧</translation>
+        <translation type="vanished">更新默认模糊帧</translation>
     </message>
     <message>
         <location filename="../../src/ctrl/TimeLineUtil.cpp" line="734"/>
@@ -1305,19 +1297,13 @@
         <translation>更新模糊帧</translation>
     </message>
     <message>
-        <location filename="../../src/ctrl/TimeLineUtil.cpp" line="744"/>
-        <source>Update default wave key</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
         <location filename="../../src/ctrl/TimeLineUtil.cpp" line="745"/>
         <source>Update wave key</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../../src/ctrl/TimeLineUtil.cpp" line="755"/>
         <source>Update default pose key</source>
-        <translation>更新默认姿势帧</translation>
+        <translation type="vanished">更新默认姿势帧</translation>
     </message>
     <message>
         <location filename="../../src/ctrl/TimeLineUtil.cpp" line="756"/>
@@ -1325,9 +1311,8 @@
         <translation>更新姿势帧</translation>
     </message>
     <message>
-        <location filename="../../src/ctrl/TimeLineUtil.cpp" line="766"/>
         <source>Update default FFD key</source>
-        <translation>更新默认自由变形帧</translation>
+        <translation type="vanished">更新默认自由变形帧</translation>
     </message>
     <message>
         <location filename="../../src/ctrl/TimeLineUtil.cpp" line="767"/>
@@ -1335,34 +1320,113 @@
         <translation>更更新自由变形帧</translation>
     </message>
     <message>
-        <location filename="../../src/ctrl/TimeLineUtil.cpp" line="779"/>
         <source>Update default image resource key</source>
-        <translation>更新默认图形资料帧</translation>
+        <translation type="vanished">更新默认图形资料帧</translation>
+    </message>
+    <message>
+        <source>update image resource key</source>
+        <translation type="vanished">更新图形资料帧</translation>
+    </message>
+    <message>
+        <source>Update the image&apos;s default offset key</source>
+        <translation type="vanished">更新图像默认移动帧</translation>
+    </message>
+    <message>
+        <source>Update the image&apos;s offset key</source>
+        <translation type="vanished">更新图片偏移帧</translation>
+    </message>
+    <message>
+        <source>Update the default mesh size key</source>
+        <translation type="vanished">更新默认网格尺寸帧</translation>
+    </message>
+    <message>
+        <source>Update mesh size key</source>
+        <translation type="vanished">更新网格尺寸帧</translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/TimeLineUtil.cpp" line="667"/>
+        <source>Update position</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/TimeLineUtil.cpp" line="668"/>
+        <source>Update position key</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/TimeLineUtil.cpp" line="678"/>
+        <source>Update rotation</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/TimeLineUtil.cpp" line="689"/>
+        <source>Update scale</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/TimeLineUtil.cpp" line="690"/>
+        <source>Update scale key</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/TimeLineUtil.cpp" line="700"/>
+        <source>Update depth</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/TimeLineUtil.cpp" line="711"/>
+        <source>Update opacity</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/TimeLineUtil.cpp" line="722"/>
+        <source>Update HSV</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/TimeLineUtil.cpp" line="733"/>
+        <source>Update blur</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/TimeLineUtil.cpp" line="744"/>
+        <source>Update wave</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/TimeLineUtil.cpp" line="755"/>
+        <source>Update pose</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/TimeLineUtil.cpp" line="779"/>
+        <source>Update image</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
         <location filename="../../src/ctrl/TimeLineUtil.cpp" line="780"/>
-        <source>update image resource key</source>
-        <translation>更新图形资料帧</translation>
+        <source>Update image key</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
         <location filename="../../src/ctrl/TimeLineUtil.cpp" line="800"/>
-        <source>Update the image&apos;s default offset key</source>
-        <translation>更新图像默认移动帧</translation>
+        <source>Update image offset</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
         <location filename="../../src/ctrl/TimeLineUtil.cpp" line="801"/>
-        <source>Update the image&apos;s offset key</source>
-        <translation>更新图片偏移帧</translation>
+        <source>Update image offset key</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
         <location filename="../../src/ctrl/TimeLineUtil.cpp" line="820"/>
-        <source>Update the default mesh size key</source>
-        <translation>更新默认网格尺寸帧</translation>
+        <source>Update mesh spacing</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
         <location filename="../../src/ctrl/TimeLineUtil.cpp" line="821"/>
-        <source>Update mesh size key</source>
-        <translation>更新网格尺寸帧</translation>
+        <source>Update mesh spacing key</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
         <location filename="../../src/ctrl/TimeLineUtil.cpp" line="881"/>
@@ -1547,8 +1611,12 @@
     </message>
     <message>
         <location filename="../../src/ctrl/TreeActions.cpp" line="596"/>
+        <source>Add keys at frame 0</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Add default keys</source>
-        <translation type="unfinished">添加默认关键帧</translation>
+        <translation type="obsolete">添加默认关键帧</translation>
     </message>
     <message>
         <location filename="../../src/ctrl/TreeActions.cpp" line="489"/>

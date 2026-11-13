@@ -283,7 +283,8 @@ namespace TimeLineUtil {
     };
 
     //-------------------------------------------------------------------------------------------------
-    /// @note you can also set a data to default keys in following assignment functions.
+    /// @note you can also set a data to an unkeyed value (the timeline's base value)
+    /// in the following assignment functions.
     ///@{
     void assignMoveKeyData(
         core::Project& aProject, core::ObjectNode& aTarget, int aFrame, const core::MoveKey::Data& aNewData
@@ -337,7 +338,7 @@ namespace TimeLineUtil {
     //-------------------------------------------------------------------------------------------------
     // Append one key's creation commands to a macro the CALLER owns - no macro, no
     // notifier. pushNewKey() is this plus one macro and one PushKey event, and the tree's
-    // "Add default keys" uses it directly so a layer's whole set of default channels is a
+    // "Add keys at frame 0" uses it directly so a layer's whole set of channels is a
     // single undo step and a single event.
     void appendNewKey(
         core::Project& aProject,
@@ -401,7 +402,7 @@ namespace TimeLineUtil {
     // A mask starts at REVEAL ALL (the field is 255 everywhere), so adding one
     // changes nothing on screen until it is painted - unlike a filter mask, whose
     // neutral is per input.
-    // The KEY a stroke may write: the one at aFrame, else the default key, else
+    // The KEY a stroke may write: the one at aFrame, else the base value, else
     // nullptr (nothing to paint - the card's "Add mask" is the entry, and the tool
     // does not invent a mask behind the user's back).
     core::MaskKey* maskKeyForPaint(core::ObjectNode& aTarget, int aFrame);

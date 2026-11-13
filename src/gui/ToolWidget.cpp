@@ -246,7 +246,7 @@ void ToolWidget::refreshMaskTargets() {
                 }
             }
 
-            // A matte is paintable only where a key exists to write (the default key,
+            // A matte is paintable only where a key exists to write (the base value,
             // or a key at this frame). Between keys the field is blended and read-only.
             if (core::MaskKey* key = ctrl::TimeLineUtil::maskKeyForPaint(*target, frame)) {
                 if (key->data().isValid()) {
