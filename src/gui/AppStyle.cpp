@@ -9,7 +9,7 @@
 #include "ctrl/System.h"
 #ifdef Q_OS_WIN
     #define WIN32_LEAN_AND_MEAN
-    #include <Windows.h>
+    #include <windows.h>  // test-only case patch: MinGW sysroot ships lowercase only
     #include <dwmapi.h>
 #endif
 

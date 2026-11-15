@@ -6,9 +6,7 @@
 #include <QFormLayout>
 #include "gui/EasyDialog.h"
 #include <QSpinBox>
-#ifndef Q_OS_WIN
-#include <QComboBox>
-#endif
+#include <QComboBox>  // test-only: upstream guards this with #ifndef Q_OS_WIN, which removes it on Windows
 
 #include <QTabWidget>
 
