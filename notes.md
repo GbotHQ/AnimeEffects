@@ -137,3 +137,13 @@ Weight painting needs a way to edit weights at few hand placed points/curves and
 Reusable rigging. E.g. a vtuber with a fancy eye blink needs to be able to reuse that eyeblink across projects even when the mesh and images are different.
 
 Parametric lineart and outlines. PSD layers or groups with suffixes .L for lineart or .O for outline. Parametrize including handling junctions. Zoom scales thickness with sqrt.
+
+
+The bone editing story could have a more efficient more modern UX. Currently no multiselection with shift or box select or selection at all. Things that would be nice to have that a proper modern UX would allow: multi select bones -> delete key to delete; multi select bones -> change influence of all of them at once; multi select bones -> drag to move them all at once. What does a modern actually good UX look like? Make sure your design doesnt leave holes.
+
+visual select
+
+mesh preview is missing AA
+
+https://www.youtube.com/shorts/jRXz1dVzqzk
+https://www.youtube.com/shorts/rFUpkMQMNsY
