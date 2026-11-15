@@ -1,0 +1,106 @@
+From 4b5e5b21d74165c5f9ce508c14f7e6f758405762 Mon Sep 17 00:00:00 2001
+From: Gambot <56745325+GbotHQ@users.noreply.github.com>
+Date: Fri, 18 Sep 2026 11:06:44 +0200
+Subject: [PATCH 1/9] build: spell the Windows header in lowercase so MinGW
+ cross-builds work
+
+Six translation units include <Windows.h>. On Windows that is fine - MSVC ships the
+capitalised name and every Windows filesystem is case-insensitive - but a Linux-hosted
+MinGW cross-build cannot resolve it: Fedora's mingw64-headers ships only lowercase
+`windows.h`, and the build stops at
+
+    src/gui/DockSash.cpp:13:10: fatal error: Windows.h: No such file or directory
+
+The lowercase spelling is correct on every toolchain (MSVC, clang-cl, MinGW on Windows,
+MinGW cross on Linux), so this is a portability fix with no behaviour change.
+
+Verified by cross-compiling this tree with scripts/build-windows.sh's toolchain
+(x86_64-w64-mingw32-g++, mingw64 Qt6 sysroot): it fails before the change and gets past
+all six files after it.
+---
+ src/gui/AppStyle.cpp               | 2 +-
+ src/gui/DockSash.cpp               | 2 +-
+ src/gui/MSVCBackTracer.cpp         | 2 +-
+ src/gui/MSVCMemoryLeakDebugger.cpp | 2 +-
+ src/gui/Main.cpp                   | 2 +-
+ src/gui/MainMenuBar.cpp            | 2 +-
+ 6 files changed, 6 insertions(+), 6 deletions(-)
+
+diff --git a/src/gui/AppStyle.cpp b/src/gui/AppStyle.cpp
+index d57033f..121d3d6 100644
+--- a/src/gui/AppStyle.cpp
++++ b/src/gui/AppStyle.cpp
+@@ -9,7 +9,7 @@
+ #include "ctrl/System.h"
+ #ifdef Q_OS_WIN
+     #define WIN32_LEAN_AND_MEAN
+-    #include <Windows.h>
++    #include <windows.h>
+     #include <dwmapi.h>
+ #endif
+ 
+diff --git a/src/gui/DockSash.cpp b/src/gui/DockSash.cpp
+index c742453..51e0c8a 100644
+--- a/src/gui/DockSash.cpp
++++ b/src/gui/DockSash.cpp
+@@ -10,7 +10,7 @@
+ #ifdef Q_OS_WIN
+ #define WIN32_LEAN_AND_MEAN
+ #define NOMINMAX
+-#include <Windows.h>
++#include <windows.h>
+ #include <dwmapi.h>
+ #endif
+ 
+diff --git a/src/gui/MSVCBackTracer.cpp b/src/gui/MSVCBackTracer.cpp
+index 52375d5..3104698 100644
+--- a/src/gui/MSVCBackTracer.cpp
++++ b/src/gui/MSVCBackTracer.cpp
+@@ -2,7 +2,7 @@
+ 
+ #if defined(USE_MSVC_BACKTRACE)
+     #include <QDebug>
+-    #include <Windows.h>
++    #include <windows.h>
+     #include <stdlib.h>
+     #include <imagehlp.h>
+     #include <excpt.h>
+diff --git a/src/gui/MSVCMemoryLeakDebugger.cpp b/src/gui/MSVCMemoryLeakDebugger.cpp
+index 8c5d92c..26ca07f 100644
+--- a/src/gui/MSVCMemoryLeakDebugger.cpp
++++ b/src/gui/MSVCMemoryLeakDebugger.cpp
+@@ -196,7 +196,7 @@ void operator delete[](void* aPtr) {
+ }
+ 
+     //-------------------------------------------------------------------------------------------------
+-    #include <Windows.h>
++    #include <windows.h>
+ int myAllocHook(
+     int aAllocType, void* aData, size_t aSize, int aBlockUse, long aRequest, const unsigned char* aFileName, int aLine
+ ) {
+diff --git a/src/gui/Main.cpp b/src/gui/Main.cpp
+index d1150c0..fbe09a1 100644
+--- a/src/gui/Main.cpp
++++ b/src/gui/Main.cpp
+@@ -20,7 +20,7 @@
+ #ifdef Q_OS_WIN
+ #define NOMINMAX
+ #define WIN32_LEAN_AND_MEAN
+-#include <Windows.h>
++#include <windows.h>
+ 
+ // This *should* set the OS to use its dedicated GPU, sure hope it works out...
+     extern "C" {
+diff --git a/src/gui/MainMenuBar.cpp b/src/gui/MainMenuBar.cpp
+index ed1bfeb..82c2a5c 100644
+--- a/src/gui/MainMenuBar.cpp
++++ b/src/gui/MainMenuBar.cpp
+@@ -22,7 +22,7 @@
+ #ifdef Q_OS_WINDOWS
+ #define WIN32_LEAN_AND_MEAN
+ #define NOMINMAX
+-#include <Windows.h>
++#include <windows.h>
+ #endif
+ #define VENDOR_ID_LEN 13
+ 

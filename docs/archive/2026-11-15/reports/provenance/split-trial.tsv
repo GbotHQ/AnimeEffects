@@ -1,0 +1,184 @@
+OK	69164d827ff70dd9a18902749332ffbdd3affc11	timeline: temporary playback window on the ruler (shift-drag)
+OK	01b7386cafa16d85939921e9b787f095f2a1cdcb	timeline: fix window-gesture click/drag, pill corners, number clip
+OK	419e17f270584396386ae0e2ea06795140d9d1cc	core: frame range replaces the max frame count
+OK	7f666602541f4225549176f7185c526c3d829880	gui: frame range settings with start/end spinboxes
+OK	706e94895f4180ba925d2f6432e98eff390a36b8	timeline: symmetric negative-frame mapping, markers at range start
+OK	1e7ba42a79c4c8c6ae186ec36f9d2376740c25fe	timeline: mirror the end label for the range's first frame
+OK	3f7e1295d9571be8f7420673b4b289bb32307027	timeline: cull the boundary frames from the tick loop
+OK	0387ee7525bcdc498c8d080f91f493b24b20a85f	timeline: enforce a label margin; collapse narrow-range boundary labels
+OK	d88da5e9eeb7c1a03963de01f5ed31265f976dc8	timeline: fix first-label yield gating and window stem overdraw
+OK	0bd3256270a7f4d2c1cc5f3ed5d16da018a4aee3	timeline: invalidate the playback window on a frame-range change
+OK	4da06a0219613f0415e831838749d63494a8a002	gui: transport shortcuts land on the effective playback range
+OK	ec20dd4283f42209d4835ac45d6e629913a16a62	core: guard the loaded frame range against an inverted start/end
+OK	205b87c4b09bf3d4c401fbfbd08d5950a755cff6	timeline: free navigation from the playback window; clamp the window
+OK	514c5571d3cd054cf8536364b10ccc7b98ccd2cf	timeline: window stems under the pill; merge labels for on-major starts
+OK	646e6c9970d750b80fa8af6e3ae5b1d178a2b0bc	core: negative frame ranges everywhere
+OK	ea24e5a30364e9129dcf441863a1612cb3b6f8cc	timeline: tooltip and context-menu clear for the playback window
+OK	9821afe7f4507c50c94a162321fd9d08327c337c	gui: export UI honors negative ranges and the project range start
+OK	fe2b7b7b1e33ee8a31db273e811439b0e8124a5f	core: fix crash with negative project ranges; make frame -1 a normal frame
+OK	77c18101b22a58e541be7d88b1d9a4713fe1a676	timeline: ruler-only clear action; drop the ruler tooltip
+OK	c0d726d4db9dbb69b7960949e7fbb8cfd345c487	timeline: editor-owned ruler region predicate
+OK	0e55085a778d3bf38f4ebef27ddf196addf7db3f	gui: key commands support multiple listeners per binding
+OK	2aaa15ef0f804d9803c2af9ac2db79cf6cfc9c47	timeline: real TimeRuler widget owns the strip's paint and input
+OK	1b3746441180f56798342c3dec84b4f37c9be18c	timeline: pan with the MoveCanvas key like the viewport
+OK	9816ad73a9c0e5a205532d6abded9d7c0d7d5c64	timeline: ruler repaints when the window is cleared and on project load
+OK	60e63a672e80f3427ac41c0c3a6bf897e7630772	tree: expanding a row must not scroll the view
+OK	82b34612390e1f7bac231a23870b892dd19826e9	prop: playback's disabled state must not repaint section surfaces
+OK	512e9e342d3685af2ee2629243af65364021b8a6	prop: disabled state must not repaint section backgrounds (root fix)
+OK	2691cd42fabb1ab7ee6f6528fd2a08d7022c2059	prop: checkbox/radio indicators keep their resting look when disabled
+OK	341b9d23e5147d2441662a6c05e4a6ecbf03465f	core: fix use-after-free in BoneKey::deserialize
+OK	f32b4f26ff051a4ed4daa5190d21947948de64df	timeline: 1-indexed frames, live selection refresh, and unsaved-project recovery
+OK	834a09ebec461cbd1651607b4b35222eab6365c2	timeline: fps-aware, fractional time formats; drop dead lane x-extent; grounded translations
+OK	b7c6bb05021a1e5ab7c0f4d7e2bffdf5a4ff9d97	core: keep zero-vertex mesh nodes cached; guard null area mesh
+OK	d63e2763aa18adb5e363da2b205341cbd8f92624	util: port WebKit UnitBezier solver; disable redundant weight for Custom
+OK	4814b5f56c29c565bce3964e32e66d29eac6c05d	prop: add easing picker popover
+OK	dfc8ab1fd2c83afe8cf1af2d88c2316d6aa543d6	build: add mingw-w64 Windows cross-build tooling
+OK	25906bc696fde7bf07d07b928bbc8b81a7520b78	prop: auto-create a key when editing an unkeyed frame
+OK	a3e842136ef48beaeac2e6fd8c21ce041309985a	timeline: classify tick tiers in the Scaler; creation selects its output
+OK	eed59c6e73ba01232b69ed89811ab1e95d2dfb48	prop: live-apply easing picker, session undo, and a single-paint chip
+OK	7fd0d168eb8db8ca6d8f72174fca5ee2a9b57851	gui: don't stamp a rounded mask on combo drop-downs
+OK	f7a1e62814ca9db2fb643c075017a5e2c6d85933	gui: migrate the animation-settings dialog to a Qt Quick popup (pilot)
+OK	6b1c50390f8728b731872316dda135a96c839c63	gui: fold mouse settings and keybind reset into one settings dialog
+OK	3a93fc6870d0989c8f26ef80c26b14cfc42d649a	core: make project attributes observable; decouple change from undo
+OK	69eb7ca0a255e33e0b87b9e110f2d4972c508b07	test: cover observable project attributes and settings session undo
+OK	12d917d6c64be9ec4126c868f6df06eafbbb7939	build: drop the legacy qmake build; CMake is the supported path
+OK	c7799cecf8cbc33c2764fea389709978a9c97fb2	i18n: drop the dead MouseSettingDialog context and add the moved settings strings
+OK	5e87593774b54c7446218bef51c834ce336e7624	test: wire the creation-selects-output timeline test
+OK	dd3e464da29620a262fabf42a1f6c2b913bd159e	i18n: translate the QML pilot dialog via a module translation context
+OK	579c0a24c6950bbd64c4ad5fef54063f57017ebe	build: adopt qt_add_translations for i18n generation
+OK	1de0df946ed80a8995d226522ba95c649746f4dd	i18n: regenerate the translation catalogs and translate the new strings
+OK	a4ab6d096c4022c09d1d96a0ad783485e2dfa080	docs: READMEs — note the LinguistTools dependency and move the language navigator
+OK	cdad47c94632f0e1f7da803eb722415cab46f1e7	build: keep .qm out of source — they are build artifacts
+OK	34083a87eab7adf9cf078bab78e098d48563b25b	build: rename the source data/ directory to assets/
+OK	77624799328695ee21b34e51a10c73e795271290	build: embed the fixed assets (favicons, stylesheets, fonts, shaders, translations) into the binary
+OK	e41c75e2045b8807c4566352460cefd06066cf8f	refactor: resolve the external data dir explicitly and drop the global chdir
+OK	913a38720c5f16ec13c69e0bd3cff8963296c989	build: standardize the embedded asset resource prefixes to plural
+OK	922beeff01cf62e74d5cf0d8437bfb3123ac89e1	build: embed the export presets; load them from :/encode
+OK	5ab1b6cc779b32bc5daca8a1d7e249b734373ec1	refactor: store the locale font defaults in QSettings
+OK	dd511a85acad2c0d25d2b1803b3e8b269b9164ba	refactor: remove the co-located data dir; the app is self-contained
+OK	74faed7a38c9a5e5a1780e423a28f80a015d108e	fix: use a valid neutral fps placeholder in the animation-settings dialog
+OK	ad0db23bb75f1e4811d35714ae59dea2b2f81c04	ci: validate the macOS path in the mac workflows
+OK	f472e32b50ac42f8a3181babe3d61fc86f143681	fix: locate ffmpeg via applicationDirPath() and check the file, not the folder
+OK	f28e905	refactor(gl): make EasyTextureDrawer::init() idempotent
+OK	f370488	fix(gui): the audio track panel mislabelled row 0 with 3+ tracks
+OK	2505f5c	fix(gui): initialise Colors fully instead of assigning isDark after
+OK	3864e4f	refactor: write constructor init lists in declaration order
+OK	12c7dc9	fix: compare values in their own types rather than across signedness
+OK	afdb33a	refactor: mark real overrides, and remove genuinely vestigial parameters
+OK	d6b38e6	build(tests): ignore easing_picker_layout's output PNG
+OK	167158e	build(tests): give the roundtrip harness the embedded assets it needs
+OK	68d5998	refactor: delete the dead generated splineWidget dialog
+OK	af55854	refactor: drop TargetWidget's no-op first-resize flag
+CONFLICT	contrib-p2	ddf9c10	test(picker): give the probe the theme icons, and restore scenario #8	tests/picker_probe.cpp,
+OK	452ae71	fix(core): the clipboard's grid-mesh payload never restored anything
+CONFLICT	contrib-p2	b093680	Make picker_probe a gate, so its stale expectations cannot hide	scripts/run_suites.sh,tests/picker_probe.cpp,
+CONFLICT	exporter	fda7e579ff40e956da36db122aeb0bf392a90376	feat(media): add in-process VideoEncoder (libav*) and V1 verification	src/media/CMakeLists.txt,tests/CMakeLists.txt,
+CONFLICT	exporter	06ba68e7ef98166712f70f9c2b3e76207e1560cc	feat(media): add in-process multi-track AudioMixer and V2 verification	src/media/CMakeLists.txt,tests/CMakeLists.txt,
+CONFLICT	exporter	c3b5e6bfed07bf490ceda68834051b730b95cf29	feat(media): mux video + audio in one pass (aac/opus via swresample)	src/media/VideoEncoder.cpp,src/media/VideoEncoder.h,tests/media_video_encoder.cpp,
+CONFLICT	exporter	88684e177c209e459cbc49e18aaffa931e863b2c	feat(media): export-preset -> libav compatibility matrix (V3)	src/media/FFmpegHelpers.cpp,src/media/FFmpegHelpers.h,tests/CMakeLists.txt,
+CONFLICT	exporter	a6913d8cd9fc9c9e8de56481d95e313ff2c90213	refactor(export): drive ctrl::Exporter video path with the in-process libav encoder	CMakeLists.txt,src/media/VideoEncoder.cpp,src/media/VideoEncoder.h,tests/media_video_encoder.cpp,
+CONFLICT	exporter	eb42c1811209c63a28be4706acf26e71edc5eaef	feat(export): mix + mux the project's multi-track audio with the video	src/ctrl/Exporter.cpp,src/ctrl/Exporter.h,
+CONFLICT	exporter	c30a7542ba8cd9050f791d9fc7fb8743f4b46d2c	test(export): headless real-path export harness (ctrl::Exporter on real .anie)	tests/CMakeLists.txt,
+OK	9b883b5469cfa47f75dbc3133d8c4d77cef4cb05	refactor(export): require the external ffmpeg binary only for the legacy GIF path
+OK	a7676b933afc1235f9d707dd5dc07ab2c2f51aaf	refactor(export): route the full-export dialog's video through the media engine
+OK	47d09b93835cce0b3187dd44af7f981800b2971a	feat(export): remove the FFmpeg runtime auto-download
+CONFLICT	exporter	6cb48013b045c1c99c5ef903bbae498c14ca25a1	refactor(export): port GIF export to the in-process media::GifEncoder	src/ctrl/Exporter.cpp,src/media/CMakeLists.txt,tests/media_video_encoder.cpp,
+CONFLICT	exporter	42f122685c516849895262dba6d0c5fa9df6023e	refactor(export): remove the dead FFMpeg subprocess wrapper from ctrl::Exporter	src/ctrl/Exporter.h,
+OK	5295a0b749fb1590aeffa29903173d4621656864	refactor(export): route all exports through ctrl::Exporter; retire the legacy + settings
+OK	fc5765cb2cfbc8380c75a360f674c0a12bb8432f	feat(export): add the FFmpeg license notice to the About dialog
+OK	ffa8c2932ade74a06fb967959c94c1541fdd6de9	build(ci): install FFmpeg dev to build the linked-libav* exporter; drop the CLI binary download
+CONFLICT	exporter	51894e324a02c74834794b425d1b11fccf8ad8ad	fix(media): correct libav* encoder/mixer edge-case bugs	src/media/AudioMixer.cpp,src/media/VideoEncoder.cpp,tests/media_audio_mixer.cpp,tests/media_video_encoder.cpp,
+CONFLICT	exporter	6d779d662b875aeceec0d167a3da9e4d5739c89b	feat(export): muxer-aware container->codec selection; wire transparency; honor per-container encoders	src/ctrl/Exporter.cpp,src/media/FFmpegHelpers.cpp,src/media/FFmpegHelpers.h,tests/media_preset_matrix.cpp,
+OK	f28e90573d6b91386550899cf5583102e76600b9	refactor(gl): make EasyTextureDrawer::init() idempotent
+CONFLICT	exporter	2028b33340b311927cd2b1a36d07c68165d0e68b	test(export): expand real-path harness to 7 scenarios	tests/media_exporter_e2e.cpp,
+CONFLICT	exporter	4af475a26147ec3557c00a1f844ce30e0119d46a	docs(ci): document FFmpeg GPL/version coupling	src/media/CMakeLists.txt,
+CONFLICT	exporter	0e35836d75c75fca8ff7b5711243f5c9408322c4	fix(export): correct alpha support — VP9/WebM alpha, APNG, animated WebP	src/media/FFmpegHelpers.cpp,tests/media_exporter_e2e.cpp,tests/media_preset_matrix.cpp,tests/media_video_encoder.cpp,
+CONFLICT	exporter	804ebda343f9b8057a5be15ef378900bc8ea5072	build(export): require an explicit FFmpeg codec mode (GPL or free-only)	src/media/CMakeLists.txt,
+CONFLICT	exporter	43fefcea39773a2f62cca8c3c20c2b5e4d17bd8e	test(export): note that ctrl::Exporter is one-shot; fix idempotency doc	tests/media_exporter_e2e.cpp,
+CONFLICT	exporter	71fba67c5032f63275d3dec0d33cb1a61cce44c0	feat(media): re-add custom (user-supplied) GIF palette	src/ctrl/Exporter.cpp,src/ctrl/Exporter.h,src/media/GifEncoder.cpp,src/media/GifEncoder.h,tests/media_video_encoder.cpp,
+CONFLICT	exporter	5263f585a5de98ea80b784b0eedff7778dd235a3	docs(export): root-cause the Exporter reuse crash; fix harness odd-native assertion	tests/media_exporter_e2e.cpp,tests/media_video_encoder.cpp,
+CONFLICT	exporter	658248266d3c42f018729e1028ec37d0508e0064	fix(media): set AV_CODEC_FLAG_GLOBAL_HEADER when the muxer declares it	src/media/VideoEncoder.cpp,
+CONFLICT	exporter	eb7b452ee1313cabbef816809102733fa867cfc1	feat(media): capability probes that actually run the encoder	src/media/FFmpegHelpers.cpp,src/media/FFmpegHelpers.h,
+CONFLICT	exporter	dbf0a91e3a16ff7093a5d5c021ba3110756ff649	feat(media): private encoder options, stream codec tags, pad/crop fitting	src/media/VideoEncoder.cpp,src/media/VideoEncoder.h,
+OK	b0f9f206e2c19c2ce00e8244e187a6de1940bfd6	feat(export): destination data table
+OK	e5485dedd8759c5185a3c07cb39d68318fc1101a	feat(export): destination planner, codec ladder and fit-to-cap
+OK	9d6d7a2775a7052e5e2ac0e959d20fb6fcfbd944	feat(audio): per-track export enable
+CONFLICT	exporter	ca47520be7113d004175f0b22d6693a670a030b7	test(export): destination-table conformance suite	tests/CMakeLists.txt,
+CONFLICT	exporter	49b563098c68cbfa5c02e58c02e038db52046a90	test(export): call the live-encode section that had never run	tests/media_export_target.cpp,
+CONFLICT	exporter	dfb85214785858d60d12bb789ec5f9d7ddfcfe42	fix(export): stop emitting every cap note twice	tests/media_export_target.cpp,
+CONFLICT	exporter	98939f3b11d43ca6da207777e20a1d29fb124da4	feat(export): model multi-range frame selections	src/ctrl/ExportTarget.cpp,tests/media_export_target.cpp,
+CONFLICT	exporter	7919bf9692cac3e543e5918e02ba56ffa8f18b7b	test(export): make sections self-registering, and enable warnings	tests/CMakeLists.txt,tests/media_export_target.cpp,
+OK	a22c964542ee85ee8dfe3098575fc152686684f5	build(media): treat vendored deps as SYSTEM headers
+OK	f3704886e4f913c2e8b9b96d02bf532639d0aefa	fix(gui): the audio track panel mislabelled row 0 with 3+ tracks
+OK	2505f5c9c2f65078df632335622a2891b673c936	fix(gui): initialise Colors fully instead of assigning isDark after
+OK	3864e4fdf93c57e79473dd5dba08857bff40913f	refactor: write constructor init lists in declaration order
+CONFLICT	exporter	12c7dc9ca0786715e602a9001f68a076a44ee4ee	fix: compare values in their own types rather than across signedness	src/core/GridMesh.cpp,
+OK	3122528e6814cac79863bff5cd5d65adf0a2b86c	refactor: delete the dead code -Wall found
+CONFLICT	exporter	afdb33aef46fefbb39db9dfa7acd32560ad928b7	refactor: mark real overrides, and remove genuinely vestigial parameters	src/gui/prop/splineWidget.h,
+OK	d6b38e6bb9e8ab556414b38708e5fc7d67ab58d4	build(tests): ignore easing_picker_layout's output PNG
+CONFLICT	exporter	140b7795b1354766e5fe22bf4c19a5bf32c20f1d	build: enable -Wall -Wextra for first-party code	src/media/CMakeLists.txt,tests/CMakeLists.txt,
+OK	167158e7379ca8d3746ec6267c82e68a6898e575	build(tests): give the roundtrip harness the embedded assets it needs
+OK	68d59983e9148629a2ddcf3858eeef80ace5baae	refactor: delete the dead generated splineWidget dialog
+OK	af55854a8f722f0e129865ba007291a2c598a4d9	refactor: drop TargetWidget's no-op first-resize flag
+OK	ddf9c100340ad710e745e10ff7d2557585f258f1	test(picker): give the probe the theme icons, and restore scenario #8
+OK	452ae71d05307b140134d9768c45eeaa6e67da3b	fix(core): the clipboard's grid-mesh payload never restored anything
+CONFLICT	exporter	12336f3ff01999247c609443c272e1f9b181eb6d	feat(export): the exporter renders a frame SELECTION, not one span	src/ctrl/Exporter.cpp,tests/media_exporter_e2e.cpp,
+CONFLICT	exporter	d722c02fa05e486b11cb9a2163fe988af6d531c9	feat(export): let a destination drive encoder options, the stream tag, and an exact size	src/ctrl/Exporter.cpp,src/ctrl/Exporter.h,src/media/VideoEncoder.cpp,src/media/VideoEncoder.h,tests/media_exporter_e2e.cpp,
+CONFLICT	exporter	338c923b87753a538bd2fc39420108e722f6ebbf	feat(export): a destination selector that states its consequences	src/ctrl/Exporter.cpp,src/ctrl/Exporter.h,
+OK	fd2b035a327d24553f589bbe5e3326117820e836	refactor(export): delete the Format tab and the machinery behind it
+OK	291958c4c277f9cc006c56b3f0f7d11afc23c1de	refactor(export): replace the export validator with what still matters
+CONFLICT	exporter	8b0f13ee4a217fa18a8a7c10293e3d6b8710122f	refactor(export): delete the two dead controls from the export dialog	src/gui/exportdiag.h,
+CONFLICT	exporter	b15040fa42c01eae530a08b8a5897faa15173a51	refactor(export): delete the Custom Parameters tab and its plumbing	src/gui/MainWindow.cpp,
+CONFLICT	exporter	0c8f3feb9ce5a8b3d60d29b8122355d773f1eb0a	Make the destination the first question the export dialog asks	src/ctrl/ExportTarget.cpp,src/gui/MainWindow.cpp,src/gui/exportdiag.h,tests/media_export_target.cpp,
+CONFLICT	exporter	ad5fd0241b3a07d5fd1f3006e67c681d33290fe9	Quick export: offer destinations, not container/transparency pairs	src/gui/MainWindow.cpp,
+CONFLICT	exporter	84cc13441cbbd4ff6bbf5d9a2baed91feb5b7c99	Derive the exportable formats from the build instead of listing them	src/media/FFmpegHelpers.cpp,src/media/FFmpegHelpers.h,tests/media_export_target.cpp,
+CONFLICT	exporter	3f20c22147ada281c4d99a38472ebfb40a1c6c3e	Retire the legacy exporter, and ask the build what a format is	src/ctrl/ExportParams.h,src/ctrl/Exporter.cpp,src/ctrl/Exporter.h,src/gui/ExportDialog.cpp,src/gui/ExportDialog.h,src/gui/MainWindow.cpp,src/gui/MainWindow.h,src/gui/exportdiag.h,src/media/FFmpegHelpers.cpp,src/media/FFmpegHelpers.h,tests/CMakeLists.txt,tests/media_exporter_e2e.cpp,
+CONFLICT	exporter	20d9909fd0b2d13c5f67d7f0c39a4a645ee30d75	Stop a remembered palette from blocking every export	src/gui/MainWindow.cpp,
+CONFLICT	exporter	3ca03e6e9e4a5c42dd397e1346f9a5e5eb7afd87	Own the vertex array object the export draws through	tests/media_exporter_e2e.cpp,
+CONFLICT	exporter	b04a6e965301efea706d1ad50da328b182918f85	Tidy the exact-size block now that its content assertions always run	tests/media_exporter_e2e.cpp,
+CONFLICT	exporter	7a364773e204a7fe6583fd82e01adb9833ce6981	Make the Quality selector reach the encoder for every destination	src/gui/MainWindow.cpp,src/gui/exportdiag.h,tests/media_export_target.cpp,
+CONFLICT	exporter	217cfec05fa46acd1a8505fdc7659d8c979dd786	Enforce the destination size caps instead of only stating them	src/ctrl/Exporter.cpp,src/ctrl/Exporter.h,tests/media_exporter_e2e.cpp,
+CONFLICT	exporter	c9d7ba8b5b64345c6b526602cee89761a702ead5	Let Cancel stop the fit loop	src/ctrl/ExportTarget.cpp,src/ctrl/ExportTarget.h,src/gui/MainWindow.cpp,tests/media_export_target.cpp,
+CONFLICT	exporter	e1916fb9ff698e19ad1eac860da6fc984f07d731	Export the audio that was selected, at the times it belongs to	src/ctrl/Exporter.cpp,src/media/VideoEncoder.cpp,tests/media_exporter_e2e.cpp,
+CONFLICT	exporter	4ab10fa786dcc5e4d0729a8fda5186ff588a67b6	Read the WebP container, since libav cannot read animated WebP	tests/media_export_target.cpp,
+CONFLICT	exporter	a68af90aa73fb20bd1966b4cb89703f8059416bb	Assert content where the harness only printed it	tests/media_exporter_e2e.cpp,
+CONFLICT	exporter	e0a4d2535db9b0637c3071b75dbcd60d22d93744	Verify the WebP frames' pixels, not just their container	tests/media_export_target.cpp,
+OK	2765cf24d83ac0bf4ec9cf482c19391eb86802b2	Track the GUI probes, and make them assert instead of just capturing
+CONFLICT	exporter	0f33869f329d8d753d6367dc97aeaa822e4ad4e2	Group the destination list, name the not-listed path, and make an export repeatable	src/gui/MainMenuBar.cpp,src/gui/MainMenuBar.h,src/gui/MainWindow.cpp,src/gui/MainWindow.h,
+CONFLICT	exporter	b78bc9ffc5bbb4271f33168f8e44c332033a92e8	Fit GIFs and stills under their caps, and let the table express an image	scripts/gui/probe_capped.sh,scripts/gui/probe_reexport.sh,src/ctrl/ExportParams.h,src/ctrl/ExportTarget.cpp,src/ctrl/ExportTarget.h,src/gui/MainMenuBar.cpp,src/gui/MainWindow.cpp,src/gui/exportdiag.h,src/media/GifEncoder.cpp,src/media/VideoEncoder.cpp,src/media/VideoEncoder.h,tests/media_export_target.cpp,tests/media_video_encoder.cpp,
+CONFLICT	exporter	cc03f0277ec2e6310af7be69039bfd1709a868eb	Keep the frame range on screen, and stop a probe passing on a stale file	src/gui/exportdiag.h,
+CONFLICT	exporter	4233dedd6c275ba725c5c0eaffdf53bbbbc32e80	Close the export backlog: remembered inputs, honest sizing, and the GIF quality knob	assets/export/ExportTargets.txt,src/ctrl/ExportTarget.cpp,src/gui/MainMenuBar.cpp,src/gui/MainMenuBar.h,src/gui/MainWindow.cpp,src/gui/MainWindow.h,src/media/GifEncoder.cpp,src/media/GifEncoder.h,tests/media_export_target.cpp,
+CONFLICT	exporter	407dc24c1296c5fab8fae1de7fb7dfcfbd4f27a8	Give every audio track an export switch, and fix two gates that were lying	src/media/AudioMixer.h,tests/media_audio_mixer.cpp,tests/media_exporter_e2e.cpp,
+OK	b09368051a97f360706a7a9f6500d8f05f4e4948	Make picker_probe a gate, so its stale expectations cannot hide
+CONFLICT	exporter	3d25e4d0fcd9ff703ed73e2c27f2169bc5363f65	Delete the export parameters that no longer reach anything	src/ctrl/ExportParams.h,src/ctrl/Exporter.cpp,src/ctrl/Exporter.h,src/gui/MainWindow.cpp,tests/media_exporter_e2e.cpp,
+CONFLICT	exporter	51eada5926e097e143dc9d4f4ee83b45e3100e01	One submenu per family in "Quickly export as", and no unexplained top entry	src/gui/MainMenuBar.cpp,src/gui/MainMenuBar.h,src/gui/MainWindow.cpp,src/gui/MainWindow.h,
+CONFLICT	exporter	dd6748bd35429c7b621c5e142ecc8a07a0edaa2f	Choose a destination in a searchable modal, not a four-deep menu	scripts/gui/probe_capped.sh,scripts/gui/probe_inputs.sh,scripts/gui/probe_menu.sh,scripts/gui/probe_reexport.sh,scripts/gui/probe_still.sh,src/gui/MainMenuBar.cpp,src/gui/MainMenuBar.h,src/gui/MainWindow.cpp,src/gui/MainWindow.h,src/gui/exportdiag.h,
+CONFLICT	exporter	a0c0bf9c5b651b59f1c314d137393f2ad07c6e24	fix(media): the GIF palette was a function of the process, not the frames	src/media/GifEncoder.cpp,tests/media_video_encoder.cpp,
+CONFLICT	exporter	3af34d67af4bf54d0c2bd2bb0eb12f74adef667f	fix(export): stop the cap fit from spending a required size, and from guessing	src/ctrl/ExportTarget.cpp,tests/media_export_target.cpp,
+CONFLICT	exporter	a7acb649a000ac5460376d8690951ffa0bb73cbd	test(export): run the end-to-end export harness as a gate, on a committed fixture	tests/media_exporter_e2e.cpp,
+CONFLICT	exporter	7f7a7df2274a291acfda4dab0858a83390df7736	fix(media): search the scale knob's own settings, and log the sizes it used	src/ctrl/ExportTarget.cpp,tests/media_export_target.cpp,
+CONFLICT	exporter	06b1ce43c8f6d35d82887ec6b88c364260de958f	fix(tests): one temp dir per test process, and a lock around the GL suite	scripts/run_suites.sh,tests/media_audio_mixer.cpp,tests/media_exporter_e2e.cpp,tests/media_video_encoder.cpp,
+CONFLICT	exporter	0b018c888a6799a8ad73d6bdcb9529f6b9b1ae51	feat(export): ask for the destination first, and stop exposing the encoder	src/ctrl/ExportTarget.cpp,src/ctrl/ExportTarget.h,src/gui/MainWindow.cpp,src/gui/MainWindow.h,src/gui/exportdiag.h,
+CONFLICT	exporter	d610aad3faa77ec6fcf12af01c323580cbd3aeac	test(gui): address the export form by name, and make a stale probe say so	scripts/gui/_lib.sh,scripts/gui/probe_axes.sh,scripts/gui/probe_capped.sh,scripts/gui/probe_dest.sh,scripts/gui/probe_inputs.sh,scripts/gui/probe_quality.sh,scripts/gui/probe_reexport.sh,scripts/gui/probe_still.sh,src/gui/DestinationPicker.cpp,src/gui/exportdiag.h,
+CONFLICT	exporter	70c46d912c87e97a47a3de0d5859dd21139894f8	fix(gui): the remembered destination is what the picker opens on	src/gui/DestinationPicker.cpp,
+CONFLICT	exporter	7e7a67d7fac5e3a99e204b1b3db71787591b71e6	feat(gui): group the destination list by the platform you are posting to	assets/export/ExportTargets.txt,src/ctrl/ExportTarget.cpp,src/ctrl/ExportTarget.h,src/gui/DestinationPicker.cpp,src/gui/DestinationPicker.h,src/gui/MainWindow.cpp,tests/destination_picker.cpp,
+CONFLICT	exporter	41632ef88d8ae7b734711ee214e071386ec20cc4	feat(gui): the platforms are closed, and a platform is not an answer	assets/export/ExportTargets.txt,src/ctrl/ExportTarget.cpp,src/ctrl/ExportTarget.h,src/gui/DestinationPicker.cpp,src/gui/DestinationPicker.h,tests/destination_picker.cpp,
+CONFLICT	exporter	0e70a4ffde6bbfdc9e17bb7ab51532dee06c900f	fix(gui): associate every label with its field, and name the added frame ranges	src/gui/exportdiag.h,
+CONFLICT	exporter	ab85ab97260a82822666b1971611e8d72c6432e1	test(gui-probes): the stale marker was set from birth, so ten probes asserted nothing	scripts/gui/_lib.sh,scripts/gui/ae_ui.py,scripts/gui/probe_capped.sh,scripts/gui/probe_dest.sh,scripts/gui/probe_inputs.sh,scripts/gui/probe_reexport.sh,scripts/gui/probe_still.sh,
+CONFLICT	exporter	f1e6c0b157d3c98e62c0b31da16bde4e1fc7cbb4	fix(export): the destination's size limit is not a decision, and its facts are not choices	assets/export/ExportTargets.txt,scripts/gui/_lib.sh,scripts/gui/ae_ui.py,scripts/gui/probe_dest.sh,src/ctrl/ExportTarget.cpp,src/gui/exportdiag.h,tests/media_export_target.cpp,
+CONFLICT	exporter	654f2af3f384d46c3dcf3408b5584383f4e0279c	fix(export): every artifact rule now reads the destination, not the hidden manual combos	src/gui/MainWindow.cpp,src/gui/exportdiag.h,
+CONFLICT	exporter	b2f28a4adf1d8540fc4abbfaf7990a5253db5d09	fix(tests): the runners now fail when their own verdict is not a pass	scripts/gui/run_probes.sh,scripts/run_suites.sh,src/gui/DestinationPicker.cpp,src/gui/exportdiag.h,
+OK	efea28e725e92de75b58f26cc49338cfd3ce9ef5	fix(gui): remove the ffmpeg-era residue still in front of users
+CONFLICT	exporter	a2df2f336addf511bdc76f5b33a3ff7ae75aa17d	fix(gui): the audio fact now says which of the three reasons it means	src/gui/MainWindow.cpp,
+CONFLICT	exporter	fd7fe72dd984d00861ba98ebe634c0fe4419c269	fix(export): a destination can say the frame rate is not its business	assets/export/ExportTargets.txt,src/gui/MainWindow.cpp,src/gui/exportdiag.h,tests/media_export_target.cpp,
+CONFLICT	exporter	da1a4d19837c5194515e9ceef5f59e3cfe3bb8a5	fix(export): resolve pad-or-crop, and assert no exact size ever stretches	assets/export/ExportTargets.txt,tests/media_export_target.cpp,
+CONFLICT	exporter	ba8718b1601b2637910b12af155c043857ef449b	test(export): the headless export-dialog test, 757 assertions across all 56 rows	src/gui/MainWindow.cpp,tests/CMakeLists.txt,
+CONFLICT	exporter	09243582ab8041963467a135ad60cc929c37bbc2	refactor(export): the codec ladder is families, and measurement decides inside one	src/ctrl/ExportTarget.cpp,tests/media_export_target.cpp,
+CONFLICT	exporter	829555fb3d6c065bfd34ba8e34fe60aaeb368928	i18n(export): the destination table's names and notes are translatable now	scripts/gui/probe_axes.sh,scripts/gui/probe_capped.sh,scripts/gui/probe_dialog.sh,scripts/gui/probe_export.sh,scripts/gui/probe_format.sh,scripts/gui/probe_inputs.sh,scripts/gui/probe_menu.sh,scripts/gui/probe_noproject.sh,scripts/gui/probe_reexport.sh,scripts/gui/probe_still.sh,src/ctrl/ExportTarget.cpp,src/gui/CMakeLists.txt,tests/CMakeLists.txt,tests/media_export_target.cpp,
+CONFLICT	exporter	ee6e26c01f4a175321a213364693b962d0384f4b	feat(export): ten animated-image destinations, each with the number its platform publishes	assets/export/ExportTargets.txt,assets/locale/translation_es.ts,assets/locale/translation_ja.ts,assets/locale/translation_ko.ts,assets/locale/translation_ru.ts,assets/locale/translation_zh.ts,scripts/gui/probe_axes.sh,scripts/gui/probe_dialog.sh,scripts/gui/probe_inputs.sh,scripts/gui/probe_quality.sh,scripts/gui/probe_reexport.sh,src/ctrl/ExportTargetStrings.h,
+CONFLICT	exporter	f6cbe1c872f74c3e42e6843e556771f4418eea64	docs(scratchpad): what the audit follow-up decided, and what is still open	assets/locale/translation_es.ts,assets/locale/translation_ja.ts,assets/locale/translation_ko.ts,assets/locale/translation_ru.ts,assets/locale/translation_zh.ts,scripts/gui/probe_export.sh,scripts/gui/probe_inputs.sh,scripts/gui/probe_reexport.sh,scripts/gui/probe_still.sh,
+CONFLICT	exporter	e719f40b68dfdff0a9b28841d1f35bca25eaef36	i18n(export): the five catalogs are finished, and the table's strings are verified translated	scripts/gui/probe_dialog.sh,tests/CMakeLists.txt,tests/export_form.cpp,
+CONFLICT	exporter	ae960f6433dcc49c7818f0dccd36e56d86f1b0a6	i18n(export): every string reaches a translator, and every context can be asked for	assets/locale/translation_es.ts,assets/locale/translation_ja.ts,assets/locale/translation_ko.ts,assets/locale/translation_ru.ts,assets/locale/translation_zh.ts,scripts/run_suites.sh,src/ctrl/ExportTarget.cpp,src/ctrl/Exporter.cpp,src/gui/DestinationPicker.cpp,src/gui/DestinationPicker.h,src/gui/ExportFacts.cpp,src/gui/exportdiag.h,tests/CMakeLists.txt,tests/destination_picker.cpp,tests/export_form.cpp,tests/media_export_target.cpp,
+CONFLICT	exporter	81a47299be11f90811db2593f690a481d70cb5c2	fix(export): the codec's "Auto" value survives, so the Quality setting is in charge	src/ctrl/ExportTarget.h,src/gui/MainWindow.cpp,src/gui/exportdiag.h,tests/CMakeLists.txt,tests/export_form.cpp,
+CONFLICT	exporter	dd225eff61143b18fb89d6955266c504e2a0c773	test(probes): all twelve GUI probes drive the app by name and assert something	scripts/gui/ae_ui.py,scripts/gui/probe_axes.sh,scripts/gui/probe_capped.sh,scripts/gui/probe_dest.sh,scripts/gui/probe_export.sh,scripts/gui/probe_format.sh,scripts/gui/probe_menu.sh,scripts/gui/probe_quality.sh,scripts/gui/probe_reexport.sh,scripts/gui/probe_still.sh,
+CONFLICT	exporter	c9ec3c306aa87a842ad5661f601d1bd02e143329	refactor(export): the codec choice is policy, and the UI stops naming libraries	assets/export/ExportTargets.txt,scripts/gui/probe_capped.sh,scripts/gui/probe_dialog.sh,scripts/gui/probe_export.sh,src/ctrl/ExportTarget.cpp,src/ctrl/ExportTarget.h,src/gui/ExportFacts.cpp,src/media/FFmpegHelpers.cpp,src/media/FFmpegHelpers.h,tests/export_form.cpp,tests/media_export_target.cpp,

@@ -1,0 +1,148 @@
+From 42765381be0104ae2bce596678ba30197fc75ca4 Mon Sep 17 00:00:00 2001
+From: Gambot <56745325+GbotHQ@users.noreply.github.com>
+Date: Fri, 18 Sep 2026 11:08:27 +0200
+Subject: [PATCH 5/9] gui: fix the recent-projects list - crash, leak, hang and
+ the file you just opened
+
+Four separate defects in the code path added with the UI-scaling work:
+
+  * Clicking "Reset recent files list" crashed the application. The handler did
+    `qobject_cast<MainMenuBar*>(this->parent())` and called it unconditionally, but this
+    dialog is also constructed from the two FFmpeg checks in MainWindow, where the parent is
+    the window - so the cast is null and onRecentsUpdate() wrote through a null this. That
+    path is reachable: export with a missing or broken FFmpeg, and the modal settings dialog
+    opens on the FFmpeg tab with the QoL tab one click away.
+
+  * Every rebuild leaked eight QActions. The path actions were created with no parent, then
+    removed from the menu and dropped from the `actions` vector, leaving them unreachable and
+    unowned. Parenting them to the menu makes the clear() above delete them, and the loop that
+    tried to tidy up is deleted: openRecent->disconnect(action) removes the *menu's* outgoing
+    connections, of which there are none.
+
+  * A stored recents list longer than eight entries hung the application at startup. The
+    padding loop only ever appended, so `while (length != 8)` never terminated from above.
+
+  * The project you had just opened never appeared in the list when the list was already full:
+    the writer popped the oldest entry and never appended the new one, and the `contains`
+    guard that followed meant an already-listed file never moved to the front. It is now
+    prepend-and-cap, i.e. a most-recent-first list of eight.
+---
+ src/ctrl/System.cpp              | 24 ++++++++++----------
+ src/gui/GeneralSettingDialog.cpp |  9 ++++++--
+ src/gui/MainMenuBar.cpp          | 38 +++++++++++++++++---------------
+ 3 files changed, 39 insertions(+), 32 deletions(-)
+
+diff --git a/src/ctrl/System.cpp b/src/ctrl/System.cpp
+index cba74d1..4eb2159 100644
+--- a/src/ctrl/System.cpp
++++ b/src/ctrl/System.cpp
+@@ -124,19 +124,19 @@ System::openProject(const QString& aFileName, Project::Hook* aHookGrabbed, util:
+             QSettings settings;
+             QStringList recentfiles = settings.value("projectloader/recents").toStringList();
+ 
+-            // Check file length
+-            if (recentfiles.length() != 8) {
+-                recentfiles.append(aFileName);
+-            }
+-            // If length eight remove first
+-            else if (recentfiles.length() >= 8) {
+-                recentfiles.pop_front();
+-            }
+-            // Save
+-            if (!settings.value("projectloader/recents").toStringList().contains(aFileName)) {
+-                settings.setValue("projectloader/recents", recentfiles);
+-                settings.sync();
++            // Most-recent-first, capped at eight: record the file that was just opened and
++            // drop the oldest when full. The old branches did the opposite when the list was
++            // already full - they popped the oldest entry and never appended the new one - so
++            // the project you had just opened was missing from the menu that this same
++            // function refreshes a few lines below. The `contains` guard also prevented the
++            // list from ever being reordered, so it goes with it.
++            recentfiles.removeAll(aFileName);
++            recentfiles.prepend(aFileName);
++            while (recentfiles.length() > 8) {
++                recentfiles.pop_back();
+             }
++            settings.setValue("projectloader/recents", recentfiles);
++            settings.sync();
+             if (mainMenu != nullptr) {
+                 mainMenu->onRecentsUpdate();
+             }
+diff --git a/src/gui/GeneralSettingDialog.cpp b/src/gui/GeneralSettingDialog.cpp
+index bf78d3d..f298e9a 100644
+--- a/src/gui/GeneralSettingDialog.cpp
++++ b/src/gui/GeneralSettingDialog.cpp
+@@ -476,8 +476,13 @@ GeneralSettingDialog::GeneralSettingDialog(GUIResources& aGUIResources, QWidget*
+             QSettings settings;
+             settings.remove("projectloader/recents");
+             MainWindow::showInfoPopup(tr("Success"), tr("All entries have been successfully removed"), "Info");
+-            auto mmb = qobject_cast<MainMenuBar*>(this->parent());
+-            mmb->onRecentsUpdate();
++            // This dialog is built from three places and only one of them has the menu bar as
++            // its parent: the two FFmpeg checks in MainWindow pass the window, where the cast
++            // yields nullptr - and the next line used to dereference it, so clicking this
++            // button from the export path crashed.
++            if (auto* mmb = qobject_cast<MainMenuBar*>(this->parent())) {
++                mmb->onRecentsUpdate();
++            }
+         });
+         qualityOfLife->addRow(mResetButton);
+ 
+diff --git a/src/gui/MainMenuBar.cpp b/src/gui/MainMenuBar.cpp
+index 82c2a5c..37a7944 100644
+--- a/src/gui/MainMenuBar.cpp
++++ b/src/gui/MainMenuBar.cpp
+@@ -519,18 +519,20 @@ void MainMenuBar::onRecentsUpdate() {
+         QSettings settings;
+         settings.sync();
+         recentfiles = settings.value("projectloader/recents").toStringList();
+-        if (!actions.isEmpty()) {
+-            for (const auto signal: actions) {
+-                std::ignore = openRecent->disconnect(signal);
+-                openRecent->removeAction(signal);
+-            }
+-        }
++        // clear() drops the previous entries and, because the path actions below are
++        // parented to this menu, deletes them too. The loop that used to sit here called
++        // openRecent->disconnect(action), which asks the menu to drop its own outgoing
++        // connections - there are none - so it was dead code either way.
+         openRecent->clear();
+         // Path placeholders
+-        if (recentfiles.length() != 8) {
+-            while (recentfiles.length() != 8) {
+-                recentfiles.append("Path placeholder");
+-            }
++        // Exactly eight slots: trim a longer list, pad a shorter one. The old loop only ever
++        // padded, so a stored value with more than eight entries never reached eight and this
++        // rebuild - which also runs from the constructor - spun forever.
++        if (recentfiles.length() > 8) {
++            recentfiles = recentfiles.mid(0, 8);
++        }
++        while (recentfiles.length() < 8) {
++            recentfiles.append(QStringLiteral("Path placeholder"));
+         }
+         QString firstPath = recentfiles[0];
+         QString secondPath = recentfiles[1];
+@@ -545,14 +547,14 @@ void MainMenuBar::onRecentsUpdate() {
+              << eigthPath;
+         // Path actions
+         auto placeholderAction = new QAction(tr("No other projects"), this);
+-        auto firstPathAction = new QAction(firstPath);
+-        auto secondPathAction = new QAction(secondPath);
+-        auto thirdPathAction = new QAction(thirdPath);
+-        auto fourthPathAction = new QAction(fourthPath);
+-        auto fifthPathAction = new QAction(fifthPath);
+-        auto sixthPathAction = new QAction(sixthPath);
+-        auto seventhPathAction = new QAction(seventhPath);
+-        auto eigthPathAction = new QAction(eigthPath);
++        auto firstPathAction = new QAction(firstPath, openRecent);
++        auto secondPathAction = new QAction(secondPath, openRecent);
++        auto thirdPathAction = new QAction(thirdPath, openRecent);
++        auto fourthPathAction = new QAction(fourthPath, openRecent);
++        auto fifthPathAction = new QAction(fifthPath, openRecent);
++        auto sixthPathAction = new QAction(sixthPath, openRecent);
++        auto seventhPathAction = new QAction(seventhPath, openRecent);
++        auto eigthPathAction = new QAction(eigthPath, openRecent);
+ 
+         actions.clear();
+         actions.append({placeholderAction, firstPathAction, secondPathAction, thirdPathAction,

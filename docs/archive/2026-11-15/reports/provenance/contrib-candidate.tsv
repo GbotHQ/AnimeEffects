@@ -1,0 +1,79 @@
+OK	69164d827ff70dd9a18902749332ffbdd3affc11	timeline: temporary playback window on the ruler (shift-drag)
+OK	01b7386cafa16d85939921e9b787f095f2a1cdcb	timeline: fix window-gesture click/drag, pill corners, number clip
+OK	419e17f270584396386ae0e2ea06795140d9d1cc	core: frame range replaces the max frame count
+OK	7f666602541f4225549176f7185c526c3d829880	gui: frame range settings with start/end spinboxes
+OK	706e94895f4180ba925d2f6432e98eff390a36b8	timeline: symmetric negative-frame mapping, markers at range start
+OK	1e7ba42a79c4c8c6ae186ec36f9d2376740c25fe	timeline: mirror the end label for the range's first frame
+OK	3f7e1295d9571be8f7420673b4b289bb32307027	timeline: cull the boundary frames from the tick loop
+OK	0387ee7525bcdc498c8d080f91f493b24b20a85f	timeline: enforce a label margin; collapse narrow-range boundary labels
+OK	d88da5e9eeb7c1a03963de01f5ed31265f976dc8	timeline: fix first-label yield gating and window stem overdraw
+OK	0bd3256270a7f4d2c1cc5f3ed5d16da018a4aee3	timeline: invalidate the playback window on a frame-range change
+OK	4da06a0219613f0415e831838749d63494a8a002	gui: transport shortcuts land on the effective playback range
+OK	ec20dd4283f42209d4835ac45d6e629913a16a62	core: guard the loaded frame range against an inverted start/end
+OK	205b87c4b09bf3d4c401fbfbd08d5950a755cff6	timeline: free navigation from the playback window; clamp the window
+OK	514c5571d3cd054cf8536364b10ccc7b98ccd2cf	timeline: window stems under the pill; merge labels for on-major starts
+OK	646e6c9970d750b80fa8af6e3ae5b1d178a2b0bc	core: negative frame ranges everywhere
+OK	ea24e5a30364e9129dcf441863a1612cb3b6f8cc	timeline: tooltip and context-menu clear for the playback window
+OK	9821afe7f4507c50c94a162321fd9d08327c337c	gui: export UI honors negative ranges and the project range start
+OK	fe2b7b7b1e33ee8a31db273e811439b0e8124a5f	core: fix crash with negative project ranges; make frame -1 a normal frame
+OK	77c18101b22a58e541be7d88b1d9a4713fe1a676	timeline: ruler-only clear action; drop the ruler tooltip
+OK	c0d726d4db9dbb69b7960949e7fbb8cfd345c487	timeline: editor-owned ruler region predicate
+OK	0e55085a778d3bf38f4ebef27ddf196addf7db3f	gui: key commands support multiple listeners per binding
+OK	2aaa15ef0f804d9803c2af9ac2db79cf6cfc9c47	timeline: real TimeRuler widget owns the strip's paint and input
+OK	1b3746441180f56798342c3dec84b4f37c9be18c	timeline: pan with the MoveCanvas key like the viewport
+OK	9816ad73a9c0e5a205532d6abded9d7c0d7d5c64	timeline: ruler repaints when the window is cleared and on project load
+OK	60e63a672e80f3427ac41c0c3a6bf897e7630772	tree: expanding a row must not scroll the view
+OK	82b34612390e1f7bac231a23870b892dd19826e9	prop: playback's disabled state must not repaint section surfaces
+OK	512e9e342d3685af2ee2629243af65364021b8a6	prop: disabled state must not repaint section backgrounds (root fix)
+OK	2691cd42fabb1ab7ee6f6528fd2a08d7022c2059	prop: checkbox/radio indicators keep their resting look when disabled
+OK	341b9d23e5147d2441662a6c05e4a6ecbf03465f	core: fix use-after-free in BoneKey::deserialize
+OK	f32b4f26ff051a4ed4daa5190d21947948de64df	timeline: 1-indexed frames, live selection refresh, and unsaved-project recovery
+OK	834a09ebec461cbd1651607b4b35222eab6365c2	timeline: fps-aware, fractional time formats; drop dead lane x-extent; grounded translations
+OK	b7c6bb05021a1e5ab7c0f4d7e2bffdf5a4ff9d97	core: keep zero-vertex mesh nodes cached; guard null area mesh
+OK	d63e2763aa18adb5e363da2b205341cbd8f92624	util: port WebKit UnitBezier solver; disable redundant weight for Custom
+OK	4814b5f56c29c565bce3964e32e66d29eac6c05d	prop: add easing picker popover
+OK	dfc8ab1fd2c83afe8cf1af2d88c2316d6aa543d6	build: add mingw-w64 Windows cross-build tooling
+OK	25906bc696fde7bf07d07b928bbc8b81a7520b78	prop: auto-create a key when editing an unkeyed frame
+OK	a3e842136ef48beaeac2e6fd8c21ce041309985a	timeline: classify tick tiers in the Scaler; creation selects its output
+OK	eed59c6e73ba01232b69ed89811ab1e95d2dfb48	prop: live-apply easing picker, session undo, and a single-paint chip
+OK	7fd0d168eb8db8ca6d8f72174fca5ee2a9b57851	gui: don't stamp a rounded mask on combo drop-downs
+OK	f7a1e62814ca9db2fb643c075017a5e2c6d85933	gui: migrate the animation-settings dialog to a Qt Quick popup (pilot)
+OK	6b1c50390f8728b731872316dda135a96c839c63	gui: fold mouse settings and keybind reset into one settings dialog
+OK	3a93fc6870d0989c8f26ef80c26b14cfc42d649a	core: make project attributes observable; decouple change from undo
+OK	69eb7ca0a255e33e0b87b9e110f2d4972c508b07	test: cover observable project attributes and settings session undo
+OK	12d917d6c64be9ec4126c868f6df06eafbbb7939	build: drop the legacy qmake build; CMake is the supported path
+OK	c7799cecf8cbc33c2764fea389709978a9c97fb2	i18n: drop the dead MouseSettingDialog context and add the moved settings strings
+OK	5e87593774b54c7446218bef51c834ce336e7624	test: wire the creation-selects-output timeline test
+OK	dd3e464da29620a262fabf42a1f6c2b913bd159e	i18n: translate the QML pilot dialog via a module translation context
+OK	579c0a24c6950bbd64c4ad5fef54063f57017ebe	build: adopt qt_add_translations for i18n generation
+OK	1de0df946ed80a8995d226522ba95c649746f4dd	i18n: regenerate the translation catalogs and translate the new strings
+OK	a4ab6d096c4022c09d1d96a0ad783485e2dfa080	docs: READMEs — note the LinguistTools dependency and move the language navigator
+OK	cdad47c94632f0e1f7da803eb722415cab46f1e7	build: keep .qm out of source — they are build artifacts
+OK	34083a87eab7adf9cf078bab78e098d48563b25b	build: rename the source data/ directory to assets/
+OK	77624799328695ee21b34e51a10c73e795271290	build: embed the fixed assets (favicons, stylesheets, fonts, shaders, translations) into the binary
+OK	e41c75e2045b8807c4566352460cefd06066cf8f	refactor: resolve the external data dir explicitly and drop the global chdir
+OK	913a38720c5f16ec13c69e0bd3cff8963296c989	build: standardize the embedded asset resource prefixes to plural
+OK	922beeff01cf62e74d5cf0d8437bfb3123ac89e1	build: embed the export presets; load them from :/encode
+OK	5ab1b6cc779b32bc5daca8a1d7e249b734373ec1	refactor: store the locale font defaults in QSettings
+OK	dd511a85acad2c0d25d2b1803b3e8b269b9164ba	refactor: remove the co-located data dir; the app is self-contained
+OK	74faed7a38c9a5e5a1780e423a28f80a015d108e	fix: use a valid neutral fps placeholder in the animation-settings dialog
+OK	ad0db23bb75f1e4811d35714ae59dea2b2f81c04	ci: validate the macOS path in the mac workflows
+OK	f472e32b50ac42f8a3181babe3d61fc86f143681	fix: locate ffmpeg via applicationDirPath() and check the file, not the folder
+STRIPPED	140b779	src/media/CMakeLists.txt
+SURGERY	140b779	build: enable -Wall -Wextra for first-party code
+STRIPPED	3122528	src/ctrl/Exporter.cpp
+STRIPPED	3122528	src/ctrl/Exporter.h
+SURGERY	3122528	refactor: delete the dead code -Wall found
+OK	f28e905	refactor(gl): make EasyTextureDrawer::init() idempotent
+OK	f370488	fix(gui): the audio track panel mislabelled row 0 with 3+ tracks
+OK	2505f5c	fix(gui): initialise Colors fully instead of assigning isDark after
+OK	3864e4f	refactor: write constructor init lists in declaration order
+OK	12c7dc9	fix: compare values in their own types rather than across signedness
+OK	afdb33a	refactor: mark real overrides, and remove genuinely vestigial parameters
+OK	d6b38e6	build(tests): ignore easing_picker_layout's output PNG
+OK	167158e	build(tests): give the roundtrip harness the embedded assets it needs
+OK	68d5998	refactor: delete the dead generated splineWidget dialog
+OK	af55854	refactor: drop TargetWidget's no-op first-resize flag
+OK	ddf9c10	test(picker): give the probe the theme icons, and restore scenario #8
+OK	452ae71	fix(core): the clipboard's grid-mesh payload never restored anything
+CONFLICT	b093680	Make picker_probe a gate, so its stale expectations cannot hide	scripts/run_suites.sh,

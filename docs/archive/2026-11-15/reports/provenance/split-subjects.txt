@@ -1,0 +1,79 @@
+build: add mingw-w64 Windows cross-build tooling
+build: adopt qt_add_translations for i18n generation
+build: copy the Windows data dir only when the tree has one
+build: drop the legacy qmake build; CMake is the supported path
+build: embed the export presets; load them from :/encode
+build: embed the fixed assets (favicons, stylesheets, fonts, shaders, translations) into the binary
+build: enable -Wall -Wextra for first-party code
+build: keep .qm out of source — they are build artifacts
+build(media): treat vendored deps as SYSTEM headers
+build: rename the source data/ directory to assets/
+build: standardize the embedded asset resource prefixes to plural
+build(tests): give the roundtrip harness the embedded assets it needs
+build(tests): ignore easing_picker_layout's output PNG
+ci: validate the macOS path in the mac workflows
+core: fix crash with negative project ranges; make frame -1 a normal frame
+core: fix use-after-free in BoneKey::deserialize
+core: frame range replaces the max frame count
+core: guard the loaded frame range against an inverted start/end
+core: keep zero-vertex mesh nodes cached; guard null area mesh
+core: make project attributes observable; decouple change from undo
+core: negative frame ranges everywhere
+docs: READMEs — note the LinguistTools dependency and move the language navigator
+docs(tests): stop naming a harness that is not in this series
+fix: compare values in their own types rather than across signedness
+fix(core): the clipboard's grid-mesh payload never restored anything
+fix(gui): initialise Colors fully instead of assigning isDark after
+fix(gui): the audio track panel mislabelled row 0 with 3+ tracks
+fix: locate ffmpeg via applicationDirPath() and check the file, not the folder
+fix: use a valid neutral fps placeholder in the animation-settings dialog
+gui: don't stamp a rounded mask on combo drop-downs
+gui: export UI honors negative ranges and the project range start
+gui: fold mouse settings and keybind reset into one settings dialog
+gui: frame range settings with start/end spinboxes
+gui: key commands support multiple listeners per binding
+gui: migrate the animation-settings dialog to a Qt Quick popup (pilot)
+gui: transport shortcuts land on the effective playback range
+i18n: drop the dead MouseSettingDialog context and add the moved settings strings
+i18n: regenerate the translation catalogs and translate the new strings
+i18n: translate the QML pilot dialog via a module translation context
+Make picker_probe a gate, so its stale expectations cannot hide
+prop: add easing picker popover
+prop: auto-create a key when editing an unkeyed frame
+prop: checkbox/radio indicators keep their resting look when disabled
+prop: disabled state must not repaint section backgrounds (root fix)
+prop: live-apply easing picker, session undo, and a single-paint chip
+prop: playback's disabled state must not repaint section surfaces
+refactor: delete the dead code -Wall found
+refactor: delete the dead generated splineWidget dialog
+refactor: drop TargetWidget's no-op first-resize flag
+refactor(gl): make EasyTextureDrawer::init() idempotent
+refactor: mark real overrides, and remove genuinely vestigial parameters
+refactor: remove the co-located data dir; the app is self-contained
+refactor: resolve the external data dir explicitly and drop the global chdir
+refactor: store the locale font defaults in QSettings
+refactor: write constructor init lists in declaration order
+test: cover observable project attributes and settings session undo
+test(picker): give the probe the theme icons, and restore scenario #8
+test: wire the creation-selects-output timeline test
+timeline: 1-indexed frames, live selection refresh, and unsaved-project recovery
+timeline: classify tick tiers in the Scaler; creation selects its output
+timeline: cull the boundary frames from the tick loop
+timeline: editor-owned ruler region predicate
+timeline: enforce a label margin; collapse narrow-range boundary labels
+timeline: fix first-label yield gating and window stem overdraw
+timeline: fix window-gesture click/drag, pill corners, number clip
+timeline: fps-aware, fractional time formats; drop dead lane x-extent; grounded translations
+timeline: free navigation from the playback window; clamp the window
+timeline: invalidate the playback window on a frame-range change
+timeline: mirror the end label for the range's first frame
+timeline: pan with the MoveCanvas key like the viewport
+timeline: real TimeRuler widget owns the strip's paint and input
+timeline: ruler-only clear action; drop the ruler tooltip
+timeline: ruler repaints when the window is cleared and on project load
+timeline: symmetric negative-frame mapping, markers at range start
+timeline: temporary playback window on the ruler (shift-drag)
+timeline: tooltip and context-menu clear for the playback window
+timeline: window stems under the pill; merge labels for on-major starts
+tree: expanding a row must not scroll the view
+util: port WebKit UnitBezier solver; disable redundant weight for Custom

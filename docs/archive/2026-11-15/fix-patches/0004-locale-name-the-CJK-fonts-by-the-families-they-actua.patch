@@ -1,0 +1,70 @@
+From 05f96e1bbe811739f4d3ac8a3926745925a97c3c Mon Sep 17 00:00:00 2001
+From: Gambot <56745325+GbotHQ@users.noreply.github.com>
+Date: Fri, 18 Sep 2026 11:06:45 +0200
+Subject: [PATCH 4/9] locale: name the CJK fonts by the families they actually
+ contain
+
+preference_ja/zh/ko.txt asked for `NotoJP`, `NotoCN` and `NotoKO`. Those strings appear
+nowhere in the shipped fonts: the families inside data/fonts/NotoJP.ttf, NotoCN.ttf and
+NotoKO.ttf are "Noto Serif JP", "Noto Serif SC" and "Noto Sans KR" (checked against every
+name-table record, and against the whole file as bytes). Qt matches family names only, so
+`QFont("NotoJP")`, `QFontDatabase::hasFamily("NotoJP")` and a QSS `font-family: NotoJP`
+all fall through to the default font - silently, because QWidget::font().family() still
+echoes the requested string.
+
+Use the real family names.
+
+Two things this does NOT settle, deliberately left to the maintainer:
+
+  * All three files are variable fonts whose only reachable instance is ExtraLight (JP,
+    SC) or Thin (KR), so the UI would render hairline unless QFont::setVariableAxis is
+    used or proper instances are shipped.
+  * JP and SC are Serif faces bundled into an interface whose own font is the sans Geist.
+---
+ data/locale/preference_ja.txt | 6 +++---
+ data/locale/preference_ko.txt | 6 +++---
+ data/locale/preference_zh.txt | 6 +++---
+ 3 files changed, 9 insertions(+), 9 deletions(-)
+
+diff --git a/data/locale/preference_ja.txt b/data/locale/preference_ja.txt
+index 978f28b..7c69281 100644
+--- a/data/locale/preference_ja.txt
++++ b/data/locale/preference_ja.txt
+@@ -1,6 +1,6 @@
+-font_family = NotoJP
+-font_family_win = NotoJP
+-font_family_mac = NotoJP
++font_family = Noto Serif JP
++font_family_win = Noto Serif JP
++font_family_mac = Noto Serif JP
+ font_size = 12pt
+ font_size_win = 12pt
+ font_size_mac = 14pt
+diff --git a/data/locale/preference_ko.txt b/data/locale/preference_ko.txt
+index 36f815c..1b797b0 100644
+--- a/data/locale/preference_ko.txt
++++ b/data/locale/preference_ko.txt
+@@ -1,6 +1,6 @@
+-font_family = NotoKO
+-font_family_win = NotoKO
+-font_family_mac = NotoKO
++font_family = Noto Sans KR
++font_family_win = Noto Sans KR
++font_family_mac = Noto Sans KR
+ font_size = 12pt
+ font_size_win = 12pt
+ font_size_mac = 14pt
+diff --git a/data/locale/preference_zh.txt b/data/locale/preference_zh.txt
+index 44b6037..a29b554 100644
+--- a/data/locale/preference_zh.txt
++++ b/data/locale/preference_zh.txt
+@@ -1,6 +1,6 @@
+-font_family = NotoCN
+-font_family_win = NotoCN
+-font_family_mac = NotoCN
++font_family = Noto Serif SC
++font_family_win = Noto Serif SC
++font_family_mac = Noto Serif SC
+ font_size = 12pt
+ font_size_win = 12pt
+ font_size_mac = 14pt

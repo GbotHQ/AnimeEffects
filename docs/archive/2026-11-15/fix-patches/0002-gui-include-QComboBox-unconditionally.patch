@@ -1,0 +1,36 @@
+From cc2ea074ab580a9b1a11cae78d4ef2c75577370f Mon Sep 17 00:00:00 2001
+From: Gambot <56745325+GbotHQ@users.noreply.github.com>
+Date: Fri, 18 Sep 2026 11:06:44 +0200
+Subject: [PATCH 2/9] gui: include QComboBox unconditionally
+
+The header declares four QComboBox members but guarded its include with
+
+    #ifndef Q_OS_WIN
+    #include <QComboBox>
+    #endif
+
+so the include was dropped on the one platform that needs it. It happens to compile under
+MSVC because another header pulls qcombobox.h in transitively; a MinGW build fails at
+
+    src/gui/GeneralSettingDialog.h:57:5: error: 'QComboBox' does not name a type
+
+Include it where it is used, unconditionally. Verified by cross-compiling this tree with
+the MinGW toolchain: the error disappears.
+---
+ src/gui/GeneralSettingDialog.h | 2 --
+ 1 file changed, 2 deletions(-)
+
+diff --git a/src/gui/GeneralSettingDialog.h b/src/gui/GeneralSettingDialog.h
+index 5d4b295..4e0f6bb 100644
+--- a/src/gui/GeneralSettingDialog.h
++++ b/src/gui/GeneralSettingDialog.h
+@@ -6,9 +6,7 @@
+ #include <QFormLayout>
+ #include "gui/EasyDialog.h"
+ #include <QSpinBox>
+-#ifndef Q_OS_WIN
+ #include <QComboBox>
+-#endif
+ 
+ #include <QTabWidget>
+ 

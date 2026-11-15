@@ -1,0 +1,42 @@
+From 6a26d40a41f40871c5dfba7b953d8e4608586292 Mon Sep 17 00:00:00 2001
+From: Gambot <56745325+GbotHQ@users.noreply.github.com>
+Date: Fri, 18 Sep 2026 11:06:44 +0200
+Subject: [PATCH 3/9] gui: use __declspec, not _declspec, for the
+ GPU-preference exports
+
+The two exported symbols that ask the drivers for the high-performance GPU were declared
+with a single underscore, copied from the vendors' own example code (NVIDIA's Optimus
+document and AMD's GPUOpen page both print `_declspec`). That spelling is an
+MSVC-only compatibility synonym; MinGW-w64 GCC rejects it:
+
+    src/gui/Main.cpp:27:14: error: expected constructor, destructor, or type conversion
+    before '(' token
+
+Use `__declspec`, which every Windows toolchain accepts. Verified by compiling the file
+with x86_64-w64-mingw32-g++ (fails before, compiles after) and by confirming the export
+table still carries both names afterwards.
+
+While here, the comment above it promised nothing testable ("sure hope it works out").
+The mechanism is only a request - the driver reads the image at process start and the OS
+per-app preference wins on Windows 10 20H1+ - so the honest companions are a
+glGetString(GL_RENDERER) log and a documented way to opt out. Those are left for a
+follow-up rather than smuggled into this one.
+---
+ src/gui/Main.cpp | 4 ++--
+ 1 file changed, 2 insertions(+), 2 deletions(-)
+
+diff --git a/src/gui/Main.cpp b/src/gui/Main.cpp
+index fbe09a1..154feb0 100644
+--- a/src/gui/Main.cpp
++++ b/src/gui/Main.cpp
+@@ -24,8 +24,8 @@
+ 
+ // This *should* set the OS to use its dedicated GPU, sure hope it works out...
+     extern "C" {
+-    _declspec(dllexport) DWORD NvOptimusEnablement = 1;
+-    _declspec(dllexport) int AmdPowerXpressRequestHighPerformance = 1;
++    __declspec(dllexport) DWORD NvOptimusEnablement = 1;
++    __declspec(dllexport) int AmdPowerXpressRequestHighPerformance = 1;
+     }
+ #endif
+ 

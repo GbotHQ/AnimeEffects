@@ -1,0 +1,41 @@
+From 555602fe9832ab63a3706d178517661d0ce7c380 Mon Sep 17 00:00:00 2001
+From: Gambot <56745325+GbotHQ@users.noreply.github.com>
+Date: Fri, 18 Sep 2026 11:08:27 +0200
+Subject: [PATCH 7/9] gui: leave the application-wide stylesheet to the code
+ that owns it
+
+MainWindow::onThemeUpdated() set the generated sheet twice - once application-wide and once on
+the window. The application-wide call is not a duplicate of the window one: it *replaces* the
+sheet that GUIResources::applyAppearance() installs immediately before every onThemeChanged
+emission, which is where the app-wide dialogbutton.ssa comes from. That sheet exists precisely
+to style parentless dialogs, and it carries the tree's only QPushButton#browser rules, so the
+file-picker button in the new-project dialog lost its styling.
+
+Drop the application-wide call and keep the window one. The font it was there for is already
+set application-wide by QApplication::setFont, which Qt documents as inherited by existing and
+future children; only that call was ever needed for the parentless dialogs.
+---
+ src/gui/MainWindow.cpp | 10 ++++++++--
+ 1 file changed, 8 insertions(+), 2 deletions(-)
+
+diff --git a/src/gui/MainWindow.cpp b/src/gui/MainWindow.cpp
+index 0c74ab5..b326cbd 100644
+--- a/src/gui/MainWindow.cpp
++++ b/src/gui/MainWindow.cpp
+@@ -534,8 +534,14 @@ void MainWindow::onThemeUpdated(theme::Theme& aTheme) {
+             }
+ 
+         }
+-        qDebug() << "fontOption: " << fontOption;
+-        qApp->setStyleSheet(fontOption + standard);
++        // Only the window is styled here. The application-wide sheet belongs to
++        // GUIResources::applyAppearance(), which installs dialogbutton.ssa so that parentless
++        // dialogs (QMessageBox and friends) inherit it - and that call runs immediately before
++        // every theme change reaches this function. Setting the application sheet from here
++        // therefore *replaced* it, taking the tree s only QPushButton#browser rules with it and
++        // leaving NewProjectDialog s file-picker button unstyled. The font itself is already
++        // applied application-wide by QApplication::setFont a few lines above, which Qt
++        // documents as inherited by existing and future widgets, so nothing is lost.
+         this->setStyleSheet(fontOption + standard);
+     }
+ 

@@ -1,0 +1,82 @@
+From b972ca29902b6619f81eb0b1a65475dea7bd8625 Mon Sep 17 00:00:00 2001
+From: Gambot <56745325+GbotHQ@users.noreply.github.com>
+Date: Fri, 18 Sep 2026 11:09:22 +0200
+Subject: [PATCH 8/9] gui: validate the values pasted as a custom easing
+
+"Paste custom easing" accepted anything with four comma-separated fields. Ignoring the
+conversion result meant a typo silently became 0.0f, and (0,0,0,0) is a *linear* curve, so the
+key looked like it had been eased; "nan"/"inf" convert successfully and the solver has no
+non-finite guard, so those reached the key data and produced NaN transforms; and a control
+point outside [0,1] makes x(t) non-monotonic, which the solver inverts wrongly - pasting
+2,0,-1,1 makes a key that runs forwards and then backwards.
+
+Check the conversions, require finite values, and hold x to the domain the rest of the code
+already assumes (bezierCurveEditor.h declares kMinX/kMaxX for exactly this reason and clamps
+on canvas drag). y is left free to overshoot, as a bezier may.
+
+The error message was also untranslated ("Error" / "Invalid clipboard data") while the rest of
+the file uses tr(); it is now a translated warning that says what the format is, since nothing
+else in the UI documents it.
+---
+ src/gui/TimeLineEditorWidget.cpp | 46 +++++++++++++++++++++-----------
+ 1 file changed, 31 insertions(+), 15 deletions(-)
+
+diff --git a/src/gui/TimeLineEditorWidget.cpp b/src/gui/TimeLineEditorWidget.cpp
+index bb09e3e..bd453b1 100644
+--- a/src/gui/TimeLineEditorWidget.cpp
++++ b/src/gui/TimeLineEditorWidget.cpp
+@@ -745,23 +745,39 @@ void TimeLineEditorWidget::onSelectRangeTriggered(int rangeType) {
+ 
+ void TimeLineEditorWidget::onPasteCustomEasingTriggered() {
+     const QClipboard *clip = QGuiApplication::clipboard();
+-    if (QStringList list = clip->text().split(","); !list.isEmpty() && list.size() == 4) {
+-        util::Easing::CubicBezier bezier{};
+-        bezier.x1 = list[0].toFloat();
+-        bezier.y1 = list[1].toFloat();
+-        bezier.x2 = list[2].toFloat();
+-        bezier.y2 = list[3].toFloat();
+-
+-        for(auto target: mTargets.targets()) {
+-            auto type = target.pos.key()->type();
+-            if(type != core::TimeKeyType_Bone && type != core::TimeKeyType_Mesh && type != core::TimeKeyType_Image){
+-                const int frame = target.pos.key()->frame();
+-                const auto key = target.pos.line()->timeKey(target.pos.key()->type(), frame);
+-                assignEasing(mProject, util::Easing::Type_Custom, &target, key, frame, true, &bezier);
+-            }
++    const QStringList list = clip->text().split(",");
++    util::Easing::CubicBezier bezier{};
++    bool ok[4] = { false, false, false, false };
++    if (list.size() == 4) {
++        bezier.x1 = list[0].toFloat(&ok[0]);
++        bezier.y1 = list[1].toFloat(&ok[1]);
++        bezier.x2 = list[2].toFloat(&ok[2]);
++        bezier.y2 = list[3].toFloat(&ok[3]);
++    }
++
++    // Parsing is not validation. "nan" and "inf" convert successfully, and a control point
++    // outside [0,1] makes x(t) non-monotonic, which the solver cannot invert - the key would
++    // get a wrong or NaN transform with nothing said about it. x is the function domain here
++    // (see kMinX/kMaxX in bezierCurveEditor.h); y may overshoot, which is a legitimate bezier.
++    const bool valid = ok[0] && ok[1] && ok[2] && ok[3]
++        && qIsFinite(bezier.x1) && qIsFinite(bezier.y1)
++        && qIsFinite(bezier.x2) && qIsFinite(bezier.y2)
++        && bezier.x1 >= 0.0f && bezier.x1 <= 1.0f
++        && bezier.x2 >= 0.0f && bezier.x2 <= 1.0f;
++    if (!valid) {
++        QMessageBox::warning(this, tr("Custom easing"),
++            tr("The clipboard must hold four comma-separated numbers (x1,y1,x2,y2) with x between 0 and 1."));
++        return;
++    }
++
++    for (auto target: mTargets.targets()) {
++        auto type = target.pos.key()->type();
++        if (type != core::TimeKeyType_Bone && type != core::TimeKeyType_Mesh && type != core::TimeKeyType_Image) {
++            const int frame = target.pos.key()->frame();
++            const auto key = target.pos.line()->timeKey(target.pos.key()->type(), frame);
++            assignEasing(mProject, util::Easing::Type_Custom, &target, key, frame, true, &bezier);
+         }
+     }
+-    else { QMessageBox::information(this, "Error", "Invalid clipboard data"); }
+ }
+ 
+ bool targetsAreSeparated(QList<core::TimeLineEvent::Target> &targets){

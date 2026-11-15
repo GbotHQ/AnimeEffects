@@ -1,0 +1,69 @@
+From ce2ea9bfbc7b44456024b8f6b806ef53b11256f4 Mon Sep 17 00:00:00 2001
+From: Gambot <56745325+GbotHQ@users.noreply.github.com>
+Date: Fri, 18 Sep 2026 11:08:27 +0200
+Subject: [PATCH 6/9] gui: stop replacing the default font on a fresh install
+
+With no `generalsettings/ui/font` stored (i.e. any default install), the startup code did:
+
+    if (uiScale.isValid()) {                       // always true: value() was given a default
+        if (QFontDatabase::hasFamily("")) {        // also true - hasFamily accepts the empty name
+            appFont = QFont("");                   // discard the platform font and its size
+
+Measured on Qt 6.11.1: hasFamily(QString()) returns 1 while families().contains(QString())
+returns 0, and QFont(QString()) is a family-less 12pt font. So the default font and its size
+were thrown away on every fresh install, and the General Settings "Font" field then displayed
+an empty family, because qApp->font().family() was "".
+
+Guard the key instead of uiScale, in both places that do this (startup and the MainWindow
+constructor), and keep the platform font when there is no custom font to apply.
+---
+ src/gui/Main.cpp       | 14 ++++++++++----
+ src/gui/MainWindow.cpp | 10 ++++++----
+ 2 files changed, 16 insertions(+), 8 deletions(-)
+
+diff --git a/src/gui/Main.cpp b/src/gui/Main.cpp
+index 154feb0..7156a1b 100644
+--- a/src/gui/Main.cpp
++++ b/src/gui/Main.cpp
+@@ -200,10 +200,16 @@ int entryPoint(int argc, char* argv[]) {
+             if (uiScale.toDouble() > 3.0f) { uiScale = 3.0f; }
+             fontScale = uiScale.toDouble();
+         }
+-        auto userFont = settings.value("generalsettings/ui/font");
+-        if (uiScale.isValid()) {
+-            if (QFontDatabase::hasFamily(userFont.toString())){
+-                appFont = QFont(userFont.toString());
++        // The guard here used to be `uiScale.isValid()`, which is constant-true because
++        // QSettings::value() with a default always returns a valid variant - so it never
++        // guarded the font setting at all. What has to be guarded is the key itself: when it
++        // is absent the string is empty, and QFontDatabase::hasFamily("") returns true, so a
++        // default install took the branch below and replaced the platform default font - and
++        // its size - with a family-less QFont("").
++        const QString userFontFamily = settings.value("generalsettings/ui/font").toString();
++        if (!userFontFamily.isEmpty()) {
++            if (QFontDatabase::hasFamily(userFontFamily)) {
++                appFont = QFont(userFontFamily);
+             }
+             else {
+                 bool customFont = settings.value("generalsettings/ui/customFont", false).toBool();
+diff --git a/src/gui/MainWindow.cpp b/src/gui/MainWindow.cpp
+index 6cd9e80..0c74ab5 100644
+--- a/src/gui/MainWindow.cpp
++++ b/src/gui/MainWindow.cpp
+@@ -125,10 +125,12 @@ MainWindow::MainWindow(ctrl::System& aSystem, GUIResources& aResources, LocalePa
+             fontScale = uiScale.toDouble();
+         }
+         auto font = this->font();
+-        auto userFont = settings.value("generalsettings/ui/font");
+-        if (uiScale.isValid()) {
+-            if (QFontDatabase::hasFamily(userFont.toString())){
+-                font = QFont(userFont.toString());
++        // Guard the font key, not uiScale: see the note in Main.cpp - the guard was
++        // constant-true, and an absent key yields an empty family that hasFamily() accepts.
++        const QString userFontFamily = settings.value("generalsettings/ui/font").toString();
++        if (!userFontFamily.isEmpty()) {
++            if (QFontDatabase::hasFamily(userFontFamily)) {
++                font = QFont(userFontFamily);
+             }
+             else {
+                 bool customFont = settings.value("generalsettings/ui/customFont", false).toBool();

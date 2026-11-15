@@ -1,0 +1,94 @@
+MIXED	fda7e57	feat(media): add in-process VideoEncoder (libav*) and V1 verification
+MIXED	06ba68e	feat(media): add in-process multi-track AudioMixer and V2 verification
+EXPORTER	c3b5e6b	feat(media): mux video + audio in one pass (aac/opus via swresample)
+MIXED	88684e1	feat(media): export-preset -> libav compatibility matrix (V3)
+MIXED	a6913d8	refactor(export): drive ctrl::Exporter video path with the in-process libav encoder
+MIXED	eb42c18	feat(export): mix + mux the project's multi-track audio with the video
+MIXED	c30a754	test(export): headless real-path export harness (ctrl::Exporter on real .anie)
+OTHER	9b883b5	refactor(export): require the external ffmpeg binary only for the legacy GIF path
+OTHER	a7676b9	refactor(export): route the full-export dialog's video through the media engine
+OTHER	47d09b9	feat(export): remove the FFmpeg runtime auto-download
+EXPORTER	6cb4801	refactor(export): port GIF export to the in-process media::GifEncoder
+EXPORTER	42f1226	refactor(export): remove the dead FFMpeg subprocess wrapper from ctrl::Exporter
+MIXED	5295a0b	refactor(export): route all exports through ctrl::Exporter; retire the legacy + settings
+OTHER	fc5765c	feat(export): add the FFmpeg license notice to the About dialog
+OTHER	ffa8c29	build(ci): install FFmpeg dev to build the linked-libav* exporter; drop the CLI binary download
+EXPORTER	51894e3	fix(media): correct libav* encoder/mixer edge-case bugs
+MIXED	6d779d6	feat(export): muxer-aware container->codec selection; wire transparency; honor per-container encoders
+EXPORTER	2028b33	test(export): expand real-path harness to 7 scenarios
+MIXED	4af475a	docs(ci): document FFmpeg GPL/version coupling
+MIXED	0e35836	fix(export): correct alpha support — VP9/WebM alpha, APNG, animated WebP
+MIXED	804ebda	build(export): require an explicit FFmpeg codec mode (GPL or free-only)
+EXPORTER	43fefce	test(export): note that ctrl::Exporter is one-shot; fix idempotency doc
+MIXED	71fba67	feat(media): re-add custom (user-supplied) GIF palette
+EXPORTER	5263f58	docs(export): root-cause the Exporter reuse crash; fix harness odd-native assertion
+EXPORTER	6582482	fix(media): set AV_CODEC_FLAG_GLOBAL_HEADER when the muxer declares it
+EXPORTER	eb7b452	feat(media): capability probes that actually run the encoder
+EXPORTER	dbf0a91	feat(media): private encoder options, stream codec tags, pad/crop fitting
+MIXED	b0f9f20	feat(export): destination data table
+MIXED	e5485de	feat(export): destination planner, codec ladder and fit-to-cap
+OTHER	9d6d7a2	feat(audio): per-track export enable
+MIXED	ca47520	test(export): destination-table conformance suite
+EXPORTER	49b5630	test(export): call the live-encode section that had never run
+EXPORTER	dfb8521	fix(export): stop emitting every cap note twice
+EXPORTER	98939f3	feat(export): model multi-range frame selections
+MIXED	7919bf9	test(export): make sections self-registering, and enable warnings
+MIXED	12336f3	feat(export): the exporter renders a frame SELECTION, not one span
+EXPORTER	d722c02	feat(export): let a destination drive encoder options, the stream tag, and an exact size
+MIXED	338c923	feat(export): a destination selector that states its consequences
+MIXED	fd2b035	refactor(export): delete the Format tab and the machinery behind it
+EXPORTER	291958c	refactor(export): replace the export validator with what still matters
+MIXED	8b0f13e	refactor(export): delete the two dead controls from the export dialog
+MIXED	b15040f	refactor(export): delete the Custom Parameters tab and its plumbing
+MIXED	0c8f3fe	Make the destination the first question the export dialog asks
+OTHER	ad5fd02	Quick export: offer destinations, not container/transparency pairs
+EXPORTER	84cc134	Derive the exportable formats from the build instead of listing them
+MIXED	3f20c22	Retire the legacy exporter, and ask the build what a format is
+MIXED	20d9909	Stop a remembered palette from blocking every export
+EXPORTER	3ca03e6	Own the vertex array object the export draws through
+EXPORTER	b04a6e9	Tidy the exact-size block now that its content assertions always run
+MIXED	7a36477	Make the Quality selector reach the encoder for every destination
+MIXED	217cfec	Enforce the destination size caps instead of only stating them
+MIXED	c9d7ba8	Let Cancel stop the fit loop
+EXPORTER	e1916fb	Export the audio that was selected, at the times it belongs to
+EXPORTER	4ab10fa	Read the WebP container, since libav cannot read animated WebP
+EXPORTER	a68af90	Assert content where the harness only printed it
+EXPORTER	e0a4d25	Verify the WebP frames' pixels, not just their container
+MIXED	2765cf2	Track the GUI probes, and make them assert instead of just capturing
+MIXED	0f33869	Group the destination list, name the not-listed path, and make an export repeatable
+MIXED	b78bc9f	Fit GIFs and stills under their caps, and let the table express an image
+EXPORTER	cc03f02	Keep the frame range on screen, and stop a probe passing on a stale file
+MIXED	4233ded	Close the export backlog: remembered inputs, honest sizing, and the GIF quality knob
+MIXED	407dc24	Give every audio track an export switch, and fix two gates that were lying
+MIXED	3d25e4d	Delete the export parameters that no longer reach anything
+OTHER	51eada5	One submenu per family in "Quickly export as", and no unexplained top entry
+MIXED	dd6748b	Choose a destination in a searchable modal, not a four-deep menu
+EXPORTER	a0c0bf9	fix(media): the GIF palette was a function of the process, not the frames
+EXPORTER	3af34d6	fix(export): stop the cap fit from spending a required size, and from guessing
+MIXED	a7acb64	test(export): run the end-to-end export harness as a gate, on a committed fixture
+EXPORTER	7f7a7df	fix(media): search the scale knob's own settings, and log the sizes it used
+MIXED	06b1ce4	fix(tests): one temp dir per test process, and a lock around the GL suite
+MIXED	0b018c8	feat(export): ask for the destination first, and stop exposing the encoder
+MIXED	d610aad	test(gui): address the export form by name, and make a stale probe say so
+OTHER	70c46d9	fix(gui): the remembered destination is what the picker opens on
+MIXED	7e7a67d	feat(gui): group the destination list by the platform you are posting to
+MIXED	41632ef	feat(gui): the platforms are closed, and a platform is not an answer
+EXPORTER	0e70a4f	fix(gui): associate every label with its field, and name the added frame ranges
+MIXED	ab85ab9	test(gui-probes): the stale marker was set from birth, so ten probes asserted nothing
+MIXED	f1e6c0b	fix(export): the destination's size limit is not a decision, and its facts are not choices
+MIXED	654f2af	fix(export): every artifact rule now reads the destination, not the hidden manual combos
+MIXED	b2f28a4	fix(tests): the runners now fail when their own verdict is not a pass
+OTHER	efea28e	fix(gui): remove the ffmpeg-era residue still in front of users
+OTHER	a2df2f3	fix(gui): the audio fact now says which of the three reasons it means
+MIXED	fd7fe72	fix(export): a destination can say the frame rate is not its business
+EXPORTER	da1a4d1	fix(export): resolve pad-or-crop, and assert no exact size ever stretches
+MIXED	ba8718b	test(export): the headless export-dialog test, 757 assertions across all 56 rows
+MIXED	0924358	refactor(export): the codec ladder is families, and measurement decides inside one
+MIXED	829555f	i18n(export): the destination table's names and notes are translatable now
+MIXED	ee6e26c	feat(export): ten animated-image destinations, each with the number its platform publishes
+MIXED	f6cbe1c	docs(scratchpad): what the audit follow-up decided, and what is still open
+MIXED	e719f40	i18n(export): the five catalogs are finished, and the table's strings are verified translated
+MIXED	ae960f6	i18n(export): every string reaches a translator, and every context can be asked for
+MIXED	81a4729	fix(export): the codec's "Auto" value survives, so the Quality setting is in charge
+MIXED	dd225ef	test(probes): all twelve GUI probes drive the app by name and assert something
+MIXED	c9ec3c3	refactor(export): the codec choice is policy, and the UI stops naming libraries
