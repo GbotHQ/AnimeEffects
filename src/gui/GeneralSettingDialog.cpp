@@ -476,8 +476,13 @@ GeneralSettingDialog::GeneralSettingDialog(GUIResources& aGUIResources, QWidget*
             QSettings settings;
             settings.remove("projectloader/recents");
             MainWindow::showInfoPopup(tr("Success"), tr("All entries have been successfully removed"), "Info");
-            auto mmb = qobject_cast<MainMenuBar*>(this->parent());
-            mmb->onRecentsUpdate();
+            // This dialog is built from three places and only one of them has the menu bar as
+            // its parent: the two FFmpeg checks in MainWindow pass the window, where the cast
+            // yields nullptr - and the next line used to dereference it, so clicking this
+            // button from the export path crashed.
+            if (auto* mmb = qobject_cast<MainMenuBar*>(this->parent())) {
+                mmb->onRecentsUpdate();
+            }
         });
         qualityOfLife->addRow(mResetButton);
 

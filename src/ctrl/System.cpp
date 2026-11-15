@@ -124,19 +124,19 @@ System::openProject(const QString& aFileName, Project::Hook* aHookGrabbed, util:
             QSettings settings;
             QStringList recentfiles = settings.value("projectloader/recents").toStringList();
 
-            // Check file length
-            if (recentfiles.length() != 8) {
-                recentfiles.append(aFileName);
+            // Most-recent-first, capped at eight: record the file that was just opened and
+            // drop the oldest when full. The old branches did the opposite when the list was
+            // already full - they popped the oldest entry and never appended the new one - so
+            // the project you had just opened was missing from the menu that this same
+            // function refreshes a few lines below. The `contains` guard also prevented the
+            // list from ever being reordered, so it goes with it.
+            recentfiles.removeAll(aFileName);
+            recentfiles.prepend(aFileName);
+            while (recentfiles.length() > 8) {
+                recentfiles.pop_back();
             }
-            // If length eight remove first
-            else if (recentfiles.length() >= 8) {
-                recentfiles.pop_front();
-            }
-            // Save
-            if (!settings.value("projectloader/recents").toStringList().contains(aFileName)) {
-                settings.setValue("projectloader/recents", recentfiles);
-                settings.sync();
-            }
+            settings.setValue("projectloader/recents", recentfiles);
+            settings.sync();
             if (mainMenu != nullptr) {
                 mainMenu->onRecentsUpdate();
             }
