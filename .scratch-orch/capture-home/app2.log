@@ -1,0 +1,27 @@
+QSocketNotifier: current thread's event dispatcher has already been destroyed
+exe path = "/home/gambot/dev/AnimeEffects/build/src/gui/Debug/AnimeEffects"
+qt.multimedia.ffmpeg: Using Qt multimedia with FFmpeg version 8.1.2 GPL version 3 or later
+Failed to open VDPAU backend libvdpau_nvidia.so: cannot open shared object file: No such file or directory
+show main window
+--------
+Checking for updates on :  "https://api.github.com/repos/AnimeEffectsDevs/AnimeEffects/tags"
+On latest version : "1.7.1"
+--------
+Launching debug project
+------------------------------------------
+image path = "/home/gambot/dev/AnimeEffects/assets/sample.psd"
+image size = (720, 1172)
+name = "FIGURE" size = 0 , 0
+name = "EYEBROW" size = 102 , 28
+name = "HAIR" size = 458 , 549
+name = "ARM RGB" size = 188 , 194
+name = "ARM" size = 219 , 561
+name = "CHEST RGB" size = 323 , 229
+name = "FACE RGB" size = 90 , 98
+name = "JAW RGB" size = 208 , 223
+name = "BODY" size = 523 , 1119
+name = "[Divide .70] BodyGlow" size = 623 , 1167
+name = "</Layer group>" size = 0 , 0
+name = "Paint Layer 1" size = 671 , 142
+name = "BG COLOR" size = 720 , 1172
+------------------------------------------
