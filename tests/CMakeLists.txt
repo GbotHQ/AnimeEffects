@@ -11,6 +11,14 @@ target_compile_definitions(autoscroll PRIVATE
     AE_MAJOR_VERSION=1 AE_MINOR_VERSION=7 AE_MICRO_VERSION=1 USE_GL_CORE_PROFILE)
 target_link_libraries(autoscroll PRIVATE Qt6::Core Qt6::Gui)
 
+# The per-layer mesh content level (img::MeshContentLevel): the mapping and its no-measurement
+# fallback, and the creator's content threshold. Pure pixel math, no GL.
+add_executable(mesh_content_level mesh_content_level.cpp)
+target_include_directories(mesh_content_level PRIVATE .. ../src)
+target_compile_definitions(mesh_content_level PRIVATE
+    AE_MAJOR_VERSION=1 AE_MINOR_VERSION=7 AE_MICRO_VERSION=1 USE_GL_CORE_PROFILE)
+target_link_libraries(mesh_content_level PRIVATE Qt6::Core Qt6::Gui img util)
+
 # BoneKey stream compatibility gate: the <= 0.20 derived influence-cache section
 # must be discarded byte-exactly, and 0.21 must carry no such section. It grew
 # out of the old deserialize use-after-free regression (dangling
