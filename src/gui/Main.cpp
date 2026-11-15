@@ -20,12 +20,12 @@
 #ifdef Q_OS_WIN
 #define NOMINMAX
 #define WIN32_LEAN_AND_MEAN
-#include <Windows.h>
+#include <windows.h>
 
 // This *should* set the OS to use its dedicated GPU, sure hope it works out...
     extern "C" {
-    _declspec(dllexport) DWORD NvOptimusEnablement = 1;
-    _declspec(dllexport) int AmdPowerXpressRequestHighPerformance = 1;
+    __declspec(dllexport) DWORD NvOptimusEnablement = 1;
+    __declspec(dllexport) int AmdPowerXpressRequestHighPerformance = 1;
     }
 #endif
 
