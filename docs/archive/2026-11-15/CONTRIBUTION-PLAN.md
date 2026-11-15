@@ -64,9 +64,11 @@ unmodified master fonts, so it is a working reference, not a submission.
 
 ## 4. The series
 
-Twelve **stacked** branches, each one squashed commit on the previous branch,
+Fifteen **stacked** branches, each one squashed commit on the previous branch,
 all based on `upstream/master`. Phase N's PR base is phase N-1's branch, not
-master. Every phase was built in Debug; the tip passes the whole suite.
+master. Every phase was built in Debug; the tip passes the whole suite. Phases
+13-15 are the 2026-11-15 decisions (settings, easing paste, CJK); their trees
+are new commits, not historical tips.
 
 | # | branch | content | historical tip | commits | build | suites |
 |---|---|---|---|---|---|---|
@@ -82,6 +84,9 @@ master. Every phase was built in Debug; the tip passes the whole suite.
 | 10 | `contrib/2026-11-p10` | footprint sampling, render probe, residency plan | `08076129` | 63 | pass | 75/75 |
 | 11 | `contrib/2026-11-p11` | paged layer textures, residency stages | `36a6535f` | 49 | pass | 75/75 |
 | 12 | `contrib/2026-11-p12` | skeletal weights, base values, docking, mesh content | `324ce343` | 17 | pass | 93/93 |
+| 13 | `contrib/2026-11-p13` | live recents + MRU fix, UI scale | new work | 1 | pass | 95/95 |
+| 14 | `contrib/2026-11-p14` | validated, selection-wide custom-easing paste | new work | 1 | pass | 96/96 |
+| 15 | `contrib/2026-11-p15` | shipped Noto Sans CJK, locale font policy, interface-font setting | new work | 1 | pass | 97/97 |
 
 Construction rule: each phase's line-owned tree is exactly the historical
 tip; paths the line later deleted are gone, master-only files are kept. Four
@@ -104,29 +109,40 @@ Noto CJK files are not in the series.
 ```bash
 # build a phase
 git -C /home/gambot/dev/AnimeEffects-wt/reconcile checkout contrib/2026-11-pN
-cmake --build build --config Debug -j"$(nproc)"
+cmake --build build --config Debug -j4   # never -j$(nproc) with the CJK qrc
 
 # the Debug suite (exists from phase 3)
 ./scripts/run_suites.sh Debug
 ```
 
-The suite was run on every phase that has the runner: phases 3-12 are all
-green (15, 15, 21, 23, 44, 54, 67, 75, 75, 93 tests). Phases 1-2 predate
-`scripts/run_suites.sh`; their gate is the Debug build. The reconciled base
-also passes 93/93.
+The suite was run on every phase that has the runner: phases 3-15 are all
+green (15, 15, 21, 23, 44, 54, 67, 75, 75, 93, 95, 96, 97 tests). Phases 1-2
+predate `scripts/run_suites.sh`; their gate is the Debug build. The reconciled
+base also passes 93/93.
+
+**Build cost, measured the hard way.** The 32 MB CJK collection must NEVER go
+into `assets/assets.qrc`. That file is compiled into every test target; with the
+font inside it each target generated a 162 MB C++ file - 164 files, 3.49 GB -
+and compiling that set in parallel froze the host twice on 2026-11-15. The
+collection lives in `assets/fonts/NotoSansCJK.qrc`, added only to the
+application target (one 159 MB generated file). Build at `-j4` or lower and keep
+at least 10 GB free.
 
 ## 6. Decisions still open
 
-1. **UI scaling / custom font / recents:** port master's version, replace it
-   with the line's settings, or drop.
-2. **Multi-key bezier paste:** port the `setEasingTo` refactor (the review
-   found the rest of that commit unsafe).
-3. **Exporter:** the series includes `src/media/`, `assets/export/` and the
-   export UI. The September plan excluded the exporter; this one includes it
-   because it is part of the accumulated line. Say if it should be split out.
-4. **Grouping:** twelve PRs as above, or fewer/larger.
-5. **Fonts:** the series' static-Geist-only choice is reversible; the CJK
-   files are in master and in `contrib/2026-11-reconciled`.
+1. **UI scaling / custom font / recents: adapted to the line.** Phase 13 adds
+   the 75-200% scale (QT_SCALE_FACTOR before QApplication), the recents MRU fix
+   and the live menu; the interface-font picker lands in phase 15.
+2. **Multi-key bezier paste: done.** Phase 14 adds the validated parser, the
+   picker's paste and a selection-wide "Paste custom easing" action (one undo
+   step, both handle modes Free).
+3. **Exporter: kept.** Phases 2, 3 and 5 carry it; the series represents the
+   whole line.
+4. **Real CJK support: done.** Phase 15 ships Noto Sans CJK (JP/KR/SC/TC/HK),
+   picks the region's family for ja/ko/zh, keeps the JP face as the fallback for
+   Latin UIs, and applies it to the process font, QML docks, QSS and ImGui.
+5. **Grouping: fifteen stacked phases**, each green before the next. What
+   remains is the sending order/split.
 
 ## 7. Sending
 
@@ -139,7 +155,7 @@ git push origin 'refs/heads/contrib/2026-11-p*:refs/heads/contrib/2026-11-p*'
 
 Open PRs in order, each with base = the previous phase branch (phase 1's base
 is `master`). A cover letter for phase 1 should say that the series is a
-twelve-part review of the accumulated line and that master's newer settings,
+fifteen-part review of the accumulated line and that master's newer settings,
 font and recents work is superseded by the line's own implementation, with
 the four decisions above called out.
 
