@@ -10,3 +10,8 @@ worktree snapshots are full commits (parent = the worktree HEAD), including
 untracked files but excluding .gitignored build output.
 
 This branch is fork-only: it is not part of any upstream contribution.
+
+## Contribution plan
+
+`CONTRIBUTION-PLAN.md` is the live plan for the twelve-part upstream
+series, the archive map and the open decisions.
