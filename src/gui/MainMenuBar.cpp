@@ -22,7 +22,7 @@
 #ifdef Q_OS_WINDOWS
 #define WIN32_LEAN_AND_MEAN
 #define NOMINMAX
-#include <Windows.h>
+#include <windows.h>
 #endif
 #define VENDOR_ID_LEN 13
 

@@ -6,9 +6,7 @@
 #include <QFormLayout>
 #include "gui/EasyDialog.h"
 #include <QSpinBox>
-#ifndef Q_OS_WIN
 #include <QComboBox>
-#endif
 
 #include <QTabWidget>
 
