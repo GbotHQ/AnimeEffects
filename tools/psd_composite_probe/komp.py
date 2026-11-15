@@ -30,7 +30,10 @@ import sys
 import numpy as np
 from PIL import Image
 
-DEFAULT_PSD = '/home/gambot/Downloads/ALL FATHER F3 color fixes.psd'
+DEFAULT_PSD = os.environ.get(
+    'AE_PROBE_PSD', ''
+)  # an absolute path to one person's file has no business being the default of a tool in
+   # a repository: set AE_PROBE_PSD (or pass the file) and this stays reproducible anywhere
 LUMA = np.array([0.3, 0.59, 0.11], dtype=np.float32)
 
 args = sys.argv[1:]

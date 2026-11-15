@@ -164,7 +164,10 @@ bool DistanceField::bakeForResource(const img::Buffer& aImage, img::ResourceData
     }
     auto* data = new uint8[field.size()];
     std::copy(field.begin(), field.end(), data);
-    aResource.grabDistance(XCMemBlock(data, field.size()), size);
+    // stamp the plane with the recipe this BUILD computes, which is what a plane this build just
+    // derived means; a plane read back from a project is stamped with the recipe it carries there
+    aResource.grabDistance(
+        XCMemBlock(data, field.size()), size, img::ResourceData::derivationRecipe(img::ResourceData::Derivation_Distance));
     return true;
 }
 

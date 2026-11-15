@@ -89,6 +89,10 @@ public:
     const gl::Texture* areaTexture() const;
     // the layer mask texture of the area image key, or null when the layer has no mask
     const gl::Texture* areaMaskTexture() const;
+    // The outline distance field of the area image key, or null when the resource has none (and
+    // cannot build one). Asking for it here is the DEMAND for it: the resource derives the plane
+    // when it has none or when the one it has does not describe the current pixels or recipe, so a
+    // consumer states nothing and remembers nothing - see ResourceData::derived.
     const gl::Texture* areaDistanceTexture() const;
     img::BlendMode blendMode() const;
     void setImageOffset(const QVector2D& aOffset) { mImageOffset = aOffset; }

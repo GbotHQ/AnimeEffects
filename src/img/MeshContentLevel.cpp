@@ -25,16 +25,14 @@ int MeshContentLevel::derive(const void* aRgba8, const QSize& aSize) {
     const uint8* data = (const uint8*)aRgba8;
     const long pixels = (long)aSize.width() * aSize.height();
 
-    // histogram, so the answer does not depend on the image's pixel order or size
-    long hist[256] = {};
-    for (long i = 0; i < pixels; ++i) {
-        ++hist[data[i * 4 + 3]];
-    }
     long long mass = 0;
     long n = 0;
-    for (int a = 3; a < 256; ++a) {
-        mass += (long long)a * hist[a];
-        n += hist[a];
+    for (long i = 0; i < pixels; ++i) {
+        const int a = data[i * 4 + 3];
+        if (a > 2) {
+            mass += a;
+            ++n;
+        }
     }
     if (n == 0) {
         return GridMeshCreator::kContentAlphaThreshold;

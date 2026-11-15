@@ -4,7 +4,7 @@
 // (see extract_composite.py) rather than re-generated from the layers.
 //
 // Built by tools/psd_composite_probe/build_and_run.sh; the offscreen GL fixture is the
-// repo's tools/verify_blur/scene.{h,cpp} (-Itools/verify_blur), not a private copy.
+// repo's tools/render_verify/scene.{h,cpp} (-Itools/render_verify), not a private copy.
 // See tools/psd_composite_probe/README.md for the printed sections and the env flags.
 //
 // usage: psd_composite_probe <file.psd> <composite.png> <outDir> [frame]
@@ -564,7 +564,7 @@ void printStats(const char* aLabel, const Stats& s) {
 // one-pixel alpha dilation in GridMeshCreator::Image then copies a NEIGHBOUR'S alpha into the
 // zeroed pixel - the mechanism could only ever ADD content, never relax the level. An earlier
 // revision of this probe did mask, and its "cutoff" renders were mostly the unchanged file plus
-// that artifact (see S23 in verify_blur).
+// that artifact (see S23 in render_verify).
 //
 // The formulas, per layer:
 //   none      T = 0    (no cutoff: every nonzero alpha is content - the reference "keep everything")

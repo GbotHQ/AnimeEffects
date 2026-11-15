@@ -25,11 +25,7 @@ ResourceData::ResourceData(const QString& aIdentifier, const ResourceNode* aSeri
 
 void ResourceData::grabImage(const XCMemBlock& aBlock, const QSize& aSize, Format aFormat) {
     mBuffer.grab(aFormat, aBlock, aSize);
-    ++mImageRevision; // anything derived from these pixels is stale now
-    // EVERY pixel replacement goes through here (import, project load, a resource reload's
-    // ImageSetter -> ResourceNode::updateHandle), so this is the one place that has to keep the
-    // derived channels current - not the render path, which only uploads them.
-    deriveChannels();
+    ++mImageRevision; // anything derived from these pixels is stale now, and that is enough
 }
 
 XCMemBlock ResourceData::releaseImage() {
@@ -79,39 +75,14 @@ const char* ResourceData::derivationName(Derivation aKind) {
     }
 }
 
-void ResourceData::setDerivationWanted(Derivation aKind, bool aWanted) {
-    DerivedChannel& channel = mDerived[aKind];
-    if (channel.wanted == aWanted) {
-        return;
-    }
-    channel.wanted = aWanted;
-    if (!aWanted) {
-        // nobody needs it any more: drop the plane so it stops travelling with the file
-        freeDerived(aKind);
-        return;
-    }
-    deriveChannels();
-}
-
+// A channel that is absent, or present but measured from other pixels / built by another recipe,
+// is not current: it has to be derived before anybody may read it.
 bool ResourceData::isDerivationStale(Derivation aKind) const {
     const DerivedChannel& channel = mDerived[aKind];
-    if (!channel.wanted) {
-        return false;
-    }
     if (!channel.isPresent()) {
         return true;
     }
     return channel.sourceImageRevision != mImageRevision || channel.recipe != derivationRecipe(aKind);
-}
-
-void ResourceData::restoreDerivationState(int aWantedFlags, const int* aRecipes) {
-    for (int i = 0; i < Derivation_TERM; ++i) {
-        DerivedChannel& channel = mDerived[i];
-        channel.wanted = (aWantedFlags & (1 << i)) != 0;
-        if (aRecipes) {
-            channel.recipe = aRecipes[i];
-        }
-    }
 }
 
 void ResourceData::deriveChannels() {
@@ -127,11 +98,23 @@ void ResourceData::deriveChannels() {
     }
 }
 
-void ResourceData::grabDerived(Derivation aKind, const XCMemBlock& aBlock, const QSize& aSize) {
+const Buffer& ResourceData::derived(Derivation aKind) {
+    // the demand: bring this channel up to date, then hand it over whatever the outcome was. A
+    // channel that cannot be built (no pixels, no outline) stays absent - the deriver reports it,
+    // and the consumer draws nothing rather than something it measured from the wrong pixels.
+    deriveChannels();
+    return mDerived[aKind].buffer;
+}
+
+void ResourceData::grabDerived(Derivation aKind, const XCMemBlock& aBlock, const QSize& aSize, int aRecipe) {
     DerivedChannel& channel = mDerived[aKind];
     channel.buffer.grab(Format_A8, aBlock, aSize);
     channel.sourceImageRevision = mImageRevision; // measured from these very pixels
-    channel.recipe = derivationRecipe(aKind);
+    // the recipe the bytes were BUILT with, which is not always this build's current one: a plane
+    // read back from a project carries the recipe of the build that wrote it, and comparing it
+    // against derivationRecipe() is what makes an out-of-date plane recognisably stale instead of
+    // silently consumed
+    channel.recipe = aRecipe;
     ++channel.revision;
 }
 
@@ -150,28 +133,6 @@ void ResourceData::setBlendMode(BlendMode aMode) {
     } else {
         mBlendMode = BlendMode_Normal;
     }
-}
-
-void ResourceData::copyFrom(const ResourceData& aData) {
-    mBuffer = aData.mBuffer;
-    mMask = aData.mMask;
-    mMaskEnabled = aData.mMaskEnabled;
-    mMaskInverted = aData.mMaskInverted;
-    ++mMaskRevision; // a copy is a new mask as far as the GPU cache is concerned
-    for (int i = 0; i < Derivation_TERM; ++i) {
-        // the planes are copied, but a copy is a new resource as far as the GPU cache is
-        // concerned; the deriver is NOT copied - it belongs to whoever owns the pixels
-        mDerived[i] = aData.mDerived[i];
-        ++mDerived[i].revision;
-    }
-    mDeriver = aData.mDeriver;
-    mUserData = aData.mUserData;
-    mIdentifier = aData.mIdentifier;
-    mStableId = aData.mStableId;
-    mPos = aData.mPos;
-    mIsLayer = aData.mIsLayer;
-    mBlendMode = aData.mBlendMode;
-    mImageLoader = aData.mImageLoader;
 }
 
 bool ResourceData::matchesIdentity(const ResourceData& aRhs) const {

@@ -79,11 +79,12 @@ const gl::Texture* TimeKeyExpans::areaMaskTexture() const {
 const gl::Texture* TimeKeyExpans::areaDistanceTexture() const {
     if (!mAreaImageKey)
         return nullptr;
-    // same lazy-rebuild rule as the mask: the field travels with the resource and only the
-    // GPU copy is refreshed here, where a GL context is current
-    mAreaImageKey->syncDistanceTexture();
-    const auto& res = *mAreaImageKey->data().resource();
-    return res.hasDistance() ? &(mAreaImageKey->cache().distanceTexture()) : nullptr;
+    // the field lives on the resource, the GPU copy on the key: this refreshes both, deriving the
+    // plane if the resource does not have a current one (a GL context is current here)
+    if (!mAreaImageKey->syncDistanceTexture()) {
+        return nullptr;
+    }
+    return &(mAreaImageKey->cache().distanceTexture());
 }
 
 img::BlendMode TimeKeyExpans::blendMode() const {

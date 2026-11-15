@@ -652,11 +652,16 @@ namespace gui::res {
                 img::ResourceNode::Content content;
                 content.rect = entry.rect;
                 content.pixels = aContext.document.takePixels(entry);
-                content.setMask = true; // the file is the truth about the mask, present or not
-                content.hasMask = entry.mask.data != nullptr;
-                if (content.hasMask) {
-                    content.mask = entry.mask;
-                    entry.mask = XCMemBlock();
+                // The description is the truth about the mask only where it looked at the
+                // channel (ctrl::SourceDocument::Entry::hasMaskData): for a PSD it did, so a
+                // mask the file no longer has is removed and a changed one is replaced; for an
+                // ORA or a plain bitmap it did not, and the mask the artist made in the app
+                // stays. This used to be an unconditional `true`, which deleted that mask on
+                // every reload of such a file.
+                content.setMask = entry.hasMaskData;
+                content.hasMask = !entry.mask.isEmpty();
+                if (content.setMask && content.hasMask) {
+                    content.mask = entry.mask.take();
                 }
                 content.maskEnabled = entry.maskEnabled;
                 content.maskInverted = entry.maskInverted;

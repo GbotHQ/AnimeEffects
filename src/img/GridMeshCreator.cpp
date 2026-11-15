@@ -581,10 +581,11 @@ void GridMeshCreator::reduceBurrs(VertexTable& aTable, const Image& aImage) {
     // Shorten a reducing vector while the pull it describes still has to stop short of the picture.
     //
     // The reduction moves a boundary vertex inward, and the question is where it may stop. Testing
-    // only the PULLED POSITION is not enough, because a pull is up to a cell wide (16 px) and a line
-    // of paint can be thinner than that: the endpoint then lands in the empty space on the far side
+    // only the PULLED POSITION is not enough, because a pull is up to a cell wide (16 px at the
+    // default cell size; the size grows on images that need a coarser grid) and a line of paint
+    // can be thinner than that: the endpoint then lands in the empty space on the far side
     // of the line and the test reports "nothing here", which leaves the full pull in place and cuts
-    // the line out of the mesh. Measured on 000031 of the corpus (findings in tools/verify_blur S25):
+    // the line out of the mesh. Measured on 000031 of the corpus (findings in tools/render_verify S25):
     // the vertex at image row 1427.2, one pixel under a two-row opaque band (alpha 207..210) that
     // sits on top of a row of erase residue, has maxReduce 8.0 and a pull of 7.6 px; its endpoint
     // lands 6.6 px above, in a 3x3 window of pure zero, while the path to it crosses alpha 72, 67,
@@ -599,9 +600,11 @@ void GridMeshCreator::reduceBurrs(VertexTable& aTable, const Image& aImage) {
     // is more than the geometry needs - with a 3x3 window, samples 3 px apart still touch, and S24
     // and S25 (thin 1:1 and 2:1 diagonal ink included) lose nothing at 2, 3 or 4 px - but no import
     // time is saved by spacing them out (44.5 s vs 45.8 s on the 122 MB corpus file, i.e. noise), so
-    // the walk stays dense and cheap to reason about. Everything inside an existing cell is drawn whether or not the content test
-    // counts it, so "ink" here is ANY alpha - see Image::hasEdgeAlpha - while which cells exist at
-    // all stays the artist's content rule.
+    // the walk stays dense and cheap to reason about).
+    //
+    // Everything inside an existing cell is drawn whether or not the content test counts it, so
+    // the walk asks about any alpha (Image::hasEdgeAlpha, its own threshold) while which cells
+    // exist at all stays the content rule.
     auto sweepsInk = [&](const Vertex& aVtx) {
         const QVector2D from = aVtx.pos();
         const QVector2D to = aVtx.posReduced();
@@ -746,11 +749,12 @@ void GridMeshCreator::reduceBurrs(VertexTable& aTable, const Image& aImage) {
 
                 // Content the image counts (see Image::hasRawAlpha) that NO cell covers at its
                 // reduced extent. cellIds is only written where a cell was rasterized over the
-                // pixel, so it is still -1 here, and indexing the table with
-                // (-1 / tableWidth, -1 - that * tableWidth) = (0, -1) is out of bounds - the
-                // old code wrote through that pointer and tripped an XC_ASSERT. Recover the
-                // cell that owns the pixel geometrically instead (cell.x = halfWidth * (x - 1),
-                // cell.y = height * y) and un-reduce it, exactly as the covered case below does.
+                // pixel, so it is still -1 here. The old code indexed the table with it: C++
+                // truncates -1 / tableWidth to 0, and (-1 - 0 * tableWidth) is -1, so it asked
+                // for cell(-1, 0), which trips the bounds assert before anything is written.
+                // Recover the cell that owns the pixel geometrically instead (cell.x =
+                // halfWidth * (x - 1), cell.y = height * y) and un-reduce it, exactly as the
+                // covered case below does.
                 const int cellIdx = cellIds[pix];
                 const int cellY = cellIdx >= 0 ? cellIdx / cellTableWidth : 0;
                 const int cellX = cellIdx >= 0 ? cellIdx - cellY * cellTableWidth : 0;

@@ -4,7 +4,7 @@ Answers, on a real PSD, the questions a golden test cannot: did the container pa
 importer build the tree the file describes, and **does AnimeEffects' own composite of that tree
 reproduce the composite the PSD already stores?** It does that by loading the file through the
 production importer (`ctrl::ImageFileLoader`), rendering one frame through the production
-composite wiring (the `tools/verify_blur` offscreen GL fixture), and diffing the render against
+composite wiring (the `tools/render_verify` offscreen GL fixture), and diffing the render against
 the PSD's section-5 merged image, decoded independently (`extract_composite.py`).
 
 It is a diagnostic, not a pass/fail suite: nothing is asserted, everything is printed and dumped
@@ -35,11 +35,11 @@ generated resource and the binary live in the build tree (`$AE_BUILD_DIR/psd_com
 `$AE_BUILD_DIR/qrc_assets_psd_probe.{cpp,o}`), never in this directory. Both cached artifacts are
 invalidated by the `assets/` tree, not just by `assets.qrc` itself (the .qrc keeps its own old
 mtime when only a shader changes) — a stale embedded shader would silently invalidate every render
-the probe reports. The GL fixture is the repo's `tools/verify_blur/scene.{h,cpp}`
-(`-Itools/verify_blur`), not a private copy.
+the probe reports. The GL fixture is the repo's `tools/render_verify/scene.{h,cpp}`
+(`-Itools/render_verify`), not a private copy.
 
 Runs with `QT_QPA_PLATFORM=offscreen`; when the binary exits 2 (GL bootstrap failure) the script
-retries with `QT_QPA_PLATFORM=xcb DISPLAY=${DISPLAY:-:0}`, like `tools/verify_blur`. Exit codes:
+retries with `QT_QPA_PLATFORM=xcb DISPLAY=${DISPLAY:-:0}`, like `tools/render_verify`. Exit codes:
 0 = completed, 1 = import failed or the composite PNG is unusable, 2 = GL bootstrap failure,
 64 = bad arguments. A shader in `assets/assets.qrc` that does not compile is *not* recoverable by
 that fallback: the probe's error handler turns the `XC_FATAL_ERROR` into `abort()`, so the process
@@ -189,7 +189,7 @@ The artist compared the 30-file corpus and chose the MEAN rule: per layer,
 `T = clamp(round(0.05 x mean(alpha : alpha > 2)), 1, 10)`, instead of the fixed 10.
 
 Landed in `src/img/MeshContentLevel.h` and used as the default level of
-`GridMesh::createFromImage`. `verify_blur` runs against it (S22 for the relaxing direction, S26 for
+`GridMesh::createFromImage`. `render_verify` runs against it (S22 for the relaxing direction, S26 for
 the strict one), all 24 external goldens still pass because their layers are opaque, and the corpus
 renders of the "mean" variant are byte-identical to what the application now produces. In the batch
 trees the `mean` variant is therefore the current production behaviour and `const10` is the level it

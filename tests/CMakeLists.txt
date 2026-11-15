@@ -425,6 +425,9 @@ add_executable(import_reload import_reload.cpp
 target_include_directories(import_reload PRIVATE
     ..
     ${CMAKE_SOURCE_DIR}/src/gui
+    # tests/support holds the fixture writers every harness shares (the PSD descriptor and
+    # layer-effects blocks); tools/render_verify includes the same directory
+    ${CMAKE_CURRENT_SOURCE_DIR}/support
 )
 target_compile_definitions(import_reload PRIVATE
     AE_MAJOR_VERSION=1
@@ -438,4 +441,50 @@ target_link_libraries(import_reload PRIVATE
     Qt6::Gui Qt6::OpenGL Qt6::OpenGLWidgets
     Qt6::Svg Qt6::Xml Qt6::Concurrent Qt6::Multimedia
     cmnd core ctrl gl img thr util pugixml
+)
+
+# ---------------------------------------------------------------------------------------
+# The RENDER harness (tools/render_verify): the suites that need a real GL context and a
+# rendered frame - the directional blur filter, Blend If, layer masks, layer effects, the
+# generated mesh and the golden images. Its sources live under tools/ because they ship with
+# the corpus notes and the fixture writers, but it is built HERE, with the other tests, so
+# `ctest` runs everything in one command; tools/render_verify/build_and_run.sh remains for
+# sanitizer builds (it takes AE_SANITIZE_FLAGS) and for regenerating goldens.
+add_executable(render_verify
+    ../tools/render_verify/render_verify.cpp
+    ../tools/render_verify/scene.cpp
+    ../tools/render_verify/golden.cpp
+    ${CMAKE_SOURCE_DIR}/assets/assets.qrc
+)
+target_include_directories(render_verify PRIVATE
+    ..
+    ${CMAKE_CURRENT_SOURCE_DIR}/support
+)
+target_compile_definitions(render_verify PRIVATE
+    AE_MAJOR_VERSION=1
+    AE_MINOR_VERSION=7
+    AE_MICRO_VERSION=1
+    USE_GL_CORE_PROFILE
+)
+# media is on the line because the harness exercises ctrl::Exporter, and it re-exports the
+# FFmpeg pkg-config targets (the shell wrapper links them by hand)
+target_link_libraries(render_verify PRIVATE
+    Qt6::Core Qt6::Core5Compat Qt6::Widgets
+    Qt6::Gui Qt6::OpenGL Qt6::OpenGLWidgets
+    Qt6::Svg Qt6::Xml Qt6::Concurrent Qt6::Multimedia
+    cmnd core ctrl media gl img thr util pugixml
+)
+
+# ---------------------------------------------------------------------------------------
+# ctest. Exit code 2 means "no usable GL context here" (offscreen without a working 3D
+# driver), which SKIP_RETURN_CODE turns into a skipped test instead of a failure; the shell
+# wrappers (tests/import_reload.sh, tests/panel_blendif.sh) are what retry on a real display.
+add_test(NAME import_reload COMMAND import_reload)
+add_test(NAME panel_blendif COMMAND panel_blendif)
+add_test(NAME render_verify COMMAND render_verify)
+set_tests_properties(import_reload panel_blendif render_verify PROPERTIES
+    WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+    ENVIRONMENT "QT_QPA_PLATFORM=offscreen"
+    SKIP_RETURN_CODE 2
+    TIMEOUT 5400
 )

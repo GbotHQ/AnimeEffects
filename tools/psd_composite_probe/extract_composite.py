@@ -5,17 +5,21 @@ PackBits RLE itself, and writes the result as a PNG. Used as the ground truth fo
 "diff the render against the composite the PSD already contains".
 
 usage: extract_composite.py [file.psd] [out.png]
-  file.psd  PSD to decode (default: /home/gambot/Downloads/ALL FATHER F3 color fixes.psd)
+  file.psd  PSD to decode (default: $AE_PROBE_PSD, which is required when no file is given)
   out.png   PNG to write  (default: ./composite.png)
 
 Run this FIRST: psd_composite_probe diffs its render against the PNG this produces.
 Requires python3 only (struct + zlib), no numpy/PIL.
 """
 import struct
+import os
 import sys
 import zlib
 
-DEFAULT_PSD = '/home/gambot/Downloads/ALL FATHER F3 color fixes.psd'
+DEFAULT_PSD = os.environ.get(
+    'AE_PROBE_PSD', ''
+)  # an absolute path to one person's file has no business being the default of a tool in
+   # a repository: set AE_PROBE_PSD (or pass the file) and this stays reproducible anywhere
 
 pos = [a for a in sys.argv[1:] if not a.startswith('-')]
 if len(pos) > 2 or any(a in ('-h', '--help') for a in sys.argv[1:]):

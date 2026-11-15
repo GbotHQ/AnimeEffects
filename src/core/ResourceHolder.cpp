@@ -178,27 +178,20 @@ bool ResourceHolder::serializeNode(Serializer& aOut, const img::ResourceNode& aN
     // source had none
     aOut.write(aNode.data().stableId());
 
-    // derived channels (minor version 16): which ones a consumer wants, and the recipe each
-    // carried plane was built with. The plane itself travels below; a reader can then tell
-    // "wanted but absent", "built by an older recipe" and "measured from other pixels" apart
-    // instead of trusting whatever bytes it finds.
-    int wantedFlags = 0;
+    // No "which channels a consumer wants" table is written any more (minor version 17): a want
+    // is a fact about an object node, not about the resource it happens to point at, and persisting
+    // it here is how a project could come back claiming its resource needed a channel nobody was
+    // going to draw. The plane and the recipe it was built with still travel, because a plane can
+    // only be computed from the CPU pixels and a slimmed project no longer holds them.
     for (int i = 0; i < img::ResourceData::Derivation_TERM; ++i) {
-        if (aNode.data().isDerivationWanted((img::ResourceData::Derivation)i)) {
-            wantedFlags |= (1 << i);
-        }
-    }
-    aOut.write(wantedFlags);
-    for (int i = 0; i < img::ResourceData::Derivation_TERM; ++i) {
-        aOut.write(aNode.data().derived((img::ResourceData::Derivation)i).recipe);
+        aOut.write(aNode.data().cached((img::ResourceData::Derivation)i).recipe);
     }
 
-    // outline distance field (minor version 15): presence flag, then the A8 plane. It is
-    // derived data, but it can only be computed from the CPU pixels, which a slimmed project
-    // no longer holds - so it travels with the resource.
-    aOut.write(aNode.data().hasDistance());
-    if (aNode.data().hasDistance()) {
-        aOut.writeMaskImage(aNode.data().distance().block(), aNode.data().distance().pixelSize());
+    // outline distance field (minor version 15): presence flag, then the A8 plane
+    const img::Buffer& distance = aNode.data().cached(img::ResourceData::Derivation_Distance).buffer;
+    aOut.write(distance.data() != nullptr);
+    if (distance.data()) {
+        aOut.writeMaskImage(distance.block(), distance.pixelSize());
     }
 
     // block end
@@ -280,8 +273,13 @@ bool ResourceHolder::deserializeNode(Deserializer& aIn, img::ResourceNode** aDst
     if (childCount < 0)
         return aIn.errored("invalid child count");
 
-    int pendingWantedFlags = 0;
-    int pendingRecipes[img::ResourceData::Derivation_TERM] = {};
+    // what each carried plane was built with, when the file says (minor >= 16). For older files
+    // the plane was written by a build whose recipe is unknown: stamping it with this build's
+    // current recipe is the only reading available, and it is the pre-16 behaviour.
+    int recipes[img::ResourceData::Derivation_TERM];
+    for (int i = 0; i < img::ResourceData::Derivation_TERM; ++i) {
+        recipes[i] = img::ResourceData::derivationRecipe((img::ResourceData::Derivation)i);
+    }
 
     // create instance
     std::unique_ptr<img::ResourceNode> node(new img::ResourceNode(identifier));
@@ -349,25 +347,23 @@ bool ResourceHolder::deserializeNode(Deserializer& aIn, img::ResourceNode** aDst
         }
     }
 
-    // stable identity and derived channels: earlier files have neither, and the reload falls
-    // back to the layer name
+    // stable identity: earlier files have none, and the reload falls back to the layer name
     if (aIn.version().minorVersion() >= 16) {
         QString stableId;
         aIn.read(stableId);
         nodePtr->data().setStableId(stableId);
 
-        int wantedFlags = 0;
-        aIn.read(wantedFlags);
-        int recipes[img::ResourceData::Derivation_TERM] = {};
+        // The "which channels a consumer wants" table lived in 0.16 files only: this build does not
+        // have that state at all, so it reads past the field to keep the rest of the block lined up
+        // (0.17 files do not carry it - see the writer). The recipes that follow it ARE used: they
+        // say what the plane below was built with, which is what lets an out-of-date plane be
+        // recognised instead of silently consumed.
+        if (aIn.version().minorVersion() < 17) {
+            int ignoredWantedFlags = 0;
+            aIn.read(ignoredWantedFlags);
+        }
         for (int i = 0; i < img::ResourceData::Derivation_TERM; ++i) {
             aIn.read(recipes[i]);
-        }
-        // the plane itself is read further down, and reading it stamps it as built by the CURRENT
-        // recipe; the state recorded in the file has to be applied afterwards for an old-recipe
-        // plane to be recognisably stale. See below.
-        pendingWantedFlags = wantedFlags;
-        for (int i = 0; i < img::ResourceData::Derivation_TERM; ++i) {
-            pendingRecipes[i] = recipes[i];
         }
     }
 
@@ -383,18 +379,9 @@ bool ResourceHolder::deserializeNode(Deserializer& aIn, img::ResourceNode** aDst
             if (distanceBlock.data) {
                 if (distanceBlock.size != (size_t)rect.width() * (size_t)rect.height())
                     return aIn.errored("layer distance field size does not match the image rect");
-                nodePtr->data().grabDistance(distanceBlock, rect.size());
+                nodePtr->data().grabDistance(distanceBlock, rect.size(), recipes[img::ResourceData::Derivation_Distance]);
             }
         }
-    }
-
-    // now that the plane (if any) is in place, apply what the file recorded: which channels are
-    // wanted and which recipe their bytes came from. A wanted channel with no plane, or one built
-    // by an older recipe, then reads as stale, and the resource derives it here - at load, from
-    // the pixels that were just read - instead of during the first frame that needs it.
-    if (aIn.version().minorVersion() >= 16) {
-        nodePtr->data().restoreDerivationState(pendingWantedFlags, pendingRecipes);
-        nodePtr->data().deriveChannels();
     }
 
     // check block end

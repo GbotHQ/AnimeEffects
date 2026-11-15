@@ -57,7 +57,13 @@ cd "$ROOT"
 
 BUILD_DIR="${AE_BUILD_DIR:-build}"
 CXX="${AE_PROBE_CXX:-clang++}"
-PSD="${PROBE_PSD:-/home/gambot/Downloads/ALL FATHER F3 color fixes.psd}"
+# The corpus file the probe was written against is NOT a path in this repository: pass it, or set
+# PROBE_PSD (the same variable the python tools read as AE_PROBE_PSD) to a file you have.
+PSD="${PROBE_PSD:-${AE_PROBE_PSD:-}}"
+if [[ -z "$PSD" ]]; then
+    echo "no PSD given: pass one as the first argument or set PROBE_PSD" >&2
+    exit 64
+fi
 OUT_DIR="${PROBE_OUT:-/tmp/psd_composite_probe}"
 PROBE_BIN="$BUILD_DIR/psd_composite_probe"
 COST_BIN="$BUILD_DIR/reload_cost"
@@ -158,7 +164,7 @@ if [[ $DO_BUILD -eq 1 ]]; then
         -std=c++17 -fPIC -g -O1
         -DUSE_GL_CORE_PROFILE
         -DAE_MAJOR_VERSION=1 -DAE_MINOR_VERSION=7 -DAE_MICRO_VERSION=1
-        -Isrc -Isrc/deps/pugixml/src -Itools/verify_blur
+        -Isrc -Isrc/deps/pugixml/src -Itools/render_verify
     )
     # the generated resource is ~10 MB of C++ and changes rarely: keep its object cached
     if [[ ! -f "$QRC_OBJ" || "$QRC_CPP" -nt "$QRC_OBJ" ]]; then
@@ -176,7 +182,7 @@ if [[ $DO_BUILD -eq 1 ]]; then
     elif [[ $DO_CUT -eq 1 ]]; then
         SOURCES=(tools/psd_composite_probe/threshold_audit.cpp)
     else
-        SOURCES=(tools/psd_composite_probe/psd_composite_probe.cpp tools/verify_blur/scene.cpp "$QRC_OBJ")
+        SOURCES=(tools/psd_composite_probe/psd_composite_probe.cpp tools/render_verify/scene.cpp "$QRC_OBJ")
     fi
 
     "$CXX" "${CXXFLAGS[@]}" $(pkg-config --cflags $QT_MODULES) \

@@ -14,7 +14,9 @@
 // Output is one line per check; exit code 0 = all passed. Requires a GL context (import builds
 // LayerNodes, which compile shaders), so it bootstraps an offscreen one and exits 2 if that is
 // unavailable, which lets the runner retry on a real display.
+#include <atomic>
 #include <cstdio>
+#include <cstdlib>
 #include <cstring>
 #include <fstream>
 #include <functional>
@@ -39,6 +41,7 @@
 #include "core/BlendIf.h"
 #include "core/Frame.h"
 #include "core/ImageKey.h"
+#include "core/LayerEffects.h"
 #include "core/OpaKey.h"
 #include "core/TimeKey.h"
 #include "core/FolderNode.h"
@@ -59,6 +62,11 @@
 #include "img/ResourceNode.h"
 #include "util/IProgressReporter.h"
 #include "AudioPlaybackWidget.h"
+
+// the PSD descriptor / layer-effects fixture writers, shared with tools/render_verify (see the
+// header: one writer per format block, so two harnesses cannot disagree about the format)
+#include "PsdFixture.h"
+using namespace psdfx;
 
 // XC's globals live in the app's Main.cpp; a test binary defines its own pair.
 class TestAssertHandler: public XCAssertHandler {
@@ -106,6 +114,41 @@ void ResourceDialog::updateResourcePath() {
 
 bool AudioPlaybackWidget::deserialize(const QJsonObject&, std::vector<audioConfig>*) { return false; }
 
+// ---------------------------------------------------------------------------------------------
+// A byte counter for ARRAY allocations, which is what every pixel and mask block in this codebase
+// is (img::Buffer::alloc, img::Util::createTextureImage, PSDUtil: `new uint8[]`).
+//
+// Why the test counts bytes: a reload reads the whole file into a ctrl::SourceDocument and applies
+// only what differs, so the memory of everything it does NOT apply is the document's to free. It
+// used to be nothing's: the entries held raw XCMemBlock fields, the document was a stack local in
+// ResourceUpdater::reconcile, and only the entries that were applied had their blocks taken - so
+// every reload leaked the pixels AND the mask of every unchanged layer, for the life of the
+// process (a 2000x2000 layer: 20 MB per reload). Counting bytes across a reload that changes
+// nothing measures exactly that: it must come back to where it started.
+//
+// The replacement is global, so it must sit at file scope (the standard forbids it in a namespace).
+std::atomic<long long> gLiveArrayBytes{0};
+constexpr size_t kArrayHeader = 16; // keeps the alignment malloc gave us
+
+void* operator new[](size_t aSize) {
+    void* raw = std::malloc(aSize + kArrayHeader);
+    if (!raw)
+        throw std::bad_alloc();
+    *static_cast<size_t*>(raw) = aSize;
+    gLiveArrayBytes += (long long)aSize;
+    return static_cast<char*>(raw) + kArrayHeader;
+}
+
+void operator delete[](void* aPtr) noexcept {
+    if (!aPtr)
+        return;
+    char* raw = static_cast<char*>(aPtr) - kArrayHeader;
+    gLiveArrayBytes -= (long long)*reinterpret_cast<size_t*>(raw);
+    std::free(raw);
+}
+
+void operator delete[](void* aPtr, size_t) noexcept { operator delete[](aPtr); }
+
 namespace {
 
 int gChecks = 0;
@@ -120,7 +163,7 @@ void expect(bool aOk, const QString& aWhat) {
 
 // The app's canvas widget: LayerNode construction reaches core::LayerMesh's GLBinder, which
 // calls gl::Global::makeCurrent(), and that needs the widget the app registers (the same reason
-// tools/verify_blur and the roundtrip test register one).
+// tools/render_verify and the roundtrip test register one).
 class TestGLWidget: public QOpenGLWidget {
 public:
     gl::DeviceInfo mDeviceInfo;
@@ -179,6 +222,9 @@ struct LayerSpec {
     bool visible = true;
     bool hasMask = false;
     uint8 maskValue = 255;   // flat mask
+    // the layer's effects block ("lfx2"), bytes as Photoshop writes them; empty = no effects.
+    // The writer is tests/support/PsdFixture.h, shared with tools/render_verify.
+    std::vector<uint8> lfx2;
 };
 
 const int kSide = 32;
@@ -289,6 +335,16 @@ bool writePsd(const QString& aPath, const std::vector<LayerSpec>& aSpecs) {
             info->data[3] = (uint8)spec.name.size();
             for (size_t i = 0; i < spec.name.size(); ++i)
                 info->data[4 + i * 2 + 1] = (uint8)spec.name[i];
+            layer->additionalInfos.push_back(img::PSDFormat::AdditionalLayerInfoPtr(info));
+        }
+        if (!spec.lfx2.empty()) {
+            // "lfx2": the layer effects block. Its data ARE the descriptor block (version pair +
+            // descriptor), so the fixture's bytes go in as they are.
+            auto* info = new img::PSDFormat::AdditionalLayerInfo();
+            info->key = "lfx2";
+            info->dataLength = (uint32)spec.lfx2.size();
+            info->data.reset(new uint8[spec.lfx2.size()]);
+            std::memcpy(info->data.get(), spec.lfx2.data(), spec.lfx2.size());
             layer->additionalInfos.push_back(img::PSDFormat::AdditionalLayerInfoPtr(info));
         }
         format.layerAndMaskInfo().layers.push_back(img::PSDFormat::LayerPtr(layer));
@@ -438,7 +494,7 @@ int main(int argc, char** argv) {
 
     // the layer nodes compile shaders and build GL mesh buffers, so the import needs the
     // registered, current GL context of a real widget (the same bootstrap as the probe and
-    // tools/verify_blur)
+    // tools/render_verify)
     QMainWindow window;
     auto* glWidget = new TestGLWidget();
     window.setCentralWidget(glWidget);
@@ -623,6 +679,172 @@ int main(int argc, char** argv) {
                QString("the mask the file added was applied (got %1)").arg(got ? (int)value : -1));
     }
 
+    // ---------------------------------------------------------------- reload: a layer effect the
+    // file added, changed and dropped
+    // The blurred-silhouette family (drop shadow, outer glow, chrome) is the family this model
+    // exists for, and it is the one the reload's change test could not see: the comparison that
+    // decides whether to apply listed the overlays and the stroke field by field and never looked
+    // at the silhouette list at all, so a shadow the file ADDED was detected as "nothing changed"
+    // and the layer kept drawing without it - silently, on every reload, for the whole feature.
+    // The three cases below are the three shapes of that bug (added, changed, dropped); the
+    // fixture writes the block with the shared writer (tests/support/PsdFixture.h).
+    std::printf("\n== reload: a layer effect the file added, changed and dropped ==\n");
+    {
+        const auto silhouettesOf = [](core::LayerNode* aLayer) {
+            return aLayer ? aLayer->renderer()->layerEffects().silhouettes
+                          : std::vector<core::LayerEffects::Silhouette>();
+        };
+        expect(layerA && silhouettesOf(layerA).empty(), "the imported layer A starts with no effects");
+
+        const auto withShadow = [](double aBlur, double aOpacity) {
+            std::vector<LayerSpec> specs = baselineSpecs();
+            for (auto& spec : specs) {
+                if (spec.name == "A") {
+                    spec.lfx2 = makeLfx2DropShadow(aBlur, aOpacity);
+                }
+            }
+            return specs;
+        };
+
+        // (1) added
+        expect(writePsd(psdPath, withShadow(7.0, 80.0)), "the fixture with a drop shadow on A was written");
+        updater.reload(*guiItem);
+        {
+            const auto shadows = silhouettesOf(layerA);
+            const bool ok = shadows.size() == 1 && shadows[0].kind == core::LayerEffects::Silhouette::Kind_DropShadow
+                && std::abs(shadows[0].blur - 7.0f) < 0.01f && std::abs(shadows[0].opacity - 0.8f) < 0.01f;
+            expect(ok,
+                   QString("the drop shadow the file added reached the node (%1 silhouette(s))")
+                       .arg((int)shadows.size()));
+        }
+
+        // (2) changed - the case a field-by-field comparison misses even when it covers the field
+        expect(writePsd(psdPath, withShadow(19.0, 40.0)), "the fixture with a changed drop shadow was written");
+        updater.reload(*guiItem);
+        {
+            const auto shadows = silhouettesOf(layerA);
+            const bool ok = shadows.size() == 1 && std::abs(shadows[0].blur - 19.0f) < 0.01f
+                && std::abs(shadows[0].opacity - 0.4f) < 0.01f;
+            expect(ok,
+                   QString("the file's changed drop shadow replaced the old one (blur %1)")
+                       .arg(shadows.empty() ? -1.0f : shadows[0].blur));
+        }
+
+        // (3) dropped
+        expect(writePsd(psdPath, baselineSpecs()), "the fixture without effects was written");
+        updater.reload(*guiItem);
+        expect(silhouettesOf(layerA).empty(), "the effect the file dropped went away with it");
+    }
+
+    // ---------------------------------------------------------------- the reload's change test
+    // EXHAUSTIVENESS, field by field
+    // ctrl::diffObject decides what a reload applies from LayerEffects::operator==, so a member
+    // that operator does not compare is a member a reload cannot see. It is written as each type's
+    // members() beside its declarations for that reason, and this table is what holds it there:
+    // one entry per member, each of which must make the two objects DIFFER. A member added to a
+    // struct and not to its members() will not be caught here (nothing enumerates a struct), but a
+    // member dropped from members() - the way this last broke - fails a named check.
+    std::printf("\n== the reload's change test compares every member of a layer's effects ==\n");
+    {
+        using Effects = core::LayerEffects;
+        Effects base;
+        base.colorOverlay.enabled = true;
+        base.gradientOverlay.enabled = true;
+        base.stroke.enabled = true;
+        base.silhouettes.push_back(Effects::Silhouette());
+        base.seen[Effects::Type_Chrome] = true;
+        base.active[Effects::Type_Chrome] = true;
+        base.colorOverlay.blendMode = "Nrml";
+        base.gradientOverlay.blendMode = "Nrml";
+        base.stroke.blendMode = "Nrml";
+        base.silhouettes[0].blendMode = "Nrml";
+
+        struct Case {
+            const char* name;
+            std::function<void(Effects&)> mutate;
+        };
+        const std::vector<Case> cases = {
+            {"colorOverlay.enabled", [](Effects& e) { e.colorOverlay.enabled = !e.colorOverlay.enabled; }},
+            {"colorOverlay.r", [](Effects& e) { e.colorOverlay.r += 0.01f; }},
+            {"colorOverlay.g", [](Effects& e) { e.colorOverlay.g += 0.01f; }},
+            {"colorOverlay.b", [](Effects& e) { e.colorOverlay.b += 0.01f; }},
+            {"colorOverlay.opacity", [](Effects& e) { e.colorOverlay.opacity -= 0.01f; }},
+            {"colorOverlay.blendMode", [](Effects& e) { e.colorOverlay.blendMode = "Scrn"; }},
+            {"colorOverlay.mode",
+             [](Effects& e) { e.colorOverlay.mode = img::BlendMode_Multiply; }},
+            {"colorOverlay.blendModeKnown",
+             [](Effects& e) { e.colorOverlay.blendModeKnown = !e.colorOverlay.blendModeKnown; }},
+            {"gradientOverlay.enabled",
+             [](Effects& e) { e.gradientOverlay.enabled = !e.gradientOverlay.enabled; }},
+            {"gradientOverlay.opacity", [](Effects& e) { e.gradientOverlay.opacity -= 0.01f; }},
+            {"gradientOverlay.angleDeg", [](Effects& e) { e.gradientOverlay.angleDeg += 1.0f; }},
+            {"gradientOverlay.scale", [](Effects& e) { e.gradientOverlay.scale += 1.0f; }},
+            {"gradientOverlay.offsetX", [](Effects& e) { e.gradientOverlay.offsetX += 0.01f; }},
+            {"gradientOverlay.offsetY", [](Effects& e) { e.gradientOverlay.offsetY += 0.01f; }},
+            {"gradientOverlay.reverse", [](Effects& e) { e.gradientOverlay.reverse = !e.gradientOverlay.reverse; }},
+            {"gradientOverlay.style", [](Effects& e) { e.gradientOverlay.style = "Lnr "; }},
+            {"gradientOverlay.blendMode", [](Effects& e) { e.gradientOverlay.blendMode = "Scrn"; }},
+            {"gradientOverlay.mode", [](Effects& e) { e.gradientOverlay.mode = img::BlendMode_Screen; }},
+            {"gradientOverlay.blendModeKnown",
+             [](Effects& e) { e.gradientOverlay.blendModeKnown = !e.gradientOverlay.blendModeKnown; }},
+            {"gradientOverlay.stops",
+             [](Effects& e) {
+                 Effects::Stop s;
+                 s.location = 0.5f;
+                 e.gradientOverlay.stops.push_back(s);
+             }},
+            {"stroke.enabled", [](Effects& e) { e.stroke.enabled = !e.stroke.enabled; }},
+            {"stroke.size", [](Effects& e) { e.stroke.size += 1.0f; }},
+            {"stroke.style", [](Effects& e) { e.stroke.style = "OutF"; }},
+            {"stroke.paintType", [](Effects& e) { e.stroke.paintType = "GrFl"; }},
+            {"stroke.r", [](Effects& e) { e.stroke.r += 0.01f; }},
+            {"stroke.g", [](Effects& e) { e.stroke.g += 0.01f; }},
+            {"stroke.b", [](Effects& e) { e.stroke.b += 0.01f; }},
+            {"stroke.opacity", [](Effects& e) { e.stroke.opacity -= 0.01f; }},
+            {"stroke.blendMode", [](Effects& e) { e.stroke.blendMode = "Scrn"; }},
+            {"stroke.mode", [](Effects& e) { e.stroke.mode = img::BlendMode_Screen; }},
+            {"stroke.blendModeKnown", [](Effects& e) { e.stroke.blendModeKnown = !e.stroke.blendModeKnown; }},
+            {"stroke.angleDeg", [](Effects& e) { e.stroke.angleDeg += 1.0f; }},
+            {"stroke.scale", [](Effects& e) { e.stroke.scale += 1.0f; }},
+            {"stroke.offsetX", [](Effects& e) { e.stroke.offsetX += 0.01f; }},
+            {"stroke.offsetY", [](Effects& e) { e.stroke.offsetY += 0.01f; }},
+            {"stroke.reverse", [](Effects& e) { e.stroke.reverse = !e.stroke.reverse; }},
+            {"stroke.stops",
+             [](Effects& e) {
+                 Effects::Stop s;
+                 s.r = 1.0f;
+                 e.stroke.stops.push_back(s);
+             }},
+            {"silhouettes.size",
+             [](Effects& e) { e.silhouettes.push_back(Effects::Silhouette()); }},
+            {"silhouettes[0].enabled", [](Effects& e) { e.silhouettes[0].enabled = !e.silhouettes[0].enabled; }},
+            {"silhouettes[0].kind",
+             [](Effects& e) { e.silhouettes[0].kind = Effects::Silhouette::Kind_DropShadow; }},
+            {"silhouettes[0].blur", [](Effects& e) { e.silhouettes[0].blur += 1.0f; }},
+            {"silhouettes[0].distance", [](Effects& e) { e.silhouettes[0].distance += 1.0f; }},
+            {"silhouettes[0].angleDeg", [](Effects& e) { e.silhouettes[0].angleDeg += 1.0f; }},
+            {"silhouettes[0].r", [](Effects& e) { e.silhouettes[0].r += 0.01f; }},
+            {"silhouettes[0].g", [](Effects& e) { e.silhouettes[0].g += 0.01f; }},
+            {"silhouettes[0].b", [](Effects& e) { e.silhouettes[0].b += 0.01f; }},
+            {"silhouettes[0].opacity", [](Effects& e) { e.silhouettes[0].opacity -= 0.01f; }},
+            {"silhouettes[0].blendMode", [](Effects& e) { e.silhouettes[0].blendMode = "Scrn"; }},
+            {"silhouettes[0].mode", [](Effects& e) { e.silhouettes[0].mode = img::BlendMode_Screen; }},
+            {"silhouettes[0].blendModeKnown",
+             [](Effects& e) { e.silhouettes[0].blendModeKnown = !e.silhouettes[0].blendModeKnown; }},
+            {"seen", [](Effects& e) { e.seen[Effects::Type_Bevel] = !e.seen[Effects::Type_Bevel]; }},
+            {"active", [](Effects& e) { e.active[Effects::Type_Bevel] = !e.active[Effects::Type_Bevel]; }},
+        };
+        expect(base == base, "an effects block equals itself");
+        int seen = 0;
+        for (const Case& c : cases) {
+            Effects mut = base;
+            c.mutate(mut);
+            ++seen;
+            expect(mut != base, QString("a changed %1 is a change to the reload").arg(c.name));
+        }
+        std::printf("  (%d member cases)\n", seen);
+    }
+
     // ---------------------------------------------------------------- reload: the file gained a layer
     std::printf("\n== reload: the file gained a layer ==\n");
     {
@@ -727,6 +949,109 @@ int main(int argc, char** argv) {
 
         const bool kept = pngLayer && pngLayer->renderer()->blendIf() == ranges;
         expect(kept, "the project's Blend If survives a reload of a format that cannot describe it");
+
+        // ------------------------------------------------------------ and the mask, which the
+        // reload used to take away from it
+        // The mask channel is described by the PSD reader and by nobody else, but the apply step
+        // asked for it unconditionally ("the file is the truth about the mask, present or not"),
+        // so a reload of ANY file without a mask channel - every ORA, every bitmap, and every
+        // structure-only description - deleted the mask the project had. That is destructive, and
+        // it is wrong for a reader that never looked: the mask is applied, inverted and CREATED by
+        // an explicit command in this app (core/LayerMaskBake, the panel's "Bake This Layer
+        // range"), so it is the artist's data rather than a stale copy of the file's.
+        auto* pngRes = pngProject.resourceHolder().imageTrees().empty()
+            ? nullptr
+            : pngProject.resourceHolder().imageTrees().front().topNode->children().front();
+        expect(pngRes != nullptr, "the PNG's resource is the only child of its tree");
+        if (pngRes) {
+            // what the app's own bake writes: an A8 plane in the image's rect
+            const QSize size = pngRes->data().image().pixelSize();
+            const size_t count = (size_t)size.width() * size.height();
+            uint8* data = new uint8[count];
+            std::memset(data, 77, count);
+            pngRes->data().grabMask(XCMemBlock(data, count), size);
+            expect(pngRes->data().hasMask(), "the fixture put a mask on the plain bitmap's resource");
+
+            // The file's PIXELS change, so the reload has something to apply: that is what the
+            // bug needed to bite. A reload with nothing to apply never reaches the content update
+            // at all (an unchanged reload pushes no command), so a mask test on an unchanged file
+            // would pass even with the mask logic wrong - this one drives the apply path.
+            QImage changed(kSide, kSide, QImage::Format_RGBA8888);
+            changed.fill(QColor(160, 20, 200, 255));
+            expect(changed.save(pngPath), "the PNG fixture's pixels were changed");
+            pngUpdater.reload(*pngItem);
+
+            uint8 px[4] = {0, 0, 0, 0};
+            auto* pngKey = pngLayer
+                ? dynamic_cast<const core::ImageKey*>(pngLayer->timeLine()->defaultKey(core::TimeKeyType_Image))
+                : nullptr;
+            bool pixelsChanged = false;
+            if (pngKey && pngKey->hasImage()) {
+                const uint8* d = pngKey->data().resource()->image().data();
+                const int w = pngKey->data().resource()->image().pixelSize().width();
+                pixelsChanged = d[((size_t)1 * w + 1) * 4] == 160;
+            }
+            expect(pixelsChanged, "the reload did apply the changed pixels (the content update ran)");
+
+            uint8 after = 0;
+            const bool survives = maskPixel(*pngRes, after);
+            expect(survives && after == 77,
+                   QString("a plain bitmap's reload leaves the project's mask alone (got %1)")
+                       .arg(survives ? (int)after : -1));
+        }
+    }
+
+    // ---------------------------------------------------------------- the other half of the same
+    // rule: a reader that DOES describe the mask channel
+    // For a PSD the file is the truth about the user-mask channel, absence included - and that is
+    // not a taste, it is what keeps the picture right: the app's bake command turns the layer's
+    // Blend If SOURCE range into mask pixels and resets the range (core/LayerMaskBake), so a
+    // reload that restored the file's ranges (which it must: the node's Blend If is compared and
+    // applied) while KEEPING the baked mask would apply the same restriction twice. The mask goes
+    // with the range it came from, and the file's version of both wins.
+    std::printf("\n== reload: a PSD, whose reader does describe the mask channel ==\n");
+    {
+        auto* resB = findResource(*project.resourceHolder().imageTrees().front().topNode, "B");
+        expect(resB != nullptr, "layer B's resource is in the tree");
+
+        std::vector<LayerSpec> masked = baselineSpecs();
+        for (auto& spec : masked) {
+            if (spec.name == "B") {
+                spec.hasMask = true;
+                spec.maskValue = 90;
+            }
+        }
+        expect(writePsd(psdPath, masked), "the fixture with a mask on B was written");
+        updater.reload(*guiItem);
+        uint8 value = 0;
+        const bool applied = resB && maskPixel(*resB, value);
+        expect(applied && value == 90,
+               QString("the file's mask is applied to a PSD layer (got %1)").arg(applied ? (int)value : -1));
+
+        // and taken away again by the file, which is the half the other readers must not do
+        expect(writePsd(psdPath, baselineSpecs()), "the fixture without it was written");
+        updater.reload(*guiItem);
+        expect(resB && !resB->data().hasMask(),
+               "the mask the file dropped is gone with it (the file is the truth here)");
+    }
+
+    // ---------------------------------------------------------------- reload: the memory it
+    // borrows and must give back
+    // An UNCHANGED reload applies nothing, so everything the description allocated - the pixels
+    // and the mask of every layer - has to be freed when the description dies (see OwnedBlock).
+    // This is the direct measurement of that: array bytes live before and after.
+    std::printf("\n== reload: the byte blocks the description allocated ==\n");
+    {
+        updater.reload(*guiItem); // warm up: the first reload of this state may still grow a cache
+        const long long before = gLiveArrayBytes.load();
+        updater.reload(*guiItem);
+        const long long after = gLiveArrayBytes.load();
+        expect(
+            after == before,
+            QString("an unchanged reload returns every array byte it took (%1 -> %2, %3 bytes leaked)")
+                .arg(before)
+                .arg(after)
+                .arg(after - before));
     }
 
     std::printf("\n%d checks, %d failures\n", gChecks, gFails);

@@ -37,7 +37,7 @@ echo "--- running with QT_QPA_PLATFORM=${AE_QT_PLATFORM:-offscreen} ---"
 run "${AE_QT_PLATFORM:-offscreen}" ""
 code=$?
 if [[ $code -eq 2 ]]; then
-    # no offscreen GL: retry on the real display, like tools/verify_blur does
+    # no offscreen GL: retry on the real display, like tools/render_verify does
     if [[ -n "${DISPLAY:-}" ]]; then
         echo "--- retrying with QT_QPA_PLATFORM=xcb on DISPLAY=$DISPLAY ---"
         run xcb "$DISPLAY"

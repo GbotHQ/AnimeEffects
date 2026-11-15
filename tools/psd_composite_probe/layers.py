@@ -6,7 +6,7 @@ so it can be compared byte-for-byte against what img::PSDUtil::makeInterleavedIm
 produces for the same layer (the probe prints `decode: ... fnv1a=...` per record).
 
 usage: layers.py [file.psd] [layer name ...] [--out DIR]
-  file.psd    PSD to parse (default: /home/gambot/Downloads/ALL FATHER F3 color fixes.psd);
+  file.psd    PSD to parse (default: $AE_PROBE_PSD, which is required when no file is given);
               a first positional is taken as the PSD only when it ends in .psd/.psb, so
               layer names can also be given first.
   layer name  names whose decoded RGBA bytes are also dumped as raw files
@@ -15,9 +15,13 @@ usage: layers.py [file.psd] [layer name ...] [--out DIR]
 Requires python3 only (struct + sys).
 """
 import struct
+import os
 import sys
 
-DEFAULT_PSD = '/home/gambot/Downloads/ALL FATHER F3 color fixes.psd'
+DEFAULT_PSD = os.environ.get(
+    'AE_PROBE_PSD', ''
+)  # an absolute path to one person's file has no business being the default of a tool in
+   # a repository: set AE_PROBE_PSD (or pass the file) and this stays reproducible anywhere
 
 args = sys.argv[1:]
 if any(a in ('-h', '--help') for a in args):

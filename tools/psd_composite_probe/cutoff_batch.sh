@@ -8,7 +8,7 @@
 #
 # The cutoff is a MESH-CREATION PARAMETER (GridMesh::createFromImage), not a mask over the pixels:
 # a mask cannot express a threshold below production's 10 (see the note in psd_composite_probe.cpp
-# and S23 in verify_blur).
+# and S23 in render_verify).
 #
 #   constant (dir const10)  T=10, what ships today - the reference every other variant is read against
 #   none     (dir nocut)    T=0, alpha != 0: nothing is cut, the "is anything still lost" reference

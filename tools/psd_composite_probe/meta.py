@@ -5,15 +5,19 @@ record's extra data. A layer whose ranges are not the 0/0/255/255 defaults is re
 by Blend If, which AnimeEffects' importer has no representation for at all.
 
 usage: meta.py [file.psd]
-  file.psd  PSD to parse (default: /home/gambot/Downloads/ALL FATHER F3 color fixes.psd)
+  file.psd  PSD to parse (default: $AE_PROBE_PSD, which is required when no file is given)
 
 Requires python3 only (struct + sys). Never reads the pixel data, so it is fast even on a
 114 MB file.
 """
 import struct
+import os
 import sys
 
-DEFAULT_PSD = '/home/gambot/Downloads/ALL FATHER F3 color fixes.psd'
+DEFAULT_PSD = os.environ.get(
+    'AE_PROBE_PSD', ''
+)  # an absolute path to one person's file has no business being the default of a tool in
+   # a repository: set AE_PROBE_PSD (or pass the file) and this stays reproducible anywhere
 
 if any(a in ('-h', '--help') for a in sys.argv[1:]):
     print(__doc__.strip())

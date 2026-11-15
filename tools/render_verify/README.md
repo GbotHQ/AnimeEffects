@@ -1,4 +1,4 @@
-# verify_blur — directional blur verification harness
+# render_verify — directional blur verification harness
 
 Verifies the directional blur feature (`BlurKey` blurX/blurY/angle, `core/WorldBlurMath.h`,
 `core/FilterFrame` separable Gaussian + downsample ladder) by rendering real scenes through
@@ -7,8 +7,8 @@ the production pipeline and comparing against an independent CPU reference, unde
 ## Run
 
 ```sh
-tools/verify_blur/build_and_run.sh        # rebuild libs + harness, then run
-tools/verify_blur/build_and_run.sh --no-build
+tools/render_verify/build_and_run.sh        # rebuild libs + harness, then run
+tools/render_verify/build_and_run.sh --no-build
 ```
 
 Must run from the repo root (the script cds there). Shaders come from the embedded Qt
@@ -75,7 +75,7 @@ failure (triggers the X11 fallback).
 
 (The suites also cover PSD/ORA import (S11/S13), folder blend modes (S12), golden images
 against reference exports (S14) and the shader-variant matrix (S15); they are documented at
-their definitions in `verify_blur.cpp`.)
+their definitions in `render_verify.cpp`.)
 
 - **S18 layer effects** — Photoshop's `lfx2` block: the descriptor reader
   (`img/PSDDescriptor`, pinned against a hand-written block including the two-word
@@ -165,7 +165,7 @@ their definitions in `verify_blur.cpp`.)
 
 ## Layout
 
-- `verify_blur.cpp` — main + all suites.
+- `render_verify.cpp` — main + all suites.
 - `scene.h/.cpp` — offscreen GL fixture (mirrors `MainDisplayWidget::paintGL`) and tree
   builders (transforms via default SRT keys, blur keys via `TimeLine::createPusher`).
 - `cpu_ref.h` — the independent CPU reference (Gaussian pass, resample/ladder replicas,

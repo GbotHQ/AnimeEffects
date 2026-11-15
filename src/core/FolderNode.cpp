@@ -71,7 +71,23 @@ bool FolderNode::isCompositeFolder(const TimeInfo& aTime, const TimeCacheAccesso
     // ramping in smoothly from zero. An HSV key that blends to identity (no-op adjust)
     // is gated the same way. A non-Normal blend mode always takes the composite path
     // (the subtree is grouped, then blended against the scene with the folder's mode).
-    return mBlendMode != img::BlendMode_Normal
+    //
+    // Blend If ranges take it too, and the reason is the same one: they restrict the
+    // folder's PRESENTED composite against what is behind it, so there has to be a composite
+    // to restrict - renderComposite is where they are applied (see its own note below). Without
+    // this term a folder whose only non-default property was its ranges never reached that
+    // code at all, and its children simply rendered into the scene: the ranges were parsed,
+    // persisted, shown in the panel and silently ignored. The apply side was written for a gate
+    // that did not exist, which is exactly the kind of half-wired feature this avoids.
+    //
+    // Note the consequence for a child's own Blend If, which is deliberate and matches
+    // Photoshop's group semantics: a compositing folder is an isolated group, so a child's
+    // "Underlying Layer" is what is below it INSIDE the group (the slot starts cleared), while
+    // in a pass-through folder it is the scene behind the group (Folders with a non-Normal mode
+    // have always behaved this way - see the `childInfo.dest = composite.texture()` in
+    // renderComposite). A folder gains isolation exactly when it stops being pass-through.
+    const BlendIf blendIf = this->blendIf();
+    return mBlendMode != img::BlendMode_Normal || blendIf.isActive()
         || (hasActiveHSVKey(aTime) && !hsvDataIsIdentity(aAccessor.get(mTimeLine).hsv().hsv()))
         || (hasActiveBlurKey(aTime)
             && aAccessor.get(mTimeLine).maxBlurRadius() > FilterFrame::kMinActiveBlurRadius);

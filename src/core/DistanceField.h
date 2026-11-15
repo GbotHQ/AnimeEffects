@@ -48,7 +48,8 @@ namespace core {
 //   - the field is DERIVED state. It is valid only while the pixels it was measured from are
 //     current, so ResourceData tracks the image revision it came from
 //     (ResourceData::isDistanceStale) and the render path re-bakes it when a resource reload
-//     has replaced the pixels (ImageKey::syncDistanceTexture, once per image change).
+//     has replaced the pixels, or after asking for it when it is stale (ResourceData::derived,
+//     reached from ImageKey::syncDistanceTexture once per image change).
 class DistanceField {
 public:
     // builds the field for an 8-bit alpha plane of aSize; false when the input is unusable

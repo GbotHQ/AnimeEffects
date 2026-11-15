@@ -367,66 +367,13 @@ bool LayerEffects::isDrawnAsConfigured() const {
     return true;
 }
 
-bool LayerEffects::operator==(const LayerEffects& aRhs) const {
-    if (colorOverlay.enabled != aRhs.colorOverlay.enabled || gradientOverlay.enabled != aRhs.gradientOverlay.enabled
-        || stroke.enabled != aRhs.stroke.enabled) {
-        return false;
-    }
-    if (stroke.enabled) {
-        if (stroke.size != aRhs.stroke.size || stroke.style != aRhs.stroke.style
-            || stroke.paintType != aRhs.stroke.paintType || stroke.mode != aRhs.stroke.mode
-            || stroke.stops.size() != aRhs.stroke.stops.size()
-            || std::abs(stroke.opacity - aRhs.stroke.opacity) > 1e-6f
-            || std::abs(stroke.angleDeg - aRhs.stroke.angleDeg) > 1e-6f
-            || std::abs(stroke.scale - aRhs.stroke.scale) > 1e-6f
-            || std::abs(stroke.r - aRhs.stroke.r) > 1e-6f || std::abs(stroke.g - aRhs.stroke.g) > 1e-6f
-            || std::abs(stroke.b - aRhs.stroke.b) > 1e-6f) {
-            return false;
-        }
-        for (size_t i = 0; i < stroke.stops.size(); ++i) {
-            if (std::abs(stroke.stops[i].location - aRhs.stroke.stops[i].location) > 1e-6f
-                || std::abs(stroke.stops[i].r - aRhs.stroke.stops[i].r) > 1e-6f
-                || std::abs(stroke.stops[i].g - aRhs.stroke.stops[i].g) > 1e-6f
-                || std::abs(stroke.stops[i].b - aRhs.stroke.stops[i].b) > 1e-6f) {
-                return false;
-            }
-        }
-    }
-    if (colorOverlay.enabled) {
-        const float a[4] = {colorOverlay.r, colorOverlay.g, colorOverlay.b, colorOverlay.opacity};
-        const float b[4] = {aRhs.colorOverlay.r, aRhs.colorOverlay.g, aRhs.colorOverlay.b, aRhs.colorOverlay.opacity};
-        for (int i = 0; i < 4; ++i) {
-            if (std::abs(a[i] - b[i]) > 1e-6f) {
-                return false;
-            }
-        }
-    }
-    if (gradientOverlay.enabled) {
-        if (gradientOverlay.stops.size() != aRhs.gradientOverlay.stops.size()
-            || gradientOverlay.style != aRhs.gradientOverlay.style) {
-            return false;
-        }
-        const float a[4] = {gradientOverlay.opacity, gradientOverlay.angleDeg, gradientOverlay.scale,
-                            gradientOverlay.reverse ? 1.0f : 0.0f};
-        const float b[4] = {aRhs.gradientOverlay.opacity, aRhs.gradientOverlay.angleDeg, aRhs.gradientOverlay.scale,
-                            aRhs.gradientOverlay.reverse ? 1.0f : 0.0f};
-        for (int i = 0; i < 4; ++i) {
-            if (std::abs(a[i] - b[i]) > 1e-6f) {
-                return false;
-            }
-        }
-        for (size_t i = 0; i < gradientOverlay.stops.size(); ++i) {
-            const auto& sa = gradientOverlay.stops[i];
-            const auto& sb = aRhs.gradientOverlay.stops[i];
-            if (std::abs(sa.location - sb.location) > 1e-6f || std::abs(sa.r - sb.r) > 1e-6f
-                || std::abs(sa.g - sb.g) > 1e-6f || std::abs(sa.b - sb.b) > 1e-6f
-                || std::abs(sa.opacity - sb.opacity) > 1e-6f) {
-                return false;
-            }
-        }
-    }
-    return true;
-}
+// The reload's change test. It used to be written out here, field by field, and had drifted from
+// the structs it claims to describe: the silhouette list (drop shadow / outer glow / chrome - the
+// effects this feature exists for) was never compared, so an effect added, removed or edited in
+// the file was detected as "no change" and the node kept the old one, silently; so were the two
+// reporting tables and the placement fields of a gradient or stroke paint (offsetX/offsetY,
+// reverse). It is now defined by each type's members() beside its declarations, so the comparison
+// cannot fall behind the data - see the note in LayerEffects.h.
 
 bool parseLayerEffects(const img::PSDDescriptor& aDescriptor, LayerEffects& aOut) {
     if (!aDescriptor.isValid() || !aDescriptor.root().isDescriptor()) {

@@ -1,14 +1,19 @@
 // What does the mesh's "is there content here?" test cost and drop?
 //
-// Build and run: tools/psd_composite_probe/build_and_run.sh --mesh [<psd>] [--seed T]. Measured
-// on the 114 MB test file (51 layers, 3840x1240) the policy "seed + growth" costs 0.16 % more
-// vertices than "all" and 7.8 % more than "threshold", while keeping the 9.0 M faint pixels that
-// belong to a feature with a solid core - i.e. the threshold's geometry saving is nearly all
-// bought by deleting soft content, not by skipping residue. The residue itself (core-less
-// islands) is ~6 700 islands of ~3.5 px each, 0.26 % of the faint pixels and 0.16 % of the mesh,
-// and the split is insensitive to the seed: from T = 2 to T = 32 the attached share stays
+// Build and run: tools/psd_composite_probe/build_and_run.sh --mesh <psd> [--seed T]. Measured on the
+// 114 MB test file (51 layers, 3840x1240), rebuilt after the fix noted at the bottom of this
+// comment: "all" (alpha != 0) 576 837 vertices, "threshold" (alpha > 10) 532 647 (-7.66 %), and
+// "seed + growth" 575 932 (-0.16 % from "all", +8.1 % from "threshold"). The seed policy keeps the
+// 9.0 M faint pixels that belong to a feature with a solid core, i.e. the threshold's geometry
+// saving is nearly all bought by deleting soft content, not by skipping residue. The residue itself
+// (core-less islands) is ~6 700 islands of ~3.5 px each, 0.26 % of the faint pixels and 0.16 % of
+// the mesh, and the split is insensitive to the seed: from T = 2 to T = 32 the attached share stays
 // between 98.9 % and 99.9 % and the island count stays between 6 364 and 6 728. See
 // BLEND_IF_ASSESSMENT.md section 19.
+//
+// An earlier revision of this tool quoted "seed + growth costs 0.16 % MORE vertices than all": that
+// was impossible and the reason is at the bottom of this comment - the two policies were the same
+// measurement, so the numbers could not be read as a comparison at all. These are re-measured.
 //
 // The content test (GridMeshCreator::Image::hasRawAlpha) is BOTH the fidelity rule - a cell
 // exists only where it is true, and the mesh is what draws the layer, so anything it calls empty
@@ -23,12 +28,18 @@
 // from the production mesh builder itself (hasAlpha is a bounds-checked hasRawAlpha, so a zeroed
 // alpha byte is exactly "not content" to it), not from a re-implementation.
 //
-//   policy "all"        : alpha != 0            (the current code)
-//   policy "threshold"  : alpha >  T            (the old code, T = 10)
+//   policy "all"        : alpha != 0
+//   policy "threshold"  : alpha >  T
 //   policy "seed+growth": every connected component of alpha > 0 that contains at least one
 //                         pixel >= T. This never cuts a feature that has a solid core, so a soft
 //                         glow's skirt survives intact, while a faint island with no solid pixel
 //                         anywhere in it is dropped.
+//
+// Each policy is built at the threshold that EXPRESSES it (0 for the first and third, T for the
+// second). An earlier revision of this tool built all three at the creator's default threshold,
+// which made "all" and "threshold" the same measurement - the numbers this file's own
+// documentation quotes for "all" come from that revision and are really the T = 10 column; the
+// tool now separates them.
 //
 // Reported per layer: the faint pixels (1..T-1) that belong to a component with a solid core
 // (what "threshold" wrongly cuts) vs those in a core-less island (what "all" needlessly meshes),
@@ -119,8 +130,15 @@ struct LayerReport {
 int gCell = core::ImageKey::kDefaultMeshCellSize;
 bool gFull = false;
 
-void meshStats(std::vector<uint8>& aRgba, const QSize& aSize, int& aOutVerts, int& aOutIdx) {
-    img::GridMeshCreator creator(aRgba.data(), aSize, gCell);
+// The mesh builder's own content test is a THRESHOLD, so a policy that means "alpha != 0" has to
+// build at threshold 0 and a policy that means "alpha > T" has to build at T. Passing the level in
+// is what makes the columns comparable: this function used to construct the creator with its
+// DEFAULT threshold for every policy, so "zero the faint pixels, then look for content above 10"
+// and "look for content above 10" were the same set - the "all" column was the threshold column
+// under another name, and the two could not differ by the percentages the documentation quoted.
+void meshStats(std::vector<uint8>& aRgba, const QSize& aSize, int aContentLevel, int& aOutVerts,
+               int& aOutIdx) {
+    img::GridMeshCreator creator(aRgba.data(), aSize, gCell, aContentLevel);
     aOutVerts = creator.vertexCount();
     aOutIdx = creator.indexCount();
 }
@@ -237,17 +255,18 @@ int main(int argc, char** argv) {
             ++layersWithFaint;
         }
 
-        // geometry: the real mesh builder, on the pixels each policy calls content
+        // geometry: the real mesh builder, on the pixels each policy calls content - the mesh is
+        // built at the level that EXPRESSES the policy (see meshStats)
         std::vector<uint8> buf;
-        meshStats(rgba, size, rep.vertsAll, rep.idxAll);
+        meshStats(rgba, size, 0, rep.vertsAll, rep.idxAll); // "all": anything nonzero, level 0
 
         buf = rgba;
         for (size_t i = 0; i < (size_t)size.width() * size.height(); ++i) {
-            if (buf[i * 4 + 3] <= seed) { // the old test: > T
+            if (buf[i * 4 + 3] <= seed) { // the threshold rule: content is alpha > T
                 buf[i * 4 + 3] = 0;
             }
         }
-        meshStats(buf, size, rep.vertsThreshold, rep.idxThreshold);
+        meshStats(buf, size, seed, rep.vertsThreshold, rep.idxThreshold);
 
         buf = rgba;
         for (int y = 0; y < size.height(); ++y) {
@@ -262,7 +281,7 @@ int main(int argc, char** argv) {
                 }
             }
         }
-        meshStats(buf, size, rep.vertsSeed, rep.idxSeed);
+        meshStats(buf, size, 0, rep.vertsSeed, rep.idxSeed); // whatever survives, at level 0
 
         if (rep.faintTotal > 0 || rep.orphanComps > 0) {
             std::printf(

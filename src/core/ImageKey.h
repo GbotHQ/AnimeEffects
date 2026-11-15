@@ -9,6 +9,10 @@
 #include "core/TimeKey.h"
 #include "gui/obj/obj_Item.h"
 
+namespace img {
+class ResourceNode;
+}
+
 namespace core {
 
 class ImageKey: public TimeKey {
@@ -36,13 +40,34 @@ public:
         const GridMesh& gridMesh() const { return mGridMesh; }
     };
 
+    // What an uploaded cache texture was built from: the RESOURCE it came from, and the revision
+    // that resource gave its own pixels. A revision alone is not an identity - every resource
+    // numbers its mask from zero, and a resource update alternates the node between two data
+    // objects as it is undone and redone (img::ResourceNode::swapData) - so a cache comparing
+    // numbers only could keep one resource's mask (or distance plane) uploaded and draw it on a
+    // key that now points at another. The pair is what makes "unchanged" mean unchanged; the
+    // revision side stays necessary because a mask is edited in place (core/LayerMaskBake).
+    class SourceKey {
+    public:
+        bool matches(const img::ResourceNode* aResource, int aRevision) const {
+            return mResource == aResource && mRevision == aRevision;
+        }
+        void set(const img::ResourceNode* aResource, int aRevision) {
+            mResource = aResource;
+            mRevision = aRevision;
+        }
+
+    private:
+        const img::ResourceNode* mResource = nullptr;
+        int mRevision = -1;
+    };
+
     class Cache {
         gl::Texture mTexture;
         gl::Texture mMaskTexture;
-        int mMaskRevision;
+        SourceKey mMaskSource;
         gl::Texture mDistanceTexture;
-        int mDistanceRevision;
-        int mDistanceImageRevision;
+        SourceKey mDistanceSource;
 
     public:
         Cache();
@@ -52,17 +77,13 @@ public:
         // carries one (see ResourceData::hasMask)
         gl::Texture& maskTexture() { return mMaskTexture; }
         const gl::Texture& maskTexture() const { return mMaskTexture; }
-        int maskRevision() const { return mMaskRevision; }
-        void setMaskRevision(int aRevision) { mMaskRevision = aRevision; }
+        SourceKey& maskSource() { return mMaskSource; }
+        const SourceKey& maskSource() const { return mMaskSource; }
         // single-channel (GL_R8) copy of the layer's outline distance field
         gl::Texture& distanceTexture() { return mDistanceTexture; }
         const gl::Texture& distanceTexture() const { return mDistanceTexture; }
-        int distanceRevision() const { return mDistanceRevision; }
-        void setDistanceRevision(int aRevision) { mDistanceRevision = aRevision; }
-        // the image revision the distance plane was last derived from (or last attempted for):
-        // bounds the re-bake to once per pixel change instead of once per frame
-        int distanceImageRevision() const { return mDistanceImageRevision; }
-        void setDistanceImageRevision(int aRevision) { mDistanceImageRevision = aRevision; }
+        SourceKey& distanceSource() { return mDistanceSource; }
+        const SourceKey& distanceSource() const { return mDistanceSource; }
     };
 
     enum { kDefaultMeshCellSize = 16 };
@@ -86,7 +107,10 @@ public:
     // Called from the render path (where a GL context is current), which is what lets
     // authoring commands edit mask pixels without touching GL themselves.
     void syncMaskTexture();
-    void syncDistanceTexture();
+    // Uploads the resource's outline distance field, deriving it first when it is absent or does
+    // not describe the current pixels (that is the demand for the channel - nobody declares it).
+    // Returns whether a usable field is now bound.
+    bool syncDistanceTexture();
     QJsonObject serializeToJson() const;
     bool deserializeFromJson(QJsonObject json, util::LifeLink::Pointee<Project> project);
     virtual TimeKeyType type() const { return TimeKeyType_Image; }

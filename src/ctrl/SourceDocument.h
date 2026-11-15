@@ -27,6 +27,63 @@ class Project;
 
 namespace ctrl {
 
+// A description's byte block, WITH its owner. XCMemBlock is a pair of raw fields (`uint8* data,
+// size_t size`) whose memory is `new uint8[]` (img::Buffer::alloc and every reader here allocate
+// that way), and nothing in it says who frees it.
+//
+// Why that mattered: the reload applies a description to the resources and, for an entry it does
+// not touch, simply leaves the blocks alone - the document was a stack local in
+// gui::res::ResourceUpdater::reconcile, so every reload leaked the pixels AND the mask of every
+// unchanged layer (a 2000x2000 layer: 20 MB per reload, for the life of the process). The
+// description is the only thing that knows what its readers allocated, so the fix belongs here
+// rather than in a cleanup pass at the call sites: the fields own their memory, the document
+// frees whatever a caller did not take, and no path has to remember to.
+//
+// Move-only on purpose: a copy would either double-free or share a buffer with no owner, and
+// neither is a thing this description wants - handing pixels over is `take()`. The compiler
+// enforces it, including inside the entry vector, so an accidental copy is a build error instead
+// of a double free.
+class OwnedBlock {
+public:
+    OwnedBlock() = default;
+    OwnedBlock(OwnedBlock&& aRhs) noexcept: mBlock(aRhs.take()) {}
+    OwnedBlock& operator=(OwnedBlock&& aRhs) noexcept {
+        if (this != &aRhs) {
+            free();
+            mBlock = aRhs.take();
+        }
+        return *this;
+    }
+    OwnedBlock(const OwnedBlock&) = delete;
+    OwnedBlock& operator=(const OwnedBlock&) = delete;
+    ~OwnedBlock() { free(); }
+
+    // takes a freshly allocated block (freeing whatever this held)
+    void adopt(const XCMemBlock& aBlock) {
+        free();
+        mBlock = aBlock;
+    }
+    // gives the block up: whoever calls this owns it now
+    XCMemBlock take() {
+        XCMemBlock block = mBlock;
+        mBlock = XCMemBlock();
+        return block;
+    }
+    void free() {
+        delete[] mBlock.data;
+        mBlock = XCMemBlock();
+    }
+
+    const XCMemBlock& block() const { return mBlock; }
+    const uint8* data() const { return mBlock.data; }
+    size_t size() const { return mBlock.size; }
+    bool isEmpty() const { return mBlock.data == nullptr; }
+    explicit operator bool() const { return mBlock.data != nullptr; }
+
+private:
+    XCMemBlock mBlock;
+};
+
 // A format-neutral description of one SOURCE document - a PSD, an ORA, a plain bitmap.
 //
 // Why it exists: the first import and a source reload used to walk the file format separately,
@@ -38,7 +95,10 @@ namespace ctrl {
 // that parse - every node a reload appends - dangled into the next one). Both walkers are gone:
 // one description is produced per container format, by the readers below, and consumed by BOTH
 // paths. Nothing built from a description keeps a pointer back into it - the pixels and the mask
-// are handed over - so a document can be destroyed as soon as its trees are built.
+// are handed over - so a document can be destroyed as soon as its trees are built. Whatever the
+// caller did NOT take, the description frees on destruction (see OwnedBlock): "destroyed as soon
+// as its trees are built" is therefore also what happens to the memory of the entries a reload
+// decided not to apply.
 //
 // The entries are deliberately the union of what the two trees need - the resource side (name,
 // stable id, rect, pixels, mask, blend, visible) and the object side (clipping, opacity, fill
@@ -76,16 +136,28 @@ public:
         core::BlendIf blendIf;        // the layer's "Blend If" ranges
         core::LayerEffects effects;   // the layer's Photoshop layer effects (`lfx2`)
 
+        // The same question for the MASK, which is a channel of the RESOURCE and not of the
+        // object: did this description actually look at the file's user-mask channel? Only the
+        // PSD reader interprets one, and only when it decoded the layer's pixels, so an ORA, a
+        // plain bitmap or a structure-only description must say no. Without this the reload read
+        // "no mask in the description" as "the file has no mask" and DELETED the mask the artist
+        // baked in the app (core/LayerMaskBake writes into this same channel) on every reload of
+        // such a file - the destructive version of the mistake hasObjectData exists to prevent.
+        // With it, "detect == apply" holds for the mask too: a reader that describes the channel
+        // has its description applied, presence and absence included, and one that does not leaves
+        // the project's mask alone.
+        bool hasMaskData = false;
+
         // pixels: the layer's image, already assembled in the entry's rect (the importer pads a
         // layer by one transparent pixel and bleeds its colour, see Util::createTextureImage).
         // Empty when the caller asked for a structure-only document; handed over - not shared -
-        // when the resource tree is built.
-        XCMemBlock pixels;
+        // when the resource tree is built (see OwnedBlock for why it owns itself).
+        OwnedBlock pixels;
         QSize pixelSize;
 
         // the layer mask (Photoshop's user-mask channel), A8 in the entry's rect, empty when the
         // layer has none
-        XCMemBlock mask;
+        OwnedBlock mask;
         bool maskEnabled = true;
         bool maskInverted = false;
 
@@ -104,11 +176,7 @@ public:
     bool isValid() const { return error.isEmpty(); }
 
     // hands the entry's pixel/mask blocks over (the entry is left empty)
-    XCMemBlock takePixels(Entry& aEntry) {
-        XCMemBlock block = aEntry.pixels;
-        aEntry.pixels = XCMemBlock();
-        return block;
-    }
+    XCMemBlock takePixels(Entry& aEntry) { return aEntry.pixels.take(); }
 };
 
 // ---------------------------------------------------------------------------- readers

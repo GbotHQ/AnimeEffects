@@ -546,7 +546,11 @@ void LayerNode::renderLayer(
 
     // the layer's mask texture, only on the non-grid path (the grid uses a plain shader)
     const gl::Texture* maskTexture = !aInfo.isGrid ? expans.areaMaskTexture() : nullptr;
-    // the outline distance field a stroke needs, from the same resource
+    // The outline distance field a stroke needs, from the same resource. There is nothing to
+    // declare before asking for it: the resource derives the plane when it has none or the one it
+    // has no longer describes the pixels (ResourceData::derived), which is what keeps this right
+    // after a source reload, an undo, or a second layer sharing the resource - the three cases a
+    // "consumer wanted it" flag stored on the resource could not cover (see its note in img).
     const gl::Texture* distanceTexture = !aInfo.isGrid ? expans.areaDistanceTexture() : nullptr;
 
     if (aInfo.isGrid) {

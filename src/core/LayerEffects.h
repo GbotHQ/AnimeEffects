@@ -1,7 +1,9 @@
 #ifndef CORE_LAYEREFFECTS_H
 #define CORE_LAYEREFFECTS_H
 
+#include <array>
 #include <cstdint>
+#include <tuple>
 #include <vector>
 #include <QString>
 #include "img/BlendMode.h"
@@ -103,10 +105,24 @@ public:
         Type_TERM
     };
 
+    // Every type below lists ALL of its members in members(), and compares through it. Why it is
+    // written that way: operator== is not a convenience here, it is the reload's change test
+    // (ctrl::diffObject -> gui::res::ResourceUpdater applies exactly what it reports), so a member
+    // left out of the comparison is a member a source reload cannot see - it would leave the
+    // node's copy of the effects disagreeing with the file while reporting the two as equal, and
+    // silently (the added drop shadow is simply never applied, the removed one never goes away).
+    // A hand-written field-by-field comparison in the .cpp drifted from these structs exactly once
+    // already: seven members were missing from it, including the whole silhouette list.
+    // Listing them beside their declaration, per struct, is what keeps the two in step.
+
     struct Stop {
         float location = 0.0f; // 0..1
         float r = 0.0f, g = 0.0f, b = 0.0f; // 0..1
         float opacity = 1.0f;  // 0..1
+
+        auto members() const { return std::tie(location, r, g, b, opacity); }
+        bool operator==(const Stop& aRhs) const { return members() == aRhs.members(); }
+        bool operator!=(const Stop& aRhs) const { return !(*this == aRhs); }
     };
 
     // colour overlay: a solid fill replacement
@@ -119,6 +135,12 @@ public:
         // parsed and reported through isDrawnAsConfigured()
         img::BlendMode mode = img::BlendMode_Normal;
         bool blendModeKnown = true;
+
+        auto members() const {
+            return std::tie(enabled, r, g, b, opacity, blendMode, mode, blendModeKnown);
+        }
+        bool operator==(const ColorOverlay& aRhs) const { return members() == aRhs.members(); }
+        bool operator!=(const ColorOverlay& aRhs) const { return !(*this == aRhs); }
     };
 
     // gradient overlay (linear only in the renderer; other Photoshop styles are parsed and
@@ -136,6 +158,15 @@ public:
         img::BlendMode mode = img::BlendMode_Normal;
         bool blendModeKnown = true;
         std::vector<Stop> stops;  // merged colour + transparency stops, sorted by location
+
+        auto members() const {
+            return std::tie(
+                enabled, opacity, angleDeg, scale, offsetX, offsetY, reverse, style, blendMode, mode,
+                blendModeKnown, stops
+            );
+        }
+        bool operator==(const GradientOverlay& aRhs) const { return members() == aRhs.members(); }
+        bool operator!=(const GradientOverlay& aRhs) const { return !(*this == aRhs); }
 
         bool isLinear() const { return style == "Lnr "; }
         bool isValid() const { return enabled && stops.size() >= 2; }
@@ -159,6 +190,15 @@ public:
         std::string blendMode;   // the file's key ("Scrn", "Nrml", ...), for reporting
         img::BlendMode mode = img::BlendMode_Normal; // presented against the backdrop
         bool blendModeKnown = true;
+
+        auto members() const {
+            return std::tie(
+                enabled, kind, blur, distance, angleDeg, r, g, b, opacity, blendMode, mode,
+                blendModeKnown
+            );
+        }
+        bool operator==(const Silhouette& aRhs) const { return members() == aRhs.members(); }
+        bool operator!=(const Silhouette& aRhs) const { return !(*this == aRhs); }
 
         bool isUnder() const { return kind == Kind_DropShadow || kind == Kind_OuterGlow; }
         // Chrome is INNER: Photoshop's "ChFX" is the chrome layer of Bevel & Emboss, so it
@@ -201,6 +241,15 @@ public:
         bool reverse = false;
         std::vector<Stop> stops;
 
+        auto members() const {
+            return std::tie(
+                enabled, size, style, paintType, r, g, b, opacity, blendMode, mode, blendModeKnown,
+                angleDeg, scale, offsetX, offsetY, reverse, stops
+            );
+        }
+        bool operator==(const Stroke& aRhs) const { return members() == aRhs.members(); }
+        bool operator!=(const Stroke& aRhs) const { return !(*this == aRhs); }
+
         bool isInside() const { return style.empty() || style == "InsF"; }
         bool isSolid() const { return paintType.empty() || paintType == "SClr"; }
         bool isGradient() const { return paintType == "GrFl"; }
@@ -225,9 +274,9 @@ public:
     }
 
     // every effect key the block contained, enabled or not (for the UI / import log)
-    bool seen[Type_TERM] = {};
+    std::array<bool, Type_TERM> seen = {};
     // the subset that is actually switched on in the file
-    bool active[Type_TERM] = {};
+    std::array<bool, Type_TERM> active = {};
 
     bool isActive() const {
         return colorOverlay.enabled || gradientOverlay.isValid() || hasSilhouettes() || stroke.isUsable();
@@ -239,7 +288,16 @@ public:
     static QString typeName(Type aType);
     static QString silhouetteName(Silhouette::Kind aKind);
 
-    bool operator==(const LayerEffects& aRhs) const;
+    // EVERY member of this class, i.e. exactly the state a node persists (LayerNode's "minor 14"
+    // block writes the same set) - so a reload cannot report the file and the node as agreeing
+    // while their stored effects differ. The comparison is EXACT, not tolerant: these values come
+    // from parsing the same descriptor with the same code, so an unchanged file produces
+    // bit-identical floats, while a tolerance would hide a real change behind "close enough",
+    // and a missed change is the failure mode that is silent.
+    auto members() const {
+        return std::tie(colorOverlay, gradientOverlay, stroke, silhouettes, seen, active);
+    }
+    bool operator==(const LayerEffects& aRhs) const { return members() == aRhs.members(); }
     bool operator!=(const LayerEffects& aRhs) const { return !(*this == aRhs); }
 };
 

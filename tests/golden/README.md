@@ -9,7 +9,7 @@ Each subdirectory is one case:
 .scratch/            failed-case evidence dumps (git-ignored)
 ```
 
-The S14 suite in `tools/verify_blur` imports `input.*` through the production
+The S14 suite in `tools/render_verify` imports `input.*` through the production
 `ImageFileLoader`, renders one frame through the production composite wiring, and diffs
 the render against `expected.png`. Cases without `expected.png` are reported as SKIP,
 not failures.
@@ -19,13 +19,13 @@ not failures.
 ```sh
 # 1. (re)generate inputs + default case.json for new cases (never touches expected.png
 #    or existing case.json):
-tools/verify_blur/build_and_run.sh --no-build --golden-gen
+tools/render_verify/build_and_run.sh --no-build --golden-gen
 
 # 2. (re)author goldens (dispatches per case.json "author"):
 tests/golden/author_goldens.sh
 
 # 3. run the whole harness (S14 included):
-tools/verify_blur/build_and_run.sh
+tools/render_verify/build_and_run.sh
 ```
 
 ## Reference programs (case.json "author")
@@ -41,7 +41,7 @@ tools/verify_blur/build_and_run.sh
 
 ## Adding a case
 
-Add a `CaseSpec` to `caseSpecs()` in `tools/verify_blur/golden.cpp` (a PSD case, an ORA
+Add a `CaseSpec` to `caseSpecs()` in `tools/render_verify/golden.cpp` (a PSD case, an ORA
 case, or both from one shared `Doc`; pick `author` per the matrix above), then run steps
 1-3. Eyeball the exported `expected.png` once after authoring — the golden is only as
 trustworthy as the program that made it.

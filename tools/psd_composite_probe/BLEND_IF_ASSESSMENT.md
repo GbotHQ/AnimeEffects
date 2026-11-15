@@ -119,7 +119,7 @@ ranges (the same `DestinationTexturizer::update` the non-separable blends alread
 
 ## 5. Verification plan
 
-1. **New harness suite** (`tools/verify_blur`, S16) with an independent CPU reference in the style of
+1. **New harness suite** (`tools/render_verify`, S16) with an independent CPU reference in the style of
    `cpu_ref.h`: trapezoid weight over Rec.601 luma of straight colors, applied as an alpha scale.
    Cases: destination-only, source-only, both, inverted/empty (weight 0), default (byte-identical to
    no Blend If), weight × fractional opacity, layer inside a Normal folder (pass-through), layer
@@ -170,7 +170,7 @@ the compositor's 39.44 means AE is at the floor of what the reachable feature se
 there. Closing the band itself needs `lfx2` (layer effects) and `iOpa` (fill opacity), listed
 as follow-ups below.
 
-Verification: `tools/verify_blur` suite S17 (coverage per blend mode, inverted, disabled,
+Verification: `tools/render_verify` suite S17 (coverage per blend mode, inverted, disabled,
 opacity/Blend If composition, composite/blur path, written-PSD import leg with flags and
 pixel values, project save/load byte-identical) plus the existing 3412 checks - all green;
 real pre-13 projects still load and round-trip (`build/tests/Debug/roundtrip` on three
@@ -226,7 +226,7 @@ Blend If is implemented and verified. What changed:
 | `LayerNode::renderComposite`, `FolderNode::renderComposite`, `FilterFrame` | the present paths carry the ranges and capture the backdrop when needed |
 | `src/ctrl/ImageFileLoader.cpp` | maps the PSD composite pair onto layers and folders |
 | `src/core/LayerNode.cpp`, `FolderNode.cpp`, `FormatVersion.h` | ranges appended after the object block (minor 11 -> 12), read under `minorVersion() >= 12` |
-| `tools/verify_blur` | S16 (16 checks) with the CPU reference `ref::blendPresent(..., &ranges)`, plus the CPU reference extension in `cpu_ref.h` |
+| `tools/render_verify` | S16 (16 checks) with the CPU reference `ref::blendPresent(..., &ranges)`, plus the CPU reference extension in `cpu_ref.h` |
 
 Measured (real file, `/home/gambot/Downloads/ALL FATHER F3 color fixes.psd`, frame 0 vs the PSD's own
 stored composite, `tools/psd_composite_probe`):
@@ -237,7 +237,7 @@ stored composite, `tools/psd_composite_probe`):
 | **with Blend If** | **9.46 / 3.82 %** | 31.09 | **6.05 (0.51 % >32)** |
 | independent compositor (same features) | 8.36 | 39.44 | 3.45 |
 
-Harness: `AE_BUILD_DIR=build tools/verify_blur/build_and_run.sh` -> **3412 checks, 0 failures**
+Harness: `AE_BUILD_DIR=build tools/render_verify/build_and_run.sh` -> **3412 checks, 0 failures**
 (S16 included; S14 goldens green).
 
 Deliberate follow-ups, none of them Blend If:
@@ -361,7 +361,7 @@ What landed:
 
 1. **`core/DistanceField`** — the exact separable Euclidean distance transform (Felzenszwalb &
    Huttenlocher's lower-envelope construction) from the layer's alpha to the nearest outside
-   pixel, as an 8-bit plane in the layer's own rect. `tools/verify_blur` S20 checks it against
+   pixel, as an 8-bit plane in the layer's own rect. `tools/render_verify` S20 checks it against
    brute force over every pixel of four shapes and pins the degenerate cases (a plane with no
    outline produces no field).
 2. **The plane travels with the resource** (`ResourceData::grabDistance`, an A8 plane like the
@@ -671,7 +671,7 @@ residue.
 
 ### 13.6 The test that should have existed
 
-`tools/verify_blur` **S22** pins the invariant that needed no oracle: the same layer, drawn
+`tools/render_verify` **S22** pins the invariant that needed no oracle: the same layer, drawn
 through the generated mesh and through an exact bounding quad, must produce the same pixels, and
 both must reproduce the layer's own bitmap drawn 1:1. Its fixture has an alpha-6 haze block and a
 ramp down to alpha 1 - content the old threshold called empty - so it fails on the old code. The
@@ -761,7 +761,7 @@ labelled as such.
 - `core/BlendIf.cpp` (`blendIfRangeWeight`) and
   `assets/shaders/LayerDrawingFrag.glsl` (`BlendIfRange`) - the two production implementations -
   now combine the edges with `min`.
-- `tools/verify_blur/cpu_ref.h` carries the same rule, and S16 has a new case that does **not**
+- `tools/render_verify/cpu_ref.h` carries the same rule, and S16 has a new case that does **not**
   compare against that reference (which shares the semantics, so agreeing with it would prove
   nothing): a backdrop of exactly luma 128 under a crossed range `64..192 / 96..224` and an
   opaque `(200,40,40)` top layer must land on the **hand-computed** `(164,84,84)` -

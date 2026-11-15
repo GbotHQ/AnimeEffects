@@ -34,6 +34,11 @@ add_subdirectory(src/media)
 add_subdirectory(src/ctrl)
 add_subdirectory(src/gui)
 add_subdirectory(src/deps/pugixml)
+# ctest is how the test harnesses are run: they need a GL context (offscreen by default, with a
+# real display as the fallback the shell wrappers implement), so the tests are registered in
+# tests/CMakeLists.txt with QT_QPA_PLATFORM set and SKIP_RETURN_CODE 2 for "no GL here".
+# enable_testing() has to come BEFORE the add_subdirectory that registers them.
+enable_testing()
 add_subdirectory(tests)
 
 if(APPLE)

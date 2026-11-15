@@ -44,8 +44,8 @@ ResourceHandle ResourceNode::updateHandleContent(Content aContent) {
             mHandle->setMaskInverted(false);
         }
     }
-    // last: grabbing the pixels re-derives whatever derived channels are wanted, from THESE
-    // pixels (see ResourceData::grabImage)
+    // last: the pixels, which is what makes every derived plane out of date (the next consumer
+    // that asks for one gets it derived from THESE pixels - see ResourceData::derived)
     mHandle->grabImage(aContent.pixels, aContent.rect.size(), img::Format_RGBA8);
 
     return oldHandle;

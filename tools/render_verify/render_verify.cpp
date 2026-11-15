@@ -101,6 +101,11 @@
 #include "cpu_ref.h"
 #include "scene.h"
 #include "harness.h"
+
+// the PSD descriptor / layer-effects fixture writers, shared with tests/import_reload.cpp (see the
+// header: one writer per format block, so two harnesses cannot disagree about the format)
+#include "PsdFixture.h"
+using namespace psdfx;
 #include "golden.h"
 
 namespace {
@@ -2808,6 +2813,34 @@ void suiteBlendIf() {
             ref::blendPresent(imageOf(contentOf(spec)), imageOf(bgOf(spec)), spec.mode, 1.0, &midBandDst), 2);
     }
 
+    // (7b) a folder whose ONLY non-default property is its ranges
+    // A folder applies its ranges on the composite path (FolderNode::renderComposite), and that
+    // path is entered through FolderNode::isCompositeFolder - which listed a non-Normal blend
+    // mode, an HSV key and a blur radius, but NOT the ranges. A folder whose only non-default
+    // property was its ranges therefore never reached the code that applies them: parsed,
+    // persisted, shown in the panel and silently ignored, while a folder that also had a mode or
+    // a blur applied them. Every folder case in this suite (7) and (8) carried one of those too,
+    // which is exactly why nothing noticed.
+    {
+        SceneSpec spec;
+        spec.top = solid;
+        spec.bg = rampX;
+        spec.mode = img::BlendMode_Normal; // nothing else asks for the composite path
+        spec.folder = true;
+        spec.blendIf = emptyDst;
+        const std::vector<uint8_t> hidden = renderSpec(spec);
+        expect(
+            hidden == bgOf(spec),
+            "S16: a ranges-only folder with a crossed range == backdrop (byte-identical)");
+
+        // and the weight it does apply is the one the reference computes
+        spec.blendIf = midBandDst;
+        compare(
+            "blend if on a ranges-only folder present (Normal)", renderSpec(spec),
+            ref::blendPresent(imageOf(contentOf(spec)), imageOf(bgOf(spec)), img::BlendMode_Normal, 1.0, &midBandDst),
+            2);
+    }
+
     // (8) composite/blur presentation plumbing: an emptied range must vanish, the default
     // must be byte-identical to no ranges (the blurred content itself is S4's subject)
     for (const bool folder : {false, true}) {
@@ -3578,275 +3611,6 @@ void suiteLayerMask() {
 // pinned without the 114 MB file), the gradient overlay's placement against an independently
 // written reference, the "effects ride the content pass" composition, and the import and
 // project-format legs.
-namespace {
-
-// a minimal big-endian descriptor writer, mirroring img/PSDDescriptor's documented layout
-class DescWriter {
-public:
-    std::vector<uint8> data;
-
-    void u32(uint32 aValue) {
-        data.push_back((uint8)(aValue >> 24));
-        data.push_back((uint8)(aValue >> 16));
-        data.push_back((uint8)(aValue >> 8));
-        data.push_back((uint8)aValue);
-    }
-    void f64(double aValue) {
-        uint64 bits = 0;
-        std::memcpy(&bits, &aValue, sizeof(bits));
-        for (int i = 7; i >= 0; --i)
-            data.push_back((uint8)(bits >> (i * 8)));
-    }
-    void key(const std::string& aKey) {
-        if (aKey.size() == 4) {
-            u32(0); // a 4-character key is written as a term
-        } else {
-            u32((uint32)aKey.size());
-        }
-        data.insert(data.end(), aKey.begin(), aKey.end());
-    }
-    void text(const std::string& aText) {
-        u32((uint32)aText.size());
-        for (char c : aText) {
-            data.push_back(0);
-            data.push_back((uint8)c);
-        }
-    }
-    void ostype(const char* aType) { data.insert(data.end(), aType, aType + 4); }
-    void enumValue(const char* aType, const char* aValue) {
-        ostype("enum");
-        key(aType);
-        key(aValue);
-    }
-    void unitFloat(const char* aUnit, double aValue) {
-        ostype("UntF");
-        data.insert(data.end(), aUnit, aUnit + 4);
-        f64(aValue);
-    }
-    void boolean(bool aValue) {
-        ostype("bool");
-        data.push_back(aValue ? 1 : 0);
-    }
-    void number(double aValue) {
-        ostype("doub");
-        f64(aValue);
-    }
-    void color(double aR, double aG, double aB) {
-        ostype("Objc");
-        text("");
-        key("null");
-        u32(3);
-        key("Rd  ");
-        number(aR);
-        key("Grn ");
-        number(aG);
-        key("Bl  ");
-        number(aB);
-    }
-    void startDescriptor(const std::string& aClass, uint32 aCount) {
-        ostype("Objc");
-        text("");
-        key(aClass);
-        u32(aCount);
-    }
-};
-
-// Photoshop's Stroke ("FrFX") as this repository's test file writes it: 4 px inside, a
-// two-stop gradient (251,250,158) -> (250,230,83), Screen, 100 %, at -78 degrees scaled to
-// 81 % of the layer extent
-void addStroke(DescWriter& w, const char* aStyle, const char* aPaintType, double aSize) {
-    w.key("FrFX");
-    // keys written below: enab, Md, Opct, Styl, PntT, Sz, Clr [+ Grad, Scl, Angl, Rvrs]
-    w.startDescriptor("null", aPaintType && std::strcmp(aPaintType, "GrFl") == 0 ? 11 : 7);
-    w.key("enab");
-    w.boolean(true);
-    w.key("Md  ");
-    w.enumValue("BlnM", "Scrn");
-    w.key("Opct");
-    w.unitFloat("#Prc", 100.0);
-    w.key("Styl");
-    w.enumValue("FStl", aStyle);
-    w.key("PntT");
-    w.enumValue("FrFl", aPaintType);
-    w.key("Sz  ");
-    w.unitFloat("#Pxl", aSize);
-    w.key("Clr ");
-    w.color(250.0, 235.0, 66.0);
-    if (aPaintType && std::strcmp(aPaintType, "GrFl") == 0) {
-        w.key("Grad");
-        w.startDescriptor("Grdn", 3);
-        w.key("GrdF");
-        w.enumValue("GrdF", "CstS");
-        w.key("Clrs");
-        w.ostype("VlLs");
-        w.u32(2);
-        const struct { double loc, r, g, b; } stops[2] = {{0.0, 251.0, 250.0, 158.0}, {4096.0, 250.0, 230.0, 83.0}};
-        for (const auto& st : stops) {
-            w.startDescriptor("Clrt", 2);
-            w.key("Clr ");
-            w.color(st.r, st.g, st.b);
-            w.key("Lctn");
-            w.number(st.loc);
-        }
-        w.key("Trns");
-        w.ostype("VlLs");
-        w.u32(2);
-        for (double loc : {0.0, 4096.0}) {
-            w.startDescriptor("TrnS", 2);
-            w.key("Opct");
-            w.unitFloat("#Prc", 100.0);
-            w.key("Lctn");
-            w.number(loc);
-        }
-        w.key("Scl ");
-        w.unitFloat("#Prc", 81.0);
-        w.key("Angl");
-        w.unitFloat("#Ang", -78.0);
-        w.key("Rvrs");
-        w.boolean(false);
-    }
-}
-
-// the two-stop gold gradient this repository's test file uses on its title layer
-void addGradientOverlay(DescWriter& w, bool aEnabled, const char* aStyle, double aAngle, double aScale) {
-    w.key("GrFl");
-    w.startDescriptor("null", 6);
-    w.key("enab");
-    w.boolean(aEnabled);
-    w.key("Md  ");
-    w.enumValue("BlnM", "Nrml");
-    w.key("Type");
-    w.enumValue("GrdT", aStyle);
-    w.key("Angl");
-    w.unitFloat("#Ang", aAngle);
-    w.key("Scl ");
-    w.unitFloat("#Prc", aScale);
-    w.key("Grad");
-    {
-        w.startDescriptor("Grdn", 3);
-        w.key("GrdF");
-        w.enumValue("GrdF", "CstS");
-        w.key("Clrs");
-        w.ostype("VlLs");
-        w.u32(2);
-        const struct { double loc, r, g, b; } stops[2] = {{0.0, 228.0, 161.0, 30.0}, {4096.0, 248.0, 213.0, 79.0}};
-        for (const auto& s : stops) {
-            w.startDescriptor("Clrt", 2);
-            w.key("Clr ");
-            w.color(s.r, s.g, s.b);
-            w.key("Lctn");
-            w.number(s.loc);
-        }
-        w.key("Trns");
-        w.ostype("VlLs");
-        w.u32(2);
-        for (double loc : {0.0, 4096.0}) {
-            w.startDescriptor("TrnS", 2);
-            w.key("Opct");
-            w.unitFloat("#Prc", 100.0);
-            w.key("Lctn");
-            w.number(loc);
-        }
-    }
-}
-
-// a full lfx2 block (DescriptorBlock2: version + data version, then the descriptor)
-std::vector<uint8> makeLfx2(
-    bool aGradientEnabled, const char* aStyle, double aAngle, double aScale, bool aWithChrome,
-    double aChromeBlur = 14.0
-) {
-    DescWriter w;
-    // header
-    {
-        DescWriter head;
-        head.u32(0);  // version
-        head.u32(16); // data version
-        w.data = head.data;
-    }
-    DescWriter body;
-    // descriptor name (unicode string, empty name is one NUL character) + class "null"
-    body.u32(1);
-    body.data.push_back(0);
-    body.data.push_back(0);
-    body.key("null");
-    body.u32(aWithChrome ? 2 : 1);
-    addGradientOverlay(body, aGradientEnabled, aStyle, aAngle, aScale);
-    if (aWithChrome) {
-        // a chrome the renderer can draw: the blurred silhouette needs a blur radius, and it
-        // is presented with its own blend mode, opacity, tint and distance/angle offset
-        body.key("ChFX");
-        body.startDescriptor("null", aChromeBlur > 0.0 ? 8 : 1);
-        body.key("enab");
-        body.boolean(true);
-        if (aChromeBlur > 0.0) {
-            body.key("Md  ");
-            body.enumValue("BlnM", "Scrn");
-            body.key("Opct");
-            body.unitFloat("#Prc", 50.0);
-            body.key("blur");
-            body.unitFloat("#Pxl", aChromeBlur);
-            body.key("Dstn");
-            body.unitFloat("#Pxl", 11.0);
-            body.key("lagl");
-            body.unitFloat("#Ang", 19.0);
-            body.key("Clr ");
-            body.color(243.0, 203.0, 72.0);
-            body.key("Invr");
-            body.boolean(true);
-        }
-    }
-    w.data.insert(w.data.end(), body.data.begin(), body.data.end());
-    return w.data;
-}
-
-// an lfx2 block whose only effect is a stroke
-// The smallest lfx2 that switches one effect ON: the parser maps the block key "ebbl" to
-// Type_Bevel and treats the effect as active only when its own "enab" is true, so this is a
-// file that asks for a bevel and nothing else. Used to pin that such a file is REPORTED - the
-// 114 MB test file's three bevels are the only ones available here, and a report nobody asserts
-// is a report that can quietly stop happening.
-std::vector<uint8> makeLfx2Bevel(bool aEnabled) {
-    DescWriter w;
-    {
-        DescWriter head;
-        head.u32(0);
-        head.u32(16);
-        w.data = head.data;
-    }
-    DescWriter body;
-    body.u32(1);
-    body.data.push_back(0);
-    body.data.push_back(0);
-    body.key("null");
-    body.u32(1);
-    body.key("ebbl");
-    body.startDescriptor("null", 1);
-    body.key("enab");
-    body.boolean(aEnabled);
-    w.data.insert(w.data.end(), body.data.begin(), body.data.end());
-    return w.data;
-}
-
-std::vector<uint8> makeLfx2Stroke(const char* aStyle, const char* aPaintType, double aSize) {
-    DescWriter w;
-    {
-        DescWriter head;
-        head.u32(0);
-        head.u32(16);
-        w.data = head.data;
-    }
-    DescWriter body;
-    body.u32(1);
-    body.data.push_back(0);
-    body.data.push_back(0);
-    body.key("null");
-    body.u32(1);
-    addStroke(body, aStyle, aPaintType, aSize);
-    w.data.insert(w.data.end(), body.data.begin(), body.data.end());
-    return w.data;
-}
-
-} // namespace
 
 //-------------------------------------------------------------------------------------------------
 // S21: resource identity. A source reload has to answer "which layer in the project is this layer
@@ -4082,8 +3846,8 @@ void suiteResourceIdentity() {
 // Every layer is drawn through a triangular mesh generated from its own alpha
 // (img::GridMeshCreator): a cell exists only where the image "has content", and the boundary
 // vertices are pulled inward ("burr reduction") so the mesh follows the shape instead of
-// carrying empty space around. That mesh is a RENDERING structure - whatever it calls empty is
-// never drawn - so the pixels it calls content have to be exactly the layer's support.
+// carrying empty space around. That mesh is a RENDERING structure: whatever no cell covers is
+// never drawn, so every pixel the layer must draw has to be inside a cell.
 //
 // It used to be alpha > 10, which silently clipped the faint end of every antialiased edge and
 // dropped whole cells whose content was fainter than that. Measured on this repository's
@@ -4110,12 +3874,12 @@ void suiteMeshCoverage() {
     // to decide about it rather than push it to the border). The three blocks are the three
     // cases the content test exists to tell apart:
     //   * a solid 32x32 block - DELIBERATE paint, the mesh must cover it;
-    //   * an alpha-6 haze block - the ACCIDENT case (erase/partial-operation residue). Nobody
-    //     paints at 6/255; it must NOT become content, or it creates cells and pushes the burr
+    //   * an alpha-6 haze block - the ACCIDENT case (erase/partial-operation residue). A uniform
+    //     veil like this must NOT become content, or it creates cells and pushes the burr
     //     reduction out, bending the mesh silhouette away from the form the artist animates;
     //   * a ramp from alpha 1 to 40 - DELIBERATE soft paint, whose faint end is a judgement
-    //     call: today's fixed threshold cuts it below 10, and that is exactly the open problem
-    //     (the threshold should come from the layer's own statistics, not be a constant).
+    //     call: the old fixed threshold of 10 cut it; the derived level lowers the bar, and the
+    //     edge test keeps the faint end that still falls below the level.
     const QRect solid(16, 16, 32, 32);
     const QRect haze(96, 16, 48, 48);
     const QRect ramp(16, 80, 48, 16);
@@ -4303,17 +4067,18 @@ void suiteMeshCoverage() {
 //-------------------------------------------------------------------------------------------------
 // S23: how a content cutoff CANNOT be applied - and how it must be.
 //
-// S22 fixes the test that decides cell existence (alpha > 10) and shows what it costs. The open
-// question is per-layer: the level should not be the same constant for a layer whose faint pixels
-// are a deliberate airbrushed skirt and for a layer whose faint pixels are erase residue. The first
-// attempt at measuring that (an experiment that wanted to render each candidate level) applied the
-// level by MASKING the pixels handed to the mesh builder - zero every alpha <= T, then let the
-// builder run its usual "alpha > 10" test. That cannot work, and both halves are proved here:
+// S22 fixes the test that decides cell existence and shows what it costs. The level is per-layer:
+// it should not be the same constant for a layer whose faint pixels are a deliberate airbrushed
+// skirt and for a layer whose faint pixels are erase residue (img::MeshContentLevel derives it;
+// this suite holds the level still to test the mechanism). The first attempt at measuring that (an
+// experiment that wanted to render each candidate level) applied the level by MASKING the pixels
+// handed to the mesh builder - zero every alpha <= T, then let the builder run its own content
+// test. That cannot work, and both halves are proved here:
 //
-//   (1) masking can never RELAX the level. It only deletes pixels, and every pixel it deletes
-//       (alpha <= T <= 10) was already below the builder's bar, so the surviving set of
-//       above-threshold pixels is unchanged. A soft, isolated skirt therefore stays unmeshed no
-//       matter how low T is - the exact opposite of what the experiment claimed to render.
+//   (1) masking can never RELAX the level. It only deletes pixels, so every pixel that survives is
+//       still tested against the builder's own bar; the mask can make the test stricter, never
+//       looser. A soft, isolated skirt therefore stays unmeshed no matter how low T is - the exact
+//       opposite of what the experiment claimed to render.
 //   (2) masking can, by accident, ADD content. GridMeshCreator::Image dilates alpha by one pixel
 //       (expandAlpha1Pixel) BEFORE the test: a pixel zeroed by the mask takes its neighbour's
 //       alpha, so an opaque stroke hands its own value to the faint pixel beside it and a cell
@@ -4396,21 +4161,23 @@ void suiteMeshContentLevel() {
     const int prodFar = verticesInX(raw, img::GridMeshCreator::kContentAlphaThreshold, 48, 96);
     const int maskFar = verticesInX(masked2, img::GridMeshCreator::kContentAlphaThreshold, 48, 96);
     const int levelFar = verticesInX(raw, 2, 48, 96);
-    std::printf("  [mesh level] tris: production(T=10) %d | masked(T=2) %d | level(T=2) %d | level(T=30) %d\n",
+    std::printf("  [mesh level] tris: const10(T=10) %d | masked(T=2) %d | level(T=2) %d | level(T=30) %d\n",
                 prod, mask2, level2, level30);
-    std::printf("  [mesh level] vertices over the isolated skirt: production %d | masked(T=2) %d | level(T=2) %d\n",
+    std::printf("  [mesh level] vertices over the isolated skirt: const10 %d | masked(T=2) %d | level(T=2) %d\n",
                 prodFar, maskFar, levelFar);
 
-    // (0) the default argument IS production's behaviour: nothing that follows changes the shipped
-    // path unless a caller asks for it.
+    // (0) the CREATOR's default argument is the old constant. This is not production's level any
+    // more - production goes through GridMesh::createFromImage, which derives (S26 pins that) - so
+    // the constant is the held-still control the rest of the suite compares against.
     expect(triangles(raw, img::GridMeshCreator::kContentAlphaThreshold) == triangles(raw, 10),
-           "S23: the threshold parameter defaults to the shipped constant");
+           "S23: the creator's default argument is the old constant");
 
-    // (1) the isolated skirt is not meshed at production's level, and masking a lower level does not
+    // (1) the isolated skirt is not meshed at the constant level, and masking a lower level does not
     // mesh it either: masking deletes pixels, it cannot relax a test. (This is the check that
     // falsifies the masking experiment: its alpha-6 content stayed unmeshed at every "cutoff".)
     expect(prodFar == 0,
-           QString("S23: production does not mesh the isolated alpha-6 skirt (%1 vertices)").arg(prodFar));
+           QString("S23: the constant level does not mesh the isolated alpha-6 skirt (%1 vertices)")
+               .arg(prodFar));
     expect(maskFar == 0,
            QString("S23: masking a lower level does not mesh it either (%1 vertices)").arg(maskFar));
 
@@ -5179,7 +4946,9 @@ void suiteLayerStroke() {
                 if (aField) {
                     auto* data = new uint8[aField->size()];
                     std::copy(aField->begin(), aField->end(), data);
-                    node->data().grabDistance(XCMemBlock(data, aField->size()), size);
+                    node->data().grabDistance(
+                        XCMemBlock(data, aField->size()), size,
+                        img::ResourceData::derivationRecipe(img::ResourceData::Derivation_Distance));
                 }
                 nodes.push_back(node);
                 return node;
@@ -5229,6 +4998,45 @@ void suiteLayerStroke() {
             ++gFails;
         caseReport("S20: the 3 px inside band lands on the analytic outline band", ok, diffStr(d));
 
+        // The need for the field is declared by the CONSUMER, where the consumer is: nothing says
+        // "this layer wants the distance field" except the drawing of a layer whose stroke is on
+        // (LayerNode::render -> TimeKeyExpans::requireDistanceField). The importer used to be the
+        // only place that ever said it, and the import is the one moment when that is true by
+        // construction: a source RELOAD that gives the layer a stroke, or an undo of an effect
+        // change, updates the node's effects and never revisits the resource - the pass was then
+        // silently left off, with a resource that had no field and no reason to make one.
+        // Here the resource is built WITHOUT a field and with nothing declared, exactly as such a
+        // resource would be, and the stroke is switched on afterwards: if the render does not
+        // declare the need, there is no field, no band, and this fails.
+        {
+            Pool pool;
+            pool.size = canvas;
+            core::ObjectTree tree;
+            auto* root = new core::FolderNode("root");
+            tree.grabTopNode(root);
+            auto* res = pool.image("fx", filled, nullptr); // pixels only: no field grabbed
+            res->data().setDeriver(&core::DistanceField::deriveResourceChannels);
+            expect(
+                res->data().cached(img::ResourceData::Derivation_Distance).buffer.data() == nullptr,
+                "S20: a resource built without a stroke has no plane yet");
+
+            auto* layer = scene::addLayer(tree, root, res, "fx", center, 0.0f, unit);
+            layer->setLayerEffects(effects); // the stroke arrives after the resource was built
+            const auto demanded = fx.render(tree, camera, 0);
+
+            expect(
+                res->data().cached(img::ResourceData::Derivation_Distance).buffer.data() != nullptr,
+                "S20: drawing a layer with a stroke is what derives the plane (asking IS the need)");
+            const scene::Diff dd = scene::diffImages(demanded, ref::imageToBytes(expected));
+            const bool okDemand = dd.maxDiff <= 2 && dd.mean <= 0.2;
+            ++gChecks;
+            if (!okDemand)
+                ++gFails;
+            caseReport(
+                "S20: that field is the one the band needs (same band as the pre-baked render)", okDemand,
+                diffStr(dd));
+        }
+
         // The field is a DERIVED channel: the consumer declares the need, the resource derives it
         // and keeps it current after every pixel change (ResourceData::grabImage ->
         // deriveChannels), and the render path only uploads what the resource produced. Everything
@@ -5238,15 +5046,20 @@ void suiteLayerStroke() {
             pool.size = canvas;
             auto* res = pool.image("fx", filled, nullptr);
             res->data().setDeriver(&core::DistanceField::deriveResourceChannels);
-            // WANTED BUT ABSENT is a state the resource can now express: declaring the need with no
-            // plane present derives it immediately (this used to be impossible - the old code
-            // inferred the need from "a plane exists", so a project that arrived without one could
-            // never get it, and the stroke silently did not draw)
-            expect(!res->data().hasDistance(), "S20: the resource starts with no derived channel");
-            res->data().setDerivationWanted(img::ResourceData::Derivation_Distance, true);
-            expect(res->data().hasDistance(), "S20: declaring the need derives the channel at once");
+            // ASKING IS THE WHOLE PROTOCOL. There is no "wanted" flag to set, so there is no state
+            // for a caller to leave unset: an absent plane (a project written before the plane
+            // existed, a derivation that failed) is derived by the first consumer that asks. The
+            // flag this replaced could not express "wanted but absent" at all, and a revision that
+            // had it still missed a source reload which gave a layer a stroke: nothing asked again.
+            const auto plane = [&]() {
+                return res->data().cached(img::ResourceData::Derivation_Distance).buffer.data();
+            };
+            expect(plane() == nullptr, "S20: the resource starts with no derived channel");
             expect(
-                !res->data().isDistanceStale(), "S20: a freshly derived channel is not stale");
+                res->data().derived(img::ResourceData::Derivation_Distance).data() != nullptr,
+                "S20: asking for the channel derives it at once");
+            expect(plane() != nullptr && !res->data().isDerivationStale(img::ResourceData::Derivation_Distance),
+                   "S20: the plane it hands back is current, not stale");
 
             const auto renderTree = [&]() {
                 core::ObjectTree tree;
@@ -5282,11 +5095,18 @@ void suiteLayerStroke() {
                 }
                 res->data().grabImage(XCMemBlock(data, count * 4), canvas, img::Format_RGBA8);
             }
+            // the pixels changed, so the plane the cache holds no longer describes them: it is
+            // stale until somebody asks, and asking is what the next draw does (that laziness is
+            // the point - nothing has to be kept current in the background)
             expect(
-                res->data().hasDistance() && !res->data().isDistanceStale(),
-                "S20: replacing the pixels re-derives the channel in the same call");
+                res->data().cached(img::ResourceData::Derivation_Distance).buffer.data() != nullptr
+                    && res->data().isDerivationStale(img::ResourceData::Derivation_Distance),
+                "S20: replacing the pixels makes the cached channel stale");
 
             const auto after = renderTree();
+            expect(
+                !res->data().isDerivationStale(img::ResourceData::Derivation_Distance),
+                "S20: the next draw re-derives it, and the band follows the new pixels");
             const float newDist = (pixel(after, x0 + 20, midY) - strokeRgb).length();
             const float oldDist = (pixel(after, x0, midY) - strokeRgb).length();
             expect(
@@ -5450,11 +5270,13 @@ void suiteLayerStroke() {
                 expect(imageKey != nullptr, "S20: the layer has an image key");
                 if (imageKey) {
                     const auto& res = *imageKey->data().resource();
-                    expect(res.hasDistance(), "S20: the import baked the outline distance field");
-                    if (res.hasDistance()) {
+                    expect(
+                        res.cached(img::ResourceData::Derivation_Distance).buffer.data() != nullptr,
+                        "S20: the import warmed the outline distance field");
+                    if (res.cached(img::ResourceData::Derivation_Distance).buffer.data() != nullptr) {
                         // spot-check the field against the analytic distance of the square:
                         // the layer rect is padded by the importer, so find the shape centre
-                        const auto& buf = res.distance();
+                        const auto& buf = res.cached(img::ResourceData::Derivation_Distance).buffer;
                         const QSize size = buf.pixelSize();
                         int bestX = 0, bestY = 0, best = -1;
                         for (int y = 0; y < size.height(); ++y) {
@@ -5497,7 +5319,8 @@ void suiteLayerStroke() {
                 const auto* key2 = found2 ? (const core::ImageKey*)found2->timeLine()->defaultKey(core::TimeKeyType_Image)
                                           : nullptr;
                 bool same = false;
-                if (key2 && key2->data().resource()->hasDistance()) {
+                if (key2
+                    && key2->data().resource()->cached(img::ResourceData::Derivation_Distance).buffer.data()) {
                     const auto* key1 = (const core::ImageKey*)found->timeLine()->defaultKey(core::TimeKeyType_Image);
                     const auto& a = key2->data().resource()->distance();
                     const auto& b = key1->data().resource()->distance();
@@ -5968,7 +5791,8 @@ void suiteLayerEffects() {
 
     // (1) the descriptor reader against a hand-written block
     {
-        const auto block = makeLfx2(true, "Lnr ", 90.0, 100.0, false);
+        const auto gradient = [](DescWriter& w) { addGradientOverlay(w, true, "Lnr ", 90.0, 100.0); };
+        const auto block = makeLfx2({gradient});
         img::PSDDescriptor descriptor;
         expect(
             descriptor.parse(block.data(), block.size(), 8),
@@ -6015,7 +5839,9 @@ void suiteLayerEffects() {
     // (2) the model: what is drawn, what is only recognised
     {
         core::LayerEffects effects;
-        const auto block = makeLfx2(true, "Lnr ", 90.0, 100.0, true);
+        const auto gradient = [](DescWriter& w) { addGradientOverlay(w, true, "Lnr ", 90.0, 100.0); };
+        const auto chrome = [](DescWriter& w) { addChrome(w, 14.0, 50.0, 11.0, 19.0, "Scrn"); };
+        const auto block = makeLfx2({gradient, chrome});
         img::PSDDescriptor descriptor;
         expect(descriptor.parse(block.data(), block.size(), 8), "S18: descriptor parses for the model test");
         expect(core::parseLayerEffects(descriptor, effects), "S18: the effects model parses");
@@ -6054,7 +5880,9 @@ void suiteLayerEffects() {
     // (bevel/emboss, stroke, satin, inner glow/shadow) or one that carries nothing to draw
     // (an enabled chrome without a blur) marks the result as not fully faithful
     {
-        const auto block = makeLfx2(true, "Lnr ", 90.0, 100.0, true, /* aChromeBlur = */ 0.0);
+        const auto gradient = [](DescWriter& w) { addGradientOverlay(w, true, "Lnr ", 90.0, 100.0); };
+        const auto chrome = [](DescWriter& w) { addChrome(w, 0.0, 50.0, 11.0, 19.0, "Scrn"); };
+        const auto block = makeLfx2({gradient, chrome});
         core::LayerEffects effects;
         img::PSDDescriptor descriptor;
         expect(descriptor.parse(block.data(), block.size(), 8), "S18b: descriptor parses");
@@ -6173,7 +6001,9 @@ void suiteLayerEffects() {
     // (5) import: a PSD whose layer carries an lfx2 block imports the effects, and the
     // project format round-trips them
     {
-        const auto block = makeLfx2(true, "Lnr ", 90.0, 100.0, true);
+        const auto gradient = [](DescWriter& w) { addGradientOverlay(w, true, "Lnr ", 90.0, 100.0); };
+        const auto chrome = [](DescWriter& w) { addChrome(w, 14.0, 50.0, 11.0, 19.0, "Scrn"); };
+        const auto block = makeLfx2({gradient, chrome});
 
         img::PSDFormat format;
         format.header().version = 1;

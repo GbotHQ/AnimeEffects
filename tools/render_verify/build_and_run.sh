@@ -10,9 +10,9 @@
 # compiled into the harness binary here; without it the first LayerNode aborts with an
 # XC_FATAL_ERROR shader FileIO error.
 #
-# Usage: tools/verify_blur/build_and_run.sh [--no-build] [harness args...]
+# Usage: tools/render_verify/build_and_run.sh [--no-build] [harness args...]
 #   harness args are passed to the binary, e.g.:
-#     tools/verify_blur/build_and_run.sh --no-build --golden-gen   # regenerate golden inputs
+#     tools/render_verify/build_and_run.sh --no-build --golden-gen   # regenerate golden inputs
 set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 cd "$ROOT"
@@ -42,9 +42,9 @@ if [[ "${1:-}" != "--no-build" ]]; then
 
     clang++ -std=c++17 -fPIC -O1 $ASAN_FLAGS \
         -DUSE_GL_CORE_PROFILE \
-        -Isrc -Isrc/deps/pugixml/src \
+        -Isrc -Isrc/deps/pugixml/src -Itests/support \
         $(pkg-config --cflags $QT_MODULES) \
-        tools/verify_blur/verify_blur.cpp tools/verify_blur/scene.cpp tools/verify_blur/golden.cpp \
+        tools/render_verify/render_verify.cpp tools/render_verify/scene.cpp tools/render_verify/golden.cpp \
         "$BUILD_DIR/qrc_assets.cpp" \
         -Wl,--start-group \
         "$BUILD_DIR"/src/core/Debug/libcore.a \
@@ -58,7 +58,7 @@ if [[ "${1:-}" != "--no-build" ]]; then
         "$BUILD_DIR"/src/deps/pugixml/Debug/libpugixml.a \
         -Wl,--end-group \
         $(pkg-config --libs $QT_MODULES) $(pkg-config --libs $FFMPEG_MODULES) -lGL \
-        -o "$BUILD_DIR/verify_blur"
+        -o "$BUILD_DIR/render_verify"
 else
     shift # --no-build consumed; the rest goes to the binary
 fi
@@ -66,7 +66,7 @@ fi
 run() { # $1 = Qt platform, rest = harness args
     local platform="$1"; shift
     echo "--- running with QT_QPA_PLATFORM=$platform ---"
-    QT_QPA_PLATFORM="$platform" "./$BUILD_DIR/verify_blur" "$@"
+    QT_QPA_PLATFORM="$platform" "./$BUILD_DIR/render_verify" "$@"
 }
 
 set +e
@@ -75,7 +75,7 @@ code=$?
 if [[ $code -eq 2 ]]; then
     # exit code 2 = GL bootstrap failure; retry on the real display
     echo "offscreen GL unavailable, retrying on X11 (DISPLAY=${DISPLAY:-:0})"
-    QT_QPA_PLATFORM=xcb DISPLAY="${DISPLAY:-:0}" "./$BUILD_DIR/verify_blur" "$@"
+    QT_QPA_PLATFORM=xcb DISPLAY="${DISPLAY:-:0}" "./$BUILD_DIR/render_verify" "$@"
     code=$?
 fi
 exit $code

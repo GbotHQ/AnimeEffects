@@ -42,7 +42,7 @@ for dir in "$ROOT"/*/; do
     done
 done
 if [[ $failed -eq 0 ]]; then
-    echo "all goldens exported. Diff with: tools/verify_blur/build_and_run.sh"
+    echo "all goldens exported. Diff with: tools/render_verify/build_and_run.sh"
 else
     echo "some exports failed (see above)" >&2
 fi

@@ -52,7 +52,7 @@ struct Node {
     QColor rightColor; // if valid, the content's right half uses this color instead
     int alpha = 255;
     // procedural painters (exclusive with flat/rightColor): paint the same geometry the
-    // S12 GPU-vs-CPU suite uses (verify_blur.cpp fillWedgeOpaque) so a blend-mode
+    // S12 GPU-vs-CPU suite uses (render_verify.cpp fillWedgeOpaque) so a blend-mode
     // divergence region can be cross-checked against a reference app on a FLAT scene
     // (identity transforms = exact texel sampling, so any divergence is blend math,
     // not resampling). offX/offY shift the drawn geometry within the layer bitmap.
@@ -468,7 +468,7 @@ Doc layerBlendOverSemi(Mode aMode) {
 // resampler vs GPU bilinear at the wedge's hard edges under transform). This FLAT scene
 // (identity layers, exact texel sampling) imports the same content through PSD and renders
 // with Krita as truth. RESULT: passes at max=1/255 — our GPU Color formula is faithful and
-// the S12 spike is a replica-resampling artifact (see the comment at verify_blur.cpp's
+// the S12 spike is a replica-resampling artifact (see the comment at render_verify.cpp's
 // runCase in the S12 suite).
 Doc colorWedgeGray() {
     // opaque base + the full wedge pattern overlaid, top Content layer drawn shifted

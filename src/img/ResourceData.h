@@ -44,16 +44,22 @@ public:
 
     // ---------------------------------------------------------------- DERIVED CHANNELS
     // A derived channel is a per-resource plane computed FROM the image (as opposed to the mask,
-    // which is authored data that simply travels with it). The renderer's consumers - Photoshop's
-    // Stroke and Bevel/Emboss both need a distance from the layer's outline - declare that they
-    // want one; the resource carries the plane, the image revision and the recipe it was built
-    // from, and recomputes it when any of those change.
+    // which is authored data that simply travels with it). Photoshop's Stroke and Bevel/Emboss are
+    // both functions of a distance from the layer's outline, so the plane is a CACHE OF A PURE
+    // FUNCTION of the pixels, and that is the whole model:
     //
-    // Why the bookkeeping is explicit:
-    //   - WANTED vs PRESENT. Inferring the need from "a plane exists" cannot express "wanted but
-    //     absent" (a project written before the plane existed, or a derivation that failed), so
-    //     the consumer could silently get no effect at all. The flag is persisted, so a project
-    //     knows what it needs before it has it.
+    //   - NOTHING DECLARES A NEED. A consumer that wants the plane asks for it (derived()); the
+    //     resource derives one if it has none, or if the one it has was measured from other pixels
+    //     or built by another recipe. There is no "wanted" flag, because a want is a fact about a
+    //     CONSUMER: two objects can share one resource (so the flag is really a union nobody
+    //     reference-counts), it changes when an effect is switched on or off or undone, and it was
+    //     persisted with the project - three ways for the resource's copy of somebody else's
+    //     configuration to be wrong. An earlier revision had that flag, and a source reload that
+    //     gave a layer a stroke left the resource never asked again: the stroke silently did not
+    //     draw. Asking is not something a caller can forget to do.
+    //   - PRESENT vs ABSENT is therefore an outcome, not a state: a plane that cannot be computed
+    //     (no pixels in a slimmed project, a shape with no outline) stays absent, the deriver says
+    //     so in the log, and the consumer draws nothing instead of something invented.
     //   - RECIPE. The plane's meaning depends on how it was computed (the outline threshold, and
     //     anything a future version adds - a signed/outside distance, a different metric). A
     //     recipe number means a change invalidates old planes instead of silently consuming them.
@@ -71,8 +77,7 @@ public:
     static const char* derivationName(Derivation aKind);
 
     struct DerivedChannel {
-        bool wanted = false;              // a consumer declared it needs this channel
-        Buffer buffer;                    // the plane itself (empty = not built)
+        Buffer buffer;                    // the plane itself (empty = not built, or not computable)
         int sourceImageRevision = -1;     // the image revision it was measured from
         int recipe = 0;                   // the recipe it was built with
         int revision = 0;                 // bumped when the plane changes (the GPU cache keys on it)
@@ -82,38 +87,33 @@ public:
 
     // The computation itself, when one is registered (see setDeriver): the resource cannot
     // compute a derived channel on its own - the algorithms live above img - so the owner of the
-    // pixels installs a callback that fills whatever is wanted and stale. It runs after every
-    // pixel change (grabImage) and when a need is first declared, which is why no render-time
-    // CPU work is needed anywhere.
+    // pixels installs a callback that fills whatever a consumer asks for and is not current. It
+    // runs from derived(), i.e. inside the caller that wants the plane (the render path for a
+    // stroke), which is the only place that knows it is about to be used.
     typedef std::function<void(ResourceData&)> Deriver;
     void setDeriver(const Deriver& aDeriver) { mDeriver = aDeriver; }
-    // runs the registered deriver for every wanted-and-stale channel
-    void deriveChannels();
 
-    void setDerivationWanted(Derivation aKind, bool aWanted);
-    bool isDerivationWanted(Derivation aKind) const { return mDerived[aKind].wanted; }
-    const DerivedChannel& derived(Derivation aKind) const { return mDerived[aKind]; }
-    // true when a wanted channel is missing, measured from other pixels, or built by another
-    // recipe: a consumer must not use it (and the renderer reports instead of drawing with it)
+    // THE demand: returns the plane for aKind, deriving it first when the resource has none or the
+    // one it has does not describe the current pixels and recipe. Non-const for that reason; call
+    // it from a context that may do CPU work (the render path already does its GPU uploads there).
+    const Buffer& derived(Derivation aKind);
+    // true when a plane is present but does not describe the current pixels or recipe: derived()
+    // never returns one of these, so this is for reporting, not for deciding
     bool isDerivationStale(Derivation aKind) const;
-    void grabDerived(Derivation aKind, const XCMemBlock& aBlock, const QSize& aSize);
-    void freeDerived(Derivation aKind);
+    // what the cache holds right now, WITHOUT deriving: for a caller that reports state instead of
+    // consuming it (the project writer, which must not compute anything while saving)
+    const DerivedChannel& cached(Derivation aKind) const { return mDerived[aKind]; }
+    // how many times the plane has changed (the GPU cache keys on it)
     int derivedRevision(Derivation aKind) const { return mDerived[aKind].revision; }
+    void grabDerived(Derivation aKind, const XCMemBlock& aBlock, const QSize& aSize, int aRecipe);
+    void freeDerived(Derivation aKind);
 
-    // Restores what a saved file recorded about its derived channels: which are wanted, and the
-    // recipe each carried plane was built with. Called by the reader AFTER the planes are read,
-    // so the resource's own state (present + source revision) is not disturbed; a wanted channel
-    // with no plane is simply stale, and the resource derives it on the next pixel change or when
-    // deriveChannels() is asked.
-    void restoreDerivationState(int aWantedFlags, const int* aRecipes);
     // the distance channel, named for its consumer (the stroke pass)
-    void grabDistance(const XCMemBlock& aBlock, const QSize& aSize) {
-        grabDerived(Derivation_Distance, aBlock, aSize);
+    const Buffer& distance() { return derived(Derivation_Distance); }
+    void grabDistance(const XCMemBlock& aBlock, const QSize& aSize, int aRecipe) {
+        grabDerived(Derivation_Distance, aBlock, aSize, aRecipe);
     }
-    bool hasDistance() const { return mDerived[Derivation_Distance].isPresent(); }
-    const Buffer& distance() const { return mDerived[Derivation_Distance].buffer; }
     int distanceRevision() const { return derivedRevision(Derivation_Distance); }
-    bool isDistanceStale() const { return isDerivationStale(Derivation_Distance); }
 
     int imageRevision() const { return mImageRevision; }
 
@@ -139,7 +139,6 @@ public:
     void setIsLayer(bool aIsLayer) { mIsLayer = aIsLayer; }
     void setBlendMode(BlendMode aMode);
     void setIsVisible(bool aIsVisible) { mIsVisible = aIsVisible; }
-    void copyFrom(const ResourceData& aData);
 
     bool isLayer() const { return mIsLayer; }
     bool isVisible() const {return mIsVisible; }
@@ -158,6 +157,9 @@ public:
     QVector2D center() const;
 
 private:
+    // runs the registered deriver for every channel that is not current
+    void deriveChannels();
+
     img::Buffer mBuffer;
     img::Buffer mMask;
     bool mMaskEnabled;

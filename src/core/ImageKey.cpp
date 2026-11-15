@@ -38,9 +38,7 @@ void ImageKey::Data::setImageOffset(const QVector2D& aOffset) {
 }
 
 //-------------------------------------------------------------------------------------------------
-ImageKey::Cache::Cache():
-    mTexture(), mMaskTexture(), mMaskRevision(-1), mDistanceTexture(), mDistanceRevision(-1),
-    mDistanceImageRevision(-1) {}
+ImageKey::Cache::Cache(): mTexture(), mMaskTexture(), mMaskSource(), mDistanceTexture(), mDistanceSource() {}
 
 //-------------------------------------------------------------------------------------------------
 ImageKey::ImageKey(): mData(), mCache(), mSleepCount(0) { mData.resource().setOriginKeeping(true); }
@@ -101,21 +99,24 @@ void ImageKey::resetTextureCache() {
     syncDistanceTexture(); // the field is derived from the pixels this just re-uploaded
 }
 
-// the layer's derived outline distance field: this is an UPLOAD, nothing more. The resource
-// owns the derivation - it computed the plane when the need was declared and recomputes it after
-// every pixel change (ResourceData::grabImage -> deriveChannels) - so no CPU work happens here,
-// inside a draw. A wanted channel that is missing or stale is simply not uploaded, and the
-// stroke pass is left off rather than drawn from pixels that no longer exist.
-void ImageKey::syncDistanceTexture() {
+// The layer's derived outline distance field: asking for it here IS the demand for it. The
+// resource owns the computation (it holds the pixels and the recipe) and answers with a plane that
+// describes the pixels it has now, deriving one if that means CPU work; this call runs in the
+// render path, which is where a resource's asynchronous-ish work already happens (the GPU uploads
+// and the mask rebuild). A channel that cannot be built - no pixels in a slimmed project, a shape
+// with no outline - stays absent, and the stroke pass is then left off rather than drawn from
+// something invented.
+bool ImageKey::syncDistanceTexture() {
     auto& resource = *mData.resource();
     const auto kind = img::ResourceData::Derivation_Distance;
-    if (mCache.distanceRevision() == resource.derivedRevision(kind)) {
-        return;
+    const auto* source = resource.serialAddress();
+    const auto& field = resource.derived(kind); // may derive; the answer describes these pixels
+    const bool usable = field.data() != nullptr;
+    if (mCache.distanceSource().matches(source, resource.derivedRevision(kind))) {
+        return usable;
     }
 
-    const bool usable = resource.hasDistance() && !resource.isDistanceStale();
     if (usable) {
-        const auto& field = resource.distance();
         auto& ggl = gl::Global::functions();
         ggl.glPixelStorei(GL_UNPACK_ALIGNMENT, 1); // odd widths are not 4-aligned
         mCache.distanceTexture().create(field.pixelSize(), field.data(), GL_RED, GL_R8, GL_UNSIGNED_BYTE);
@@ -125,13 +126,15 @@ void ImageKey::syncDistanceTexture() {
     } else {
         mCache.distanceTexture().destroy();
     }
-    mCache.setDistanceRevision(resource.distanceRevision());
+    mCache.distanceSource().set(source, resource.distanceRevision());
+    return usable;
 }
 
 void ImageKey::syncMaskTexture() {
     auto& resource = *mData.resource();
-    if (mCache.maskRevision() == resource.maskRevision()) {
-        return; // unchanged since the last build (a missing mask is revision 0 as well)
+    const auto* source = resource.serialAddress();
+    if (mCache.maskSource().matches(source, resource.maskRevision())) {
+        return; // this resource's mask, unchanged since the last build
     }
 
     // the mask shares the image's rect, so its texture is sampled with the image's texture
@@ -150,7 +153,7 @@ void ImageKey::syncMaskTexture() {
     } else {
         mCache.maskTexture().destroy();
     }
-    mCache.setMaskRevision(resource.maskRevision());
+    mCache.maskSource().set(source, resource.maskRevision());
 }
 
 void ImageKey::sleep() {

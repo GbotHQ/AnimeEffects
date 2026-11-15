@@ -212,9 +212,9 @@ SourceDocument::Entry describeLayer(
     // the pixels, assembled in the layer's own (padded) rect
     auto imagePair = img::Util::createTextureImage(aHeader, aLayer);
     entry.rect = imagePair.second;
-    entry.pixels = imagePair.first;
+    entry.pixels.adopt(imagePair.first);
     entry.pixelSize = imagePair.second.size();
-    if (!entry.pixels.data) {
+    if (entry.pixels.isEmpty()) {
         aOutError = QString("Failed to decode the image data of a layer ('%1').").arg(aName);
         return entry;
     }
@@ -224,10 +224,15 @@ SourceDocument::Entry describeLayer(
     bool maskEnabled = true;
     bool maskInverted = false;
     if (loadLayerMask(aLayer, entry.rect, maskBlock, maskEnabled, maskInverted)) {
-        entry.mask = maskBlock;
+        entry.mask.adopt(maskBlock);
         entry.maskEnabled = maskEnabled;
         entry.maskInverted = maskInverted;
     }
+    // the channel has now been consulted, whether or not it held anything: this file has a user
+    // mask on this layer or it does not, and that is a fact the reload may act on (see the field's
+    // note in the header - it sits here, not with the other PSD facts above, because a
+    // structure-only description never looks at the channel and must not claim to)
+    entry.hasMaskData = true;
     return entry;
 }
 
@@ -285,7 +290,7 @@ SourceDocument::Entry describeMerged(const PSDFormat::Header& aHeader, const PSD
     }
     mem = img::Util::recreateForBiLinearSampling(mem, aCanvasSize);
     entry.rect = QRect(QPoint(-1, -1), aCanvasSize + QSize(2, 2));
-    entry.pixels = mem;
+    entry.pixels.adopt(mem);
     entry.pixelSize = entry.rect.size();
     return entry;
 }
@@ -315,7 +320,7 @@ SourceDocument describeImage(const QImage& aImage, const QString& aDocumentName,
         auto texImage = img::Util::createTextureImage(image);
         // the layer sits at the document's origin, in the padded rect the texel work needs
         entry.rect = QRect(QPoint(0, 0), texImage.second.size());
-        entry.pixels = texImage.first;
+        entry.pixels.adopt(texImage.first);
         entry.pixelSize = texImage.second.size();
     }
     document.top.children.push_back(std::move(entry));
@@ -357,7 +362,7 @@ SourceDocument describeOra(
             // rect (img::Util::createResourceNode set it that way, and the object node took its
             // rect and posture from it) - kept, so a merged import lands where it always did
             entry.rect = QRect(texImage.second.center(), texImage.second.size());
-            entry.pixels = texImage.first;
+            entry.pixels.adopt(texImage.first);
             entry.pixelSize = texImage.second.size();
         }
         document.top.children.push_back(std::move(entry));
@@ -436,7 +441,7 @@ SourceDocument describeOra(
             if (aWantPixels && !lyr.image.isNull()) {
                 auto texImage = img::Util::createTextureImage(lyr.image);
                 entry.rect = texImage.second;
-                entry.pixels = texImage.first;
+                entry.pixels.adopt(texImage.first);
                 entry.pixelSize = texImage.second.size();
             }
             parent->children.push_back(std::move(entry));
@@ -497,7 +502,7 @@ SourceDocument describePsd(
     if (layers.empty()) {
         // flattened PSD: one opaque layer holding the merged image data
         auto entry = describeMerged(aFormat.header(), aFormat.imageData(), document.canvasSize, aDocumentName);
-        if (!entry.pixels.data && aWantPixels) {
+        if (entry.pixels.isEmpty() && aWantPixels) {
             document.error = "failed to decode the merged image data";
             return document;
         }
@@ -572,20 +577,24 @@ img::ResourceNode* buildResourceNode(SourceDocument& aDocument, SourceDocument::
         // the resource keeps its own derived channels current after every pixel change (img
         // cannot compute them itself: the algorithms live in core)
         data.setDeriver(&core::DistanceField::deriveResourceChannels);
-        if (aEntry.pixels.data) {
+        if (aEntry.pixels) {
             data.grabImage(aDocument.takePixels(aEntry), aEntry.pixelSize, img::Format_RGBA8);
         }
-        if (aEntry.mask.data) {
-            data.grabMask(aEntry.mask, aEntry.pixelSize);
-            aEntry.mask = XCMemBlock();
+        if (aEntry.mask) {
+            data.grabMask(aEntry.mask.take(), aEntry.pixelSize);
             data.setMaskEnabled(aEntry.maskEnabled);
             data.setMaskInverted(aEntry.maskInverted);
         }
-        // what the layer's effects need FROM the resource: a stroke is a function of the
-        // outline distance, so the resource derives that channel (declaring it runs the deriver
-        // at once, which is why there is no import-time bake)
-        data.setDerivationWanted(
-            img::ResourceData::Derivation_Distance, aEntry.effects.stroke.isUsable());
+        // A stroke is a function of the outline distance, so a layer that has one will ask for
+        // that plane as soon as it is drawn. Asking here too is a WARM-UP - derive it before the
+        // first frame instead of during it - and nothing more: there is no state to record, so
+        // being wrong about which layer needs it (or about whether this build draws the stroke at
+        // all) costs at most one derivation, not a missing effect. A revision of this file
+        // recorded the need as a flag on the resource instead, and a reload that added a stroke
+        // then never set it: see ResourceData's note on derived channels.
+        if (aEntry.effects.stroke.isUsable()) {
+            (void)data.distance();
+        }
     }
     return node;
 }
@@ -638,16 +647,21 @@ ResourceDiff diffResource(const img::ResourceNode& aNode, const SourceDocument::
     if (diff.pixels || data.image().pixelSize() != aEntry.pixelSize
         || data.image().pixelSize() != aEntry.rect.size()) {
         diff.pixels = true;
-    } else if (aEntry.pixels.data) {
+    } else if (aEntry.pixels) {
         // the reader hands the same padded layout the importer stores, so a byte compare is the
         // comparison of the two images
         const size_t size = data.image().size();
-        diff.pixels = size != aEntry.pixels.size
-            || !std::equal(data.image().data(), data.image().data() + size, aEntry.pixels.data);
+        diff.pixels = size != aEntry.pixels.size()
+            || !std::equal(data.image().data(), data.image().data() + size, aEntry.pixels.data());
     }
 
-    const bool fileHasMask = aEntry.mask.data != nullptr;
-    if (data.hasMask() != fileHasMask) {
+    // The mask is compared only when the description knows the file's mask channel (see
+    // Entry::hasMaskData): otherwise there is nothing to compare against and the project's own
+    // mask must be left exactly as it is.
+    const bool fileHasMask = !aEntry.mask.isEmpty();
+    if (!aEntry.hasMaskData) {
+        diff.mask = false;
+    } else if (data.hasMask() != fileHasMask) {
         diff.mask = true;
     } else if (fileHasMask) {
         if (data.isMaskEnabled() != aEntry.maskEnabled || data.isMaskInverted() != aEntry.maskInverted
@@ -655,8 +669,8 @@ ResourceDiff diffResource(const img::ResourceNode& aNode, const SourceDocument::
             diff.mask = true;
         } else {
             const size_t size = data.mask().size();
-            diff.mask = size != aEntry.mask.size
-                || !std::equal(data.mask().data(), data.mask().data() + size, aEntry.mask.data);
+            diff.mask = size != aEntry.mask.size()
+                || !std::equal(data.mask().data(), data.mask().data() + size, aEntry.mask.data());
         }
     }
     return diff;
