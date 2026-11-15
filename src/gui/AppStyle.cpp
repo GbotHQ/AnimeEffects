@@ -9,7 +9,7 @@
 #include "ctrl/System.h"
 #ifdef Q_OS_WIN
     #define WIN32_LEAN_AND_MEAN
-    #include <Windows.h>
+    #include <windows.h>  // test-only case patch: MinGW sysroot ships lowercase only
     #include <dwmapi.h>
 #endif
 
@@ -74,14 +74,12 @@ void AppStyle::polish(QWidget* aWidget) {
         aWidget->setAttribute(Qt::WA_TranslucentBackground);
         aWidget->setAttribute(Qt::WA_NoSystemBackground);
 #ifdef Q_OS_WIN
-        // We setup this because Windows is dumb and stupid and can't composite stuff without hand-holding
-        if (QOperatingSystemVersion::current().microVersion() > 22000) {
-            // Looks prettier
-            const auto hwnd = reinterpret_cast<HWND>(aWidget->winId());
-            constexpr DWM_WINDOW_CORNER_PREFERENCE corner = DWMWCP_ROUND;
-            DwmSetWindowAttribute(hwnd, DWMWA_WINDOW_CORNER_PREFERENCE, &corner, sizeof(corner));
-        }
-        else{ aWidget->setWindowFlags(Qt::FramelessWindowHint | Qt::Popup | Qt::NoDropShadowWindowHint); }
+        // TEST VARIANT (build Q): the DWM call is removed and every Windows version takes
+        // the Qt-flags path that upstream already uses on Windows 10 (the `else` branch of
+        // the block this replaces). Purpose: compare DWM's antialiased, shadowed rounding
+        // against Qt's own frameless popup - i.e. decide whether the DWM hack is needed on
+        // Windows 11 build 22621+, where microVersion() > 22000 selects the DWM branch.
+        aWidget->setWindowFlags(Qt::FramelessWindowHint | Qt::Popup | Qt::NoDropShadowWindowHint);
 #endif
     }
     // The style is re-polished on theme changes, so Colors::current() is

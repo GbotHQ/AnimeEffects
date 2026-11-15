@@ -2,7 +2,7 @@
 
 #if defined(USE_MSVC_BACKTRACE)
     #include <QDebug>
-    #include <Windows.h>
+    #include <windows.h>  // test-only case patch: MinGW sysroot ships lowercase only
     #include <stdlib.h>
     #include <imagehlp.h>
     #include <excpt.h>

@@ -22,7 +22,7 @@
 #ifdef Q_OS_WINDOWS
 #define WIN32_LEAN_AND_MEAN
 #define NOMINMAX
-#include <Windows.h>
+#include <windows.h>  // test-only case patch: MinGW sysroot ships lowercase only
 #endif
 #define VENDOR_ID_LEN 13
 
