@@ -40,6 +40,10 @@ public:
             target.prevOffset = imageOffset;
             target.nextOffset = target.prevOffset + move;
             key->data().setImageOffset(target.nextOffset);
+            if (!target.channelCaptured) {
+                captureChannel(target, move);
+            }
+            applyChannel(target, true);
 
             // authored weights follow the regenerated grid in this same undo
             // step; an ImageKey owns one grid, and a record is keyed to it
@@ -68,6 +72,7 @@ public:
             target.key->setImage(target.nextImage);
             target.key->data().gridMesh().swap(*target.anotherMesh);
             target.key->data().setImageOffset(target.nextOffset);
+            applyChannel(target, true);
             applyWeightRemaps(target, false);
         }
         notifyWeightRemaps(false);
@@ -79,6 +84,7 @@ public:
             target.key->setImage(target.prevImage);
             target.key->data().gridMesh().swap(*target.anotherMesh);
             target.key->data().setImageOffset(target.prevOffset);
+            applyChannel(target, false);
         }
         notifyWeightRemaps(true);
     }
@@ -93,6 +99,11 @@ protected:
         img::ResourceHandle nextImage;
         QVector2D prevOffset;
         QVector2D nextOffset;
+        // The offset CHANNEL's value at this key's frame, when one exists.
+        QVector2D prevChannelOffset;
+        QVector2D nextChannelOffset;
+        bool channelCaptured = false;
+        bool channelSync = false;
         std::shared_ptr<GridMesh> anotherMesh;
         int nextCellSize;
         QVector<GridWeightsRemap> weightRemaps;
@@ -102,6 +113,64 @@ protected:
     const QList<Target>& targets() const { return mTargets; }
 
 private:
+    // The offset channel has one value per property frame; a resource swap moves
+    // the ImageKey's offset by the image position delta, so the authored channel
+    // value at the same frame must move with it. A channel with no key at that
+    // frame has no authored offset there (the previous/next channel key wins).
+    QVector2D channelOffsetAt(Target& aTarget) const {
+        if (!mNode || !mNode->timeLine() || !mNode->timeLine()->property(TimeKeyType_Image)) {
+            return QVector2D();
+        }
+        core::TimeLine& line = *mNode->timeLine();
+        const int frame = aTarget.key->frame();
+        if (frame == TimeLine::kBaseValueIndex) {
+            return QVector2D(
+                line.channelBaseValue(TimeKeyType_Image, 0),
+                line.channelBaseValue(TimeKeyType_Image, 1)
+            );
+        }
+        const ChannelKey* x = line.channelKey(TimeKeyType_Image, 0, frame);
+        const ChannelKey* y = line.channelKey(TimeKeyType_Image, 1, frame);
+        return QVector2D(x ? x->value() : 0.0f, y ? y->value() : 0.0f);
+    }
+
+    bool channelExistsAt(Target& aTarget) const {
+        if (!mNode || !mNode->timeLine() || !mNode->timeLine()->property(TimeKeyType_Image)) {
+            return false;
+        }
+        if (aTarget.key->frame() == TimeLine::kBaseValueIndex) {
+            return true;
+        }
+        return mNode->timeLine()->hasChannelKey(TimeKeyType_Image, 0, aTarget.key->frame())
+            || mNode->timeLine()->hasChannelKey(TimeKeyType_Image, 1, aTarget.key->frame());
+    }
+
+    void captureChannel(Target& aTarget, const QVector2D& aMove) {
+        aTarget.prevChannelOffset = channelOffsetAt(aTarget);
+        aTarget.nextChannelOffset = aTarget.prevChannelOffset + aMove;
+        aTarget.channelSync = channelExistsAt(aTarget);
+        aTarget.channelCaptured = true;
+    }
+
+    void applyChannel(Target& aTarget, bool aNext) {
+        if (!aTarget.channelSync || !mNode || !mNode->timeLine()) {
+            return;
+        }
+        core::TimeLine& line = *mNode->timeLine();
+        const QVector2D value = aNext ? aTarget.nextChannelOffset : aTarget.prevChannelOffset;
+        if (aTarget.key->frame() == TimeLine::kBaseValueIndex) {
+            line.setChannelBaseValue(TimeKeyType_Image, 0, value.x());
+            line.setChannelBaseValue(TimeKeyType_Image, 1, value.y());
+        } else {
+            if (ChannelKey* x = line.channelKey(TimeKeyType_Image, 0, aTarget.key->frame())) {
+                x->setValue(value.x());
+            }
+            if (ChannelKey* y = line.channelKey(TimeKeyType_Image, 1, aTarget.key->frame())) {
+                y->setValue(value.y());
+            }
+        }
+    }
+
     void applyWeightRemaps(Target& aTarget, bool aUndo) {
         for (GridWeightsRemap& remap : aTarget.weightRemaps) {
             if (remap.owner) {

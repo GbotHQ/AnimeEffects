@@ -15,7 +15,7 @@
 #include "core/BlurKey.h"
 #include "core/WaveKey.h"
 #include "core/DepthKey.h"
-#include "core/OpaKey.h"
+#include "core/OpacityKey.h"
 #include "core/HsvKey.h"
 #include "core/BoneKey.h"
 #include "core/PoseKey.h"
@@ -59,6 +59,8 @@ namespace TimeLineUtil {
         struct Context {
             core::TimeLine* line = nullptr;
             core::TimeKeyType type = core::TimeKeyType_Move;
+            int component = -1; // set for Image's independent offset channels
+            const core::TimeLine::MapType* map = nullptr; // bundle map or the single channel's map
             QVector<int> targetIndices; // into mSortedTargets
             QVector<SelectedProportional> selected;
             QVector<ProjectedKey> projected;
@@ -87,6 +89,12 @@ namespace TimeLineUtil {
     // targets collapse, and default/missing keys are ignored - nothing valid
     // targeted means no command.
     void setProportionalKeys(core::Project& aProject, const core::TimeLineEvent& aTargets, bool aEnabled);
+    // One undo step: set/clear the link bit on every channel key at aFrame.
+    // Linking is refused unless every graphable channel has a key there.
+    void setFrameLinked(
+        core::Project& aProject, core::ObjectNode& aTarget, core::TimeKeyType aType, int aFrame,
+        bool aLinked
+    );
 
     //-------------------------------------------------------------------------------------------------
     // The VALUE half of the graph's 2-axis key move: rewrites ONE numeric
@@ -302,8 +310,8 @@ namespace TimeLineUtil {
         core::Project& aProject, core::ObjectNode& aTarget, int aFrame, const core::DepthKey::Data& aNewData
     );
 
-    void assignOpaKeyData(
-        core::Project& aProject, core::ObjectNode& aTarget, int aFrame, const core::OpaKey::Data& aNewData
+    void assignOpacityKeyData(
+        core::Project& aProject, core::ObjectNode& aTarget, int aFrame, const core::OpacityKey::Data& aNewData
     );
 
     void assignHSVKeyData(
@@ -330,7 +338,10 @@ namespace TimeLineUtil {
     assignImageKeyResource(core::Project& aProject, core::ObjectNode& aTarget, int aFrame, img::ResourceNode& aNewData);
 
     void
-    assignImageKeyOffset(core::Project& aProject, core::ObjectNode& aTarget, int aFrame, const QVector2D& aNewData);
+    assignImageKeyOffset(
+        core::Project& aProject, core::ObjectNode& aTarget, int aFrame, const QVector2D& aNewData,
+        int aComponent = -1
+    );
 
     void assignImageKeyCellSize(core::Project& aProject, core::ObjectNode& aTarget, int aFrame, int aNewData);
     ///@}
@@ -356,7 +367,7 @@ namespace TimeLineUtil {
 
     void pushNewDepthKey(core::Project& aProject, core::ObjectNode& aTarget, int aFrame, core::DepthKey* aKey);
 
-    void pushNewOpaKey(core::Project& aProject, core::ObjectNode& aTarget, int aFrame, core::OpaKey* aKey);
+    void pushNewOpacityKey(core::Project& aProject, core::ObjectNode& aTarget, int aFrame, core::OpacityKey* aKey);
 
     void pushNewHSVKey(core::Project& aProject, core::ObjectNode& aTarget, int aFrame, core::HSVKey* aKey);
     void pushNewBlurKey(core::Project& aProject, core::ObjectNode& aTarget, int aFrame, core::BlurKey* aKey);

@@ -269,17 +269,32 @@ void CentroidMover::redo()
         const QVector2D& aCentroidMove,
         const QVector2D& aPositionMove,
         int aFrame,
-        bool aAdjustPos
+        bool aAdjustPos,
+        bool aTrack
     ):
         mTarget(aTarget),
         mKey(),
+        mLine(),
+        mTracks(),
+        mKeys(),
+        mTrack(aTrack),
         mCentroidMove(aCentroidMove),
         mPositionMove(aPositionMove),
         mPrevPosition(),
         mPrevCentroid(),
         mFrame(aFrame),
         mAdjustPos(aAdjustPos),
-        mDone() {}
+        mDone() {
+        if (mTrack) {
+            mLine = mTarget.timeLine();
+            for (int c = 0; c < 4; ++c) {
+                mTracks[c] = mLine->channelTrack(TimeKeyType_Move, c);
+                if (mFrame != TimeLine::kBaseValueIndex) {
+                    mKeys[c] = mLine->channelKey(TimeKeyType_Move, c, mFrame);
+                }
+            }
+        }
+    }
 
     void CentroidMover::modifyValue(const QVector2D& aNewCentroidMove, const QVector2D& aNewPositionMove) {
         mCentroidMove = aNewCentroidMove;
@@ -294,6 +309,19 @@ void CentroidMover::redo()
     }
 
     void CentroidMover::exec() {
+        if (mTrack) {
+            mPrevPosition = QVector2D(
+                mKeys[0] ? mKeys[0]->value() : mTracks[0]->baseValue(),
+                mKeys[1] ? mKeys[1]->value() : mTracks[1]->baseValue()
+            );
+            mPrevCentroid = QVector2D(
+                mKeys[2] ? mKeys[2]->value() : mTracks[2]->baseValue(),
+                mKeys[3] ? mKeys[3]->value() : mTracks[3]->baseValue()
+            );
+            redo();
+            return;
+        }
+
         mKey = (MoveKey*)(mFrame == TimeLine::kBaseValueIndex
                               ? mTarget.timeLine()->baseValue(TimeKeyType_Move)
                               : mTarget.timeLine()->timeKey(TimeKeyType_Move, mFrame));
@@ -304,12 +332,43 @@ void CentroidMover::redo()
     }
 
     void CentroidMover::undo() {
+        if (mTrack) {
+            const float pos[2] = { mPrevPosition.x(), mPrevPosition.y() };
+            const float centroid[2] = { mPrevCentroid.x(), mPrevCentroid.y() };
+            for (int c = 0; c < 4; ++c) {
+                const float value = c < 2 ? pos[c] : centroid[c - 2];
+                if (mKeys[c]) {
+                    mKeys[c]->setValue(value);
+                } else {
+                    mTracks[c]->setBaseValue(value);
+                }
+            }
+            mDone = false;
+            return;
+        }
         mKey->setCentroid(mPrevCentroid);
         mKey->setPos(mPrevPosition);
         mDone = false;
     }
 
     void CentroidMover::redo() {
+        if (mTrack) {
+            const QVector2D pos = mAdjustPos ? mPrevPosition + mPositionMove : mPrevPosition;
+            const QVector2D centroid = mPrevCentroid - mCentroidMove;
+            const float values[4] = { pos.x(), pos.y(), centroid.x(), centroid.y() };
+            for (int c = 0; c < 4; ++c) {
+                if (!mTracks[c]) {
+                    continue;
+                }
+                if (mKeys[c]) {
+                    mKeys[c]->setValue(mTracks[c]->clamp(mTracks[c]->quantize(values[c])));
+                } else {
+                    mTracks[c]->setBaseValue(values[c]);
+                }
+            }
+            mDone = true;
+            return;
+        }
         mKey->setCentroid(mPrevCentroid - mCentroidMove);
         if (mAdjustPos) {
             mKey->setPos(mPrevPosition + mPositionMove);

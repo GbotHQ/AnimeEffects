@@ -1629,8 +1629,13 @@ core::LayerNode* addScaledLayer(
     // image centred on the world origin would hang off the top-left of the canvas.
     layer->setDefaultPosture(aPos);
     layer->setDefaultOpacity(1.0f);
-    core::getOrCreateBaseValue<core::ScaleKey, core::TimeKeyType_Scale>(*layer->timeLine())
-        ->setScale(QVector2D(aScale, aScale));
+    if (core::TimeLine::usesChannelTracks(core::TimeKeyType_Scale)) {
+        layer->timeLine()->setChannelBaseValue(core::TimeKeyType_Scale, 0, aScale);
+        layer->timeLine()->setChannelBaseValue(core::TimeKeyType_Scale, 1, aScale);
+    } else {
+        core::getOrCreateBaseValue<core::ScaleKey, core::TimeKeyType_Scale>(*layer->timeLine())
+            ->setScale(QVector2D(aScale, aScale));
+    }
     aParent->children().pushBack(layer);
     return layer;
 }
@@ -2192,8 +2197,13 @@ void suiteVirtualTexture() {
             img::BlendMode_Normal
         );
         if (c.scaleY != c.scale) {
-            core::getOrCreateBaseValue<core::ScaleKey, core::TimeKeyType_Scale>(*layer->timeLine())
-                ->setScale(QVector2D(c.scale, c.scaleY));
+            if (core::TimeLine::usesChannelTracks(core::TimeKeyType_Scale)) {
+                layer->timeLine()->setChannelBaseValue(core::TimeKeyType_Scale, 0, c.scale);
+                layer->timeLine()->setChannelBaseValue(core::TimeKeyType_Scale, 1, c.scaleY);
+            } else {
+                core::getOrCreateBaseValue<core::ScaleKey, core::TimeKeyType_Scale>(*layer->timeLine())
+                    ->setScale(QVector2D(c.scale, c.scaleY));
+            }
         }
         auto* imageKey = dynamic_cast<core::ImageKey*>(layer->timeLine()->baseValue(core::TimeKeyType_Image));
         expect(imageKey != nullptr, QString("V1 scale %1: the layer must have an image key").arg(scaleText));

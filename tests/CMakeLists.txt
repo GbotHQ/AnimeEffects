@@ -193,6 +193,58 @@ add_executable(bone_polygon_index
 target_include_directories(bone_polygon_index PRIVATE .. ${CMAKE_SOURCE_DIR}/src)
 target_link_libraries(bone_polygon_index PRIVATE Qt6::Core Qt6::Gui)
 
+# The per-channel track primitive: ChannelSpec's defaults/clamps/interpolation,
+# ChannelTrack's base/hold/ease/step/loop sampling and stable key ids. Compiled
+# from its own sources so it needs no core::Project, no GUI audio stub and no GL.
+add_executable(channel_track channel_track.cpp)
+target_include_directories(channel_track PRIVATE ..)
+target_compile_definitions(channel_track PRIVATE
+    AE_MAJOR_VERSION=1
+    AE_MINOR_VERSION=7
+    AE_MICRO_VERSION=1
+    USE_GL_CORE_PROFILE
+)
+target_link_libraries(channel_track PRIVATE
+    Qt6::Core Qt6::Core5Compat Qt6::Widgets
+    Qt6::Gui Qt6::OpenGL Qt6::OpenGLWidgets
+    Qt6::Svg Qt6::Xml Qt6::Concurrent Qt6::Multimedia
+    cmnd core gl img thr util pugixml
+)
+
+# Move's per-channel evaluator: the spatial spline while X/Y share key frames,
+# independent scalar sampling when they do not, and the hidden centroid pair.
+add_executable(move_evaluator move_evaluator.cpp)
+target_include_directories(move_evaluator PRIVATE ..)
+target_compile_definitions(move_evaluator PRIVATE
+    AE_MAJOR_VERSION=1
+    AE_MINOR_VERSION=7
+    AE_MICRO_VERSION=1
+    USE_GL_CORE_PROFILE
+)
+target_link_libraries(move_evaluator PRIVATE
+    Qt6::Core Qt6::Core5Compat Qt6::Widgets
+    Qt6::Gui Qt6::OpenGL Qt6::OpenGLWidgets
+    Qt6::Svg Qt6::Xml Qt6::Concurrent Qt6::Multimedia
+    cmnd core gl img thr util pugixml
+)
+
+# The first TimeLine migration: Opacity channel storage, component addressing,
+# move/adopt and the 0.23 channel-track round trip.
+add_executable(channel_timeline channel_timeline.cpp)
+target_include_directories(channel_timeline PRIVATE ..)
+target_compile_definitions(channel_timeline PRIVATE
+    AE_MAJOR_VERSION=1
+    AE_MINOR_VERSION=7
+    AE_MICRO_VERSION=1
+    USE_GL_CORE_PROFILE
+)
+target_link_libraries(channel_timeline PRIVATE
+    Qt6::Core Qt6::Core5Compat Qt6::Widgets
+    Qt6::Gui Qt6::OpenGL Qt6::OpenGLWidgets
+    Qt6::Svg Qt6::Xml Qt6::Concurrent Qt6::Multimedia
+    cmnd core gl img thr util pugixml
+)
+
 # Regression test for the util::TreeUtil::deleteAll use-after-free write (the
 # pre-fix body cleared the child list only AFTER deleting the children, so
 # TreeChildren::clear() wrote 24 bytes into every already-freed child). Catches

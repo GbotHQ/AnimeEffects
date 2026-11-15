@@ -10,6 +10,7 @@
 #include "cmnd/SleepableObject.h"
 #include "core/Serializer.h"
 #include "core/Deserializer.h"
+#include "core/KeyProportional.h"
 #include "core/TimeKeyType.h"
 
 namespace core {
@@ -23,26 +24,17 @@ public:
     // set on load), so files are byte-compatible.
     static constexpr int kBaseValueIndex = std::numeric_limits<int>::min();
 
+    // The shared record lives in KeyProportional.h so ChannelKey can hold one
+    // without dragging in the tree/selection machinery this class owns. The
+    // alias keeps every existing TimeKey::Proportional spelling source-stable.
+    using Proportional = KeyProportional;
+
     // Blur and HSV carry three graphable components, Wave five; no key type has
     // more. This is the size of the serialized per-component weight arrays, so
     // growing it is a FORMAT change: TimeLine writes kMaxProportionalComponents
     // entries and reads the count the file's version implies (0.16-0.17 stored
     // three, 0.18 stores five).
-    static constexpr int kMaxProportionalComponents = 5;
-
-    // A proportional key keeps stored fractional weights between its nearest
-    // ABSOLUTE neighbours of the same type, so the resolved frame and values
-    // follow those neighbours when they move. The weights are stored rather
-    // than re-derived from the rounded positions: re-deriving would accumulate
-    // quantization drift over repeated edits.
-    struct Proportional {
-        int leftId = 0;   // 0 = no absolute bound on that side
-        int rightId = 0;
-        bool timeValid = false;
-        float timeWeight = 0.0f;
-        bool valueValid[kMaxProportionalComponents] = {};
-        float valueWeight[kMaxProportionalComponents] = {};
-    };
+    static constexpr int kMaxProportionalComponents = KeyProportional::kMaxComponents;
 
     typedef util::TreeNodeBase<TimeKey>::Children ChildrenType;
     typedef util::TreeIterator<TimeKey, ChildrenType::Iterator> Iterator;
@@ -53,6 +45,9 @@ public:
     virtual ~TimeKey() {}
 
     virtual TimeKeyType type() const = 0;
+    // The channel a track key belongs to; -1 for a whole structural/state key
+    // and for the legacy bundle keys. ChannelKey overrides it.
+    virtual int component() const { return -1; }
     virtual bool canHoldChild() const { return false; }
 
     virtual void sleep() {}
@@ -95,6 +90,8 @@ private:
     // Restoring a serialized id is the loader's job, not an ordinary edit:
     // TimeLine::deserializeTimeKey assigns the stored id after reserving it.
     friend class TimeLine;
+    friend class ChannelTrack;
+    friend class StateTrack;
     void setId(int aId) { mId = aId; }
 
     util::LifeLink::Node mFocus;

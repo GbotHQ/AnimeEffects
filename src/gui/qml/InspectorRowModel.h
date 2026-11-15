@@ -80,6 +80,12 @@ public:
     Q_INVOKABLE void toggleKey();
     Q_INVOKABLE void browseAsset();
 
+    // Per-FIELD keying on a migrated channel property: the row's shared dot keys
+    // every channel; one field's context menu keys only that channel.
+    Q_INVOKABLE bool channelKeyExists(int aComponent) const;
+    Q_INVOKABLE QString channelKeyAction(int aComponent) const;
+    Q_INVOKABLE void toggleChannelKey(int aComponent);
+
     Q_INVOKABLE void setX(double aValue);
     Q_INVOKABLE void setY(double aValue);
     Q_INVOKABLE void setCentroidX(double aValue);
@@ -99,6 +105,7 @@ signals:
 
 private:
     core::TimeKeyType type() const;
+    float channelValue(int aComponent) const;
     void knock();
     void readMove(core::TimeLine& aLine, int aFrame);
     void readImage(core::TimeLine& aLine, int aFrame);

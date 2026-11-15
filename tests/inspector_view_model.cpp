@@ -12,7 +12,7 @@
 #include "core/FolderNode.h"
 #include "core/HsvKey.h"
 #include "core/MoveKey.h"
-#include "core/OpaKey.h"
+#include "core/OpacityKey.h"
 #include "core/Project.h"
 #include "core/RotateKey.h"
 #include "gui/qml/FilterStackModel.h"
@@ -70,8 +70,24 @@ private:
         }                                                                                                    \
     } while (false)
 
-const core::MoveKey::Data& moveDefault(const core::TimeLine& line) {
-    return static_cast<const core::MoveKey*>(line.baseValue(core::TimeKeyType_Move))->data();
+QVector2D moveDefault(const core::TimeLine& line) {
+    if (core::TimeLine::usesChannelTracks(core::TimeKeyType_Move)) {
+        return QVector2D(
+            line.channelBaseValue(core::TimeKeyType_Move, 0),
+            line.channelBaseValue(core::TimeKeyType_Move, 1)
+        );
+    }
+    return static_cast<const core::MoveKey*>(line.baseValue(core::TimeKeyType_Move))->data().pos();
+}
+
+QVector2D moveAt(const core::TimeLine& line, int frame) {
+    if (core::TimeLine::usesChannelTracks(core::TimeKeyType_Move)) {
+        const auto* x = line.channelKey(core::TimeKeyType_Move, 0, frame);
+        const auto* y = line.channelKey(core::TimeKeyType_Move, 1, frame);
+        return QVector2D(x ? x->value() : 0.0f, y ? y->value() : 0.0f);
+    }
+    const auto* key = static_cast<const core::MoveKey*>(line.timeKey(core::TimeKeyType_Move, frame));
+    return key ? key->data().pos() : QVector2D();
 }
 
 // The expansion state exactly as the delegate would read it, row by row. The
@@ -118,26 +134,39 @@ int run() {
 
     // A static edit writes the default and creates no key.
     inspector.move()->setX(11.0);
-    CHECK(line.map(core::TimeKeyType_Move).isEmpty());
-    CHECK(moveDefault(line).pos() == QVector2D(11.0f, 200.0f));
+    CHECK(!line.hasChannelKeys(core::TimeKeyType_Move, 0));
+    CHECK(moveDefault(line) == QVector2D(11.0f, 200.0f));
 
     // A keyed property edits the key at the playhead, and undo restores it.
     inspector.move()->toggleKey();
     CHECK(inspector.move()->keyState() == QStringLiteral("keyed"));
-    CHECK(line.hasTimeKey(core::TimeKeyType_Move, 10));
+    CHECK(line.hasChannelKey(core::TimeKeyType_Move, 0, 10));
+    const QVector2D beforeEdit = moveAt(line, 10);
     inspector.move()->setX(11.0);
     inspector.move()->setY(33.0);
-    const auto* key = static_cast<const core::MoveKey*>(line.timeKey(core::TimeKeyType_Move, 10));
-    CHECK(key && key->data().pos() == QVector2D(11.0f, 33.0f));
+    CHECK(moveAt(line, 10) == QVector2D(11.0f, 33.0f));
     project.commandStack().undo();
     inspector.refresh();
-    const auto* undone = static_cast<const core::MoveKey*>(line.timeKey(core::TimeKeyType_Move, 10));
-    CHECK(undone && undone->data().pos() == QVector2D(11.0f, 0.0f));
+    CHECK(moveAt(line, 10) == beforeEdit);
 
+    // A FIELD's own menu keys only that channel: X exists while Y does not.
+    if (line.hasChannelKey(core::TimeKeyType_Move, 0, 10)) {
+        inspector.move()->toggleKey();
+        inspector.refresh();
+    }
+    CHECK(inspector.move()->channelKeyAction(0).startsWith(QStringLiteral("Add")));
+    inspector.move()->toggleChannelKey(0);
+    CHECK(line.hasChannelKey(core::TimeKeyType_Move, 0, 10));
+    CHECK(!line.hasChannelKey(core::TimeKeyType_Move, 1, 10));
+    CHECK(inspector.move()->channelKeyAction(0).startsWith(QStringLiteral("Remove")));
+    inspector.move()->toggleChannelKey(0);
+    CHECK(!line.hasChannelKey(core::TimeKeyType_Move, 0, 10));
+
+    // The dot is a toggle; removing the key keeps the static base.
     // The dot is a toggle; removing the key keeps the static base.
     inspector.move()->toggleKey();
     CHECK(inspector.move()->keyState() == QStringLiteral("static"));
-    CHECK(!line.hasTimeKey(core::TimeKeyType_Move, 10));
+    CHECK(!line.hasChannelKey(core::TimeKeyType_Move, 0, 10));
 
     // The mesh-spacing field's transient preview reaches the viewport host with the
     // inspected node and clears when the selection moves.
@@ -160,13 +189,12 @@ int run() {
         inspector.onMeshPreviewRequested.disconnect(slot);
         inspector.setTarget(&folder);
     }
-    CHECK(moveDefault(line).pos() == QVector2D(11.0f, 200.0f));
+    CHECK(moveDefault(line) == QVector2D(11.0f, 200.0f));
 
     // Rotation is degrees in the model and radians in the document.
     inspector.rotate()->setAngle(45.0);
     CHECK(inspector.rotate()->angle() == 45.0);
-    const auto* rotate = static_cast<const core::RotateKey*>(line.baseValue(core::TimeKeyType_Rotate));
-    CHECK(rotate && std::abs(rotate->data().rotate() - 0.7853982f) < 0.0001f);
+    CHECK(std::abs(line.channelBaseValue(core::TimeKeyType_Rotate, 0) - 0.7853982f) < 0.0001f);
 
     // Filters: add is static-first, the dot creates the explicit key, and the
     // row's fields edit the document.
@@ -216,8 +244,13 @@ int run() {
     CHECK(hsv && hsv->kind() == QStringLiteral("hsv"));
     CHECK(hsv->keyState() == QStringLiteral("static"));
     hsv->setHue(42);
-    CHECK(line.map(core::TimeKeyType_HSV).isEmpty());
-    CHECK(static_cast<const core::HSVKey*>(line.baseValue(core::TimeKeyType_HSV))->data().hsv().at(0) == 42);
+    if (core::TimeLine::usesChannelTracks(core::TimeKeyType_HSV)) {
+        CHECK(!line.hasChannelKeys(core::TimeKeyType_HSV, 0));
+        CHECK(line.channelBaseValue(core::TimeKeyType_HSV, 0) == 42.0f);
+    } else {
+        CHECK(line.map(core::TimeKeyType_HSV).isEmpty());
+        CHECK(static_cast<const core::HSVKey*>(line.baseValue(core::TimeKeyType_HSV))->data().hsv().at(0) == 42);
+    }
     hsv->toggleKey();
     CHECK(hsv->keyState() == QStringLiteral("keyed"));
 

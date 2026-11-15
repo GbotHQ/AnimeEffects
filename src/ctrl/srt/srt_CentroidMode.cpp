@@ -58,6 +58,10 @@ namespace srt {
                 auto newCentroid = (worldSRInvMtx.map(QVector3D(curPos + mBaseVec))).toVector2D();
                 auto newPosition = (parentInvMtx.map(QVector3D(curPos + mBaseVec))).toVector2D();
                 moveCentroid(newCentroid, newPosition);
+                if (mKeyOwner.moveIsTrack && mKeyOwner.moveKey) {
+                    mKeyOwner.moveKey->setCentroid(newCentroid);
+                    mKeyOwner.moveKey->setPos(newPosition);
+                }
                 mKeyOwner.updatePosture(mTarget.timeLine()->current());
             }
             mod = true;
@@ -109,7 +113,13 @@ namespace srt {
             // singleshot notify
             TimeLineEvent event;
             event.setType(TimeLineEvent::Type_ChangeKeyValue);
-            event.pushTarget(mTarget, TimeKeyType_Move, frame);
+            if (TimeLine::usesChannelTracks(TimeKeyType_Move)) {
+                for (int component = 0; component < 4; ++component) {
+                    event.pushTarget(mTarget, TimeKeyPos(*mTarget.timeLine(), TimeKeyType_Move, frame, component));
+                }
+            } else {
+                event.pushTarget(mTarget, TimeKeyType_Move, frame);
+            }
             mProject.onTimeLineModified(event, false);
         } else {
             cmnd::ScopedMacro macro(stack, CmndName::tr("update centroid of a moving key"));
@@ -120,17 +130,27 @@ namespace srt {
                 notifier->event().setType(
                     mKeyOwner.ownsMoveKey ? TimeLineEvent::Type_PushKey : TimeLineEvent::Type_ChangeKeyValue
                 );
-                if (mKeyOwner.moveIsBaseValue)
+                if (mKeyOwner.moveIsBaseValue) {
                     notifier->event().pushBaseValueTarget(mTarget, TimeKeyType_Move);
-                else
+                } else if (TimeLine::usesChannelTracks(TimeKeyType_Move)) {
+                    for (int component = 0; component < 4; ++component) {
+                        notifier->event().pushTarget(
+                            mTarget, TimeKeyPos(*mTarget.timeLine(), TimeKeyType_Move, frame, component)
+                        );
+                    }
+                } else {
                     notifier->event().pushTarget(mTarget, TimeKeyType_Move, frame);
+                }
                 macro.grabListener(notifier);
             }
             // push owning key if necessary
             mKeyOwner.pushOwningMoveKey(stack, *mTarget.timeLine(), frame);
 
             // create move command
-            mCommandRef = new CentroidMover(mTarget, centroidMove, positionMove, editFrame, mAdjustPosition);
+            mCommandRef = new CentroidMover(
+                mTarget, centroidMove, positionMove, editFrame, mAdjustPosition,
+                mKeyOwner.moveIsTrack
+            );
             stack.push(mCommandRef);
         }
     }

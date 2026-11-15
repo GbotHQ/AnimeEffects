@@ -89,6 +89,11 @@ public:
     // on the keys, not on the selection, so the selection's own onChanged does
     // not fire for this edit; the header's button re-reads through this signal.
     Q_SIGNAL void keyProportionalChanged();
+    // THE TIMELINE'S VIEW GROUPING CHANGED (Link/Separate Channels). The document
+    // did not: the property's rows may have changed HEIGHT (one grouped lane
+    // instead of N channel lanes), so the dock must rebuild its row list before
+    // the next paint. This is not an undoable edit and emits no document signal.
+    Q_SIGNAL void channelGroupingChanged();
 
     void setProject(core::Project* aProject);
     void setFrame(core::Frame aFrame);

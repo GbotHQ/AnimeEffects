@@ -75,6 +75,21 @@
 //                read, not skipped: a corrupt one fails the load at its own
 //                length-checked boundary. See docs/design/skeletal/
 //                influence-painting-plan.md §4.
+//   0.22 -> 0.23 the first per-channel property storage step. A TimeMap_ block
+//                now starts with a bool: true means channel tracks (Rotate first;
+//                component, base value, frame/value/easing/id/proportional keys),
+//                false means the legacy bundle-key layout. A 0.22 file is read
+//                through the legacy branch and its Rotate keys are converted to
+//                channel tracks once, so old playback is preserved. See
+//                docs/design/animation/channel-tracks.md.
+//   0.23 -> 0.24 each channel key records whether it belongs to its frame's
+//                linked property key (default true for older files). Linked
+//                frames behave as one property key; split frames author only
+//                their own channel. See docs/design/animation/channel-tracks.md.
+//   0.24 -> 0.25 Image offsets become two step-held channel tracks beside the Image
+//                state key's resource/grid/FFD payload, serialized in an
+//                "ImgOffs_" block. Older files migrate each ImageKey's offset
+//                to channel keys.
 //
 // Versioning rule (the 0.21 change is the worked example): a change to AUTHORED
 // document data bumps the minor and may gate the reader. DERIVED state - anything
@@ -82,7 +97,7 @@
 // required to load: if it is persisted at all, its block carries a tag and a
 // byte length so an unknown version can be skipped and recomputed, never failed.
 #define AE_PROJECT_FORMAT_MAJOR_VERSION 0
-#define AE_PROJECT_FORMAT_MINOR_VERSION 22
+#define AE_PROJECT_FORMAT_MINOR_VERSION 25
 
 #define AE_PROJECT_FORMAT_OLDEST_MAJOR_VERSION 0
 #define AE_PROJECT_FORMAT_OLDEST_MINOR_VERSION 4

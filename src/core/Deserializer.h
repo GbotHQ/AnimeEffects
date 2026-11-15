@@ -97,6 +97,10 @@ public:
     }
 
     bool beginBlock(const std::string& aSignature);
+    // True when the next bytes are a block with this signature. The stream is
+    // left untouched, so an OPTIONAL trailing block can be tested without
+    // committing the reader to it.
+    bool hasBlock(const std::string& aSignature);
     bool endBlock();
 
     // Bytes left in the file from the current position. Used to bound a count

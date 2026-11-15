@@ -452,6 +452,16 @@ bool Deserializer::readImage(XCMemBlock& aValue) {
     return true;
 }
 
+bool Deserializer::hasBlock(const std::string& aSignature) {
+    if (remainingBytes() < 8) {
+        return false;
+    }
+    const auto pos = mIn.tellg();
+    const std::string bytes = mIn.readString(8);
+    mIn.skipTo(pos);
+    return bytes == aSignature;
+}
+
 bool Deserializer::beginBlock(const std::string& aSignature) {
     std::string signature = mIn.readString(8);
     uint64 length = mIn.readUInt64();

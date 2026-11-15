@@ -105,6 +105,11 @@ public:
 
     // ---- the one row list (also what the timeline draws) ----------------------
     const AnimationRows& rows() const { return mContract; }
+    // Re-derive every row height/offset and announce the result. Used by a view
+    // state that changes lane count without touching the document (the timeline's
+    // Link/Separate Channels); the ordinary document paths call rebuild() from
+    // their own handlers.
+    void refreshRows();
     int contentHeight() const;
     int contentWidth() const;
     // how far the rows can travel: contentHeight - the viewport the scene reports

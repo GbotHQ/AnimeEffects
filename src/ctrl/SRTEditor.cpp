@@ -1,4 +1,5 @@
 #include "core/TimeKeyExpans.h"
+#include "core/MoveStateKey.h"
 #include "core/ObjectNodeUtil.h"
 #include "ctrl/SRTEditor.h"
 #include "ctrl/srt/srt_MoveMode.h"
@@ -52,7 +53,50 @@ bool SRTEditor::initializeKey(TimeLine& aLine, QString* aMessage) {
         }
     }
 
-    {
+    if (TimeLine::usesChannelTracks(TimeKeyType_Move)) {
+        const ChannelKey* keys[4] = {
+            aLine.channelKey(TimeKeyType_Move, 0, frame),
+            aLine.channelKey(TimeKeyType_Move, 1, frame),
+            aLine.channelKey(TimeKeyType_Move, 2, frame),
+            aLine.channelKey(TimeKeyType_Move, 3, frame),
+        };
+        const bool atFrame = keys[0] && keys[1] && keys[2] && keys[3];
+        bool animated = false;
+        for (int c = 0; c < 4; ++c) {
+            animated = animated || aLine.hasChannelKeys(TimeKeyType_Move, c);
+        }
+
+        mKeyOwner.moveIsTrack = true;
+        mKeyOwner.moveTrackProxy = true;
+        mKeyOwner.ownsMoveKey = !atFrame && (animated || mParam.necessarilyMove);
+        mKeyOwner.moveIsBaseValue = !atFrame && !mKeyOwner.ownsMoveKey;
+
+        auto* proxy = new MoveKey();
+        QVector2D pos = current.srt().pos();
+        QVector2D centroid = current.srt().centroid();
+        if (atFrame) {
+            pos = QVector2D(keys[0]->value(), keys[1]->value());
+            centroid = QVector2D(keys[2]->value(), keys[3]->value());
+        } else if (mKeyOwner.moveIsBaseValue) {
+            pos = QVector2D(
+                aLine.channelBaseValue(TimeKeyType_Move, 0),
+                aLine.channelBaseValue(TimeKeyType_Move, 1)
+            );
+            centroid = QVector2D(
+                aLine.channelBaseValue(TimeKeyType_Move, 2),
+                aLine.channelBaseValue(TimeKeyType_Move, 3)
+            );
+        }
+        proxy->setPos(pos);
+        proxy->setCentroid(centroid);
+        const PropertyTrack* prop = aLine.property(TimeKeyType_Move);
+        if (prop) {
+            if (const auto* state = static_cast<const MoveStateKey*>(prop->state().sampleState(frame))) {
+                proxy->data().setSpline(state->spline());
+            }
+        }
+        mKeyOwner.moveKey = proxy;
+    } else {
         TimeKey* base = keyFor(TimeKeyType_Move, mParam.necessarilyMove, mKeyOwner.ownsMoveKey,
                                mKeyOwner.moveIsBaseValue);
         if (mKeyOwner.ownsMoveKey) {
@@ -66,10 +110,31 @@ bool SRTEditor::initializeKey(TimeLine& aLine, QString* aMessage) {
         } else {
             mKeyOwner.moveKey = static_cast<MoveKey*>(base);
         }
+        mKeyOwner.moveIsTrack = false;
+        mKeyOwner.moveTrackProxy = false;
     }
 
     // rotateKey
-    {
+    if (TimeLine::usesChannelTracks(TimeKeyType_Rotate)) {
+        ChannelTrack* track = aLine.channelTrack(TimeKeyType_Rotate, 0);
+        const bool atFrame = aLine.hasChannelKey(TimeKeyType_Rotate, 0, frame);
+        const bool animated = aLine.hasChannelKeys(TimeKeyType_Rotate, 0);
+
+        mKeyOwner.rotateIsTrack = true;
+        mKeyOwner.rotateTrackProxy = true;
+        mKeyOwner.ownsRotateKey = !atFrame && (animated || mParam.necessarilyRotate);
+        mKeyOwner.rotateIsBaseValue = !atFrame && !mKeyOwner.ownsRotateKey;
+
+        auto* proxy = new RotateKey();
+        float value = current.srt().rotate();
+        if (atFrame) {
+            value = aLine.channelKey(TimeKeyType_Rotate, 0, frame)->value();
+        } else if (mKeyOwner.rotateIsBaseValue && track) {
+            value = track->baseValue();
+        }
+        proxy->setRotate(value);
+        mKeyOwner.rotateKey = proxy;
+    } else {
         TimeKey* base = keyFor(TimeKeyType_Rotate, mParam.necessarilyRotate, mKeyOwner.ownsRotateKey,
                                mKeyOwner.rotateIsBaseValue);
         if (mKeyOwner.ownsRotateKey) {
@@ -82,10 +147,36 @@ bool SRTEditor::initializeKey(TimeLine& aLine, QString* aMessage) {
         } else {
             mKeyOwner.rotateKey = static_cast<RotateKey*>(base);
         }
+        mKeyOwner.rotateIsTrack = false;
+        mKeyOwner.rotateTrackProxy = false;
     }
 
     // scaleKey
-    {
+    if (TimeLine::usesChannelTracks(TimeKeyType_Scale)) {
+        const ChannelKey* x = aLine.channelKey(TimeKeyType_Scale, 0, frame);
+        const ChannelKey* y = aLine.channelKey(TimeKeyType_Scale, 1, frame);
+        const bool atFrame = x && y;
+        const bool animated = aLine.hasChannelKeys(TimeKeyType_Scale, 0)
+            || aLine.hasChannelKeys(TimeKeyType_Scale, 1);
+
+        mKeyOwner.scaleIsTrack = true;
+        mKeyOwner.scaleTrackProxy = true;
+        mKeyOwner.ownsScaleKey = !atFrame && (animated || mParam.necessarilyScale);
+        mKeyOwner.scaleIsBaseValue = !atFrame && !mKeyOwner.ownsScaleKey;
+
+        auto* proxy = new ScaleKey();
+        QVector2D value = current.srt().scale();
+        if (atFrame) {
+            value = QVector2D(x->value(), y->value());
+        } else if (mKeyOwner.scaleIsBaseValue) {
+            value = QVector2D(
+                aLine.channelBaseValue(TimeKeyType_Scale, 0),
+                aLine.channelBaseValue(TimeKeyType_Scale, 1)
+            );
+        }
+        proxy->setScale(value);
+        mKeyOwner.scaleKey = proxy;
+    } else {
         TimeKey* base = keyFor(TimeKeyType_Scale, mParam.necessarilyScale, mKeyOwner.ownsScaleKey,
                                mKeyOwner.scaleIsBaseValue);
         if (mKeyOwner.ownsScaleKey) {
@@ -98,6 +189,8 @@ bool SRTEditor::initializeKey(TimeLine& aLine, QString* aMessage) {
         } else {
             mKeyOwner.scaleKey = static_cast<ScaleKey*>(base);
         }
+        mKeyOwner.scaleIsTrack = false;
+        mKeyOwner.scaleTrackProxy = false;
     }
 
     // check validity

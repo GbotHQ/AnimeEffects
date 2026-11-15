@@ -14,11 +14,12 @@
 #include "core/ObjectTree.h"
 #include "core/ObjectNodeUtil.h"
 #include "core/ObjectTreeNotifier.h"
+#include "core/ChannelKey.h"
 #include "core/MoveKey.h"
 #include "core/RotateKey.h"
 #include "core/ScaleKey.h"
 #include "core/DepthKey.h"
-#include "core/OpaKey.h"
+#include "core/OpacityKey.h"
 #include "core/HsvKey.h"
 #include "core/PoseKey.h"
 #include "core/FFDKey.h"
@@ -106,6 +107,14 @@ void copyKeys(const core::TimeLine& aSource, core::TimeLine& aDest) {
 
     for (int t = 0; t != core::TimeKeyType_TERM; ++t) {
         const auto type = core::TimeKeyType(t);
+        if (core::TimeLine::usesChannelTracks(type)) {
+            const core::PropertyTrack* sourceProp = aSource.property(type);
+            core::PropertyTrack* destProp = aDest.property(type);
+            if (sourceProp && destProp) {
+                sourceProp->copyKeysTo(*destProp);
+            }
+            continue;
+        }
         for (auto itr = aSource.map(type).begin(); itr != aSource.map(type).end(); ++itr) {
             core::TimeKey* key = itr.value();
             if (!key)
@@ -605,7 +614,13 @@ void addKeysAtPlayhead(core::Project& aProject, core::ObjectNode& aNode) {
         if (!aKey)
             return;
         aKey->setFrame(frame);
-        notifier->event().pushTarget(aNode, aKey->type(), frame);
+        if (auto* channelKey = dynamic_cast<core::ChannelKey*>(aKey)) {
+            notifier->event().pushTarget(
+                aNode, core::TimeKeyPos(*line, channelKey->type(), frame, channelKey->component())
+            );
+        } else {
+            notifier->event().pushTarget(aNode, aKey->type(), frame);
+        }
         TimeLineUtil::appendNewKey(aProject, aNode, frame, aKey, aParentKey);
     };
     const auto needs = [line, frame](core::TimeKeyType aType) {
@@ -613,35 +628,90 @@ void addKeysAtPlayhead(core::Project& aProject, core::ObjectNode& aNode) {
     };
 
     if (needs(core::TimeKeyType_Move)) {
-        auto* key = new core::MoveKey();
-        key->setPos(line->current().srt().pos());
-        key->setCentroid(line->current().srt().centroid());
-        push(key);
+        if (core::TimeLine::usesChannelTracks(core::TimeKeyType_Move)) {
+            const QVector2D pos = line->current().srt().pos();
+            const QVector2D centroid = line->current().srt().centroid();
+            const float values[4] = { pos.x(), pos.y(), centroid.x(), centroid.y() };
+            for (int component = 0; component < 4; ++component) {
+                auto* key = new core::ChannelKey(core::TimeKeyType_Move, component);
+                key->setValue(values[component]);
+                key->easing() = util::Easing::defaultParam();
+                push(key);
+            }
+        } else {
+            auto* key = new core::MoveKey();
+            key->setPos(line->current().srt().pos());
+            key->setCentroid(line->current().srt().centroid());
+            push(key);
+        }
     }
     if (needs(core::TimeKeyType_Rotate)) {
-        auto* key = new core::RotateKey();
-        key->setRotate(line->current().srt().rotate());
-        push(key);
+        if (core::TimeLine::usesChannelTracks(core::TimeKeyType_Rotate)) {
+            auto* key = new core::ChannelKey(core::TimeKeyType_Rotate, 0);
+            key->setValue(line->current().srt().rotate());
+            key->easing() = util::Easing::defaultParam();
+            push(key);
+        } else {
+            auto* key = new core::RotateKey();
+            key->setRotate(line->current().srt().rotate());
+            push(key);
+        }
     }
     if (needs(core::TimeKeyType_Scale)) {
-        auto* key = new core::ScaleKey();
-        key->setScale(line->current().srt().scale());
-        push(key);
+        if (core::TimeLine::usesChannelTracks(core::TimeKeyType_Scale)) {
+            const QVector2D scale = line->current().srt().scale();
+            auto* x = new core::ChannelKey(core::TimeKeyType_Scale, 0);
+            x->setValue(scale.x());
+            x->easing() = util::Easing::defaultParam();
+            push(x);
+            auto* y = new core::ChannelKey(core::TimeKeyType_Scale, 1);
+            y->setValue(scale.y());
+            y->easing() = util::Easing::defaultParam();
+            push(y);
+        } else {
+            auto* key = new core::ScaleKey();
+            key->setScale(line->current().srt().scale());
+            push(key);
+        }
     }
     if (needs(core::TimeKeyType_Depth)) {
-        auto* key = new core::DepthKey();
-        key->setDepth(line->current().depth());
-        push(key);
+        if (core::TimeLine::usesChannelTracks(core::TimeKeyType_Depth)) {
+            auto* key = new core::ChannelKey(core::TimeKeyType_Depth, 0);
+            key->setValue(line->current().depth());
+            key->easing() = util::Easing::defaultParam();
+            push(key);
+        } else {
+            auto* key = new core::DepthKey();
+            key->setDepth(line->current().depth());
+            push(key);
+        }
     }
-    if (needs(core::TimeKeyType_Opa)) {
-        auto* key = new core::OpaKey();
-        key->setOpacity(line->current().opa().opacity());
-        push(key);
+    if (needs(core::TimeKeyType_Opacity)) {
+        if (core::TimeLine::usesChannelTracks(core::TimeKeyType_Opacity)) {
+            auto* key = new core::ChannelKey(core::TimeKeyType_Opacity, 0);
+            key->setValue(line->current().opacity().opacity());
+            key->easing() = util::Easing::defaultParam();
+            push(key);
+        } else {
+            auto* key = new core::OpacityKey();
+            key->setOpacity(line->current().opacity().opacity());
+            push(key);
+        }
     }
     if (needs(core::TimeKeyType_HSV)) {
-        auto* key = new core::HSVKey();
-        key->setHSV(line->current().hsv().hsv());
-        push(key);
+        if (core::TimeLine::usesChannelTracks(core::TimeKeyType_HSV)) {
+            const QList<int> values = line->current().hsv().hsv();
+            for (int component = 0; component < 3; ++component) {
+                auto* key = new core::ChannelKey(core::TimeKeyType_HSV, component);
+                key->setValue(float(values.value(component, component == 0 ? 0 : 100)));
+                key->easing() = util::Easing::defaultParam();
+                push(key);
+            }
+        } else {
+            auto* key = new core::HSVKey();
+            key->setHSV(line->current().hsv().hsv());
+            push(key);
+        }
     }
     if (line->current().bone().areaKey() && needs(core::TimeKeyType_Pose)) {
         auto* key = new core::PoseKey();

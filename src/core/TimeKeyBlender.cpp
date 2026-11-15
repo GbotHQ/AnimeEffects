@@ -7,6 +7,9 @@
 #include "core/LayerMesh.h"
 #include "core/ObjectNodeUtil.h"
 #include "core/DepthKey.h"
+#include "core/MoveEvaluator.h"
+#include "core/HSVStateKey.h"
+#include "core/WaveStateKey.h"
 #include "core/BlurKey.h"
 #include "gl/PagePool.h"
 
@@ -221,8 +224,8 @@ void TimeKeyBlender::updateCurrents(ObjectNode* aRootNode, const TimeInfo& aTime
             // build depth
             blendDepthKey(pos, aTime);
 
-            // build opa
-            blendOpaKey(pos, aTime);
+            // build the opacity expansion
+            blendOpacityKey(pos, aTime);
 
             // build hsv
             blendHSVKey(pos, aTime);
@@ -393,6 +396,15 @@ typename tKey::Data getBaseValueData(const ObjectNode& aNode) {
 
 void TimeKeyBlender::getMoveExpans(SRTExpans& aExpans, const ObjectNode& aNode, const TimeInfo& aTime) {
     XC_ASSERT(aNode.timeLine());
+    if (TimeLine::usesChannelTracks(TimeKeyType_Move)) {
+        const PropertyTrack* prop = aNode.timeLine()->property(TimeKeyType_Move);
+        if (prop) {
+            aExpans.setPos(MoveEvaluator::samplePosition(*prop, aTime));
+            aExpans.setCentroid(MoveEvaluator::sampleCentroid(*prop, aTime));
+        }
+        return;
+    }
+
     TimeKeyGatherer blend(aNode.timeLine()->map(TimeKeyType_Move), aTime);
 
     if (blend.isEmpty()) { // no key is exists
@@ -444,6 +456,13 @@ void TimeKeyBlender::getMoveExpans(SRTExpans& aExpans, const ObjectNode& aNode, 
 
 void TimeKeyBlender::getRotateExpans(SRTExpans& aExpans, const ObjectNode& aNode, const TimeInfo& aTime) {
     XC_ASSERT(aNode.timeLine());
+
+    if (TimeLine::usesChannelTracks(TimeKeyType_Rotate)) {
+        const ChannelTrack* track = aNode.timeLine()->channelTrack(TimeKeyType_Rotate, 0);
+        aExpans.setRotate(track ? track->sample(aTime) : 0.0f);
+        return;
+    }
+
     TimeKeyGatherer blend(aNode.timeLine()->map(TimeKeyType_Rotate), aTime);
     if (blend.isEmpty()) {
         // No key exists
@@ -466,6 +485,13 @@ void TimeKeyBlender::getRotateExpans(SRTExpans& aExpans, const ObjectNode& aNode
 
 void TimeKeyBlender::getScaleExpans(SRTExpans& aExpans, const ObjectNode& aNode, const TimeInfo& aTime) {
     XC_ASSERT(aNode.timeLine());
+    if (TimeLine::usesChannelTracks(TimeKeyType_Scale)) {
+        const ChannelTrack* x = aNode.timeLine()->channelTrack(TimeKeyType_Scale, 0);
+        const ChannelTrack* y = aNode.timeLine()->channelTrack(TimeKeyType_Scale, 1);
+        aExpans.setScale(QVector2D(x ? x->sample(aTime) : 1.0f, y ? y->sample(aTime) : 1.0f));
+        return;
+    }
+
     TimeKeyGatherer blend(aNode.timeLine()->map(TimeKeyType_Scale), aTime);
 
     if (blend.isEmpty()) { // no key is exists
@@ -543,26 +569,31 @@ void TimeKeyBlender::blendDepthKey(PositionType aPos, const TimeInfo& aTime) {
     // set cache frame
     expans.setKeyCache(TimeKeyType_Depth, aTime.frame);
 
-    // get blend info
-    TimeKeyGatherer blend(node.timeLine()->map(TimeKeyType_Depth), aTime);
-
-    // no key is exists
-    if (blend.isEmpty()) {
-        auto baseValue = (DepthKey*)node.timeLine()->baseValue(TimeKeyType_Depth);
-        expans.setDepth(baseValue ? baseValue->depth() : DepthKey::Data().depth());
-    } else if (blend.hasSameFrame()) {
-        // a key is exists
-        expans.setDepth(((const DepthKey*)blend.point(0).key)->depth());
-    } else if (blend.isSingle()) {
-        // perfect following
-        expans.setDepth(((const DepthKey*)blend.singlePoint().key)->depth());
+    if (TimeLine::usesChannelTracks(TimeKeyType_Depth)) {
+        const ChannelTrack* track = node.timeLine()->channelTrack(TimeKeyType_Depth, 0);
+        expans.setDepth(track ? track->sample(aTime) : DepthKey::Data().depth());
     } else {
-        const DepthKey* k0 = (const DepthKey*)blend.point(0).key;
-        const DepthKey* k1 = (const DepthKey*)blend.point(1).key;
-        // calculate easing
-        const float time = getEasingRateFromTwoKeys<DepthKey>(blend, 0);
-        // blend
-        expans.setDepth(k0->depth() * (1.0f - time) + k1->depth() * time);
+        // get blend info
+        TimeKeyGatherer blend(node.timeLine()->map(TimeKeyType_Depth), aTime);
+
+        // no key is exists
+        if (blend.isEmpty()) {
+            auto baseValue = (DepthKey*)node.timeLine()->baseValue(TimeKeyType_Depth);
+            expans.setDepth(baseValue ? baseValue->depth() : DepthKey::Data().depth());
+        } else if (blend.hasSameFrame()) {
+            // a key is exists
+            expans.setDepth(((const DepthKey*)blend.point(0).key)->depth());
+        } else if (blend.isSingle()) {
+            // perfect following
+            expans.setDepth(((const DepthKey*)blend.singlePoint().key)->depth());
+        } else {
+            const DepthKey* k0 = (const DepthKey*)blend.point(0).key;
+            const DepthKey* k1 = (const DepthKey*)blend.point(1).key;
+            // calculate easing
+            const float time = getEasingRateFromTwoKeys<DepthKey>(blend, 0);
+            // blend
+            expans.setDepth(k0->depth() * (1.0f - time) + k1->depth() * time);
+        }
     }
 
     // sum depths of parents
@@ -594,6 +625,20 @@ void TimeKeyBlender::blendHSVKey(PositionType aPos, const TimeInfo& aTime) {
 
     // set cache frame
     expans.setKeyCache(TimeKeyType_HSV, aTime.frame);
+
+    if (TimeLine::usesChannelTracks(TimeKeyType_HSV)) {
+        const ChannelTrack* hue = node.timeLine()->channelTrack(TimeKeyType_HSV, 0);
+        const ChannelTrack* sat = node.timeLine()->channelTrack(TimeKeyType_HSV, 1);
+        const ChannelTrack* val = node.timeLine()->channelTrack(TimeKeyType_HSV, 2);
+        expans.hsv().setHue(hue ? static_cast<int>(hue->sample(aTime)) : 0);
+        expans.hsv().setSaturation(sat ? static_cast<int>(sat->sample(aTime)) : 100);
+        expans.hsv().setValue(val ? static_cast<int>(val->sample(aTime)) : 100);
+        const PropertyTrack* prop = node.timeLine()->property(TimeKeyType_HSV);
+        const auto* state = prop
+            ? static_cast<const HSVStateKey*>(prop->state().sampleState(aTime.frame.get())) : nullptr;
+        expans.hsv().setAbsolute(state && state->absolute() ? 1 : 0);
+        return;
+    }
 
     // get blend info
     TimeKeyGatherer blend(node.timeLine()->map(TimeKeyType_HSV), aTime);
@@ -639,6 +684,18 @@ void TimeKeyBlender::blendBlurKey(PositionType aPos, const TimeInfo& aTime) {
 
     // set cache frame
     expans.setKeyCache(TimeKeyType_Blur, aTime.frame);
+
+    if (TimeLine::usesChannelTracks(TimeKeyType_Blur)) {
+        const ChannelTrack* x = node.timeLine()->channelTrack(TimeKeyType_Blur, 0);
+        const ChannelTrack* y = node.timeLine()->channelTrack(TimeKeyType_Blur, 1);
+        const ChannelTrack* angle = node.timeLine()->channelTrack(TimeKeyType_Blur, 2);
+        expans.setBlurEllipse(
+            x ? x->sample(aTime) : 0.0f,
+            y ? y->sample(aTime) : 0.0f,
+            angle ? angle->sample(aTime) : 0.0f
+        );
+        return;
+    }
 
     // get blend info
     TimeKeyGatherer blend(node.timeLine()->map(TimeKeyType_Blur), aTime);
@@ -692,6 +749,35 @@ void TimeKeyBlender::blendWaveKey(PositionType aPos, const TimeInfo& aTime) {
     // set cache frame
     expans.setKeyCache(TimeKeyType_Wave, aTime.frame);
 
+    if (TimeLine::usesChannelTracks(TimeKeyType_Wave)) {
+        WaveKey::Data data;
+        for (int c = 0; c < 5; ++c) {
+            const ChannelTrack* track = node.timeLine()->channelTrack(TimeKeyType_Wave, c);
+            const float value = track ? track->sample(aTime) : 0.0f;
+            switch (c) {
+            case 0: data.setStrength(value); break;
+            case 1: data.setWavelength(value); break;
+            case 2: data.setAngleDeg(value); break;
+            case 3: data.setPhase(value); break;
+            default: data.setMix(value); break;
+            }
+        }
+        const PropertyTrack* prop = node.timeLine()->property(TimeKeyType_Wave);
+        if (prop) {
+            if (const auto* state = static_cast<const WaveStateKey*>(
+                    prop->state().sampleState(aTime.frame.get()))) {
+                data.setSpeed(state->speed());
+                data.setCrest(state->crest());
+                data.setDualAngleDeg(state->dualAngleDeg());
+                data.setDualScale(state->dualScale());
+                data.setTimeOffset(state->timeOffset());
+                data.setDeform(state->deform());
+            }
+        }
+        expans.wave() = data;
+        return;
+    }
+
     // get blend info
     TimeKeyGatherer blend(node.timeLine()->map(TimeKeyType_Wave), aTime);
 
@@ -735,7 +821,7 @@ void TimeKeyBlender::blendWaveKey(PositionType aPos, const TimeInfo& aTime) {
     }
 }
 
-void TimeKeyBlender::blendOpaKey(PositionType aPos, const TimeInfo& aTime) {
+void TimeKeyBlender::blendOpacityKey(PositionType aPos, const TimeInfo& aTime) {
     auto seekData = mSeeker->data(aPos);
     if (!seekData.objNode || !seekData.expans)
         return;
@@ -745,44 +831,50 @@ void TimeKeyBlender::blendOpaKey(PositionType aPos, const TimeInfo& aTime) {
         return;
 
     // set cache frame
-    expans.setKeyCache(TimeKeyType_Opa, aTime.frame);
+    expans.setKeyCache(TimeKeyType_Opacity, aTime.frame);
+
+    if (TimeLine::usesChannelTracks(TimeKeyType_Opacity)) {
+        const ChannelTrack* track = node.timeLine()->channelTrack(TimeKeyType_Opacity, 0);
+        expans.opacity().setOpacity(track ? track->sample(aTime) : 1.0f);
+        return;
+    }
 
     // get blend info
-    TimeKeyGatherer blend(node.timeLine()->map(TimeKeyType_Opa), aTime);
+    TimeKeyGatherer blend(node.timeLine()->map(TimeKeyType_Opacity), aTime);
 
     // no key is exists
     if (blend.isEmpty()) {
-        auto baseValue = (OpaKey*)node.timeLine()->baseValue(TimeKeyType_Opa);
-        expans.opa() = baseValue ? baseValue->data() : OpaKey::Data();
+        auto baseValue = (OpacityKey*)node.timeLine()->baseValue(TimeKeyType_Opacity);
+        expans.opacity() = baseValue ? baseValue->data() : OpacityKey::Data();
     } else if (blend.hasSameFrame()) {
         // a key is exists
-        expans.opa() = ((const OpaKey*)blend.point(0).key)->data();
+        expans.opacity() = ((const OpacityKey*)blend.point(0).key)->data();
     } else if (blend.isSingle()) {
         // perfect following
-        expans.opa() = ((const OpaKey*)blend.singlePoint().key)->data();
+        expans.opacity() = ((const OpacityKey*)blend.singlePoint().key)->data();
     } else {
-        const OpaKey* k0 = (const OpaKey*)blend.point(0).key;
-        const OpaKey* k1 = (const OpaKey*)blend.point(1).key;
+        const OpacityKey* k0 = (const OpacityKey*)blend.point(0).key;
+        const OpacityKey* k1 = (const OpacityKey*)blend.point(1).key;
         // calculate easing
-        const float time = getEasingRateFromTwoKeys<OpaKey>(blend, 0);
+        const float time = getEasingRateFromTwoKeys<OpacityKey>(blend, 0);
         // blend
-        expans.opa().setOpacity(k0->opacity() * (1.0f - time) + k1->opacity() * time);
+        expans.opacity().setOpacity(k0->opacity() * (1.0f - time) + k1->opacity() * time);
     }
 
     // multiply opacity of parents
     {
-        expans.setWorldOpacity(expans.opa().opacity());
+        expans.setWorldOpacity(expans.opacity().opacity());
         for (auto ppos = mSeeker->parent(aPos); ppos; ppos = mSeeker->parent(ppos)) {
             // find a parent
             auto pdata = mSeeker->data(ppos);
             if (!pdata.expans)
                 continue;
             // check cache
-            if (!pdata.expans->hasKeyCache(TimeKeyType_Opa, aTime.frame)) {
-                blendOpaKey(ppos, aTime);
+            if (!pdata.expans->hasKeyCache(TimeKeyType_Opacity, aTime.frame)) {
+                blendOpacityKey(ppos, aTime);
             }
             // world opacity
-            expans.setWorldOpacity(pdata.expans->worldOpacity() * expans.opa().opacity());
+            expans.setWorldOpacity(pdata.expans->worldOpacity() * expans.opacity().opacity());
             break;
         }
     }
@@ -1118,7 +1210,26 @@ void TimeKeyBlender::blendImageKey(PositionType aPos, const TimeInfo& aTime) {
 
     auto imageKey = getImageKey(node, aTime);
     expans.setAreaImageKey(imageKey);
-    expans.setImageOffset(imageKey ? imageKey->data().imageOffset() : QVector2D());
+
+    // 0.25: the offset is its own step-held channel pair, sampled here. A legacy
+    // file (or a project created before its first offset key) has the base value
+    // migrated into the channel track, so this is the one playback read.
+    QVector2D offset = imageKey ? imageKey->data().imageOffset() : QVector2D();
+    if (const core::PropertyTrack* prop = node.timeLine()->property(TimeKeyType_Image)) {
+        const core::ChannelTrack* x = prop->channel(0);
+        const core::ChannelTrack* y = prop->channel(1);
+        // 0.25 files always carry the offset block, and migrated 0.24 files have
+        // keys here. A fixture that inserts an ImageKey directly (the tests do)
+        // has neither: fall back to the key's own field so old fixtures still
+        // render, and let a nonzero offset base (seedBaseValue) win.
+        const bool authored = (x && x->keyCount() > 0) || (y && y->keyCount() > 0)
+            || (x && x->baseValue() != 0.0f) || (y && y->baseValue() != 0.0f);
+        if (authored) {
+            offset.setX(x ? x->sample(aTime) : offset.x());
+            offset.setY(y ? y->sample(aTime) : offset.y());
+        }
+    }
+    expans.setImageOffset(offset);
 }
 
 ImageKey* TimeKeyBlender::getImageKey(const ObjectNode& aNode, const TimeInfo& aTime) {

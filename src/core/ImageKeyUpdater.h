@@ -6,7 +6,8 @@
 #include "core/ResourceEvent.h"
 #include "core/ResourceUpdatingWorkspace.h"
 namespace core {
-class ImageKey;
+class ImageStateKey;
+using ImageKey = ImageStateKey;
 class Project;
 }
 

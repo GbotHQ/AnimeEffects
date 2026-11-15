@@ -8164,7 +8164,7 @@ The log is available below.</source>
     </message>
 </context>
 <context>
-    <name>gui::prop::OpaKeyGroup</name>
+    <name>gui::prop::OpacityKeyGroup</name>
     <message>
         <location filename="../../src/gui/qml/InspectorRowModel.cpp" line="48"/>
         <source>Opacity</source>

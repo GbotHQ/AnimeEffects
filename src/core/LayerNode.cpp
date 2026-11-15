@@ -66,20 +66,42 @@ void LayerNode::setDefaultImage(const img::ResourceHandle& aHandle, img::BlendMo
 }
 
 void LayerNode::setDefaultPosture(const QVector2D& aPos) {
-    getOrCreateBaseValue<MoveKey, TimeKeyType_Move>(mTimeLine)->data().setPos(aPos);
-    getOrCreateBaseValue<RotateKey, TimeKeyType_Rotate>(mTimeLine);
-    getOrCreateBaseValue<ScaleKey, TimeKeyType_Scale>(mTimeLine);
+    if (TimeLine::usesChannelTracks(TimeKeyType_Move)) {
+        mTimeLine.setChannelBaseValue(TimeKeyType_Move, 0, aPos.x());
+        mTimeLine.setChannelBaseValue(TimeKeyType_Move, 1, aPos.y());
+        mTimeLine.setChannelBaseValue(TimeKeyType_Move, 2, 0.0f);
+        mTimeLine.setChannelBaseValue(TimeKeyType_Move, 3, 0.0f);
+    } else {
+        getOrCreateBaseValue<MoveKey, TimeKeyType_Move>(mTimeLine)->data().setPos(aPos);
+    }
+    if (!TimeLine::usesChannelTracks(TimeKeyType_Rotate)) {
+        getOrCreateBaseValue<RotateKey, TimeKeyType_Rotate>(mTimeLine);
+    }
+    if (!TimeLine::usesChannelTracks(TimeKeyType_Scale)) {
+        getOrCreateBaseValue<ScaleKey, TimeKeyType_Scale>(mTimeLine);
+    }
 }
 
 void LayerNode::setDefaultDepth(float aValue) {
-    getOrCreateBaseValue<DepthKey, TimeKeyType_Depth>(mTimeLine)->setDepth(aValue);
+    if (TimeLine::usesChannelTracks(TimeKeyType_Depth)) {
+        mTimeLine.setChannelBaseValue(TimeKeyType_Depth, 0, aValue);
+    } else {
+        getOrCreateBaseValue<DepthKey, TimeKeyType_Depth>(mTimeLine)->setDepth(aValue);
+    }
 }
 
 void LayerNode::setDefaultOpacity(float aValue) {
-    getOrCreateBaseValue<OpaKey, TimeKeyType_Opa>(mTimeLine)->setOpacity(aValue);
+    if (TimeLine::usesChannelTracks(TimeKeyType_Opacity)) {
+        mTimeLine.setChannelBaseValue(TimeKeyType_Opacity, 0, aValue);
+    } else {
+        getOrCreateBaseValue<OpacityKey, TimeKeyType_Opacity>(mTimeLine)->setOpacity(aValue);
+    }
 }
 
 float LayerNode::initialDepth() const {
+    if (TimeLine::usesChannelTracks(TimeKeyType_Depth)) {
+        return mTimeLine.channelBaseValue(TimeKeyType_Depth, 0);
+    }
     auto key = (DepthKey*)mTimeLine.baseValue(TimeKeyType_Depth);
     return key ? key->depth() : 0.0f;
 }
@@ -224,7 +246,7 @@ void LayerNode::render(const RenderInfo& aInfo, const TimeCacheAccessor& aAccess
             frameStats.layerConsidered();
     }
 
-    if (!mIsVisible || aAccessor.get(mTimeLine).opa().isZero()) {
+    if (!mIsVisible || aAccessor.get(mTimeLine).opacity().isZero()) {
         if (countsLayer)
             frameStats.layerCulled();
         return;

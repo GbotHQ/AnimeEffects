@@ -174,6 +174,12 @@ public:
 
     Q_INVOKABLE void toggleExpanded();
     Q_INVOKABLE void toggleKey();
+    // PER-FIELD KEYING, the same contract InspectorRowModel offers: the card's
+    // property dot keys every channel/state of the filter; one numeric field's
+    // menu keys only its own channel.
+    Q_INVOKABLE bool channelKeyExists(int aComponent) const;
+    Q_INVOKABLE QString channelKeyAction(int aComponent) const;
+    Q_INVOKABLE void toggleChannelKey(int aComponent);
     Q_INVOKABLE void toggleEnabled();
     Q_INVOKABLE void remove();
 
@@ -210,10 +216,12 @@ private:
     bool isHSV() const { return mType == core::TimeKeyType_HSV; }
     bool isBlur() const { return mType == core::TimeKeyType_Blur; }
     bool isWave() const { return mType == core::TimeKeyType_Wave; }
-    void writeBlurEllipse();
+    void writeBlurEllipse(int aComponent);
+    void writeWave(int aComponent);
+    float channelValue(int aComponent) const;
+    QString channelName(int aComponent) const;
     // Writes the row's whole wave data, so every field the user did not touch
     // keeps the value the document had at this frame.
-    void writeWave();
 
     InspectorViewModel& mOwner;
     core::TimeKeyType mType;

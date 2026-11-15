@@ -537,6 +537,11 @@ int main(int argc, char** argv) {
         }
     }
 
+    // The mask added a lane to the leaf, so its row got taller and the ListView rebuilt its
+    // delegates. Re-address the folder row before the press/double-click/rename checks: a
+    // QQuickItem kept across a model reset names the delegate that is no longer in the scene.
+    groupRow = cell(root, QStringLiteral("group"));
+
     // ---- 2a2. THE NAME'S TEXT ORIGIN IS A WHOLE PIXEL, and its ink has a solid core -----
     // Reported as "the text is kinda blurry": the centring arithmetic is fractional (an 8pt line
     // box is not a whole number of pixels), and a text origin on a fraction of a pixel spreads
@@ -890,10 +895,21 @@ int main(int argc, char** argv) {
     // ---- 8e. clicking away commits an open rename --------------------------------------
     {
         model.clearSelection();
+        // 8d left the list 30px down. Put it back BEFORE addressing the row: a
+        // programmatic offset followed immediately by a mouse click can be
+        // hit-tested against the list's previous transform, so the delegate's
+        // mapToScene and the pointer disagree for a frame.
+        model.setScrollOffset(0);
+        QCoreApplication::processEvents();
         QQuickItem* leafRow = cell(root, QStringLiteral("leaf"));
         check(leafRow != nullptr, "the leaf row is addressable for the rename");
         if (leafRow) {
             core::LayerNode* leafModelNode = leaf;
+            // A real double click is two presses; the first also gives the scene its
+            // mouse focus. (QTest::mouseDClick alone, with no press immediately before
+            // it, does not produce the second click this row's MouseArea sees.)
+            click(leafRow, QPointF(60, 11));
+            QTest::qWait(60);
             doubleClick(leafRow, QPointF(60, 11));
             check(model.isRenaming(), "a double click opens the editor");
             {
@@ -911,9 +927,9 @@ int main(int argc, char** argv) {
                 }
                 QCoreApplication::processEvents();
             }
-            // the DOCUMENT row: a press on it is still "somewhere else", and it is the one row
-            // whose name the earlier block did not rename
-            QQuickItem* other = cell(root, QStringLiteral("doc"));
+            // a VISIBLE other row: innerA is the tall layer above the leaf. The document
+            // row would be "somewhere else" too, but 8d's scroll put it off screen.
+            QQuickItem* other = cell(root, QStringLiteral("innerA"));
             check(other != nullptr, "there is another row to click");
             if (other) {
                 click(other, QPointF(60, 11));

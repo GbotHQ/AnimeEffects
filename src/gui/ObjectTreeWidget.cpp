@@ -202,6 +202,8 @@ const AnimationRows& ObjectTreeWidget::rows() const { return mModel->rows(); }
 
 void ObjectTreeWidget::setScrollOffset(int aOffset) { mModel->setScrollOffset(aOffset); }
 
+void ObjectTreeWidget::refreshRows() { mModel->refreshRows(); }
+
 void ObjectTreeWidget::frameChanged() { mModel->frameChanged(); }
 
 void ObjectTreeWidget::refreshTheme() {

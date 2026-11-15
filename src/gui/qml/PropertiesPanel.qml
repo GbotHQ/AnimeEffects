@@ -82,6 +82,8 @@ Rectangle {
                 InspectorNumberField {
                     Layout.fillWidth: true
                     Layout.preferredWidth: 84
+                    row: inspector.move
+                    channel: 0
                     value: inspector.move.x
                     from: inspector.translateMin
                     to: inspector.translateMax
@@ -93,6 +95,8 @@ Rectangle {
                 InspectorNumberField {
                     Layout.fillWidth: true
                     Layout.preferredWidth: 84
+                    row: inspector.move
+                    channel: 1
                     value: inspector.move.y
                     from: inspector.translateMin
                     to: inspector.translateMax
@@ -110,6 +114,8 @@ Rectangle {
                 InspectorNumberField {
                     Layout.fillWidth: true
                     Layout.preferredWidth: 84
+                    row: inspector.move
+                    channel: 2
                     value: inspector.move.centroidX
                     from: inspector.translateMin
                     to: inspector.translateMax
@@ -121,6 +127,8 @@ Rectangle {
                 InspectorNumberField {
                     Layout.fillWidth: true
                     Layout.preferredWidth: 84
+                    row: inspector.move
+                    channel: 3
                     value: inspector.move.centroidY
                     from: inspector.translateMin
                     to: inspector.translateMax
@@ -162,6 +170,8 @@ Rectangle {
                 onToggleKey: inspector.rotate.toggleKey()
                 InspectorNumberField {
                     Layout.fillWidth: true
+                    row: inspector.rotate
+                    channel: 0
                     value: inspector.rotate.angle
                     from: inspector.rotateMin
                     to: inspector.rotateMax
@@ -184,6 +194,8 @@ Rectangle {
                 InspectorNumberField {
                     Layout.fillWidth: true
                     Layout.preferredWidth: 84
+                    row: inspector.scale
+                    channel: 0
                     value: inspector.scale.scaleX
                     from: inspector.scaleMin
                     to: inspector.scaleMax
@@ -195,6 +207,8 @@ Rectangle {
                 InspectorNumberField {
                     Layout.fillWidth: true
                     Layout.preferredWidth: 84
+                    row: inspector.scale
+                    channel: 1
                     value: inspector.scale.scaleY
                     from: inspector.scaleMin
                     to: inspector.scaleMax
@@ -215,6 +229,8 @@ Rectangle {
                 onToggleKey: inspector.depth.toggleKey()
                 InspectorNumberField {
                     Layout.fillWidth: true
+                    row: inspector.depth
+                    channel: 0
                     value: inspector.depth.depth
                     from: inspector.translateMin
                     to: inspector.translateMax
@@ -235,6 +251,8 @@ Rectangle {
                 onToggleKey: inspector.opacity.toggleKey()
                 InspectorNumberField {
                     Layout.fillWidth: true
+                    row: inspector.opacity
+                    channel: 0
                     value: inspector.opacity.opacity
                     from: 0
                     to: 1
@@ -276,6 +294,8 @@ Rectangle {
                     step: 1
                     label: qsTr("Image center X")
                     prefix: "X"
+                    row: inspector.image
+                    channel: 0
                     onValueEdited: (value) => inspector.image.setCenterX(value)
                 }
                 InspectorNumberField {
@@ -287,6 +307,8 @@ Rectangle {
                     step: 1
                     label: qsTr("Image center Y")
                     prefix: "Y"
+                    row: inspector.image
+                    channel: 1
                     onValueEdited: (value) => inspector.image.setCenterY(value)
                 }
             }

@@ -144,6 +144,13 @@ TimeLineWidget::TimeLineWidget(
     mInner = new TimeLineEditorWidget(aViaPoint, this);
     mHorizontalScrollBar = new TimelineScrollBar(this);
 
+    // Link/Separate is a VIEW edit (ctrl::TimeLine's transient grouping flag):
+    // announce it so the dock can rebuild the row heights it owns.
+    this->connect(
+        mInner, &TimeLineEditorWidget::channelGroupingChanged, this,
+        [this]() { onChannelGroupingChanged(); }
+    );
+
     this->setMouseTracking(true);
     this->setFocusPolicy(Qt::StrongFocus);
     this->connect(&mTimer, &QTimer::timeout, this, &TimeLineWidget::onPlayBackUpdated);

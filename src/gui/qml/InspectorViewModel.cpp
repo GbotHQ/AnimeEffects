@@ -11,7 +11,7 @@
 #include "core/HsvKey.h"
 #include "core/ImageKey.h"
 #include "core/MoveKey.h"
-#include "core/OpaKey.h"
+#include "core/OpacityKey.h"
 #include "core/PoseKey.h"
 #include "core/RotateKey.h"
 #include "core/ScaleKey.h"

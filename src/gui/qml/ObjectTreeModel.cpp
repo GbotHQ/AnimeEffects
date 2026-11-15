@@ -457,6 +457,8 @@ void ObjectTreeModel::rebuild() {
         emitSelectionChanged();
 }
 
+void ObjectTreeModel::refreshRows() { rebuild(); }
+
 void ObjectTreeModel::appendRow(core::ObjectNode& aNode, int aDepth, bool aIsDocument, int& aTop) {
     Row row;
     row.geometry.node = &aNode;

@@ -8,7 +8,8 @@
 
 namespace core {
 class GridMesh;
-class ImageKey;
+class ImageStateKey;
+using ImageKey = ImageStateKey;
 class ObjectNode;
 
 // The authored-weight records that a change of an ImageKey's grid affects,

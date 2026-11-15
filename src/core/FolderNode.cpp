@@ -76,17 +76,36 @@ FolderNode::FolderNode(const QString& aName):
 FolderNode::~FolderNode() { qDeleteAll(children()); }
 
 void FolderNode::setDefaultPosture(const QVector2D& aPos) {
-    getOrCreateBaseValue<MoveKey, TimeKeyType_Move>(mTimeLine)->data().setPos(aPos);
-    getOrCreateBaseValue<RotateKey, TimeKeyType_Rotate>(mTimeLine);
-    getOrCreateBaseValue<ScaleKey, TimeKeyType_Scale>(mTimeLine);
+    if (TimeLine::usesChannelTracks(TimeKeyType_Move)) {
+        mTimeLine.setChannelBaseValue(TimeKeyType_Move, 0, aPos.x());
+        mTimeLine.setChannelBaseValue(TimeKeyType_Move, 1, aPos.y());
+        mTimeLine.setChannelBaseValue(TimeKeyType_Move, 2, 0.0f);
+        mTimeLine.setChannelBaseValue(TimeKeyType_Move, 3, 0.0f);
+    } else {
+        getOrCreateBaseValue<MoveKey, TimeKeyType_Move>(mTimeLine)->data().setPos(aPos);
+    }
+    if (!TimeLine::usesChannelTracks(TimeKeyType_Rotate)) {
+        getOrCreateBaseValue<RotateKey, TimeKeyType_Rotate>(mTimeLine);
+    }
+    if (!TimeLine::usesChannelTracks(TimeKeyType_Scale)) {
+        getOrCreateBaseValue<ScaleKey, TimeKeyType_Scale>(mTimeLine);
+    }
 }
 
 void FolderNode::setDefaultDepth(float aValue) {
-    getOrCreateBaseValue<DepthKey, TimeKeyType_Depth>(mTimeLine)->setDepth(aValue);
+    if (TimeLine::usesChannelTracks(TimeKeyType_Depth)) {
+        mTimeLine.setChannelBaseValue(TimeKeyType_Depth, 0, aValue);
+    } else {
+        getOrCreateBaseValue<DepthKey, TimeKeyType_Depth>(mTimeLine)->setDepth(aValue);
+    }
 }
 
 void FolderNode::setDefaultOpacity(float aValue) {
-    getOrCreateBaseValue<OpaKey, TimeKeyType_Opa>(mTimeLine)->setOpacity(aValue);
+    if (TimeLine::usesChannelTracks(TimeKeyType_Opacity)) {
+        mTimeLine.setChannelBaseValue(TimeKeyType_Opacity, 0, aValue);
+    } else {
+        getOrCreateBaseValue<OpacityKey, TimeKeyType_Opacity>(mTimeLine)->setOpacity(aValue);
+    }
 }
 
 void FolderNode::grabHeightMap(HeightMap* aNode) { mHeightMap.reset(aNode); }
@@ -127,7 +146,7 @@ bool FolderNode::isCompositeFolder(const TimeInfo&, const TimeCacheAccessor& aAc
 void FolderNode::prerender(const RenderInfo&, const TimeCacheAccessor&) {}
 
 void FolderNode::render(const RenderInfo& aInfo, const TimeCacheAccessor& aAccessor) {
-    if (!mIsVisible || aAccessor.get(mTimeLine).opa().isZero() || aInfo.isGrid) return;
+    if (!mIsVisible || aAccessor.get(mTimeLine).opacity().isZero() || aInfo.isGrid) return;
 
     // the export's demand-only pass: the sorted top-level list holds a COMPOSITE folder as one
     // unit, so its children are not visited by the caller - walk them here, mark, draw nothing
@@ -176,7 +195,7 @@ void FolderNode::renderComposite(const RenderInfo& aInfo, const TimeCacheAccesso
     gl::Global::functions().glClearColor(0.0f, 0.0f, 0.0f, 0.0f);
     gl::Global::functions().glClear(GL_COLOR_BUFFER_BIT);
 
-    const float ownOpacity = aAccessor.get(mTimeLine).opa().opacity();
+    const float ownOpacity = aAccessor.get(mTimeLine).opacity().opacity();
 
     {
         std::vector<Renderer::SortUnit> units;
@@ -461,6 +480,9 @@ void FolderNode::renderClipper(const RenderInfo& aInfo, const TimeCacheAccessor&
 }
 
 float FolderNode::initialDepth() const {
+    if (TimeLine::usesChannelTracks(TimeKeyType_Depth)) {
+        return mTimeLine.channelBaseValue(TimeKeyType_Depth, 0);
+    }
     auto key = (DepthKey*)mTimeLine.baseValue(TimeKeyType_Depth);
     return key ? key->depth() : 0.0f;
 }
