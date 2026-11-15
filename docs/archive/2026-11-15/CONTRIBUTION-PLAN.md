@@ -72,22 +72,28 @@ master. Every phase was built in Debug; the tip passes the whole suite.
 |---|---|---|---|---|---|---|
 | 1 | `contrib/2026-11-p1` | frame ranges, ruler/playback window, property easing, QML pilot | `f7a1e628` | 40 | pass | no runner yet |
 | 2 | `contrib/2026-11-p2` | embedded assets, in-process libav encoder, one export path | `5263f585` | 47 | pass | no runner yet |
-| 3 | `contrib/2026-11-p3` | export destinations, dialog rework, warning policy | `c9ec3c30` | 85 | pass | not run per phase |
-| 4 | `contrib/2026-11-p4` | DWM popups, Windows deploy | `ab92e172` | 6 | pass | not run per phase |
-| 5 | `contrib/2026-11-p5` | Qt Quick export dialog and destination picker | `ab4ca9ce` | 57 | pass | not run per phase |
-| 6 | `contrib/2026-11-p6` | `cmnd::Gesture`: one open edit | `0dfbb09a` | 3 | pass | not run per phase |
-| 7 | `contrib/2026-11-p7` | ImGui graph panel, menu, gestures | `d0427efe` | 15 | pass | not run per phase |
-| 8 | `contrib/2026-11-p8` | docked Canvas Painter hosts, Auto easing, Qt 6.12 | `57f5ec23` | 64 | pass | not run per phase |
-| 9 | `contrib/2026-11-p9` | QML inspector, filters, masks, tree thumbnails | `3cb05a2c` | 78 | pass | not run per phase |
-| 10 | `contrib/2026-11-p10` | footprint sampling, render probe, residency plan | `08076129` | 63 | pass | not run per phase |
-| 11 | `contrib/2026-11-p11` | paged layer textures, residency stages | `36a6535f` | 49 | pass | not run per phase |
-| 12 | `contrib/2026-11-p12` | skeletal weights, base values, docking, mesh content | `324ce343` | 17 | pass | **93/93 pass** |
+| 3 | `contrib/2026-11-p3` | export destinations, dialog rework, warning policy | `c9ec3c30` | 85 | pass | 15/15 |
+| 4 | `contrib/2026-11-p4` | DWM popups, Windows deploy | `ab92e172` | 6 | pass | 15/15 |
+| 5 | `contrib/2026-11-p5` | Qt Quick export dialog and destination picker | `ab4ca9ce` | 57 | pass | 21/21 |
+| 6 | `contrib/2026-11-p6` | `cmnd::Gesture`: one open edit | `0dfbb09a` | 3 | pass | 23/23 |
+| 7 | `contrib/2026-11-p7` | ImGui graph panel, menu, gestures | `d0427efe` | 15 | pass | 44/44 |
+| 8 | `contrib/2026-11-p8` | docked Canvas Painter hosts, Auto easing, Qt 6.12 | `57f5ec23` | 64 | pass | 54/54 |
+| 9 | `contrib/2026-11-p9` | QML inspector, filters, masks, tree thumbnails | `3cb05a2c` | 78 | pass | 67/67 |
+| 10 | `contrib/2026-11-p10` | footprint sampling, render probe, residency plan | `08076129` | 63 | pass | 75/75 |
+| 11 | `contrib/2026-11-p11` | paged layer textures, residency stages | `36a6535f` | 49 | pass | 75/75 |
+| 12 | `contrib/2026-11-p12` | skeletal weights, base values, docking, mesh content | `324ce343` | 17 | pass | 93/93 |
 
 Construction rule: each phase's line-owned tree is exactly the historical
-tip; paths the line later deleted are gone, master-only files are kept. Two
-latent build breaks in the history were fixed in the phase that hit them
-(a missing `#include <QSettings>` in `tool_ViewPanel.cpp`, and
-`tests/asset_remove_layers` not compiling `ThumbnailCache.cpp`).
+tip; paths the line later deleted are gone, master-only files are kept. Four
+historical defects were repaired in the phase that owns them:
+
+- phase 1: a missing `#include <QSettings>` in `tool_ViewPanel.cpp`;
+- phase 9: `tests/asset_remove_layers` did not compile `ThumbnailCache.cpp`;
+- phase 8: backports `08c79a23` — the marquee's half-pixel inset belongs to
+  the rasteriser (`InkQPainter`/`InkCanvas`), plus its two stale expectations;
+- phases 10/11: the mask test now calls `announcePendingPaint()` per the
+  per-paint contract, and the tree test re-addresses its delegate after the
+  model reset and performs a real press+double-click.
 
 `notes.md` and `AGENTS.md` are excluded from every phase (fork-only working
 memory). The four static Geist weights are kept; master's variable Geist and
@@ -104,9 +110,10 @@ cmake --build build --config Debug -j"$(nproc)"
 ./scripts/run_suites.sh Debug
 ```
 
-The suite was run on the reconciled base (93/93) and on phase 12 (93/93).
-Phases 3-11 were build-verified only; running the suite on each is the next
-verification step before sending.
+The suite was run on every phase that has the runner: phases 3-12 are all
+green (15, 15, 21, 23, 44, 54, 67, 75, 75, 93 tests). Phases 1-2 predate
+`scripts/run_suites.sh`; their gate is the Debug build. The reconciled base
+also passes 93/93.
 
 ## 6. Decisions still open
 
